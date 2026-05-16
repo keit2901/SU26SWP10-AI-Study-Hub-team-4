@@ -14,7 +14,7 @@
 
 ## 🛠️ Tech Stack
 
-**This system is built with a Cloud-native architecture utilizing the following core technologies:
+**This system is built with a Cloud-native architecture utilizing the following core technologies:**
 
 - **Frontend**: Blazor WebAssembly (Full-stack C# to reduce context switching.)
 - **Backend**: .NET 8 Web API
@@ -74,7 +74,7 @@ Access the Admin Dashboard to manage users, monitor API/Token consumption, revie
 
 *(The project is still in the process of completion, so the API documentation content is still being updated.)*
 
-Swagger UI có sẵn tại:  
+Swagger UI is available at:
 
 ## 🧪 Testing & Research
 
