@@ -16,7 +16,7 @@
 
 **This system is built with a Cloud-native architecture utilizing the following core technologies:**
 
-- **Frontend**: Blazor WebAssembly (Full-stack C# to reduce context switching.)
+- **Frontend**: Blazor WebAssembly (Full-stack C# to reduce context switching.) + Figma
 - **Backend**: .NET 8 Web API
 - **AI Engine**: Microsoft Semantic Kernel + LLM Services (GPT / Gemini)
 - **Database**: PostgreSQL with pgvector extension for vector storage.
