@@ -25,14 +25,39 @@
 ## 📋 System Architecture
 
 The system follows a clean layered architecture:
+```text
+[Guest/Student] --------> (Frontend: Blazor WASM)
 
-[Guest / Student] → Blazor WebAssembly (Frontend)
-↓
-.NET 8 Web API (Backend)
-↓
-┌─────────────────┼─────────────────┐
-│                 │                 │
-Azure Blob        PostgreSQL         Semantic Kernel
-Storage          + pgvector           + LLM (GPT/Gemini)
+                               │
+                               
+                               ▼
+                               
+                   (Backend: .NET 8 Web API)
+                   
+                               │
+                               
+          ┌────────────────────┼──────────────────────┐
+          
+          ▼                    ▼                      ▼
+          
+┌─────────────────┐   ┌─────────────────┐    ┌─────────────────┐
+
+│  Cloud Storage  │   │  Relational DB  │    │    AI Engine    │
+
+│ (Azure Blob DB) │   │  (PostgreSQL)   │    │(Semantic Kernel)│
+
+└─────────────────┘   └─────────────────┘    └─────────────────┘
+
+                               │                      │
+                               
+                               ▼                      ▼
+                               
+                      ┌─────────────────┐    ┌─────────────────┐
+                      
+                      │   Vector Store  │    │   LLM Service   │
+                      
+                      │    (pgvector)   │    │  (GPT / Gemini) │
+                      
+                      └─────────────────┘    └─────────────────┘
                       
 
