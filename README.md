@@ -93,7 +93,7 @@ You can open an Issue or a Pull Request.
 
 ## 👥 Contributors
 
-- **[_____]** - Main Developer
+- **[Ngô Đình Tuấn Kiệt]** - Main Developer
 
 *(Update the list of contributors when a new member joins.)*
 
