@@ -7,17 +7,19 @@
 ## ✨ Features
 
 - **Academic Knowledge Base Lifecycle**: Upload and organize study materials (PDF, DOCX, PPTX) by subject code and semester. Documents are automatically chunked, embedded, and saved securely on Cloud Storage.
-- **Contextual AI Assistant (RAG Workflow)**: Ask questions and get answers based strictly on the content of the uploaded documents, preventing the AI from fabricating information.
-- **Accurate Source Citation**: Every AI-generated answer includes verified source citations (file name, page number, and text snippet) for easy cross-checking.
-- **Admin Governance**: Administrators can monitor API token usage, manage user accounts, and configure AI model parameters (System Prompt, Model type, Temperature).
-- **Hybrid Search Strategy**: Combines traditional keyword search with semantic vector search (Cosine Similarity) to ensure comprehensive retrieval of academic information.
+- **Contextual AI Assistant (RAG Workflow)**:Ask questions and get answers based strictly on the content of the uploaded documents, preventing the AI from fabricating information (anti-hallucination).
+- **Accurate Source Citation**: Every AI-generated academic answer includes verified source citations (file name, page number, and text snippet) so students can cross-check information directly.
+- **Admin Governance**: Administrators can monitor API token usage, manage user accounts, and directly configure AI model parameters such as System Prompt, Model type, and Temperature.
+- **Hybrid Search Strategy**: Combines traditional keyword search with advanced semantic vector search (Cosine Similarity) to ensure no academic information is missed.
 
 ## 🛠️ Tech Stack
 
-- **Frontend**: Blazor WebAssembly (Full-stack C#)
+**This system is built with a Cloud-native architecture utilizing the following core technologies:
+
+- **Frontend**: Blazor WebAssembly (Full-stack C# to reduce context switching.)
 - **Backend**: .NET 8 Web API
 - **AI Engine**: Microsoft Semantic Kernel + LLM Services (GPT / Gemini)
-- **Database**: PostgreSQL with pgvector extension
+- **Database**: PostgreSQL with pgvector extension for vector storage.
 - **Cloud Storage**: Azure Blob Storage
 
 ## 📸 Screenshots / Demo(on-going)
@@ -49,71 +51,53 @@ The system follows a clean layered architecture:
 
 ## 🗄️ Database Design
 
-Hệ thống sử dụng mô hình **Hybrid Database**:
+The storage system uses **Hybrid Database**:
 
-- **Relational Database (PostgreSQL)**: Quản lý user profiles, document metadata (Subject Code, Semester), chat history.
-- **Vector Database (pgvector)**: Lưu trữ vector embeddings của các document chunks để hỗ trợ semantic search.
+- **Relational Database (PostgreSQL)**: Stores user profiles, document metadata (Subject Code, Semester), and AI chat history.
+- **Vector Database (pgvector)**: Stores chunked text converted into numerical vectors to enable rapid semantic similarity searches (Cosine distance).
 
-*(Entity-Relationship Diagram (ERD) sẽ được cập nhật sớm nhất)*
+*(Entity-Relationship Diagram (ERD) will be updated later)*
 
 ## 🚀 Installation
 
-*(Hướng dẫn cài đặt chi tiết đang được hoàn thiện - On-going)*
+*(Detailed installation instructions are being finalized - Building is On-going)*
 
 ## 💻 Usage
 
-### Đối với Sinh viên:
-1. Đăng nhập vào tài khoản.
-2. Tạo Workspace theo môn học.
-3. Upload tài liệu (PDF, DOCX, PPTX).
-4. Chờ tài liệu được xử lý (trạng thái **Indexed**).
-5. Sử dụng AI Chatbot để hỏi đáp dựa trên tài liệu đã upload.
+### For Students/Users:
+Log in to your account, create a workspace, and upload academic documents (PDF, DOCX, PPTX). Wait for the system to process the document (Status: Indexed), then navigate to the Chatbot interface to ask questions based on the selected document's context.
 
 ### Đối với Admin:
-- Quản lý người dùng
-- Giám sát token/API usage
-- Review tài liệu public
-- Điều chỉnh System Prompt, Model, Temperature
+Access the Admin Dashboard to manage users, monitor API/Token consumption, review uploaded public documents, and dynamically configure AI settings like System Prompts and Model parameters.
 
 ## 📡 API Documentation
 
+*(The project is still in the process of completion, so the API documentation content is still being updated.)*
+
 Swagger UI có sẵn tại:  
-`http://localhost:<port>/swagger`
 
 ## 🧪 Testing & Research
 
-Dự án tập trung mạnh vào nghiên cứu thực nghiệm cho pipeline RAG:
-- Đánh giá hiệu suất retrieval qua **Hit Rate** và **MRR** (Mean Reciprocal Rank).
-- So sánh các kỹ thuật chunking (Recursive vs Semantic Chunking) và tối ưu overlap ratio.
+This project focuses heavily on **Experimental Research for the RAG pipeline**:
+- Measuring retrieval performance using **Hit Rate** and **MRR** (Mean Reciprocal Rank) metrics.
+- Conducting comparative studies on chunking techniques (Recursive vs. Semantic Chunking) and optimizing overlap ratios to find the "sweet spot" that maintains contextual integrity and improves AI source citation accuracy.
 
 ## 🤝 Contributing
 
-Contributions are welcome! Các tính năng đang dự định phát triển sau MVP:
-- AI Auto-summarization
-- Quiz generation từ tài liệu
+Contributions are welcome! The features planned for development after the MVP are:- AI Auto-summarization
+- Quiz generation from documents
 - Community document sharing
-- OCR hỗ trợ tài liệu scan
+- OCR support for scanned documents.
 
-Bạn có thể mở Issue hoặc Pull Request.
+You can open an Issue or a Pull Request.
 
 ## 👥 Contributors
 
-- **[Tên của bạn]** - Main Developer
+- **[_____]** - Main Developer
 
-*(Cập nhật danh sách contributors khi có thành viên tham gia)*
+*(Update the list of contributors when a new member joins.)*
 
 ## 📄 License
 
-This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
-
 ---
 
-**Bạn chỉ cần copy toàn bộ nội dung trên** và dán vào file `README.md` là có thể dùng ngay.
-
-Bạn muốn mình chỉnh thêm gì không?
-- Thêm phần **Prerequisites**?
-- Làm ASCII diagram đẹp hơn?
-- Thêm badges (GitHub, license, .NET, etc.)?
-- Viết phần Installation chi tiết hơn?
-
-Cứ nói mình chỉnh tiếp nhé!
