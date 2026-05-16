@@ -27,37 +27,21 @@
 The system follows a clean layered architecture:
 
 [Guest/Student] --------> (Frontend: Blazor WASM)
-
-                               │
-                               
-                               ▼
-                               
-                   (Backend: .NET 8 Web API)
-                   
-                               │
-                               
-          ┌────────────────────┼──────────────────────┐
-          
-          ▼                    ▼                      ▼
-          
+                               │                               
+                               ▼                               
+                   (Backend: .NET 8 Web API)                   
+                               │                              
+          ┌────────────────────┼──────────────────────┐        
+          ▼                    ▼                      ▼          
 ┌─────────────────┐   ┌─────────────────┐    ┌─────────────────┐
-
 │  Cloud Storage  │   │  Relational DB  │    │    AI Engine    │
-
 │ (Azure Blob DB) │   │  (PostgreSQL)   │    │(Semantic Kernel)│
-
 └─────────────────┘   └─────────────────┘    └─────────────────┘
-
-                               │                      │
-                               
-                               ▼                      ▼
-                               
-                      ┌─────────────────┐    ┌─────────────────┐
-                      
-                      │   Vector Store  │    │   LLM Service   │
-                      
-                      │    (pgvector)   │    │  (GPT / Gemini) │
-                      
+                               │                      │                     
+                               ▼                      ▼                    
+                      ┌─────────────────┐    ┌─────────────────┐                 
+                      │   Vector Store  │    │   LLM Service   │        
+                      │    (pgvector)   │    │  (GPT / Gemini) │                      
                       └─────────────────┘    └─────────────────┘
                       
 
