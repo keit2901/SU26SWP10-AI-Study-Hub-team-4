@@ -12,6 +12,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MudBlazor.Services;
+using Pgvector.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,9 +34,25 @@ builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOpt
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
     ?? throw new InvalidOperationException("ConnectionStrings:Postgres is not configured.");
 
+// Build a shared NpgsqlDataSource so we can register the public.document_status enum
+// for the AppDbContext. EF Core uses this single data source for all AppDbContext
+// instances (DI scope managed by AddDbContext).
+//
+// pgvector type registration is handled at the EF Core level via npgsql.UseVector()
+// below — we don't need a data-source-level UseVector() in Pgvector 0.3.1.
+var npgsqlDataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+npgsqlDataSourceBuilder.MapEnum<AI_Study_Hub_v2.Data.Entities.DocumentStatus>(
+    pgName: "public.document_status");
+var npgsqlDataSource = npgsqlDataSourceBuilder.Build();
+builder.Services.AddSingleton(npgsqlDataSource);
+
 builder.Services.AddDbContext<AppDbContext>(options =>
 {
-    options.UseNpgsql(connectionString, npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName));
+    options.UseNpgsql(npgsqlDataSource, npgsql =>
+    {
+        npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName);
+        npgsql.UseVector();
+    });
 });
 
 // Auth services ---------------------------------------------------------------

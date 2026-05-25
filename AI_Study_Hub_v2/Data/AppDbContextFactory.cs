@@ -1,6 +1,8 @@
+using AI_Study_Hub_v2.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Configuration;
+using Pgvector.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Data;
 
@@ -27,8 +29,19 @@ public sealed class AppDbContextFactory : IDesignTimeDbContextFactory<AppDbConte
                 "ConnectionStrings:Postgres is not configured. Set it in appsettings.Development.json or User Secrets " +
                 "(host=localhost, port=5432, database=postgres, user=postgres, password=<from infra/supabase/.env>).");
 
+        // Mirror Program.cs: register the document_status enum on a custom NpgsqlDataSource
+        // so EF design-time tooling can scaffold migrations that reference the enum column.
+        // pgvector type mapping is handled by npgsql.UseVector() at the EF Core level below.
+        var npgsqlDataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
+        npgsqlDataSourceBuilder.MapEnum<DocumentStatus>(pgName: "public.document_status");
+        var dataSource = npgsqlDataSourceBuilder.Build();
+
         var options = new DbContextOptionsBuilder<AppDbContext>()
-            .UseNpgsql(connectionString, npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName))
+            .UseNpgsql(dataSource, npgsql =>
+            {
+                npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName);
+                npgsql.UseVector();
+            })
             .Options;
 
         return new AppDbContext(options);

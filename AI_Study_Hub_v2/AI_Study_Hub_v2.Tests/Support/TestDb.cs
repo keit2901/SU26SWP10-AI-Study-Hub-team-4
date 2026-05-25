@@ -20,7 +20,10 @@ internal static class TestDb
             .ConfigureWarnings(w => w.Ignore(InMemoryEventId.TransactionIgnoredWarning))
             .Options;
 
-        var ctx = new AppDbContext(options);
+        // Use a test-only subclass so the InMemory provider doesn't try to map
+        // the pgvector / Postgres-ENUM properties (which only the Npgsql provider
+        // understands). Auth-layer tests don't touch documents/chunks anyway.
+        var ctx = new TestAppDbContext(options);
 
         if (seedRoles)
         {
@@ -43,5 +46,24 @@ internal static class TestDb
         }
 
         return ctx;
+    }
+
+    /// <summary>
+    /// Test-time DbContext that hides Phase 2 entities the InMemory provider can't map:
+    /// - <see cref="DocumentChunk"/> uses <c>Pgvector.Vector</c> (Npgsql-only)
+    /// - <see cref="Document"/> uses the <c>public.document_status</c> Postgres enum
+    /// - Postgres extensions (pgcrypto/vector) and the enum declaration are ignored
+    /// </summary>
+    private sealed class TestAppDbContext : AppDbContext
+    {
+        public TestAppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Ignore<DocumentChunk>();
+            modelBuilder.Ignore<Document>();
+            modelBuilder.Ignore<Folder>();
+        }
     }
 }
