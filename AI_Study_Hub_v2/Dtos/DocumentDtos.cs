@@ -1,0 +1,77 @@
+using System.ComponentModel.DataAnnotations;
+using AI_Study_Hub_v2.Data.Entities;
+
+namespace AI_Study_Hub_v2.Dtos;
+
+/// <summary>
+/// Multipart upload request for a single study document.
+/// The actual file is sent as <c>IFormFile</c> on the controller; this DTO carries
+/// the metadata fields the user fills in alongside it (subject, semester, folder).
+/// </summary>
+public sealed class UploadDocumentRequest
+{
+    /// <summary>FPT subject code, e.g. "SWP391", "PRN232".</summary>
+    [Required]
+    [RegularExpression(@"^[A-Z]{3}[0-9]{3}$",
+        ErrorMessage = "Subject code must follow the FPT pattern of 3 uppercase letters + 3 digits, e.g. SWP391.")]
+    public string SubjectCode { get; set; } = string.Empty;
+
+    /// <summary>Semester tag — Spring/Summer/Fall/Winter + 2-digit year, e.g. "SU26", "FA25".</summary>
+    [Required]
+    [RegularExpression(@"^(SP|SU|FA|WI)[0-9]{2}$",
+        ErrorMessage = "Semester must be SP/SU/FA/WI followed by 2 digits, e.g. SU26.")]
+    public string Semester { get; set; } = string.Empty;
+
+    /// <summary>Optional folder this document belongs to. Null = loose document.</summary>
+    public Guid? FolderId { get; set; }
+}
+
+/// <summary>
+/// Read model for a stored document. <see cref="DownloadUrl"/> is a short-lived signed URL,
+/// only populated by the read endpoints (not list endpoints) to limit URL leakage.
+/// </summary>
+public sealed class DocumentDto
+{
+    public Guid Id { get; set; }
+
+    public Guid? FolderId { get; set; }
+
+    public string FileName { get; set; } = string.Empty;
+
+    public long FileSizeBytes { get; set; }
+
+    public string MimeType { get; set; } = string.Empty;
+
+    public string SubjectCode { get; set; } = string.Empty;
+
+    public string Semester { get; set; } = string.Empty;
+
+    public int? PageCount { get; set; }
+
+    public DocumentStatus Status { get; set; }
+
+    public string? ErrorMessage { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>Optional Supabase Storage signed URL (5 min TTL). Only set on detail endpoint.</summary>
+    public string? DownloadUrl { get; set; }
+}
+
+/// <summary>
+/// Optional filter set for listing documents. All fields are optional.
+/// Pagination is done client-side for Sprint 1 (small corpora); add cursor pagination later.
+/// </summary>
+public sealed class DocumentListQuery
+{
+    public string? SubjectCode { get; set; }
+
+    public string? Semester { get; set; }
+
+    public Guid? FolderId { get; set; }
+
+    /// <summary>Free-text search over <c>file_name</c>. Matched case-insensitive.</summary>
+    public string? Q { get; set; }
+}

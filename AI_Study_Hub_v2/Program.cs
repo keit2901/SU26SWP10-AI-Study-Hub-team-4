@@ -77,6 +77,22 @@ builder.Services.AddHttpClient<IGoTrueClient, GoTrueClient>((sp, http) =>
 
 builder.Services.AddScoped<IAuthService, SupabaseAuthService>();
 
+// Storage services -----------------------------------------------------------
+// Phase 2 (SCRUM-13): Supabase Storage HTTP wrapper + document service.
+// HttpClient is preconfigured with the storage base URL + service-role key so
+// the rest of the codebase can call it via the abstraction only.
+builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((sp, http) =>
+{
+    var opts = sp.GetRequiredService<IOptions<SupabaseOptions>>().Value;
+    var baseUrl = opts.Url.TrimEnd('/') + "/storage/v1/";
+    http.BaseAddress = new Uri(baseUrl);
+    http.DefaultRequestHeaders.TryAddWithoutValidation("apikey", opts.ServiceRoleKey);
+    http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", opts.ServiceRoleKey);
+    http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+});
+
+builder.Services.AddScoped<IDocumentService, DocumentService>();
+
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 builder.Services.AddHttpClient<AuthApiClient>((sp, http) =>
 {
