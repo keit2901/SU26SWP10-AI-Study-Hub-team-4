@@ -1,0 +1,652 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Documents
+@page "/admin/documents/moderation"
+@rendermode InteractiveServer
+@layout AdminLayout
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="4" Class="moderation-page page-enter">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">UC10 - Review and moderation</MudText>
+            <MudText Typo="Typo.h4">Document Moderation</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Review pending and reported documents, inspect metadata, approve safe uploads, and require reasons for rejection or removal.
+            </MudText>
+        </div>
+        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Description" OnClick="OpenDocumentLibrary">
+                Document library
+            </MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync">
+                Refresh queue
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    <FilterBar SearchText="@_searchText"
+               SearchTextChanged="OnSearchChanged"
+               SearchPlaceholder="Search title, owner, subject, report reason"
+               ActiveFilters="@ActiveFilters"
+               RemoveFilter="RemoveFilterAsync"
+               ClearAllFilters="ClearFiltersAsync">
+        <MudSelect T="string" Value="@_selectedStatus" ValueChanged="OnStatusChanged" Label="Queue" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="moderation-filter">
+            @foreach (var status in _documents.Select(document => document.ModerationStatus).Distinct().OrderBy(status => status))
+            {
+                <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Value="@_selectedSeverity" ValueChanged="OnSeverityChanged" Label="Severity" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="moderation-filter">
+            <MudSelectItem T="string" Value="@HighSeverity">High</MudSelectItem>
+            <MudSelectItem T="string" Value="@MediumSeverity">Medium</MudSelectItem>
+            <MudSelectItem T="string" Value="@LowSeverity">Low</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string" Value="@_selectedSubject" ValueChanged="OnSubjectChanged" Label="Subject" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="moderation-filter">
+            @foreach (var subject in _documents.Select(document => document.SubjectCode).Distinct().OrderBy(subject => subject))
+            {
+                <MudSelectItem T="string" Value="@subject">@subject</MudSelectItem>
+            }
+        </MudSelect>
+    </FilterBar>
+
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="moderation-stat-card warning">
+                <MudText Typo="Typo.caption">Pending review</MudText>
+                <MudText Typo="Typo.h4">@_documents.Count(document => document.ModerationStatus == PendingStatus)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Awaiting admin decision</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="moderation-stat-card error">
+                <MudText Typo="Typo.caption">Reported</MudText>
+                <MudText Typo="Typo.h4">@_documents.Count(document => document.ModerationStatus == ReportedStatus)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">User or policy reports</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="moderation-stat-card">
+                <MudText Typo="Typo.caption">Rejected</MudText>
+                <MudText Typo="Typo.h4">@_documents.Count(document => document.ModerationStatus == RejectedStatus)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Reason retained</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="moderation-stat-card success">
+                <MudText Typo="Typo.caption">Notifications queued</MudText>
+                <MudText Typo="Typo.h4">@_documents.Count(document => document.NotificationStatus == NotificationQueued)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Owner updates pending</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudGrid>
+        <MudItem xs="12" lg="8">
+            <AdminDataGrid TItem="ReviewDocumentRow"
+                           Items="@FilteredDocuments"
+                           IsLoading="@_isLoading"
+                           ErrorMessage="@_errorMessage"
+                           Title="Moderation queue"
+                           Subtitle="Pending review and reported documents with approve/reject/remove decisions"
+                           EmptyIcon="@Icons.Material.Filled.Gavel"
+                           EmptyTitle="No documents need moderation"
+                           EmptyText="The current filters have no pending or reported documents.">
+                <Columns>
+                    <TemplateColumn T="ReviewDocumentRow" Title="Document">
+                        <CellTemplate Context="cell">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                <MudAvatar Color="@GetFileColor(cell.Item.FileType)" Variant="Variant.Filled" Size="Size.Medium">
+                                    <MudIcon Icon="@GetFileIcon(cell.Item.FileType)" />
+                                </MudAvatar>
+                                <div>
+                                    <MudText Typo="Typo.subtitle2">@cell.Item.Title</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@cell.Item.StoragePath</MudText>
+                                </div>
+                            </MudStack>
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <PropertyColumn T="ReviewDocumentRow" TProperty="string" Property="document => document.SubjectCode" Title="Subject" />
+                    <TemplateColumn T="ReviewDocumentRow" Title="Owner">
+                        <CellTemplate Context="cell">
+                            <MudText Typo="Typo.body2">@cell.Item.OwnerName</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@cell.Item.OwnerEmail</MudText>
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn T="ReviewDocumentRow" Title="Queue">
+                        <CellTemplate Context="cell">
+                            <MudChip T="string" Color="@GetModerationColor(cell.Item.ModerationStatus)" Variant="Variant.Filled" Size="Size.Small">@cell.Item.ModerationStatus</MudChip>
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <TemplateColumn T="ReviewDocumentRow" Title="Severity">
+                        <CellTemplate Context="cell">
+                            <MudChip T="string" Color="@GetSeverityColor(cell.Item.Severity)" Variant="Variant.Outlined" Size="Size.Small">@cell.Item.Severity</MudChip>
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <PropertyColumn T="ReviewDocumentRow" TProperty="DateTime" Property="document => document.UploadedAt" Title="Uploaded" Format="MMM dd, HH:mm" />
+                    <TemplateColumn T="ReviewDocumentRow" Title="Actions" Sortable="false" Filterable="false">
+                        <CellTemplate Context="cell">
+                            <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                                <ActivatorContent>
+                                    <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" />
+                                </ActivatorContent>
+                                <ChildContent>
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => SelectDocument(cell.Item))">Preview</MudMenuItem>
+                                    <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" Disabled="@(!CanApprove(cell.Item))" OnClick="@(() => ModerateAsync(cell.Item, ApprovedStatus))">Approve</MudMenuItem>
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Cancel" Disabled="@(cell.Item.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(cell.Item, RejectedStatus))">Reject with reason</MudMenuItem>
+                                    <MudMenuItem Icon="@Icons.Material.Filled.DeleteForever" Disabled="@(cell.Item.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(cell.Item, RemovedStatus))">Remove with reason</MudMenuItem>
+                                </ChildContent>
+                            </MudMenu>
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </AdminDataGrid>
+        </MudItem>
+
+        <MudItem xs="12" lg="4">
+            <MudPaper Elevation="0" Class="preview-card">
+                @if (_selectedDocument is null)
+                {
+                    <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Spacing="2" Class="preview-empty">
+                        <MudIcon Icon="@Icons.Material.Filled.Article" Size="Size.Large" Color="Color.Secondary" />
+                        <MudText Typo="Typo.h6">Select a document</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                            Use Preview to inspect metadata, extracted text, report context, and moderation history.
+                        </MudText>
+                    </MudStack>
+                }
+                else
+                {
+                    <MudStack Spacing="3">
+                        <MudStack Row="true" AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween" Style="gap: 1rem;">
+                            <div>
+                                <MudText Typo="Typo.overline" Color="Color.Secondary">Document preview</MudText>
+                                <MudText Typo="Typo.h6">@_selectedDocument.Title</MudText>
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">@_selectedDocument.StoragePath</MudText>
+                            </div>
+                            <MudChip T="string" Color="@GetModerationColor(_selectedDocument.ModerationStatus)" Variant="Variant.Filled" Size="Size.Small">@_selectedDocument.ModerationStatus</MudChip>
+                        </MudStack>
+
+                        <MudDivider />
+
+                        <MudList T="string" Dense="true">
+                            <MudListSubheader>Metadata</MudListSubheader>
+                            <MudListItem Text="Owner" SecondaryText="@($"{_selectedDocument.OwnerName} ({_selectedDocument.OwnerEmail})")" />
+                            <MudListItem Text="Subject" SecondaryText="@_selectedDocument.SubjectCode" />
+                            <MudListItem Text="File" SecondaryText="@($"{_selectedDocument.FileType.ToUpperInvariant()} / {_selectedDocument.FileSizeMb:N1} MB")" />
+                            <MudListItem Text="Uploaded" SecondaryText="@FormatDateTime(_selectedDocument.UploadedAt)" />
+                            <MudListItem Text="Report context" SecondaryText="@_selectedDocument.ReportReason" />
+                            <MudListItem Text="Notification" SecondaryText="@_selectedDocument.NotificationStatus" />
+                        </MudList>
+
+                        <div>
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Extracted preview</MudText>
+                            <div class="document-preview-box">@_selectedDocument.PreviewText</div>
+                        </div>
+
+                        <MudChipSet T="string">
+                            @foreach (var tag in _selectedDocument.Tags)
+                            {
+                                <MudChip T="string" Value="@tag" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">@tag</MudChip>
+                            }
+                        </MudChipSet>
+
+                        @if (!string.IsNullOrWhiteSpace(_selectedDocument.ModerationReason))
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                Last decision reason: @_selectedDocument.ModerationReason
+                            </MudAlert>
+                        }
+
+                        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                            <MudButton Color="Color.Success" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.CheckCircle" Disabled="@(!CanApprove(_selectedDocument))" OnClick="@(() => ModerateAsync(_selectedDocument, ApprovedStatus))">Approve</MudButton>
+                            <MudButton Color="Color.Warning" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Cancel" Disabled="@(_selectedDocument.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(_selectedDocument, RejectedStatus))">Reject</MudButton>
+                            <MudButton Color="Color.Error" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.DeleteForever" Disabled="@(_selectedDocument.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(_selectedDocument, RemovedStatus))">Remove</MudButton>
+                        </MudStack>
+                    </MudStack>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+</MudStack>
+
+@code {
+    private const string PendingStatus = "Pending Review";
+    private const string ReportedStatus = "Reported";
+    private const string ApprovedStatus = "Approved";
+    private const string RejectedStatus = "Rejected";
+    private const string RemovedStatus = "Removed";
+    private const string NotificationQueued = "Queued";
+    private const string HighSeverity = "High";
+    private const string MediumSeverity = "Medium";
+    private const string LowSeverity = "Low";
+
+    private readonly List<ReviewDocumentRow> _documents = new();
+    private bool _isLoading = true;
+    private string? _searchText;
+    private string? _selectedStatus;
+    private string? _selectedSubject;
+    private string? _selectedSeverity;
+    private string? _errorMessage;
+    private ReviewDocumentRow? _selectedDocument;
+
+    private IEnumerable<ReviewDocumentRow> FilteredDocuments => _documents
+        .Where(MatchesStatus)
+        .Where(MatchesSubject)
+        .Where(MatchesSeverity)
+        .Where(MatchesSearch)
+        .OrderByDescending(document => document.Severity == HighSeverity)
+        .ThenByDescending(document => document.UploadedAt);
+
+    private IEnumerable<string> ActiveFilters
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedStatus))
+            {
+                yield return $"Queue: {_selectedStatus}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedSeverity))
+            {
+                yield return $"Severity: {_selectedSeverity}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedSubject))
+            {
+                yield return $"Subject: {_selectedSubject}";
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            await Task.Delay(300);
+            _documents.Clear();
+            _documents.AddRange(BuildSeedDocuments());
+            _selectedDocument = _documents.FirstOrDefault();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load moderation queue: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void OpenDocumentLibrary() => Navigation.NavigateTo("/admin/documents");
+
+    private Task OnSearchChanged(string? value)
+    {
+        _searchText = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnStatusChanged(string? value)
+    {
+        _selectedStatus = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSubjectChanged(string? value)
+    {
+        _selectedSubject = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSeverityChanged(string? value)
+    {
+        _selectedSeverity = value;
+        return Task.CompletedTask;
+    }
+
+    private Task RemoveFilterAsync(string filter)
+    {
+        if (filter.StartsWith("Queue:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedStatus = null;
+        }
+        else if (filter.StartsWith("Severity:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedSeverity = null;
+        }
+        else if (filter.StartsWith("Subject:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedSubject = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _selectedStatus = null;
+        _selectedSeverity = null;
+        _selectedSubject = null;
+        return Task.CompletedTask;
+    }
+
+    private bool MatchesStatus(ReviewDocumentRow document)
+    {
+        return string.IsNullOrWhiteSpace(_selectedStatus)
+            || document.ModerationStatus.Equals(_selectedStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesSubject(ReviewDocumentRow document)
+    {
+        return string.IsNullOrWhiteSpace(_selectedSubject)
+            || document.SubjectCode.Equals(_selectedSubject, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesSeverity(ReviewDocumentRow document)
+    {
+        return string.IsNullOrWhiteSpace(_selectedSeverity)
+            || document.Severity.Equals(_selectedSeverity, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesSearch(ReviewDocumentRow document)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            return true;
+        }
+
+        var text = _searchText.Trim();
+        return document.Title.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.OwnerName.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.OwnerEmail.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.SubjectCode.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.ReportReason.Contains(text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void SelectDocument(ReviewDocumentRow document)
+    {
+        _selectedDocument = document;
+    }
+
+    private static bool CanApprove(ReviewDocumentRow document)
+    {
+        return document.ModerationStatus is PendingStatus or ReportedStatus or RejectedStatus;
+    }
+
+    private async Task ModerateAsync(ReviewDocumentRow document, string decision)
+    {
+        var requiresReason = decision is RejectedStatus or RemovedStatus;
+        var parameters = new DialogParameters
+        {
+            ["DocumentTitle"] = document.Title,
+            ["Decision"] = decision,
+            ["RequiresReason"] = requiresReason,
+            ["ExistingReason"] = document.ModerationReason
+        };
+
+        var dialog = await DialogService.ShowAsync<ModerationDecisionDialog>($"{decision} document", parameters);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false })
+        {
+            return;
+        }
+
+        var reason = result.Data as string ?? string.Empty;
+        document.ModerationStatus = decision;
+        document.ModerationReason = reason;
+        document.ReviewedAt = DateTime.UtcNow;
+        document.ReviewedBy = "admin@aistudyhub.edu";
+        document.NotificationStatus = NotificationQueued;
+        document.ProcessingStatus = decision == ApprovedStatus ? "Processing" : decision;
+
+        if (decision == RemovedStatus)
+        {
+            document.StoragePath = "Removed from Supabase Storage";
+        }
+
+        _selectedDocument = document;
+        Snackbar.Add($"{document.Title} {decision.ToLowerInvariant()}. Owner notification and audit log entry queued.", decision == ApprovedStatus ? Severity.Success : Severity.Warning);
+    }
+
+    private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
+
+    private static Color GetModerationColor(string status)
+    {
+        return status switch
+        {
+            PendingStatus => Color.Warning,
+            ReportedStatus => Color.Error,
+            ApprovedStatus => Color.Success,
+            RejectedStatus => Color.Default,
+            RemovedStatus => Color.Error,
+            _ => Color.Primary
+        };
+    }
+
+    private static Color GetSeverityColor(string severity)
+    {
+        return severity switch
+        {
+            HighSeverity => Color.Error,
+            MediumSeverity => Color.Warning,
+            _ => Color.Info
+        };
+    }
+
+    private static Color GetFileColor(string fileType)
+    {
+        return fileType.ToLowerInvariant() switch
+        {
+            "pdf" => Color.Error,
+            "docx" => Color.Info,
+            "pptx" => Color.Warning,
+            _ => Color.Primary
+        };
+    }
+
+    private static string GetFileIcon(string fileType)
+    {
+        return fileType.ToLowerInvariant() switch
+        {
+            "pdf" => Icons.Material.Filled.PictureAsPdf,
+            "docx" => Icons.Material.Filled.Article,
+            "pptx" => Icons.Material.Filled.Slideshow,
+            _ => Icons.Material.Filled.Description
+        };
+    }
+
+    private static IEnumerable<ReviewDocumentRow> BuildSeedDocuments()
+    {
+        return new[]
+        {
+            new ReviewDocumentRow
+            {
+                Id = Guid.Parse("1b412df3-8e7a-4e62-97c8-e3f72a977920"),
+                Title = "RAG Evaluation Notes",
+                SubjectCode = "SWP391",
+                OwnerName = "Dr. Nguyen Minh",
+                OwnerEmail = "minh.nguyen@aistudyhub.edu",
+                FileType = "pdf",
+                FileSizeMb = 4.8,
+                StoragePath = "documents/swp391/rag-evaluation-notes.pdf",
+                ModerationStatus = PendingStatus,
+                ProcessingStatus = "Pending",
+                Severity = MediumSeverity,
+                ReportReason = "New upload requires academic policy review before indexing.",
+                PreviewText = "This document summarizes retrieval augmented generation evaluation metrics, chunk recall, groundedness checks, and prompt test cases for SWP391 capstone teams.",
+                Tags = new() { "rag", "evaluation", "capstone" },
+                UploadedAt = DateTime.UtcNow.AddHours(-2)
+            },
+            new ReviewDocumentRow
+            {
+                Id = Guid.Parse("2f9aef28-c268-4c44-940e-e3f825462c91"),
+                Title = "Exam Bank 2025",
+                SubjectCode = "DBI202",
+                OwnerName = "Kiet Ngo",
+                OwnerEmail = "kiet.ngo@aistudyhub.edu",
+                FileType = "docx",
+                FileSizeMb = 2.2,
+                StoragePath = "documents/dbi202/exam-bank-2025.docx",
+                ModerationStatus = ReportedStatus,
+                ProcessingStatus = "Blocked",
+                Severity = HighSeverity,
+                ReportReason = "Reported by 4 users as possible restricted assessment material.",
+                PreviewText = "The extracted text contains multiple-choice questions, answer keys, database normalization exercises, and final exam style scenarios.",
+                Tags = new() { "assessment", "reported", "database" },
+                UploadedAt = DateTime.UtcNow.AddHours(-5)
+            },
+            new ReviewDocumentRow
+            {
+                Id = Guid.Parse("95f86807-21a2-43e1-9702-2f4e190c7856"),
+                Title = "Lecture OCR Export",
+                SubjectCode = "PRN212",
+                OwnerName = "Mai Anh Tran",
+                OwnerEmail = "mai.tran@aistudyhub.edu",
+                FileType = "pdf",
+                FileSizeMb = 11.6,
+                StoragePath = "documents/prn212/lecture-ocr-export.pdf",
+                ModerationStatus = PendingStatus,
+                ProcessingStatus = "Failed",
+                Severity = HighSeverity,
+                ReportReason = "OCR confidence is low and embedding worker failed after retry limit.",
+                PreviewText = "The preview contains noisy OCR output from scanned lecture notes. Several sections are unreadable and may need replacement before indexing.",
+                Tags = new() { "ocr", "failed-processing", "lecture" },
+                UploadedAt = DateTime.UtcNow.AddDays(-1)
+            },
+            new ReviewDocumentRow
+            {
+                Id = Guid.Parse("eb420566-9e06-4d16-a79f-6a1e96e943c8"),
+                Title = "Legacy Slides",
+                SubjectCode = "SWT301",
+                OwnerName = "Linh Pham",
+                OwnerEmail = "linh.pham@aistudyhub.edu",
+                FileType = "pptx",
+                FileSizeMb = 7.4,
+                StoragePath = "documents/swt301/legacy-slides.pptx",
+                ModerationStatus = RejectedStatus,
+                ProcessingStatus = "Rejected",
+                Severity = LowSeverity,
+                ReportReason = "Outdated material uploaded to the wrong subject area.",
+                ModerationReason = "Reject until the owner maps this file to the correct semester and subject.",
+                NotificationStatus = NotificationQueued,
+                PreviewText = "Legacy software testing slides from a previous curriculum, including obsolete grading rubrics and archived tool screenshots.",
+                Tags = new() { "legacy", "slides", "needs-update" },
+                UploadedAt = DateTime.UtcNow.AddDays(-2),
+                ReviewedAt = DateTime.UtcNow.AddDays(-1),
+                ReviewedBy = "admin@aistudyhub.edu"
+            }
+        };
+    }
+
+    private sealed class ReviewDocumentRow
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string SubjectCode { get; set; } = string.Empty;
+        public string OwnerName { get; set; } = string.Empty;
+        public string OwnerEmail { get; set; } = string.Empty;
+        public string FileType { get; set; } = string.Empty;
+        public double FileSizeMb { get; set; }
+        public string StoragePath { get; set; } = string.Empty;
+        public string ModerationStatus { get; set; } = PendingStatus;
+        public string ProcessingStatus { get; set; } = "Pending";
+        public string Severity { get; set; } = MediumSeverity;
+        public string ReportReason { get; set; } = string.Empty;
+        public string PreviewText { get; set; } = string.Empty;
+        public List<string> Tags { get; set; } = new();
+        public string ModerationReason { get; set; } = string.Empty;
+        public string NotificationStatus { get; set; } = "Not sent";
+        public DateTime UploadedAt { get; set; }
+        public DateTime? ReviewedAt { get; set; }
+        public string ReviewedBy { get; set; } = string.Empty;
+    }
+}
+
+<style>
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .page-header,
+    .moderation-stat-card,
+    .preview-card {
+        border-radius: 26px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .88);
+    }
+
+    .page-header {
+        padding: 1.2rem;
+        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+    }
+
+    .moderation-filter {
+        min-width: 180px;
+    }
+
+    .moderation-stat-card {
+        padding: 1.15rem;
+    }
+
+    .moderation-stat-card.success {
+        background: linear-gradient(145deg, rgba(34, 197, 94, .14), rgba(255, 252, 246, .86));
+    }
+
+    .moderation-stat-card.warning {
+        background: linear-gradient(145deg, rgba(251, 146, 60, .14), rgba(255, 252, 246, .86));
+    }
+
+    .moderation-stat-card.error {
+        background: linear-gradient(145deg, rgba(239, 68, 68, .12), rgba(255, 252, 246, .86));
+    }
+
+    .preview-card {
+        min-height: 560px;
+        padding: 1.25rem;
+        position: sticky;
+        top: 6rem;
+    }
+
+    .preview-empty {
+        min-height: 520px;
+        text-align: center;
+    }
+
+    .document-preview-box {
+        padding: 1rem;
+        border-radius: 18px;
+        background: #102a2a;
+        color: #d7fff6;
+        line-height: 1.65;
+        max-height: 220px;
+        overflow-y: auto;
+    }
+
+    @@media (max-width: 959px) {
+        .preview-card {
+            position: static;
+        }
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

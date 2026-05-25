@@ -1,0 +1,322 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Subjects
+@page "/admin/subjects"
+@rendermode InteractiveServer
+@layout AdminLayout
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="4" Class="subjects-page page-enter">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">Subjects table</MudText>
+            <MudText Typo="Typo.h4">Subject Management</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Organize subjects by semester and maintain searchable course metadata.
+            </MudText>
+        </div>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateSubject">
+            Create subject
+        </MudButton>
+    </MudStack>
+
+    <FilterBar SearchText="@_searchText"
+               SearchTextChanged="OnSearchChanged"
+               SearchPlaceholder="Search code, name, or description"
+               ActiveFilters="@ActiveFilters"
+               RemoveFilter="RemoveFilterAsync"
+               ClearAllFilters="ClearFiltersAsync">
+        <MudSelect T="string"
+                   Value="@_selectedSemester"
+                   ValueChanged="OnSemesterChanged"
+                   Label="Semester"
+                   Variant="Variant.Outlined"
+                   Margin="Margin.Dense"
+                   Clearable="true"
+                   Class="semester-filter">
+            @foreach (var semester in _subjects.Select(subject => subject.Semester).Distinct().OrderBy(value => value))
+            {
+                <MudSelectItem T="string" Value="@semester">@semester</MudSelectItem>
+            }
+        </MudSelect>
+    </FilterBar>
+
+    @if (_isLoading)
+    {
+        <MudStack Spacing="2">
+            <MudSkeleton Height="84px" Animation="Animation.Wave" />
+            <MudSkeleton Height="240px" Animation="Animation.Wave" />
+            <MudSkeleton Height="240px" Animation="Animation.Wave" />
+        </MudStack>
+    }
+    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+    }
+    else if (!FilteredSubjects.Any())
+    {
+        <MudPaper Elevation="0" Class="empty-state">
+            <MudIcon Icon="@Icons.Material.Filled.AutoStories" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">No subjects found</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Clear filters or create the first subject.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudExpansionPanels MultiExpansion="true" Elevation="0" Class="subject-groups">
+            @foreach (var group in GroupedSubjects)
+            {
+                <MudExpansionPanel Text="@group.Key" Expanded="true" Class="subject-group-panel">
+                    <TitleContent>
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="width: 100%;">
+                            <MudText Typo="Typo.h6">@group.Key</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@group.Count() subjects</MudChip>
+                        </MudStack>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudTable Items="@group" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm">
+                            <HeaderContent>
+                                <MudTh>Code</MudTh>
+                                <MudTh>Name</MudTh>
+                                <MudTh>Description</MudTh>
+                                <MudTh>Created</MudTh>
+                                <MudTh Style="text-align: right;">Actions</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Code">
+                                    <MudChip T="string" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">@context.Code</MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Name">@context.Name</MudTd>
+                                <MudTd DataLabel="Description">@context.Description</MudTd>
+                                <MudTd DataLabel="Created">@FormatDate(context.CreatedAt)</MudTd>
+                                <MudTd DataLabel="Actions" Style="text-align: right;">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => EditSubject(context))" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteSubjectAsync(context))" />
+                                </MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
+    }
+</MudStack>
+
+<SubjectForm Open="@_subjectSheetOpen"
+             OpenChanged="@(value => _subjectSheetOpen = value)"
+             Model="@_editingSubject"
+             Saved="SaveSubjectAsync" />
+
+@code {
+    private readonly List<SubjectForm.SubjectFormModel> _subjects = new();
+    private SubjectForm.SubjectFormModel? _editingSubject;
+    private bool _isLoading = true;
+    private bool _subjectSheetOpen;
+    private string? _searchText;
+    private string? _selectedSemester;
+    private string? _errorMessage;
+
+    private IEnumerable<SubjectForm.SubjectFormModel> FilteredSubjects => _subjects
+        .Where(MatchesSemester)
+        .Where(MatchesSearch)
+        .OrderBy(subject => subject.Code);
+
+    private IEnumerable<IGrouping<string, SubjectForm.SubjectFormModel>> GroupedSubjects => FilteredSubjects
+        .GroupBy(subject => subject.Semester)
+        .OrderBy(group => group.Key);
+
+    private IEnumerable<string> ActiveFilters
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedSemester))
+            {
+                yield return $"Semester: {_selectedSemester}";
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Task.Delay(250);
+            _subjects.AddRange(BuildSeedSubjects());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load subjects: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private Task OnSearchChanged(string? value)
+    {
+        _searchText = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSemesterChanged(string? value)
+    {
+        _selectedSemester = value;
+        return Task.CompletedTask;
+    }
+
+    private Task RemoveFilterAsync(string filter)
+    {
+        if (filter.StartsWith("Semester:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedSemester = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _selectedSemester = null;
+        return Task.CompletedTask;
+    }
+
+    private bool MatchesSemester(SubjectForm.SubjectFormModel subject)
+    {
+        return string.IsNullOrWhiteSpace(_selectedSemester)
+            || subject.Semester.Equals(_selectedSemester, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesSearch(SubjectForm.SubjectFormModel subject)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            return true;
+        }
+
+        var text = _searchText.Trim();
+        return subject.Code.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || subject.Name.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || subject.Description.Contains(text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void CreateSubject()
+    {
+        _editingSubject = SubjectForm.SubjectFormModel.New();
+        _subjectSheetOpen = true;
+    }
+
+    private void EditSubject(SubjectForm.SubjectFormModel subject)
+    {
+        _editingSubject = subject.Clone();
+        _subjectSheetOpen = true;
+    }
+
+    private Task SaveSubjectAsync(SubjectForm.SubjectFormModel subject)
+    {
+        if (subject.Id == Guid.Empty)
+        {
+            subject.Id = Guid.NewGuid();
+            subject.CreatedAt = DateTime.UtcNow;
+            _subjects.Add(subject.Clone());
+            Snackbar.Add($"Subject {subject.Code} created.", Severity.Success);
+        }
+        else
+        {
+            var existing = _subjects.FirstOrDefault(item => item.Id == subject.Id);
+            if (existing is not null)
+            {
+                existing.Code = subject.Code;
+                existing.Name = subject.Name;
+                existing.Semester = subject.Semester;
+                existing.Description = subject.Description;
+                Snackbar.Add($"Subject {subject.Code} updated.", Severity.Success);
+            }
+        }
+
+        _editingSubject = null;
+        return Task.CompletedTask;
+    }
+
+    private async Task DeleteSubjectAsync(SubjectForm.SubjectFormModel subject)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Delete subject",
+            ["Message"] = $"Delete {subject.Code} - {subject.Name}? This should only be allowed when no documents depend on it.",
+            ["ConfirmText"] = "Delete",
+            ["ConfirmationText"] = subject.Code,
+            ["ConfirmColor"] = Color.Error
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete subject", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            _subjects.Remove(subject);
+            Snackbar.Add($"Subject {subject.Code} deleted.", Severity.Warning);
+        }
+    }
+
+    private static string FormatDate(DateTime value) => value.ToString("MMM dd, yyyy");
+
+    private static IEnumerable<SubjectForm.SubjectFormModel> BuildSeedSubjects()
+    {
+        return new[]
+        {
+            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "SWP391", Name = "Software Development Project", Semester = "Summer 2026", Description = "Capstone-style team project and documentation workflow.", CreatedAt = DateTime.UtcNow.AddDays(-28) },
+            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "PRN212", Name = ".NET Cross-Platform Programming", Semester = "Summer 2026", Description = "C# application development and service integration.", CreatedAt = DateTime.UtcNow.AddDays(-25) },
+            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "DBI202", Name = "Database Systems", Semester = "Spring 2026", Description = "Relational modeling, SQL, and normalization.", CreatedAt = DateTime.UtcNow.AddDays(-65) },
+            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "SWT301", Name = "Software Testing", Semester = "Fall 2026", Description = "Testing strategy, automation, and quality control.", CreatedAt = DateTime.UtcNow.AddDays(-4) }
+        };
+    }
+}
+
+<style>
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .page-header,
+    .empty-state,
+    .subject-group-panel {
+        border-radius: 26px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .88);
+    }
+
+    .page-header {
+        padding: 1.2rem;
+        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+    }
+
+    .semester-filter {
+        min-width: 200px;
+    }
+
+    .empty-state {
+        min-height: 320px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .subject-groups {
+        display: grid;
+        gap: 1rem;
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

@@ -1,0 +1,6 @@
+# Phase 1 — never commit secrets or DB data
+.env
+volumes/db/data/
+volumes/storage/
+volumes/api/server.crt
+volumes/api/server.key

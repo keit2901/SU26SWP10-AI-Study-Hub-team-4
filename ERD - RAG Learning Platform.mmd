@@ -1,0 +1,59 @@
+```mermaid
+erDiagram
+    DATABASE "RAG Learning Platform" {
+    }
+
+    Users ||--o{ Workspaces : "has"
+    Users ||--o{ Documents : "owns"
+    Users ||--o{ ChatSessions : "initiates"
+    Users ||--o{ AIConfigurations : "updates"
+    Users ||--o{ AuditLogs : "audited_by"
+
+    Workspaces ||--o{ Documents : "contains"
+    Documents ||--o{ DocumentChunks : "chunked_into"
+    ChatSessions ||--o{ ChatMessages : "contains"
+
+    Users {
+        int user_id PK
+        varchar full_name
+        varchar email
+        varchar role
+        varchar status
+    }
+
+    Workspaces {
+        int workspace_id PK
+        int user_id FK
+    }
+
+    Documents {
+        int document_id PK
+        int workspace_id FK
+        int owner_id FK
+    }
+
+    DocumentChunks {
+        int chunk_id PK
+        int document_id FK
+    }
+
+    ChatSessions {
+        int session_id PK
+        int user_id FK
+    }
+
+    ChatMessages {
+        int message_id PK
+        int session_id FK
+    }
+
+    AIConfigurations {
+        int config_id PK
+        int updated_by FK
+    }
+
+    AuditLogs {
+        int log_id PK
+        int actor_id FK "nullable"
+    }
+```

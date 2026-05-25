@@ -1,0 +1,664 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Documents
+@page "/admin/documents"
+@rendermode InteractiveServer
+@layout AdminLayout
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="4" Class="documents-page page-enter">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">Document library</MudText>
+            <MudText Typo="Typo.h4">Document Management</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Track uploaded academic materials, processing state, subject mapping, moderation status, and retrieval readiness.
+            </MudText>
+        </div>
+        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Gavel" OnClick="OpenModerationQueue">
+                Moderation queue
+            </MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.UploadFile" OnClick="OpenRegisterSheet">
+                Register document
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    <FilterBar SearchText="@_searchText"
+               SearchTextChanged="OnSearchChanged"
+               SearchPlaceholder="Search title, owner, subject, tag, or storage path"
+               ActiveFilters="@ActiveFilters"
+               RemoveFilter="RemoveFilterAsync"
+               ClearAllFilters="ClearFiltersAsync">
+        <MudSelect T="string" Value="@_selectedProcessingStatus" ValueChanged="OnProcessingStatusChanged" Label="Processing" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="document-filter">
+            @foreach (var status in _documents.Select(document => document.ProcessingStatus).Distinct().OrderBy(status => status))
+            {
+                <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Value="@_selectedModerationStatus" ValueChanged="OnModerationStatusChanged" Label="Moderation" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="document-filter">
+            @foreach (var status in _documents.Select(document => document.ModerationStatus).Distinct().OrderBy(status => status))
+            {
+                <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Value="@_selectedSubject" ValueChanged="OnSubjectChanged" Label="Subject" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="document-filter">
+            @foreach (var subject in _documents.Select(document => document.SubjectCode).Distinct().OrderBy(subject => subject))
+            {
+                <MudSelectItem T="string" Value="@subject">@subject</MudSelectItem>
+            }
+        </MudSelect>
+    </FilterBar>
+
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="document-stat-card">
+                <MudText Typo="Typo.caption">Total documents</MudText>
+                <MudText Typo="Typo.h4">@_documents.Count</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">All uploaded records</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="document-stat-card success">
+                <MudText Typo="Typo.caption">Indexed</MudText>
+                <MudText Typo="Typo.h4">@_documents.Count(document => document.ProcessingStatus == IndexedProcessing)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Ready for retrieval</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="document-stat-card warning">
+                <MudText Typo="Typo.caption">Needs moderation</MudText>
+                <MudText Typo="Typo.h4">@_documents.Count(document => document.ModerationStatus is PendingModeration or ReportedModeration)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Pending or reported</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="document-stat-card error">
+                <MudText Typo="Typo.caption">Failed jobs</MudText>
+                <MudText Typo="Typo.h4">@_documents.Count(document => document.ProcessingStatus == FailedProcessing)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Retry or review</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="library-alert">
+        Approved documents move into chunking and embedding. Rejected or removed documents retain a moderation reason and trigger owner notifications.
+    </MudAlert>
+
+    <AdminDataGrid TItem="DocumentRow"
+                   Items="@FilteredDocuments"
+                   IsLoading="@_isLoading"
+                   ErrorMessage="@_errorMessage"
+                   Title="Documents"
+                   Subtitle="Mapped to documents, document_chunks, profiles, subjects, moderation decisions, and processing jobs"
+                   EmptyIcon="@Icons.Material.Filled.Description"
+                   EmptyTitle="No documents match the current filters"
+                   EmptyText="Clear filters or register a document.">
+        <Columns>
+            <TemplateColumn T="DocumentRow" Title="Document">
+                <CellTemplate Context="cell">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudAvatar Color="@GetFileColor(cell.Item.FileType)" Variant="Variant.Filled" Size="Size.Medium">
+                            <MudIcon Icon="@GetFileIcon(cell.Item.FileType)" />
+                        </MudAvatar>
+                        <div>
+                            <MudText Typo="Typo.subtitle2">@cell.Item.Title</MudText>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@cell.Item.StoragePath</MudText>
+                        </div>
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn T="DocumentRow" TProperty="string" Property="document => document.SubjectCode" Title="Subject" />
+            <TemplateColumn T="DocumentRow" Title="Owner">
+                <CellTemplate Context="cell">
+                    <MudText Typo="Typo.body2">@cell.Item.OwnerName</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@cell.Item.OwnerEmail</MudText>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="DocumentRow" Title="Processing">
+                <CellTemplate Context="cell">
+                    <MudChip T="string" Color="@GetProcessingColor(cell.Item.ProcessingStatus)" Variant="Variant.Filled" Size="Size.Small">@cell.Item.ProcessingStatus</MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="DocumentRow" Title="Moderation">
+                <CellTemplate Context="cell">
+                    <MudChip T="string" Color="@GetModerationColor(cell.Item.ModerationStatus)" Variant="Variant.Outlined" Size="Size.Small">@cell.Item.ModerationStatus</MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn T="DocumentRow" TProperty="int" Property="document => document.ChunkCount" Title="Chunks" />
+            <PropertyColumn T="DocumentRow" TProperty="double" Property="document => document.FileSizeMb" Title="Size MB" Format="N1" />
+            <PropertyColumn T="DocumentRow" TProperty="DateTime" Property="document => document.CreatedAt" Title="Uploaded" Format="MMM dd, yyyy" />
+            <TemplateColumn T="DocumentRow" Title="Actions" Sortable="false" Filterable="false">
+                <CellTemplate Context="cell">
+                    <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                        <ActivatorContent>
+                            <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" />
+                        </ActivatorContent>
+                        <ChildContent>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(cell.Item))">View details</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Gavel" Disabled="@(!CanModerate(cell.Item))" OnClick="OpenModerationQueue">Open moderation</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditDocument(cell.Item))">Edit metadata</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Sync" Disabled="@(cell.Item.ModerationStatus != ApprovedModeration)" OnClick="@(() => ReindexDocumentAsync(cell.Item))">Re-index</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveDocumentAsync(cell.Item))">Remove record</MudMenuItem>
+                        </ChildContent>
+                    </MudMenu>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </AdminDataGrid>
+</MudStack>
+
+<EntitySheet Open="@_documentSheetOpen"
+             OpenChanged="@(value => _documentSheetOpen = value)"
+             Title="@DocumentSheetTitle"
+             Subtitle="Edit document metadata used by search, moderation, and retrieval pipelines."
+             Width="540px">
+    <ChildContent>
+        <MudForm @ref="_form" @bind-IsValid="_isFormValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_editingDocument.Title" Label="Title" Variant="Variant.Outlined" Required="true" RequiredError="Title is required" />
+                <MudSelect T="string" @bind-Value="_editingDocument.SubjectCode" Label="Subject" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="string" Value="@("SWP391")">SWP391</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("PRN212")">PRN212</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("DBI202")">DBI202</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("SWT301")">SWT301</MudSelectItem>
+                </MudSelect>
+                <MudTextField @bind-Value="_editingDocument.OwnerName" Label="Owner name" Variant="Variant.Outlined" Required="true" />
+                <MudTextField @bind-Value="_editingDocument.OwnerEmail" Label="Owner email" Variant="Variant.Outlined" InputType="InputType.Email" Required="true" />
+                <MudSelect T="string" @bind-Value="_editingDocument.ProcessingStatus" Label="Processing status" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="string" Value="@PendingProcessing">Pending</MudSelectItem>
+                    <MudSelectItem T="string" Value="@ProcessingProcessing">Processing</MudSelectItem>
+                    <MudSelectItem T="string" Value="@IndexedProcessing">Indexed</MudSelectItem>
+                    <MudSelectItem T="string" Value="@FailedProcessing">Failed</MudSelectItem>
+                </MudSelect>
+                <MudSelect T="string" @bind-Value="_editingDocument.ModerationStatus" Label="Moderation status" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="string" Value="@PendingModeration">Pending Review</MudSelectItem>
+                    <MudSelectItem T="string" Value="@ApprovedModeration">Approved</MudSelectItem>
+                    <MudSelectItem T="string" Value="@ReportedModeration">Reported</MudSelectItem>
+                    <MudSelectItem T="string" Value="@RejectedModeration">Rejected</MudSelectItem>
+                    <MudSelectItem T="string" Value="@RemovedModeration">Removed</MudSelectItem>
+                </MudSelect>
+                <MudTextField @bind-Value="_editingDocument.StoragePath" Label="Storage path" Variant="Variant.Outlined" Required="true" />
+                <MudTextField @bind-Value="_editingDocument.TagsCsv" Label="Tags" Variant="Variant.Outlined" Placeholder="rag, supabase, project" />
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                    Use Document Moderation for approve/reject/remove decisions that require owner notification and audit log details.
+                </MudAlert>
+            </MudStack>
+        </MudForm>
+    </ChildContent>
+    <FooterContent>
+        <MudButton Variant="Variant.Text" OnClick="CloseSheetAsync">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!_isFormValid)" OnClick="SaveDocumentAsync">
+            Save document
+        </MudButton>
+    </FooterContent>
+</EntitySheet>
+
+@code {
+    private const string PendingProcessing = "Pending";
+    private const string ProcessingProcessing = "Processing";
+    private const string IndexedProcessing = "Indexed";
+    private const string FailedProcessing = "Failed";
+    private const string PendingModeration = "Pending Review";
+    private const string ApprovedModeration = "Approved";
+    private const string ReportedModeration = "Reported";
+    private const string RejectedModeration = "Rejected";
+    private const string RemovedModeration = "Removed";
+
+    private readonly List<DocumentRow> _documents = new();
+    private bool _isLoading = true;
+    private bool _documentSheetOpen;
+    private bool _isFormValid;
+    private string? _searchText;
+    private string? _selectedProcessingStatus;
+    private string? _selectedModerationStatus;
+    private string? _selectedSubject;
+    private string? _errorMessage;
+    private MudForm? _form;
+    private DocumentEditModel _editingDocument = DocumentEditModel.New();
+
+    private string DocumentSheetTitle => _editingDocument.Id == Guid.Empty ? "Register document" : "Edit document";
+
+    private IEnumerable<DocumentRow> FilteredDocuments => _documents
+        .Where(MatchesProcessingStatus)
+        .Where(MatchesModerationStatus)
+        .Where(MatchesSubject)
+        .Where(MatchesSearch)
+        .OrderByDescending(document => document.ModerationStatus is PendingModeration or ReportedModeration)
+        .ThenByDescending(document => document.CreatedAt);
+
+    private IEnumerable<string> ActiveFilters
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedProcessingStatus))
+            {
+                yield return $"Processing: {_selectedProcessingStatus}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedModerationStatus))
+            {
+                yield return $"Moderation: {_selectedModerationStatus}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedSubject))
+            {
+                yield return $"Subject: {_selectedSubject}";
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Task.Delay(300);
+            _documents.AddRange(BuildSeedDocuments());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load documents: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private Task OnSearchChanged(string? value)
+    {
+        _searchText = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnProcessingStatusChanged(string? value)
+    {
+        _selectedProcessingStatus = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnModerationStatusChanged(string? value)
+    {
+        _selectedModerationStatus = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSubjectChanged(string? value)
+    {
+        _selectedSubject = value;
+        return Task.CompletedTask;
+    }
+
+    private Task RemoveFilterAsync(string filter)
+    {
+        if (filter.StartsWith("Processing:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedProcessingStatus = null;
+        }
+        else if (filter.StartsWith("Moderation:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedModerationStatus = null;
+        }
+        else if (filter.StartsWith("Subject:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedSubject = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _selectedProcessingStatus = null;
+        _selectedModerationStatus = null;
+        _selectedSubject = null;
+        return Task.CompletedTask;
+    }
+
+    private bool MatchesProcessingStatus(DocumentRow document)
+    {
+        return string.IsNullOrWhiteSpace(_selectedProcessingStatus)
+            || document.ProcessingStatus.Equals(_selectedProcessingStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesModerationStatus(DocumentRow document)
+    {
+        return string.IsNullOrWhiteSpace(_selectedModerationStatus)
+            || document.ModerationStatus.Equals(_selectedModerationStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesSubject(DocumentRow document)
+    {
+        return string.IsNullOrWhiteSpace(_selectedSubject)
+            || document.SubjectCode.Equals(_selectedSubject, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesSearch(DocumentRow document)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            return true;
+        }
+
+        var text = _searchText.Trim();
+        return document.Title.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.OwnerName.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.OwnerEmail.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.SubjectCode.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.StoragePath.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || document.Tags.Any(tag => tag.Contains(text, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private void OpenRegisterSheet()
+    {
+        _editingDocument = DocumentEditModel.New();
+        _documentSheetOpen = true;
+    }
+
+    private void OpenModerationQueue()
+    {
+        Navigation.NavigateTo("/admin/documents/moderation");
+    }
+
+    private void OpenDetails(DocumentRow document)
+    {
+        Navigation.NavigateTo($"/admin/documents/{document.Id}");
+    }
+
+    private void EditDocument(DocumentRow document)
+    {
+        _editingDocument = DocumentEditModel.FromRow(document);
+        _documentSheetOpen = true;
+    }
+
+    private Task CloseSheetAsync()
+    {
+        _documentSheetOpen = false;
+        _editingDocument = DocumentEditModel.New();
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveDocumentAsync()
+    {
+        if (_form is null)
+        {
+            return;
+        }
+
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        if (_editingDocument.Id == Guid.Empty)
+        {
+            _documents.Insert(0, _editingDocument.ToDocumentRow(DateTime.UtcNow));
+            Snackbar.Add("Document registered and audit log entry queued.", Severity.Success);
+        }
+        else
+        {
+            var document = _documents.FirstOrDefault(item => item.Id == _editingDocument.Id);
+            if (document is not null)
+            {
+                document.Title = _editingDocument.Title;
+                document.SubjectCode = _editingDocument.SubjectCode;
+                document.OwnerName = _editingDocument.OwnerName;
+                document.OwnerEmail = _editingDocument.OwnerEmail;
+                document.ProcessingStatus = _editingDocument.ProcessingStatus;
+                document.ModerationStatus = _editingDocument.ModerationStatus;
+                document.StoragePath = _editingDocument.StoragePath;
+                document.Tags = ParseTags(_editingDocument.TagsCsv);
+                Snackbar.Add("Document metadata saved and audit log entry queued.", Severity.Success);
+            }
+        }
+
+        await CloseSheetAsync();
+    }
+
+    private async Task ReindexDocumentAsync(DocumentRow document)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Re-index document",
+            ["Message"] = $"Queue {document.Title} for chunking and embedding again? Existing vector rows may be replaced.",
+            ["ConfirmText"] = "Queue re-index",
+            ["ConfirmColor"] = Color.Warning,
+            ["IconColor"] = Color.Warning,
+            ["Icon"] = Icons.Material.Filled.Sync
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Re-index document", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            document.ProcessingStatus = ProcessingProcessing;
+            Snackbar.Add($"{document.Title} queued for re-indexing.", Severity.Info);
+        }
+    }
+
+    private async Task RemoveDocumentAsync(DocumentRow document)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Remove document record",
+            ["Message"] = $"Remove {document.Title} from the library view? Use moderation removal when owner notification and reason capture are required.",
+            ["ConfirmText"] = "Remove",
+            ["ConfirmationText"] = document.Title,
+            ["ConfirmColor"] = Color.Error
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Remove document", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            _documents.Remove(document);
+            Snackbar.Add($"{document.Title} removed from the library view.", Severity.Warning);
+        }
+    }
+
+    private static bool CanModerate(DocumentRow document)
+    {
+        return document.ModerationStatus is PendingModeration or ReportedModeration or RejectedModeration;
+    }
+
+    private static Color GetProcessingColor(string status)
+    {
+        return status switch
+        {
+            IndexedProcessing => Color.Success,
+            ProcessingProcessing => Color.Info,
+            PendingProcessing => Color.Warning,
+            FailedProcessing => Color.Error,
+            _ => Color.Primary
+        };
+    }
+
+    private static Color GetModerationColor(string status)
+    {
+        return status switch
+        {
+            ApprovedModeration => Color.Success,
+            PendingModeration => Color.Warning,
+            ReportedModeration => Color.Error,
+            RejectedModeration => Color.Default,
+            RemovedModeration => Color.Error,
+            _ => Color.Primary
+        };
+    }
+
+    private static Color GetFileColor(string fileType)
+    {
+        return fileType.ToLowerInvariant() switch
+        {
+            "pdf" => Color.Error,
+            "docx" => Color.Info,
+            "pptx" => Color.Warning,
+            _ => Color.Primary
+        };
+    }
+
+    private static string GetFileIcon(string fileType)
+    {
+        return fileType.ToLowerInvariant() switch
+        {
+            "pdf" => Icons.Material.Filled.PictureAsPdf,
+            "docx" => Icons.Material.Filled.Article,
+            "pptx" => Icons.Material.Filled.Slideshow,
+            _ => Icons.Material.Filled.Description
+        };
+    }
+
+    private static List<string> ParseTags(string tagsCsv)
+    {
+        return tagsCsv.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+    }
+
+    private static IEnumerable<DocumentRow> BuildSeedDocuments()
+    {
+        return new[]
+        {
+            new DocumentRow { Id = Guid.Parse("1b412df3-8e7a-4e62-97c8-e3f72a977920"), Title = "RAG Evaluation Notes", SubjectCode = "SWP391", OwnerName = "Dr. Nguyen Minh", OwnerEmail = "minh.nguyen@aistudyhub.edu", ProcessingStatus = PendingProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 4.8, StoragePath = "documents/swp391/rag-evaluation-notes.pdf", Tags = new() { "rag", "evaluation", "capstone" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-2) },
+            new DocumentRow { Id = Guid.Parse("2f9aef28-c268-4c44-940e-e3f825462c91"), Title = "Exam Bank 2025", SubjectCode = "DBI202", OwnerName = "Kiet Ngo", OwnerEmail = "kiet.ngo@aistudyhub.edu", ProcessingStatus = "Blocked", ModerationStatus = ReportedModeration, FileType = "docx", FileSizeMb = 2.2, StoragePath = "documents/dbi202/exam-bank-2025.docx", Tags = new() { "assessment", "reported", "database" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-5) },
+            new DocumentRow { Id = Guid.Parse("95f86807-21a2-43e1-9702-2f4e190c7856"), Title = "Lecture OCR Export", SubjectCode = "PRN212", OwnerName = "Mai Anh Tran", OwnerEmail = "mai.tran@aistudyhub.edu", ProcessingStatus = FailedProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 11.6, StoragePath = "documents/prn212/lecture-ocr-export.pdf", Tags = new() { "ocr", "failed-processing", "lecture" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-1) },
+            new DocumentRow { Id = Guid.Parse("60f8bb40-a9c1-4ab0-9241-ad3fc147b44a"), Title = "Supabase pgvector Guide", SubjectCode = "SWP391", OwnerName = "Dr. Nguyen Minh", OwnerEmail = "minh.nguyen@aistudyhub.edu", ProcessingStatus = IndexedProcessing, ModerationStatus = ApprovedModeration, FileType = "pdf", FileSizeMb = 5.9, StoragePath = "documents/swp391/pgvector-guide.pdf", Tags = new() { "supabase", "pgvector", "rag" }, ChunkCount = 42, CreatedAt = DateTime.UtcNow.AddDays(-6) },
+            new DocumentRow { Id = Guid.Parse("eb420566-9e06-4d16-a79f-6a1e96e943c8"), Title = "Legacy Slides", SubjectCode = "SWT301", OwnerName = "Linh Pham", OwnerEmail = "linh.pham@aistudyhub.edu", ProcessingStatus = RejectedModeration, ModerationStatus = RejectedModeration, FileType = "pptx", FileSizeMb = 7.4, StoragePath = "documents/swt301/legacy-slides.pptx", Tags = new() { "legacy", "slides", "needs-update" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-2) }
+        };
+    }
+
+    private sealed class DocumentRow
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string SubjectCode { get; set; } = string.Empty;
+        public string OwnerName { get; set; } = string.Empty;
+        public string OwnerEmail { get; set; } = string.Empty;
+        public string ProcessingStatus { get; set; } = PendingProcessing;
+        public string ModerationStatus { get; set; } = PendingModeration;
+        public string FileType { get; set; } = string.Empty;
+        public double FileSizeMb { get; set; }
+        public string StoragePath { get; set; } = string.Empty;
+        public List<string> Tags { get; set; } = new();
+        public int ChunkCount { get; set; }
+        public DateTime CreatedAt { get; set; }
+    }
+
+    private sealed class DocumentEditModel
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string SubjectCode { get; set; } = "SWP391";
+        public string OwnerName { get; set; } = string.Empty;
+        public string OwnerEmail { get; set; } = string.Empty;
+        public string ProcessingStatus { get; set; } = PendingProcessing;
+        public string ModerationStatus { get; set; } = PendingModeration;
+        public string FileType { get; set; } = "pdf";
+        public double FileSizeMb { get; set; } = 1;
+        public string StoragePath { get; set; } = string.Empty;
+        public string TagsCsv { get; set; } = string.Empty;
+
+        public static DocumentEditModel New() => new()
+        {
+            Id = Guid.Empty,
+            Title = string.Empty,
+            StoragePath = "documents/swp391/new-document.pdf"
+        };
+
+        public static DocumentEditModel FromRow(DocumentRow document)
+        {
+            return new DocumentEditModel
+            {
+                Id = document.Id,
+                Title = document.Title,
+                SubjectCode = document.SubjectCode,
+                OwnerName = document.OwnerName,
+                OwnerEmail = document.OwnerEmail,
+                ProcessingStatus = document.ProcessingStatus,
+                ModerationStatus = document.ModerationStatus,
+                FileType = document.FileType,
+                FileSizeMb = document.FileSizeMb,
+                StoragePath = document.StoragePath,
+                TagsCsv = string.Join(", ", document.Tags)
+            };
+        }
+
+        public DocumentRow ToDocumentRow(DateTime createdAt)
+        {
+            return new DocumentRow
+            {
+                Id = Guid.NewGuid(),
+                Title = Title,
+                SubjectCode = SubjectCode,
+                OwnerName = OwnerName,
+                OwnerEmail = OwnerEmail,
+                ProcessingStatus = ProcessingStatus,
+                ModerationStatus = ModerationStatus,
+                FileType = FileType,
+                FileSizeMb = FileSizeMb,
+                StoragePath = StoragePath,
+                Tags = ParseTags(TagsCsv),
+                ChunkCount = 0,
+                CreatedAt = createdAt
+            };
+        }
+    }
+}
+
+<style>
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .page-header {
+        padding: 1.2rem;
+        border-radius: 28px;
+        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+        border: 1px solid rgba(15, 118, 110, .12);
+    }
+
+    .document-filter {
+        min-width: 190px;
+    }
+
+    .document-stat-card,
+    .library-alert {
+        border-radius: 24px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .84);
+    }
+
+    .document-stat-card {
+        padding: 1.15rem;
+    }
+
+    .document-stat-card.success {
+        background: linear-gradient(145deg, rgba(34, 197, 94, .14), rgba(255, 252, 246, .86));
+    }
+
+    .document-stat-card.warning {
+        background: linear-gradient(145deg, rgba(251, 146, 60, .14), rgba(255, 252, 246, .86));
+    }
+
+    .document-stat-card.error {
+        background: linear-gradient(145deg, rgba(239, 68, 68, .12), rgba(255, 252, 246, .86));
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

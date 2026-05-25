@@ -1,0 +1,289 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Shared
+@inherits LayoutComponentBase
+@implements IDisposable
+@using Microsoft.AspNetCore.Components
+@using Microsoft.AspNetCore.Components.Routing
+@using MudBlazor
+@inject NavigationManager Navigation
+
+<MudThemeProvider Theme="@_theme" IsDarkMode="@_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout Class="admin-layout-shell">
+    <MudAppBar Elevation="0" Dense="true" Class="admin-topbar">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" />
+        <MudBreadcrumbs Items="@_breadcrumbs" Separator="/" Class="admin-breadcrumbs" />
+        <MudSpacer />
+        <MudHidden Breakpoint="Breakpoint.SmAndDown">
+            <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined" Size="Size.Small" Icon="@Icons.Material.Filled.VerifiedUser">
+                Admin workspace
+            </MudChip>
+        </MudHidden>
+        <MudTooltip Text="Toggle theme">
+            <MudIconButton Icon="@ThemeIcon" Color="Color.Inherit" OnClick="ToggleTheme" />
+        </MudTooltip>
+        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+            <ActivatorContent>
+                <MudBadge Content="5" Color="Color.Error" Overlap="true" Class="me-2">
+                    <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" />
+                </MudBadge>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem Icon="@Icons.Material.Filled.Gavel" OnClick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">7 documents need moderation</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.ReportProblem" OnClick="@(() => Navigation.NavigateTo("/admin/dashboard"))">4 failed processing jobs</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => Navigation.NavigateTo("/admin/users"))">12 users near token quota</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Navigation.NavigateTo("/admin/settings"))">2 critical config drafts</MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+            <ActivatorContent>
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="admin-profile-button" StartIcon="@Icons.Material.Filled.AdminPanelSettings">
+                    <MudHidden Breakpoint="Breakpoint.SmAndDown">System Admin</MudHidden>
+                </MudButton>
+            </ActivatorContent>
+            <ChildContent>
+                <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Signed in as admin@aistudyhub.edu</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.Security">Access: Super Admin</MudMenuItem>
+            </ChildContent>
+        </MudMenu>
+    </MudAppBar>
+
+    <MudDrawer @bind-Open="_drawerOpen"
+               Variant="DrawerVariant.Responsive"
+               Breakpoint="Breakpoint.Md"
+               ClipMode="DrawerClipMode.Never"
+               Elevation="0"
+               Class="admin-sidebar">
+        <MudDrawerHeader Class="admin-sidebar-header">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Medium">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoStories" />
+                </MudAvatar>
+                <div>
+                    <MudText Typo="Typo.h6" Class="admin-brand">AI Study Hub</MudText>
+                    <MudText Typo="Typo.caption" Class="admin-brand-subtitle">RAG Admin Console</MudText>
+                </div>
+            </MudStack>
+        </MudDrawerHeader>
+
+        <MudNavMenu Dense="true" Class="px-3 admin-nav-menu">
+            <MudNavLink Href="/admin/dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+            <MudNavGroup Title="Operations" Icon="@Icons.Material.Filled.Workspaces" Expanded="true">
+                <MudNavLink Href="/admin/users" Icon="@Icons.Material.Filled.People">Users & Permissions</MudNavLink>
+                <MudNavLink Href="/admin/documents/moderation" Icon="@Icons.Material.Filled.Gavel">Document Moderation</MudNavLink>
+                <MudNavLink Href="/admin/documents" Icon="@Icons.Material.Filled.Description">Document Library</MudNavLink>
+                <MudNavLink Href="/admin/subjects" Icon="@Icons.Material.Filled.AutoStories">Subjects</MudNavLink>
+            </MudNavGroup>
+            <MudNavGroup Title="Governance" Icon="@Icons.Material.Filled.Policy" Expanded="true">
+                <MudNavLink Href="/admin/settings" Icon="@Icons.Material.Filled.Tune">AI System Settings</MudNavLink>
+                <MudNavLink Href="/admin/audit-logs" Icon="@Icons.Material.Filled.ManageSearch">Audit Logs</MudNavLink>
+            </MudNavGroup>
+        </MudNavMenu>
+
+        <MudSpacer />
+
+        <div class="admin-sidebar-card">
+            <MudStack Spacing="1">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                    <MudText Typo="Typo.subtitle2">Retrieval readiness</MudText>
+                    <MudText Typo="Typo.caption">82%</MudText>
+                </MudStack>
+                <MudProgressLinear Value="82" Color="Color.Success" Rounded="true" />
+                <MudText Typo="Typo.caption">126 indexed documents, 7 awaiting review, 4 failed jobs.</MudText>
+            </MudStack>
+        </div>
+    </MudDrawer>
+
+    <MudMainContent Class="admin-main-content">
+        <MudContainer MaxWidth="MaxWidth.False" Class="admin-page-frame">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
+
+@code {
+    private bool _drawerOpen = true;
+    private bool _isDarkMode;
+    private List<BreadcrumbItem> _breadcrumbs = new();
+
+    private string ThemeIcon => _isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode;
+
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#0F766E",
+            Secondary = "#B45309",
+            Tertiary = "#334155",
+            Background = "#F5F0E8",
+            Surface = "#FFFCF6",
+            AppbarBackground = "#173B33",
+            AppbarText = "#FFF7ED",
+            DrawerBackground = "#102A2A",
+            DrawerText = "#E7F0EA",
+            DrawerIcon = "#A7F3D0",
+            TextPrimary = "#16231F",
+            TextSecondary = "#53615B",
+            LinesDefault = "#E5DED2",
+            Info = "#2563EB",
+            Success = "#15803D",
+            Warning = "#B45309",
+            Error = "#DC2626"
+        },
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#2DD4BF",
+            Secondary = "#FDBA74",
+            Background = "#0D1B1B",
+            Surface = "#142423",
+            AppbarBackground = "#0A1616",
+            DrawerBackground = "#091313",
+            DrawerText = "#DAF4EC",
+            DrawerIcon = "#99F6E4"
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography
+            {
+                FontFamily = new[] { "Aptos", "Trebuchet MS", "sans-serif" },
+                FontSize = ".95rem"
+            },
+            H4 = new H4Typography
+            {
+                FontFamily = new[] { "Georgia", "Aptos", "serif" },
+                FontWeight = "700",
+                LetterSpacing = "-.035em"
+            },
+            H5 = new H5Typography
+            {
+                FontFamily = new[] { "Georgia", "Aptos", "serif" },
+                FontWeight = "700",
+                LetterSpacing = "-.025em"
+            }
+        }
+    };
+
+    protected override void OnInitialized()
+    {
+        Navigation.LocationChanged += OnLocationChanged;
+        BuildBreadcrumbs();
+    }
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+
+    private void ToggleTheme() => _isDarkMode = !_isDarkMode;
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
+    {
+        BuildBreadcrumbs();
+        _ = InvokeAsync(StateHasChanged);
+    }
+
+    private void BuildBreadcrumbs()
+    {
+        var relative = Navigation.ToBaseRelativePath(Navigation.Uri).Trim('/');
+        var segments = string.IsNullOrWhiteSpace(relative)
+            ? new[] { "admin", "dashboard" }
+            : relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
+
+        _breadcrumbs = new List<BreadcrumbItem>
+        {
+            new("Admin", "/admin/dashboard")
+        };
+
+        var path = string.Empty;
+        foreach (var segment in segments.Where(segment => !segment.Equals("admin", StringComparison.OrdinalIgnoreCase)))
+        {
+            path += $"/{segment}";
+            _breadcrumbs.Add(new BreadcrumbItem(ToTitle(segment), $"/admin{path}"));
+        }
+    }
+
+    private static string ToTitle(string value)
+    {
+        return string.Join(' ', value
+            .Split('-', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => char.ToUpperInvariant(part[0]) + part[1..]));
+    }
+
+    public void Dispose()
+    {
+        Navigation.LocationChanged -= OnLocationChanged;
+    }
+}
+
+<style>
+    .admin-layout-shell {
+        min-height: 100vh;
+        background:
+            radial-gradient(circle at top left, rgba(20, 184, 166, .14), transparent 32rem),
+            radial-gradient(circle at bottom right, rgba(180, 83, 9, .1), transparent 28rem),
+            linear-gradient(135deg, #f8f1e7 0%, #eef7f3 47%, #fffaf0 100%);
+    }
+
+    .admin-topbar {
+        border-bottom: 1px solid rgba(255, 255, 255, .14);
+        backdrop-filter: blur(16px);
+    }
+
+    .admin-profile-button {
+        text-transform: none;
+        letter-spacing: 0;
+    }
+
+    .admin-sidebar {
+        border-right: 1px solid rgba(255, 255, 255, .08);
+    }
+
+    .admin-sidebar-header {
+        min-height: 92px;
+        align-items: center;
+    }
+
+    .admin-brand {
+        color: #fff7ed;
+        font-family: Georgia, Aptos, serif;
+        letter-spacing: -.03em;
+    }
+
+    .admin-brand-subtitle {
+        color: rgba(231, 240, 234, .72);
+        text-transform: uppercase;
+        letter-spacing: .14em;
+    }
+
+    .admin-nav-menu .mud-nav-group .mud-navmenu {
+        margin-left: .25rem;
+        border-left: 1px solid rgba(167, 243, 208, .16);
+    }
+
+    .admin-sidebar-card {
+        margin: 1rem;
+        padding: 1rem;
+        border-radius: 18px;
+        color: #e7f0ea;
+        background: linear-gradient(145deg, rgba(45, 212, 191, .16), rgba(180, 83, 9, .14));
+        border: 1px solid rgba(255, 255, 255, .1);
+    }
+
+    .admin-main-content {
+        min-height: 100vh;
+    }
+
+    .admin-page-frame {
+        padding: 6rem 1rem 2.25rem;
+    }
+
+    .admin-breadcrumbs .mud-breadcrumb-item,
+    .admin-breadcrumbs .mud-breadcrumb-separator {
+        color: rgba(255, 247, 237, .82) !important;
+    }
+
+    @@media (min-width: 960px) {
+        .admin-page-frame {
+            padding: 6rem 2.25rem 2.75rem;
+        }
+    }
+</style>

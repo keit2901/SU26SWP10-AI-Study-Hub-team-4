@@ -1,0 +1,514 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.AuditLogs
+@page "/admin/audit-logs"
+@rendermode InteractiveServer
+@layout AdminLayout
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="4" Class="audit-page page-enter">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">Governance and traceability</MudText>
+            <MudText Typo="Typo.h4">Audit Logs</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Review administrator actions, user security events, moderation decisions, configuration changes, and before/after JSON payloads.
+            </MudText>
+        </div>
+        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync">Refresh</MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportLogs">
+                Export visible logs
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    <FilterBar SearchText="@_searchText"
+               SearchTextChanged="OnSearchChanged"
+               SearchPlaceholder="Search action, actor, entity, IP, or JSON"
+               ActiveFilters="@ActiveFilters"
+               RemoveFilter="RemoveFilterAsync"
+               ClearAllFilters="ClearFiltersAsync">
+        <MudSelect T="string" Value="@_selectedAction" ValueChanged="OnActionChanged" Label="Action" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="audit-filter">
+            @foreach (var action in _logs.Select(log => log.Action).Distinct().OrderBy(action => action))
+            {
+                <MudSelectItem T="string" Value="@action">@action</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Value="@_selectedActor" ValueChanged="OnActorChanged" Label="Actor" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="audit-filter">
+            @foreach (var actor in _logs.Select(log => log.ActorEmail).Distinct().OrderBy(actor => actor))
+            {
+                <MudSelectItem T="string" Value="@actor">@actor</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Value="@_selectedSeverity" ValueChanged="OnSeverityChanged" Label="Severity" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="audit-filter">
+            <MudSelectItem T="string" Value="@HighSeverity">High</MudSelectItem>
+            <MudSelectItem T="string" Value="@MediumSeverity">Medium</MudSelectItem>
+            <MudSelectItem T="string" Value="@LowSeverity">Low</MudSelectItem>
+        </MudSelect>
+        <MudDateRangePicker DateRange="@_dateRange"
+                            DateRangeChanged="OnDateRangeChanged"
+                            Label="Date range"
+                            Variant="Variant.Outlined"
+                            Margin="Margin.Dense"
+                            Clearable="true"
+                            Class="date-filter" />
+    </FilterBar>
+
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="audit-stat-card">
+                <MudText Typo="Typo.caption">Visible events</MudText>
+                <MudText Typo="Typo.h4">@FilteredLogs.Count()</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">After filters</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="audit-stat-card error">
+                <MudText Typo="Typo.caption">High severity</MudText>
+                <MudText Typo="Typo.h4">@FilteredLogs.Count(log => log.Severity == HighSeverity)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Immediate review</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="audit-stat-card warning">
+                <MudText Typo="Typo.caption">Config changes</MudText>
+                <MudText Typo="Typo.h4">@FilteredLogs.Count(log => log.Action == ConfigChangeAction)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">UC13 trace</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="audit-stat-card success">
+                <MudText Typo="Typo.caption">Moderation</MudText>
+                <MudText Typo="Typo.h4">@FilteredLogs.Count(log => log.Action.StartsWith("DOCUMENT_", StringComparison.OrdinalIgnoreCase))</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">UC10 decisions</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_isLoading)
+    {
+        <MudStack Spacing="2">
+            <MudSkeleton Height="92px" Animation="Animation.Wave" />
+            <MudSkeleton Height="92px" Animation="Animation.Wave" />
+            <MudSkeleton Height="92px" Animation="Animation.Wave" />
+        </MudStack>
+    }
+    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+    }
+    else if (!FilteredLogs.Any())
+    {
+        <MudPaper Elevation="0" Class="empty-state">
+            <MudIcon Icon="@Icons.Material.Filled.ManageSearch" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">No audit events found</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Adjust filters to inspect a wider time range.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudPaper Elevation="0" Class="audit-list-card">
+            <MudStack Spacing="2">
+                @foreach (var log in FilteredLogs)
+                {
+                    <MudExpansionPanels Elevation="0" Class="audit-row-panel">
+                        <MudExpansionPanel>
+                            <TitleContent>
+                                <MudGrid Spacing="2" Class="audit-row-grid">
+                                    <MudItem xs="12" md="2">
+                                        <MudChip T="string" Color="@GetActionColor(log.Action)" Variant="Variant.Filled" Size="Size.Small">@log.Action</MudChip>
+                                        <MudText Typo="Typo.caption" Class="d-block mt-1">@FormatDateTime(log.CreatedAt)</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" md="3">
+                                        <MudText Typo="Typo.subtitle2">@log.ActorEmail</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@log.IpAddress</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" md="3">
+                                        <MudText Typo="Typo.subtitle2">@log.EntityName</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@log.EntityId</MudText>
+                                    </MudItem>
+                                    <MudItem xs="12" md="2">
+                                        <MudText Typo="Typo.caption">Severity</MudText>
+                                        <MudChip T="string" Color="@GetSeverityColor(log.Severity)" Variant="Variant.Outlined" Size="Size.Small">@log.Severity</MudChip>
+                                    </MudItem>
+                                    <MudItem xs="12" md="2">
+                                        <MudText Typo="Typo.caption">Request</MudText>
+                                        <MudText Typo="Typo.body2">@log.RequestId</MudText>
+                                    </MudItem>
+                                </MudGrid>
+                            </TitleContent>
+                            <ChildContent>
+                                <MudDivider Class="my-3" />
+                                <MudGrid>
+                                    <MudItem xs="12" md="4">
+                                        <MudText Typo="Typo.subtitle2">Before</MudText>
+                                        <pre class="audit-json">@log.BeforeJson</pre>
+                                    </MudItem>
+                                    <MudItem xs="12" md="4">
+                                        <MudText Typo="Typo.subtitle2">After</MudText>
+                                        <pre class="audit-json">@log.AfterJson</pre>
+                                    </MudItem>
+                                    <MudItem xs="12" md="4">
+                                        <MudText Typo="Typo.subtitle2">Context</MudText>
+                                        <pre class="audit-json">@log.ContextJson</pre>
+                                    </MudItem>
+                                </MudGrid>
+                            </ChildContent>
+                        </MudExpansionPanel>
+                    </MudExpansionPanels>
+                }
+            </MudStack>
+        </MudPaper>
+    }
+</MudStack>
+
+@code {
+    private const string HighSeverity = "High";
+    private const string MediumSeverity = "Medium";
+    private const string LowSeverity = "Low";
+    private const string ConfigChangeAction = "CONFIG_CHANGE";
+
+    private readonly List<AuditLogRow> _logs = new();
+    private bool _isLoading = true;
+    private string? _searchText;
+    private string? _selectedAction;
+    private string? _selectedActor;
+    private string? _selectedSeverity;
+    private DateRange? _dateRange;
+    private string? _errorMessage;
+
+    private IEnumerable<AuditLogRow> FilteredLogs => _logs
+        .Where(MatchesAction)
+        .Where(MatchesActor)
+        .Where(MatchesSeverity)
+        .Where(MatchesDateRange)
+        .Where(MatchesSearch)
+        .OrderByDescending(log => log.CreatedAt);
+
+    private IEnumerable<string> ActiveFilters
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedAction))
+            {
+                yield return $"Action: {_selectedAction}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedActor))
+            {
+                yield return $"Actor: {_selectedActor}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedSeverity))
+            {
+                yield return $"Severity: {_selectedSeverity}";
+            }
+
+            if (_dateRange?.Start is not null || _dateRange?.End is not null)
+            {
+                yield return $"Date: {FormatDate(_dateRange?.Start)} - {FormatDate(_dateRange?.End)}";
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            await Task.Delay(300);
+            _logs.Clear();
+            _logs.AddRange(BuildSeedLogs());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load audit logs: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private Task OnSearchChanged(string? value)
+    {
+        _searchText = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnActionChanged(string? value)
+    {
+        _selectedAction = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnActorChanged(string? value)
+    {
+        _selectedActor = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnSeverityChanged(string? value)
+    {
+        _selectedSeverity = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnDateRangeChanged(DateRange? value)
+    {
+        _dateRange = value;
+        return Task.CompletedTask;
+    }
+
+    private Task RemoveFilterAsync(string filter)
+    {
+        if (filter.StartsWith("Action:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedAction = null;
+        }
+        else if (filter.StartsWith("Actor:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedActor = null;
+        }
+        else if (filter.StartsWith("Severity:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedSeverity = null;
+        }
+        else if (filter.StartsWith("Date:", StringComparison.OrdinalIgnoreCase))
+        {
+            _dateRange = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _selectedAction = null;
+        _selectedActor = null;
+        _selectedSeverity = null;
+        _dateRange = null;
+        return Task.CompletedTask;
+    }
+
+    private bool MatchesAction(AuditLogRow log)
+    {
+        return string.IsNullOrWhiteSpace(_selectedAction)
+            || log.Action.Equals(_selectedAction, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesActor(AuditLogRow log)
+    {
+        return string.IsNullOrWhiteSpace(_selectedActor)
+            || log.ActorEmail.Equals(_selectedActor, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesSeverity(AuditLogRow log)
+    {
+        return string.IsNullOrWhiteSpace(_selectedSeverity)
+            || log.Severity.Equals(_selectedSeverity, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesDateRange(AuditLogRow log)
+    {
+        if (_dateRange?.Start is not null && log.CreatedAt.Date < _dateRange.Start.Value.Date)
+        {
+            return false;
+        }
+
+        if (_dateRange?.End is not null && log.CreatedAt.Date > _dateRange.End.Value.Date)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    private bool MatchesSearch(AuditLogRow log)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            return true;
+        }
+
+        var text = _searchText.Trim();
+        return log.Action.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || log.ActorEmail.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || log.EntityName.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || log.EntityId.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || log.IpAddress.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || log.BeforeJson.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || log.AfterJson.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || log.ContextJson.Contains(text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void ExportLogs()
+    {
+        _errorMessage = null;
+        Snackbar.Add($"Prepared {FilteredLogs.Count()} audit logs for CSV/JSON export.", Severity.Info);
+    }
+
+    private static string FormatDate(DateTime? value) => value?.ToString("MMM dd, yyyy") ?? "Any";
+
+    private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
+
+    private static Color GetActionColor(string action)
+    {
+        return action switch
+        {
+            "DELETE" or "DOCUMENT_REMOVE" => Color.Error,
+            "UPDATE" or ConfigChangeAction or "ROLE_CHANGE" or "QUOTA_UPDATE" => Color.Warning,
+            "CREATE" or "DOCUMENT_APPROVE" => Color.Success,
+            "LOGIN_FAILED" or "DOCUMENT_REJECT" => Color.Error,
+            _ => Color.Primary
+        };
+    }
+
+    private static Color GetSeverityColor(string severity)
+    {
+        return severity switch
+        {
+            HighSeverity => Color.Error,
+            MediumSeverity => Color.Warning,
+            _ => Color.Info
+        };
+    }
+
+    private static IEnumerable<AuditLogRow> BuildSeedLogs()
+    {
+        return new[]
+        {
+            new AuditLogRow("ROLE_CHANGE", "admin@aistudyhub.edu", "profiles", "1ae950de-3a70-4a3e-864b-9609d5a59c9d", MediumSeverity, "192.168.1.24", "req_8f29", DateTime.UtcNow.AddHours(-2),
+                "{\n  \"role\": \"Student\"\n}",
+                "{\n  \"role\": \"Admin\"\n}",
+                "{\n  \"guardrail\": \"self_lockout_checked\"\n}"),
+            new AuditLogRow("DOCUMENT_APPROVE", "admin@aistudyhub.edu", "documents", "1b412df3-8e7a-4e62-97c8-e3f72a977920", MediumSeverity, "192.168.1.24", "req_9ab4", DateTime.UtcNow.AddHours(-4),
+                "{\n  \"moderation_status\": \"Pending Review\",\n  \"processing_status\": \"Pending\"\n}",
+                "{\n  \"moderation_status\": \"Approved\",\n  \"processing_status\": \"Processing\"\n}",
+                "{\n  \"notification\": \"queued_to_owner\"\n}"),
+            new AuditLogRow("DOCUMENT_REJECT", "admin@aistudyhub.edu", "documents", "eb420566-9e06-4d16-a79f-6a1e96e943c8", HighSeverity, "192.168.1.24", "req_1fa1", DateTime.UtcNow.AddHours(-8),
+                "{\n  \"moderation_status\": \"Pending Review\"\n}",
+                "{\n  \"moderation_status\": \"Rejected\",\n  \"reason\": \"Wrong subject and outdated material\"\n}",
+                "{\n  \"notification\": \"queued_to_owner\",\n  \"requires_reason\": true\n}"),
+            new AuditLogRow(ConfigChangeAction, "admin@aistudyhub.edu", "system_configs", "rag.chunk_size", MediumSeverity, "192.168.1.24", "req_64bc", DateTime.UtcNow.AddDays(-1),
+                "{\n  \"value\": 800\n}",
+                "{\n  \"value\": 1000\n}",
+                "{\n  \"critical\": true,\n  \"confirmation\": \"rag.chunk_size\"\n}"),
+            new AuditLogRow("QUOTA_UPDATE", "admin@aistudyhub.edu", "user_token_quotas", "16d5b5b1-723e-44ab-8cd4-96010bdbe2c2", LowSeverity, "192.168.1.24", "req_0d91", DateTime.UtcNow.AddDays(-1).AddHours(-2),
+                "{\n  \"daily_token_quota\": 15000\n}",
+                "{\n  \"daily_token_quota\": 25000\n}",
+                "{\n  \"usage_today\": 18400,\n  \"warning_threshold\": 0.85\n}"),
+            new AuditLogRow("LOGIN_FAILED", "unknown@external.test", "auth", "auth_event_991", HighSeverity, "203.0.113.18", "req_f320", DateTime.UtcNow.AddDays(-2),
+                "{}",
+                "{\n  \"blocked\": true\n}",
+                "{\n  \"provider\": \"password\",\n  \"attempts\": 4\n}")
+        };
+    }
+
+    private sealed record AuditLogRow(
+        string Action,
+        string ActorEmail,
+        string EntityName,
+        string EntityId,
+        string Severity,
+        string IpAddress,
+        string RequestId,
+        DateTime CreatedAt,
+        string BeforeJson,
+        string AfterJson,
+        string ContextJson);
+}
+
+<style>
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .page-header,
+    .audit-list-card,
+    .empty-state,
+    .audit-stat-card {
+        border-radius: 26px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .88);
+    }
+
+    .page-header {
+        padding: 1.2rem;
+        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+    }
+
+    .audit-stat-card,
+    .audit-list-card {
+        padding: 1rem;
+    }
+
+    .audit-stat-card.success {
+        background: linear-gradient(145deg, rgba(34, 197, 94, .14), rgba(255, 252, 246, .86));
+    }
+
+    .audit-stat-card.warning {
+        background: linear-gradient(145deg, rgba(251, 146, 60, .14), rgba(255, 252, 246, .86));
+    }
+
+    .audit-stat-card.error {
+        background: linear-gradient(145deg, rgba(239, 68, 68, .12), rgba(255, 252, 246, .86));
+    }
+
+    .audit-row-panel {
+        border: 1px solid rgba(15, 118, 110, .1);
+        border-radius: 18px;
+        overflow: hidden;
+    }
+
+    .audit-row-grid {
+        align-items: center;
+    }
+
+    .audit-filter {
+        min-width: 180px;
+    }
+
+    .date-filter {
+        min-width: 260px;
+    }
+
+    .audit-json {
+        margin: .75rem 0 0;
+        padding: 1rem;
+        border-radius: 16px;
+        background: #102a2a;
+        color: #d7fff6;
+        overflow-x: auto;
+        font-size: .84rem;
+        line-height: 1.55;
+        min-height: 150px;
+    }
+
+    .empty-state {
+        min-height: 320px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 2rem;
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

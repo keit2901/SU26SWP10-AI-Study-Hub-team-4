@@ -1,0 +1,697 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Users
+@page "/admin/users"
+@rendermode InteractiveServer
+@layout AdminLayout
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="4" Class="admin-users-page page-enter">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">UC09 + UC16 - Profiles and quotas</MudText>
+            <MudText Typo="Typo.h4">Users & Permissions</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Search profiles, manage account access, switch Student/Admin roles, and control daily token quotas.
+            </MudText>
+        </div>
+        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.DataUsage" OnClick="ApplyQuotaRiskFilter">
+                Quota risks
+            </MudButton>
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="OpenInviteSheet">
+                Invite user
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    <FilterBar SearchText="@_searchText"
+               SearchTextChanged="OnSearchChanged"
+               SearchPlaceholder="Search by name, email, or student code"
+               ActiveFilters="@ActiveFilters"
+               RemoveFilter="RemoveFilterAsync"
+               ClearAllFilters="ClearFiltersAsync">
+        <MudSelect T="string"
+                   Value="@_selectedRole"
+                   ValueChanged="OnRoleChanged"
+                   Label="Role"
+                   Variant="Variant.Outlined"
+                   Margin="Margin.Dense"
+                   Clearable="true"
+                   Class="user-filter">
+            <MudSelectItem T="string" Value="@StudentRole">Student</MudSelectItem>
+            <MudSelectItem T="string" Value="@AdminRole">Admin</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string"
+                   Value="@_selectedStatus"
+                   ValueChanged="OnStatusChanged"
+                   Label="Status"
+                   Variant="Variant.Outlined"
+                   Margin="Margin.Dense"
+                   Clearable="true"
+                   Class="user-filter">
+            <MudSelectItem T="string" Value="@ActiveStatus">Active</MudSelectItem>
+            <MudSelectItem T="string" Value="@InactiveStatus">Inactive</MudSelectItem>
+        </MudSelect>
+        <MudSelect T="string"
+                   Value="@_selectedQuotaRisk"
+                   ValueChanged="OnQuotaRiskChanged"
+                   Label="Quota"
+                   Variant="Variant.Outlined"
+                   Margin="Margin.Dense"
+                   Clearable="true"
+                   Class="user-filter">
+            <MudSelectItem T="string" Value="@QuotaNormal">Normal</MudSelectItem>
+            <MudSelectItem T="string" Value="@QuotaWarning">Warning</MudSelectItem>
+            <MudSelectItem T="string" Value="@QuotaExceeded">Exceeded</MudSelectItem>
+        </MudSelect>
+    </FilterBar>
+
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="user-stat-card">
+                <MudText Typo="Typo.caption">Total users</MudText>
+                <MudText Typo="Typo.h4">@_users.Count</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Profiles table</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="user-stat-card success">
+                <MudText Typo="Typo.caption">Admins</MudText>
+                <MudText Typo="Typo.h4">@_users.Count(user => user.Role == AdminRole)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Privileged accounts</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="user-stat-card warning">
+                <MudText Typo="Typo.caption">Quota warnings</MudText>
+                <MudText Typo="Typo.h4">@_users.Count(user => user.TokenUsagePercent >= 85 && user.TokenUsagePercent < 100)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Above 85% daily usage</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="user-stat-card error">
+                <MudText Typo="Typo.caption">Inactive</MudText>
+                <MudText Typo="Typo.h4">@_users.Count(user => !user.IsActive)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Access suspended</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="guardrail-alert">
+        Guardrail: administrators cannot deactivate or demote their own account. Role, status, and quota changes should write audit_logs entries.
+    </MudAlert>
+
+    <AdminDataGrid TItem="UserRow"
+                   Items="@FilteredUsers"
+                   IsLoading="@_isLoading"
+                   ErrorMessage="@_errorMessage"
+                   Title="Profiles"
+                   Subtitle="Mapped to profiles(id, full_name, email, student_code, role, is_active) with token quota controls"
+                   EmptyTitle="No users match the current filters"
+                   EmptyText="Clear filters or invite a new user.">
+        <Columns>
+            <TemplateColumn T="UserRow" Title="User">
+                <CellTemplate Context="cell">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                        <MudAvatar Size="Size.Medium" Color="@(IsCurrentAdmin(cell.Item) ? Color.Secondary : Color.Primary)">@cell.Item.Initials</MudAvatar>
+                        <div>
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                                <MudText Typo="Typo.subtitle2">@cell.Item.FullName</MudText>
+                                @if (IsCurrentAdmin(cell.Item))
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">You</MudChip>
+                                }
+                            </MudStack>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">@cell.Item.Email</MudText>
+                        </div>
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn T="UserRow" TProperty="string" Property="user => user.StudentCode" Title="Student code" />
+            <TemplateColumn T="UserRow" Title="Role">
+                <CellTemplate Context="cell">
+                    <MudChip T="string" Color="@GetRoleColor(cell.Item.Role)" Variant="Variant.Outlined" Size="Size.Small">@cell.Item.Role</MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="UserRow" Title="Status">
+                <CellTemplate Context="cell">
+                    <MudChip T="string" Color="@(cell.Item.IsActive ? Color.Success : Color.Default)" Variant="Variant.Filled" Size="Size.Small">
+                        @(cell.Item.IsActive ? ActiveStatus : InactiveStatus)
+                    </MudChip>
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn T="UserRow" Title="Daily token quota">
+                <CellTemplate Context="cell">
+                    <MudStack Spacing="1" Class="quota-cell">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                            <MudText Typo="Typo.caption">@cell.Item.TokensUsedToday.ToString("N0") / @cell.Item.DailyTokenQuota.ToString("N0")</MudText>
+                            <MudChip T="string" Color="@GetQuotaChipColor(cell.Item.TokenUsagePercent)" Variant="Variant.Outlined" Size="Size.Small">@GetQuotaLabel(cell.Item)</MudChip>
+                        </MudStack>
+                        <MudProgressLinear Value="@cell.Item.TokenUsagePercent" Color="@GetQuotaProgressColor(cell.Item.TokenUsagePercent)" Rounded="true" />
+                    </MudStack>
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn T="UserRow" TProperty="int" Property="user => user.DocumentCount" Title="Documents" />
+            <PropertyColumn T="UserRow" TProperty="DateTime" Property="user => user.LastActiveAt" Title="Last active" Format="MMM dd, HH:mm" />
+            <TemplateColumn T="UserRow" Title="Actions" Sortable="false" Filterable="false">
+                <CellTemplate Context="cell">
+                    <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                        <ActivatorContent>
+                            <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" />
+                        </ActivatorContent>
+                        <ChildContent>
+                            <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(cell.Item))">View details</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => OpenQuotaSheet(cell.Item))">Edit quota</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.AdminPanelSettings" Disabled="@(cell.Item.Role == AdminRole)" OnClick="@(() => ChangeRoleAsync(cell.Item, AdminRole))">Promote to Admin</MudMenuItem>
+                            <MudMenuItem Icon="@Icons.Material.Filled.School" Disabled="@(cell.Item.Role == StudentRole || IsCurrentAdmin(cell.Item))" OnClick="@(() => ChangeRoleAsync(cell.Item, StudentRole))">Demote to Student</MudMenuItem>
+                            @if (cell.Item.IsActive)
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.Block" Disabled="@IsCurrentAdmin(cell.Item)" OnClick="@(() => ToggleActiveAsync(cell.Item))">Deactivate</MudMenuItem>
+                            }
+                            else
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" OnClick="@(() => ToggleActiveAsync(cell.Item))">Activate</MudMenuItem>
+                            }
+                        </ChildContent>
+                    </MudMenu>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </AdminDataGrid>
+</MudStack>
+
+<InviteUserSheet Open="@_inviteSheetOpen"
+                 OpenChanged="@(value => _inviteSheetOpen = value)"
+                 InviteSubmitted="InviteUserAsync"
+                 IsSubmitting="@_isInviting" />
+
+<EntitySheet Open="@_quotaSheetOpen"
+             OpenChanged="@(value => _quotaSheetOpen = value)"
+             Title="Daily token quota"
+             Subtitle="Configure UC16 per-user daily token limits and warning state."
+             Width="520px">
+    <ChildContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                Quota updates should be persisted to user_quota_overrides or an equivalent Supabase table and written to audit_logs.
+            </MudAlert>
+            <MudTextField Value="@_quotaEdit.UserName" Label="User" Variant="Variant.Outlined" ReadOnly="true" />
+            <MudNumericField T="int" Value="@_quotaEdit.DailyTokenQuota" ValueChanged="OnQuotaValueChanged" Label="Daily token quota" Variant="Variant.Outlined" Min="1000" Step="1000" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Current usage: @_quotaEdit.TokensUsedToday.ToString("N0") tokens today</MudText>
+            <MudProgressLinear Value="@_quotaEdit.UsagePercent" Color="@GetQuotaProgressColor(_quotaEdit.UsagePercent)" Rounded="true" Size="Size.Large" />
+            <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SetQuotaPreset(25000))">Student preset</MudButton>
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SetQuotaPreset(75000))">Admin preset</MudButton>
+                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SetQuotaPreset(150000))">Temporary boost</MudButton>
+            </MudStack>
+            @if (_quotaEdit.UsagePercent >= 100)
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled">This user has exceeded the proposed quota and should be throttled or boosted.</MudAlert>
+            }
+            else if (_quotaEdit.UsagePercent >= 85)
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">This user is approaching the proposed quota.</MudAlert>
+            }
+        </MudStack>
+    </ChildContent>
+    <FooterContent>
+        <MudButton Variant="Variant.Text" OnClick="CloseQuotaSheetAsync">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveQuotaAsync">
+            Save quota
+        </MudButton>
+    </FooterContent>
+</EntitySheet>
+
+@code {
+    private const string StudentRole = "Student";
+    private const string AdminRole = "Admin";
+    private const string ActiveStatus = "Active";
+    private const string InactiveStatus = "Inactive";
+    private const string QuotaNormal = "Normal";
+    private const string QuotaWarning = "Warning";
+    private const string QuotaExceeded = "Exceeded";
+    private static readonly Guid CurrentAdminId = Guid.Parse("a8b3e2f7-1b99-401c-b558-1ba1ea5568e8");
+
+    private readonly List<UserRow> _users = new();
+    private bool _isLoading = true;
+    private bool _inviteSheetOpen;
+    private bool _quotaSheetOpen;
+    private bool _isInviting;
+    private string? _searchText;
+    private string? _selectedRole;
+    private string? _selectedStatus;
+    private string? _selectedQuotaRisk;
+    private string? _errorMessage;
+    private QuotaEditModel _quotaEdit = new();
+
+    private IEnumerable<UserRow> FilteredUsers => _users
+        .Where(MatchesRole)
+        .Where(MatchesStatus)
+        .Where(MatchesQuotaRisk)
+        .Where(MatchesSearch)
+        .OrderByDescending(user => IsCurrentAdmin(user))
+        .ThenByDescending(user => user.TokenUsagePercent)
+        .ThenBy(user => user.FullName);
+
+    private IEnumerable<string> ActiveFilters
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedRole))
+            {
+                yield return $"Role: {_selectedRole}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedStatus))
+            {
+                yield return $"Status: {_selectedStatus}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedQuotaRisk))
+            {
+                yield return $"Quota: {_selectedQuotaRisk}";
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Task.Delay(350);
+            _users.AddRange(BuildSeedUsers());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load users: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private Task OnSearchChanged(string? value)
+    {
+        _searchText = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnRoleChanged(string? value)
+    {
+        _selectedRole = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnStatusChanged(string? value)
+    {
+        _selectedStatus = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnQuotaRiskChanged(string? value)
+    {
+        _selectedQuotaRisk = value;
+        return Task.CompletedTask;
+    }
+
+    private Task RemoveFilterAsync(string filter)
+    {
+        if (filter.StartsWith("Role:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedRole = null;
+        }
+        else if (filter.StartsWith("Status:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedStatus = null;
+        }
+        else if (filter.StartsWith("Quota:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedQuotaRisk = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _selectedRole = null;
+        _selectedStatus = null;
+        _selectedQuotaRisk = null;
+        return Task.CompletedTask;
+    }
+
+    private void ApplyQuotaRiskFilter()
+    {
+        _selectedQuotaRisk = QuotaWarning;
+    }
+
+    private bool MatchesRole(UserRow user)
+    {
+        return string.IsNullOrWhiteSpace(_selectedRole)
+            || user.Role.Equals(_selectedRole, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesStatus(UserRow user)
+    {
+        return _selectedStatus switch
+        {
+            ActiveStatus => user.IsActive,
+            InactiveStatus => !user.IsActive,
+            _ => true
+        };
+    }
+
+    private bool MatchesQuotaRisk(UserRow user)
+    {
+        return _selectedQuotaRisk switch
+        {
+            QuotaNormal => user.TokenUsagePercent < 85,
+            QuotaWarning => user.TokenUsagePercent >= 85 && user.TokenUsagePercent < 100,
+            QuotaExceeded => user.TokenUsagePercent >= 100,
+            _ => true
+        };
+    }
+
+    private bool MatchesSearch(UserRow user)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            return true;
+        }
+
+        var text = _searchText.Trim();
+        return user.FullName.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || user.Email.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || user.StudentCode.Contains(text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OpenInviteSheet() => _inviteSheetOpen = true;
+
+    private async Task InviteUserAsync(InviteUserSheet.InviteUserRequest request)
+    {
+        _isInviting = true;
+        await Task.Delay(500);
+
+        _users.Insert(0, new UserRow
+        {
+            Id = Guid.NewGuid(),
+            FullName = request.FullName,
+            Email = request.Email,
+            StudentCode = request.StudentCode,
+            Role = request.Role,
+            AvatarUrl = string.Empty,
+            CreatedAt = DateTime.UtcNow,
+            LastActiveAt = DateTime.UtcNow,
+            IsActive = true,
+            DailyTokenQuota = request.DailyTokenQuota,
+            TokensUsedToday = 0,
+            DocumentCount = 0
+        });
+
+        _isInviting = false;
+        Snackbar.Add($"Invitation prepared for {request.Email} and audit log queued.", Severity.Success);
+    }
+
+    private void OpenDetails(UserRow user)
+    {
+        Navigation.NavigateTo($"/admin/users/{user.Id}");
+    }
+
+    private async Task ChangeRoleAsync(UserRow user, string targetRole)
+    {
+        if (IsCurrentAdmin(user) && targetRole != AdminRole)
+        {
+            Snackbar.Add("You cannot demote your own administrator account.", Severity.Error);
+            return;
+        }
+
+        if (user.Role == targetRole)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Change user role",
+            ["Message"] = $"Change {user.FullName} from {user.Role} to {targetRole}? This affects authorization claims and should be audited.",
+            ["ConfirmText"] = "Change role",
+            ["ConfirmColor"] = Color.Warning,
+            ["IconColor"] = Color.Warning,
+            ["Icon"] = Icons.Material.Filled.AdminPanelSettings
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Change user role", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            var previousRole = user.Role;
+            user.Role = targetRole;
+            if (targetRole == AdminRole && user.DailyTokenQuota < 75_000)
+            {
+                user.DailyTokenQuota = 75_000;
+            }
+
+            Snackbar.Add($"{user.FullName} changed from {previousRole} to {targetRole}. Audit log entry queued.", Severity.Success);
+        }
+    }
+
+    private async Task ToggleActiveAsync(UserRow user)
+    {
+        if (IsCurrentAdmin(user) && user.IsActive)
+        {
+            Snackbar.Add("You cannot deactivate your own administrator account.", Severity.Error);
+            return;
+        }
+
+        if (!user.IsActive)
+        {
+            user.IsActive = true;
+            Snackbar.Add($"{user.FullName} has been activated.", Severity.Success);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Deactivate user",
+            ["Message"] = $"Deactivate {user.FullName}? They will lose access until an administrator restores the account.",
+            ["ConfirmText"] = "Deactivate",
+            ["ConfirmationText"] = user.Email,
+            ["ConfirmColor"] = Color.Error
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Deactivate user", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            user.IsActive = false;
+            Snackbar.Add($"{user.FullName} has been deactivated and audit log entry queued.", Severity.Warning);
+        }
+    }
+
+    private void OpenQuotaSheet(UserRow user)
+    {
+        _quotaEdit = QuotaEditModel.FromUser(user);
+        _quotaSheetOpen = true;
+    }
+
+    private Task CloseQuotaSheetAsync()
+    {
+        _quotaSheetOpen = false;
+        _quotaEdit = new QuotaEditModel();
+        return Task.CompletedTask;
+    }
+
+    private void OnQuotaValueChanged(int value)
+    {
+        _quotaEdit.DailyTokenQuota = value;
+    }
+
+    private void SetQuotaPreset(int value)
+    {
+        _quotaEdit.DailyTokenQuota = value;
+    }
+
+    private async Task SaveQuotaAsync()
+    {
+        if (_quotaEdit.DailyTokenQuota <= 0)
+        {
+            Snackbar.Add("Daily token quota must be greater than zero.", Severity.Error);
+            return;
+        }
+
+        var user = _users.FirstOrDefault(item => item.Id == _quotaEdit.UserId);
+        if (user is null)
+        {
+            Snackbar.Add("User no longer exists in the current result set.", Severity.Error);
+            return;
+        }
+
+        if (_quotaEdit.DailyTokenQuota < user.TokensUsedToday)
+        {
+            var parameters = new DialogParameters
+            {
+                ["Title"] = "Quota below current usage",
+                ["Message"] = $"The proposed quota is below today's usage for {user.FullName}. The user may be throttled immediately.",
+                ["ConfirmText"] = "Save quota",
+                ["ConfirmColor"] = Color.Warning,
+                ["IconColor"] = Color.Warning,
+                ["Icon"] = Icons.Material.Filled.DataUsage
+            };
+
+            var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirm quota change", parameters);
+            var result = await dialog.Result;
+            if (result is not { Canceled: false })
+            {
+                return;
+            }
+        }
+
+        user.DailyTokenQuota = _quotaEdit.DailyTokenQuota;
+        _quotaSheetOpen = false;
+        Snackbar.Add($"Daily token quota updated for {user.FullName}. Audit log entry queued.", Severity.Success);
+    }
+
+    private static bool IsCurrentAdmin(UserRow user) => user.Id == CurrentAdminId;
+
+    private static string GetQuotaLabel(UserRow user)
+    {
+        return user.TokenUsagePercent >= 100 ? QuotaExceeded : user.TokenUsagePercent >= 85 ? QuotaWarning : QuotaNormal;
+    }
+
+    private static Color GetRoleColor(string role)
+    {
+        return role switch
+        {
+            AdminRole => Color.Error,
+            _ => Color.Primary
+        };
+    }
+
+    private static Color GetQuotaChipColor(double usagePercent)
+    {
+        return usagePercent >= 100 ? Color.Error : usagePercent >= 85 ? Color.Warning : Color.Success;
+    }
+
+    private static Color GetQuotaProgressColor(double usagePercent)
+    {
+        return usagePercent >= 100 ? Color.Error : usagePercent >= 85 ? Color.Warning : Color.Success;
+    }
+
+    private static IEnumerable<UserRow> BuildSeedUsers()
+    {
+        return new[]
+        {
+            new UserRow { Id = Guid.Parse("16d5b5b1-723e-44ab-8cd4-96010bdbe2c2"), FullName = "Mai Anh Tran", Email = "mai.tran@aistudyhub.edu", StudentCode = "SE201001", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-21), LastActiveAt = DateTime.UtcNow.AddMinutes(-18), IsActive = true, DailyTokenQuota = 25_000, TokensUsedToday = 18_400, DocumentCount = 8 },
+            new UserRow { Id = Guid.Parse("1ae950de-3a70-4a3e-864b-9609d5a59c9d"), FullName = "Kiet Ngo", Email = "kiet.ngo@aistudyhub.edu", StudentCode = "SE203943", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-12), LastActiveAt = DateTime.UtcNow.AddMinutes(-52), IsActive = true, DailyTokenQuota = 25_000, TokensUsedToday = 27_100, DocumentCount = 3 },
+            new UserRow { Id = Guid.Parse("2bdad67c-83d7-46ca-b67a-f01afecf41c1"), FullName = "Dr. Nguyen Minh", Email = "minh.nguyen@aistudyhub.edu", StudentCode = string.Empty, Role = AdminRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-48), LastActiveAt = DateTime.UtcNow.AddHours(-2), IsActive = true, DailyTokenQuota = 75_000, TokensUsedToday = 63_800, DocumentCount = 42 },
+            new UserRow { Id = CurrentAdminId, FullName = "System Administrator", Email = "admin@aistudyhub.edu", StudentCode = string.Empty, Role = AdminRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-90), LastActiveAt = DateTime.UtcNow.AddMinutes(-5), IsActive = true, DailyTokenQuota = 100_000, TokensUsedToday = 41_200, DocumentCount = 0 },
+            new UserRow { Id = Guid.Parse("e7d57d35-98a3-4774-a07c-331bb5665662"), FullName = "Linh Pham", Email = "linh.pham@aistudyhub.edu", StudentCode = "SE201220", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-3), LastActiveAt = DateTime.UtcNow.AddDays(-1), IsActive = false, DailyTokenQuota = 25_000, TokensUsedToday = 1_200, DocumentCount = 1 }
+        };
+    }
+
+    private sealed class UserRow
+    {
+        public Guid Id { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string StudentCode { get; set; } = string.Empty;
+        public string Role { get; set; } = StudentRole;
+        public string AvatarUrl { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public DateTime LastActiveAt { get; set; }
+        public bool IsActive { get; set; }
+        public int DailyTokenQuota { get; set; }
+        public int TokensUsedToday { get; set; }
+        public int DocumentCount { get; set; }
+
+        public double TokenUsagePercent => DailyTokenQuota == 0 ? 0 : TokensUsedToday * 100d / DailyTokenQuota;
+
+        public string Initials => string.Join(string.Empty, FullName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(2)
+            .Select(part => part[0]))
+            .ToUpperInvariant();
+    }
+
+    private sealed class QuotaEditModel
+    {
+        public Guid UserId { get; set; }
+        public string UserName { get; set; } = string.Empty;
+        public int DailyTokenQuota { get; set; } = 25_000;
+        public int TokensUsedToday { get; set; }
+        public double UsagePercent => DailyTokenQuota == 0 ? 0 : TokensUsedToday * 100d / DailyTokenQuota;
+
+        public static QuotaEditModel FromUser(UserRow user)
+        {
+            return new QuotaEditModel
+            {
+                UserId = user.Id,
+                UserName = $"{user.FullName} ({user.Email})",
+                DailyTokenQuota = user.DailyTokenQuota,
+                TokensUsedToday = user.TokensUsedToday
+            };
+        }
+    }
+}
+
+<style>
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .page-header {
+        padding: 1.2rem;
+        border-radius: 28px;
+        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+        border: 1px solid rgba(15, 118, 110, .12);
+    }
+
+    .user-filter {
+        min-width: 170px;
+    }
+
+    .user-stat-card,
+    .guardrail-alert {
+        border-radius: 24px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .84);
+    }
+
+    .user-stat-card {
+        padding: 1.15rem;
+    }
+
+    .user-stat-card.success {
+        background: linear-gradient(145deg, rgba(34, 197, 94, .14), rgba(255, 252, 246, .86));
+    }
+
+    .user-stat-card.warning {
+        background: linear-gradient(145deg, rgba(251, 146, 60, .14), rgba(255, 252, 246, .86));
+    }
+
+    .user-stat-card.error {
+        background: linear-gradient(145deg, rgba(239, 68, 68, .12), rgba(255, 252, 246, .86));
+    }
+
+    .quota-cell {
+        min-width: 220px;
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

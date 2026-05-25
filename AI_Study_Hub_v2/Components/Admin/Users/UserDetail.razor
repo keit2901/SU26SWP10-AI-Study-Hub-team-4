@@ -1,0 +1,322 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Users
+@page "/admin/users/{Id:guid}"
+@rendermode InteractiveServer
+@layout AdminLayout
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@if (_isLoading)
+{
+    <MudStack Spacing="3" Class="page-enter">
+        <MudSkeleton Height="120px" Animation="Animation.Wave" />
+        <MudSkeleton Height="360px" Animation="Animation.Wave" />
+    </MudStack>
+}
+else if (!string.IsNullOrWhiteSpace(_errorMessage) || _user is null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled">
+        @_errorMessage
+    </MudAlert>
+}
+else
+{
+    <MudStack Spacing="4" Class="user-detail-page page-enter">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap: wrap; gap: 1rem;">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudAvatar Size="Size.Large" Color="Color.Primary">@_user.Initials</MudAvatar>
+                <div>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Profile detail</MudText>
+                    <MudText Typo="Typo.h4">@_user.FullName</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@_user.Email</MudText>
+                </div>
+            </MudStack>
+            <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="BackToUsers">Back</MudButton>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditUser">Edit</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.LockReset" OnClick="ResetPasswordAsync">Reset password</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Block" Disabled="@(!_user.IsActive)" OnClick="DeactivateAsync">Deactivate</MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudPaper Elevation="0" Class="detail-card">
+                    <MudText Typo="Typo.caption">Role</MudText>
+                    <MudText Typo="Typo.h5">@_user.Role</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Elevation="0" Class="detail-card">
+                    <MudText Typo="Typo.caption">Student code</MudText>
+                    <MudText Typo="Typo.h5">@DisplayValue(_user.StudentCode)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Elevation="0" Class="detail-card">
+                    <MudText Typo="Typo.caption">Status</MudText>
+                    <MudText Typo="Typo.h5">@(_user.IsActive ? "Active" : "Inactive")</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Elevation="0" Class="detail-tabs-card">
+            <MudTabs Rounded="true" Elevation="0" TabPanelsClass="pa-4">
+                <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.AccountCircle">
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudList T="string" Dense="true">
+                                <MudListSubheader>Profile fields</MudListSubheader>
+                                <MudListItem Text="ID" SecondaryText="@_user.Id.ToString()" />
+                                <MudListItem Text="Full name" SecondaryText="@_user.FullName" />
+                                <MudListItem Text="Email" SecondaryText="@_user.Email" />
+                                <MudListItem Text="Created at" SecondaryText="@FormatDateTime(_user.CreatedAt)" />
+                            </MudList>
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                                Connect this page to Supabase to read profiles, auth metadata, and authorization claims.
+                            </MudAlert>
+                        </MudItem>
+                    </MudGrid>
+                </MudTabPanel>
+
+                <MudTabPanel Text="Documents" Icon="@Icons.Material.Filled.Description">
+                    @if (!_documents.Any())
+                    {
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">This user has not uploaded documents yet.</MudAlert>
+                    }
+                    else
+                    {
+                        <MudTable Items="@_documents" Dense="true" Hover="true" Elevation="0">
+                            <HeaderContent>
+                                <MudTh>Title</MudTh>
+                                <MudTh>Subject</MudTh>
+                                <MudTh>Status</MudTh>
+                                <MudTh>Uploaded</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Title">@context.Title</MudTd>
+                                <MudTd DataLabel="Subject">@context.SubjectCode</MudTd>
+                                <MudTd DataLabel="Status">
+                                    <MudChip T="string" Color="@GetDocumentColor(context.Status)" Variant="Variant.Outlined" Size="Size.Small">@context.Status</MudChip>
+                                </MudTd>
+                                <MudTd DataLabel="Uploaded">@FormatDate(context.UploadedAt)</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    }
+                </MudTabPanel>
+
+                <MudTabPanel Text="Activity" Icon="@Icons.Material.Filled.History">
+                    <MudTimeline Class="activity-timeline">
+                        @foreach (var activity in _activities)
+                        {
+                            <MudTimelineItem Color="@activity.Color" Icon="@activity.Icon">
+                                <MudText Typo="Typo.subtitle2">@activity.Action</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@activity.Description</MudText>
+                                <MudText Typo="Typo.caption">@FormatDateTime(activity.CreatedAt)</MudText>
+                            </MudTimelineItem>
+                        }
+                    </MudTimeline>
+                </MudTabPanel>
+            </MudTabs>
+        </MudPaper>
+    </MudStack>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private UserDetailRow? _user;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private readonly List<DocumentRow> _documents = new();
+    private readonly List<ActivityRow> _activities = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Task.Delay(300);
+            _user = BuildUser(Id);
+            _documents.AddRange(BuildDocuments());
+            _activities.AddRange(BuildActivities());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load user detail: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void BackToUsers() => Navigation.NavigateTo("/admin/users");
+
+    private void EditUser()
+    {
+        if (_user is not null)
+        {
+            Snackbar.Add($"Edit profile flow selected for {_user.FullName}.", Severity.Info);
+        }
+    }
+
+    private async Task ResetPasswordAsync()
+    {
+        if (_user is null)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Reset password",
+            ["Message"] = $"Send a password reset link to {_user.Email}?",
+            ["ConfirmText"] = "Send link",
+            ["ConfirmColor"] = Color.Warning,
+            ["IconColor"] = Color.Warning,
+            ["Icon"] = Icons.Material.Filled.LockReset
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Reset password", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add($"Password reset link prepared for {_user.Email}.", Severity.Success);
+        }
+    }
+
+    private async Task DeactivateAsync()
+    {
+        if (_user is null)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Deactivate user",
+            ["Message"] = $"Deactivate {_user.FullName}? This prevents future access until restored.",
+            ["ConfirmText"] = "Deactivate",
+            ["ConfirmationText"] = _user.Email,
+            ["ConfirmColor"] = Color.Error
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Deactivate user", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            _user.IsActive = false;
+            Snackbar.Add($"{_user.FullName} has been deactivated.", Severity.Warning);
+        }
+    }
+
+    private static string DisplayValue(string value) => string.IsNullOrWhiteSpace(value) ? "Not assigned" : value;
+
+    private static string FormatDate(DateTime value) => value.ToString("MMM dd, yyyy");
+
+    private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
+
+    private static Color GetDocumentColor(string status)
+    {
+        return status switch
+        {
+            "Indexed" => Color.Success,
+            "Processing" => Color.Warning,
+            "Rejected" => Color.Error,
+            _ => Color.Default
+        };
+    }
+
+    private static UserDetailRow BuildUser(Guid id)
+    {
+        return new UserDetailRow
+        {
+            Id = id,
+            FullName = "Kiet Ngo",
+            Email = "kiet.ngo@aistudyhub.edu",
+            StudentCode = "SE203943",
+            Role = "Student",
+            CreatedAt = DateTime.UtcNow.AddDays(-12),
+            IsActive = true
+        };
+    }
+
+    private static IEnumerable<DocumentRow> BuildDocuments()
+    {
+        return new[]
+        {
+            new DocumentRow("RAG Evaluation Notes", "SWP391", "Indexed", DateTime.UtcNow.AddDays(-7)),
+            new DocumentRow("Supabase Auth Summary", "PRN212", "Processing", DateTime.UtcNow.AddDays(-2)),
+            new DocumentRow("Database Normalization Cheatsheet", "DBI202", "Indexed", DateTime.UtcNow.AddDays(-18))
+        };
+    }
+
+    private static IEnumerable<ActivityRow> BuildActivities()
+    {
+        return new[]
+        {
+            new ActivityRow("Document uploaded", "Added RAG Evaluation Notes to SWP391.", DateTime.UtcNow.AddHours(-6), Icons.Material.Filled.UploadFile, Color.Primary),
+            new ActivityRow("Profile updated", "Changed notification preferences.", DateTime.UtcNow.AddDays(-1), Icons.Material.Filled.Edit, Color.Secondary),
+            new ActivityRow("Login", "Successful sign-in from Chrome on Windows.", DateTime.UtcNow.AddDays(-2), Icons.Material.Filled.Login, Color.Success)
+        };
+    }
+
+    private sealed class UserDetailRow
+    {
+        public Guid Id { get; set; }
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string StudentCode { get; set; } = string.Empty;
+        public string Role { get; set; } = string.Empty;
+        public DateTime CreatedAt { get; set; }
+        public bool IsActive { get; set; }
+
+        public string Initials => string.Join(string.Empty, FullName
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Take(2)
+            .Select(part => part[0]))
+            .ToUpperInvariant();
+    }
+
+    private sealed record DocumentRow(string Title, string SubjectCode, string Status, DateTime UploadedAt);
+    private sealed record ActivityRow(string Action, string Description, DateTime CreatedAt, string Icon, Color Color);
+}
+
+<style>
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .detail-card,
+    .detail-tabs-card {
+        border-radius: 24px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .88);
+    }
+
+    .detail-card {
+        padding: 1.25rem;
+    }
+
+    .activity-timeline {
+        max-width: 760px;
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

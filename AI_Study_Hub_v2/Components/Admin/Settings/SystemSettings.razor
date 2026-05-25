@@ -1,0 +1,582 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Settings
+@page "/admin/settings"
+@rendermode InteractiveServer
+@layout AdminLayout
+@using System.Globalization
+@using System.Text.Json
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="4" Class="settings-page page-enter">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Secondary">UC13 + UC16 - AI system parameters</MudText>
+            <MudText Typo="Typo.h4">AI System Settings</MudText>
+            <MudText Typo="Typo.body1" Color="Color.Secondary">
+                Configure RAG model parameters, chunking rules, prompts, feature flags, and default daily token quotas.
+            </MudText>
+        </div>
+        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ManageSearch" OnClick="ShowAuditHint">
+                Audit trail
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync">
+                Reload configs
+            </MudButton>
+        </MudStack>
+    </MudStack>
+
+    <FilterBar SearchText="@_searchText"
+               SearchTextChanged="OnSearchChanged"
+               SearchPlaceholder="Search key, label, description, or category"
+               ActiveFilters="@ActiveFilters"
+               RemoveFilter="RemoveFilterAsync"
+               ClearAllFilters="ClearFiltersAsync">
+        <MudSelect T="string" Value="@_selectedCategory" ValueChanged="OnCategoryChanged" Label="Category" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="settings-filter">
+            @foreach (var category in _configs.Select(config => config.Category).Distinct().OrderBy(category => category))
+            {
+                <MudSelectItem T="string" Value="@category">@category</MudSelectItem>
+            }
+        </MudSelect>
+        <MudSelect T="string" Value="@_selectedRisk" ValueChanged="OnRiskChanged" Label="Risk" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="settings-filter">
+            <MudSelectItem T="string" Value="@CriticalRisk">Critical</MudSelectItem>
+            <MudSelectItem T="string" Value="@StandardRisk">Standard</MudSelectItem>
+            <MudSelectItem T="string" Value="@UnsavedRisk">Unsaved changes</MudSelectItem>
+        </MudSelect>
+    </FilterBar>
+
+    <MudGrid>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="settings-stat-card">
+                <MudText Typo="Typo.caption">Configs</MudText>
+                <MudText Typo="Typo.h4">@_configs.Count</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">system_configs rows</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="settings-stat-card warning">
+                <MudText Typo="Typo.caption">Critical</MudText>
+                <MudText Typo="Typo.h4">@_configs.Count(config => config.IsCritical)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Requires confirmation</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="settings-stat-card error">
+                <MudText Typo="Typo.caption">Unsaved</MudText>
+                <MudText Typo="Typo.h4">@_configs.Count(config => config.HasChanges)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Changed locally</MudText>
+            </MudPaper>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudPaper Elevation="0" Class="settings-stat-card success">
+                <MudText Typo="Typo.caption">Last update</MudText>
+                <MudText Typo="Typo.h6">@FormatDateTime(_configs.OrderByDescending(config => config.UpdatedAt).FirstOrDefault()?.UpdatedAt)</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Audit ready</MudText>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+
+    @if (_isLoading)
+    {
+        <MudGrid>
+            @for (var index = 0; index < 4; index++)
+            {
+                <MudItem xs="12" lg="6">
+                    <MudSkeleton Height="260px" Animation="Animation.Wave" />
+                </MudItem>
+            }
+        </MudGrid>
+    }
+    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+    }
+    else if (!FilteredConfigs.Any())
+    {
+        <MudPaper Elevation="0" Class="empty-state">
+            <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">No configuration found</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">Change the search or filters to inspect a wider set of system_configs.</MudText>
+        </MudPaper>
+    }
+    else
+    {
+        <MudGrid>
+            @foreach (var config in FilteredConfigs)
+            {
+                <MudItem xs="12" lg="6">
+                    <MudPaper Elevation="0" Class="config-card">
+                        <MudStack Spacing="3">
+                            <MudStack Row="true" AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween" Style="gap: 1rem;">
+                                <div>
+                                    <MudText Typo="Typo.h6">@config.DisplayName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@config.Key</MudText>
+                                </div>
+                                <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap; justify-content: flex-end;">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@config.Category</MudChip>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@config.Type</MudChip>
+                                    @if (config.IsCritical)
+                                    {
+                                        <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled">Critical</MudChip>
+                                    }
+                                    @if (config.HasChanges)
+                                    {
+                                        <MudChip T="string" Color="Color.Error" Size="Size.Small" Variant="Variant.Outlined">Unsaved</MudChip>
+                                    }
+                                </MudStack>
+                            </MudStack>
+
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@config.Description</MudText>
+
+                            @switch (config.Type)
+                            {
+                                case ConfigInputType.Boolean:
+                                    <MudSwitch T="bool" Value="@GetBooleanValue(config)" ValueChanged="@(value => SetBooleanValue(config, value))" Color="Color.Primary" Label="Enabled" />
+                                    break;
+                                case ConfigInputType.Number:
+                                    <MudNumericField T="decimal" Value="@GetDecimalValue(config)" ValueChanged="@(value => SetDecimalValue(config, value))" Label="Value" Variant="Variant.Outlined" Immediate="true" />
+                                    break;
+                                case ConfigInputType.Json:
+                                    <MudTextField @bind-Value="config.Value" Label="JSON value" Variant="Variant.Outlined" Lines="8" Immediate="true" />
+                                    break;
+                                default:
+                                    <MudTextField @bind-Value="config.Value" Label="Value" Variant="Variant.Outlined" Lines="@config.Lines" Immediate="true" />
+                                    break;
+                            }
+
+                            <MudGrid Spacing="2">
+                                <MudItem xs="12" sm="6">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Default value</MudText>
+                                    <MudText Typo="Typo.body2" Class="config-mini-value">@config.DefaultValue</MudText>
+                                </MudItem>
+                                <MudItem xs="12" sm="6">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Updated</MudText>
+                                    <MudText Typo="Typo.body2">@FormatDateTime(config.UpdatedAt) by @config.UpdatedBy</MudText>
+                                </MudItem>
+                            </MudGrid>
+
+                            @if (config.IsCritical)
+                            {
+                                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                                    Saving this setting requires typed confirmation and writes before/after values to audit_logs.
+                                </MudAlert>
+                            }
+
+                            <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="1">
+                                <MudButton Variant="Variant.Text" Disabled="@(!config.HasChanges)" OnClick="@(() => ResetConfig(config))">Reset</MudButton>
+                                <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!config.HasChanges)" OnClick="@(() => SaveConfigAsync(config))">
+                                    Save
+                                </MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    <MudPaper Elevation="0" Class="audit-preview-card">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2" Style="gap: 1rem; flex-wrap: wrap;">
+            <div>
+                <MudText Typo="Typo.h6">Configuration audit preview</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Recent local changes that should map to audit_logs entries.</MudText>
+            </div>
+            <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.OpenInNew" OnClick="ShowAuditHint">Open Audit Logs</MudButton>
+        </MudStack>
+        @if (!_recentChanges.Any())
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">No configuration changes in this session.</MudAlert>
+        }
+        else
+        {
+            <MudTable Items="@_recentChanges" Dense="true" Hover="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Key</MudTh>
+                    <MudTh>Actor</MudTh>
+                    <MudTh>Changed</MudTh>
+                    <MudTh>Before / After</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Key">@context.Key</MudTd>
+                    <MudTd DataLabel="Actor">@context.Actor</MudTd>
+                    <MudTd DataLabel="Changed">@FormatDateTime(context.CreatedAt)</MudTd>
+                    <MudTd DataLabel="Before / After"><code>@context.BeforeAfterJson</code></MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+</MudStack>
+
+@code {
+    private const string CriticalRisk = "Critical";
+    private const string StandardRisk = "Standard";
+    private const string UnsavedRisk = "Unsaved changes";
+
+    private readonly List<ConfigRow> _configs = new();
+    private readonly List<ConfigChangePreview> _recentChanges = new();
+    private bool _isLoading = true;
+    private string? _searchText;
+    private string? _selectedCategory;
+    private string? _selectedRisk;
+    private string? _errorMessage;
+
+    private IEnumerable<ConfigRow> FilteredConfigs => _configs
+        .Where(MatchesCategory)
+        .Where(MatchesRisk)
+        .Where(MatchesSearch)
+        .OrderByDescending(config => config.IsCritical)
+        .ThenBy(config => config.Category)
+        .ThenBy(config => config.Key);
+
+    private IEnumerable<string> ActiveFilters
+    {
+        get
+        {
+            if (!string.IsNullOrWhiteSpace(_selectedCategory))
+            {
+                yield return $"Category: {_selectedCategory}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_selectedRisk))
+            {
+                yield return $"Risk: {_selectedRisk}";
+            }
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await ReloadAsync();
+    }
+
+    private async Task ReloadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            await Task.Delay(300);
+            _configs.Clear();
+            _configs.AddRange(BuildSeedConfigs());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load system settings: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void ShowAuditHint()
+    {
+        Snackbar.Add("Open /admin/audit-logs to review persisted CONFIG_CHANGE entries with before/after JSON.", Severity.Info);
+    }
+
+    private Task OnSearchChanged(string? value)
+    {
+        _searchText = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnCategoryChanged(string? value)
+    {
+        _selectedCategory = value;
+        return Task.CompletedTask;
+    }
+
+    private Task OnRiskChanged(string? value)
+    {
+        _selectedRisk = value;
+        return Task.CompletedTask;
+    }
+
+    private Task RemoveFilterAsync(string filter)
+    {
+        if (filter.StartsWith("Category:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedCategory = null;
+        }
+        else if (filter.StartsWith("Risk:", StringComparison.OrdinalIgnoreCase))
+        {
+            _selectedRisk = null;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _selectedCategory = null;
+        _selectedRisk = null;
+        return Task.CompletedTask;
+    }
+
+    private bool MatchesCategory(ConfigRow config)
+    {
+        return string.IsNullOrWhiteSpace(_selectedCategory)
+            || config.Category.Equals(_selectedCategory, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesRisk(ConfigRow config)
+    {
+        return _selectedRisk switch
+        {
+            CriticalRisk => config.IsCritical,
+            StandardRisk => !config.IsCritical,
+            UnsavedRisk => config.HasChanges,
+            _ => true
+        };
+    }
+
+    private bool MatchesSearch(ConfigRow config)
+    {
+        if (string.IsNullOrWhiteSpace(_searchText))
+        {
+            return true;
+        }
+
+        var text = _searchText.Trim();
+        return config.Key.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || config.DisplayName.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || config.Description.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || config.Category.Contains(text, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task SaveConfigAsync(ConfigRow config)
+    {
+        if (config.Type == ConfigInputType.Json && !IsValidJson(config.Value))
+        {
+            Snackbar.Add($"{config.Key} does not contain valid JSON.", Severity.Error);
+            return;
+        }
+
+        if (config.IsCritical)
+        {
+            var parameters = new DialogParameters
+            {
+                ["Title"] = "Confirm critical change",
+                ["Message"] = $"Saving {config.Key} can affect retrieval quality, model behavior, quota enforcement, or access control.",
+                ["ConfirmText"] = "Save setting",
+                ["ConfirmationText"] = config.Key,
+                ["ConfirmColor"] = Color.Warning,
+                ["IconColor"] = Color.Warning,
+                ["Icon"] = Icons.Material.Filled.Tune
+            };
+
+            var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirm critical setting", parameters);
+            var result = await dialog.Result;
+            if (result is not { Canceled: false })
+            {
+                return;
+            }
+        }
+
+        var previous = config.OriginalValue;
+        config.OriginalValue = config.Value;
+        config.UpdatedAt = DateTime.UtcNow;
+        config.UpdatedBy = "admin@aistudyhub.edu";
+        _recentChanges.Insert(0, new ConfigChangePreview(config.Key, "admin@aistudyhub.edu", DateTime.UtcNow, ToBeforeAfterJson(previous, config.Value)));
+        Snackbar.Add($"{config.Key} saved and CONFIG_CHANGE audit log queued.", Severity.Success);
+    }
+
+    private void ResetConfig(ConfigRow config)
+    {
+        config.Value = config.OriginalValue;
+        Snackbar.Add($"{config.Key} reset to the last saved value.", Severity.Info);
+    }
+
+    private static bool GetBooleanValue(ConfigRow config)
+    {
+        return bool.TryParse(config.Value, out var value) && value;
+    }
+
+    private static void SetBooleanValue(ConfigRow config, bool value)
+    {
+        config.Value = value.ToString().ToLowerInvariant();
+    }
+
+    private static decimal GetDecimalValue(ConfigRow config)
+    {
+        return decimal.TryParse(config.Value, NumberStyles.Number, CultureInfo.InvariantCulture, out var value) ? value : 0;
+    }
+
+    private static void SetDecimalValue(ConfigRow config, decimal value)
+    {
+        config.Value = value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static bool IsValidJson(string value)
+    {
+        try
+        {
+            using var _ = JsonDocument.Parse(value);
+            return true;
+        }
+        catch (JsonException)
+        {
+            return false;
+        }
+    }
+
+    private static string ToBeforeAfterJson(string previous, string current)
+    {
+        return $"{{\"before\":\"{EscapeJson(previous)}\",\"after\":\"{EscapeJson(current)}\"}}";
+    }
+
+    private static string EscapeJson(string value)
+    {
+        return value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal).Replace("\r", "", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
+    }
+
+    private static string FormatDateTime(DateTime? value)
+    {
+        return value?.ToLocalTime().ToString("MMM dd, HH:mm") ?? "Never";
+    }
+
+    private static IEnumerable<ConfigRow> BuildSeedConfigs()
+    {
+        return new[]
+        {
+            new ConfigRow("ai.chat_model", "Chat model", "Model identifier used by the RAG answer generation pipeline.", "Model", ConfigInputType.Text, "gpt-4o-mini", "gpt-4o-mini", true),
+            new ConfigRow("ai.embedding_model", "Embedding model", "Provider model identifier used to embed document_chunks.", "Model", ConfigInputType.Text, "text-embedding-3-small", "text-embedding-3-small", true),
+            new ConfigRow("rag.chunk_size", "Chunk size", "Maximum characters or tokens per source chunk before embedding.", "Retrieval", ConfigInputType.Number, "1000", "800", true),
+            new ConfigRow("rag.chunk_overlap", "Chunk overlap", "Overlap between consecutive chunks to preserve context.", "Retrieval", ConfigInputType.Number, "160", "120", true),
+            new ConfigRow("rag.max_chunks", "Max retrieval chunks", "Maximum document chunks sent to the answer generation pipeline.", "Retrieval", ConfigInputType.Number, "12", "8", true),
+            new ConfigRow("generation.temperature", "Temperature", "Controls answer randomness for study assistant responses.", "Generation", ConfigInputType.Number, "0.2", "0.2", true),
+            new ConfigRow("generation.top_p", "Top-p", "Nucleus sampling parameter for answer generation.", "Generation", ConfigInputType.Number, "0.85", "0.9", true),
+            new ConfigRow("generation.system_prompt", "System prompt", "Instruction block applied to every RAG chat response.", "Generation", ConfigInputType.Text, "You are AI Study Hub, a grounded academic assistant. Cite document context and avoid unsupported claims.", "You are AI Study Hub.", true, 5),
+            new ConfigRow("quota.default_student_daily_tokens", "Student daily quota", "Default UC16 daily token quota assigned to new student profiles.", "Quota", ConfigInputType.Number, "25000", "25000", false),
+            new ConfigRow("quota.default_admin_daily_tokens", "Admin daily quota", "Default UC16 daily token quota assigned to administrator profiles.", "Quota", ConfigInputType.Number, "75000", "75000", false),
+            new ConfigRow("auth.allow_self_registration", "Allow self registration", "Controls whether new users can create accounts without an invitation.", "Security", ConfigInputType.Boolean, "false", "false", true),
+            new ConfigRow("documents.allowed_extensions", "Allowed document extensions", "JSON array of file extensions accepted by upload validation.", "Documents", ConfigInputType.Json, "[\".pdf\", \".docx\", \".pptx\", \".txt\"]", "[\".pdf\", \".docx\"]", false),
+            new ConfigRow("moderation.report_reasons", "Report reasons", "JSON options shown when a user reports a document.", "Moderation", ConfigInputType.Json, "[\"Restricted assessment\", \"Copyright concern\", \"Wrong subject\", \"Low quality scan\"]", "[\"Wrong subject\"]", false),
+            new ConfigRow("audit.retention_days", "Audit retention days", "Number of days audit_logs remain visible before archival.", "Governance", ConfigInputType.Number, "365", "365", false)
+        };
+    }
+
+    private sealed class ConfigRow
+    {
+        public ConfigRow(string key, string displayName, string description, string category, ConfigInputType type, string value, string defaultValue, bool isCritical, int lines = 1)
+        {
+            Key = key;
+            DisplayName = displayName;
+            Description = description;
+            Category = category;
+            Type = type;
+            Value = value;
+            OriginalValue = value;
+            DefaultValue = defaultValue;
+            IsCritical = isCritical;
+            Lines = lines;
+            UpdatedAt = DateTime.UtcNow.AddHours(-2);
+            UpdatedBy = "admin@aistudyhub.edu";
+        }
+
+        public string Key { get; }
+        public string DisplayName { get; }
+        public string Description { get; }
+        public string Category { get; }
+        public ConfigInputType Type { get; }
+        public string Value { get; set; }
+        public string OriginalValue { get; set; }
+        public string DefaultValue { get; }
+        public bool IsCritical { get; }
+        public int Lines { get; }
+        public DateTime UpdatedAt { get; set; }
+        public string UpdatedBy { get; set; }
+        public bool HasChanges => !string.Equals(Value, OriginalValue, StringComparison.Ordinal);
+    }
+
+    private sealed record ConfigChangePreview(string Key, string Actor, DateTime CreatedAt, string BeforeAfterJson);
+
+    private enum ConfigInputType
+    {
+        Text,
+        Number,
+        Boolean,
+        Json
+    }
+}
+
+<style>
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .page-header,
+    .config-card,
+    .empty-state,
+    .settings-stat-card,
+    .audit-preview-card {
+        border-radius: 26px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .88);
+    }
+
+    .page-header {
+        padding: 1.2rem;
+        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+    }
+
+    .settings-filter {
+        min-width: 190px;
+    }
+
+    .settings-stat-card,
+    .config-card,
+    .audit-preview-card {
+        padding: 1.25rem;
+    }
+
+    .settings-stat-card.success {
+        background: linear-gradient(145deg, rgba(34, 197, 94, .14), rgba(255, 252, 246, .86));
+    }
+
+    .settings-stat-card.warning {
+        background: linear-gradient(145deg, rgba(251, 146, 60, .14), rgba(255, 252, 246, .86));
+    }
+
+    .settings-stat-card.error {
+        background: linear-gradient(145deg, rgba(239, 68, 68, .12), rgba(255, 252, 246, .86));
+    }
+
+    .config-card {
+        height: 100%;
+        box-shadow: 0 18px 60px rgba(29, 44, 37, .06);
+    }
+
+    .config-mini-value {
+        font-family: Consolas, monospace;
+        word-break: break-word;
+    }
+
+    .empty-state {
+        min-height: 320px;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        padding: 2rem;
+    }
+
+    .audit-preview-card code {
+        white-space: normal;
+        word-break: break-word;
+        color: #173b33;
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

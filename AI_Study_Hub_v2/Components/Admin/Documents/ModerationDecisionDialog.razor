@@ -1,0 +1,86 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Documents
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAvatar Color="@DecisionColor" Variant="Variant.Filled" Size="Size.Large">
+                <MudIcon Icon="@DecisionIcon" />
+            </MudAvatar>
+            <div>
+                <MudText Typo="Typo.h5">@Decision document</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@DocumentTitle</MudText>
+            </div>
+
+            @if (RequiresReason)
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                    A reason is required for rejection or removal. This reason is sent to the document owner and stored in audit_logs.
+                </MudAlert>
+                <MudTextField @bind-Value="_reason"
+                              Label="Decision reason"
+                              Placeholder="Explain the policy, quality, or ownership issue"
+                              Variant="Variant.Outlined"
+                              Lines="5"
+                              Immediate="true"
+                              Required="true" />
+            }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                    Approval sends the document back to the processing pipeline for chunking, embeddings, and indexing.
+                </MudAlert>
+                <MudTextField @bind-Value="_reason"
+                              Label="Optional reviewer note"
+                              Variant="Variant.Outlined"
+                              Lines="3"
+                              Immediate="true" />
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="@DecisionColor" Variant="Variant.Filled" Disabled="@(!CanSubmit)" OnClick="Confirm">
+            @Decision
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string DocumentTitle { get; set; } = string.Empty;
+    [Parameter] public string Decision { get; set; } = "Approve";
+    [Parameter] public bool RequiresReason { get; set; }
+    [Parameter] public string? ExistingReason { get; set; }
+
+    private string? _reason;
+
+    private Color DecisionColor => Decision switch
+    {
+        "Approved" => Color.Success,
+        "Rejected" => Color.Warning,
+        "Removed" => Color.Error,
+        _ => Color.Primary
+    };
+
+    private string DecisionIcon => Decision switch
+    {
+        "Approved" => Icons.Material.Filled.CheckCircle,
+        "Rejected" => Icons.Material.Filled.Cancel,
+        "Removed" => Icons.Material.Filled.DeleteForever,
+        _ => Icons.Material.Filled.Gavel
+    };
+
+    private bool CanSubmit => !RequiresReason || !string.IsNullOrWhiteSpace(_reason);
+
+    protected override void OnInitialized()
+    {
+        _reason = ExistingReason;
+    }
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(_reason?.Trim() ?? string.Empty));
+
+    private void Cancel() => MudDialog.Cancel();
+}

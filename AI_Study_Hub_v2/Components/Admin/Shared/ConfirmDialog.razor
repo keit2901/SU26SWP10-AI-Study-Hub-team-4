@@ -1,0 +1,55 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Shared
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudAvatar Color="@IconColor" Variant="Variant.Filled" Size="Size.Large">
+                <MudIcon Icon="@Icon" />
+            </MudAvatar>
+            <MudText Typo="Typo.h5">@Title</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@Message</MudText>
+
+            @if (!string.IsNullOrWhiteSpace(ConfirmationText))
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                    Type <strong>@ConfirmationText</strong> to confirm this action.
+                </MudAlert>
+                <MudTextField @bind-Value="_typedConfirmation"
+                              Label="Confirmation"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true" />
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">@CancelText</MudButton>
+        <MudButton Color="@ConfirmColor" Variant="Variant.Filled" Disabled="@(!CanConfirm)" OnClick="Confirm">
+            @ConfirmText
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string Title { get; set; } = "Confirm action";
+    [Parameter] public string Message { get; set; } = "This action cannot be undone.";
+    [Parameter] public string ConfirmText { get; set; } = "Confirm";
+    [Parameter] public string CancelText { get; set; } = "Cancel";
+    [Parameter] public string? ConfirmationText { get; set; }
+    [Parameter] public string Icon { get; set; } = Icons.Material.Filled.WarningAmber;
+    [Parameter] public Color IconColor { get; set; } = Color.Warning;
+    [Parameter] public Color ConfirmColor { get; set; } = Color.Error;
+
+    private string? _typedConfirmation;
+
+    private bool CanConfirm => string.IsNullOrWhiteSpace(ConfirmationText)
+        || string.Equals(_typedConfirmation?.Trim(), ConfirmationText, StringComparison.Ordinal);
+
+    private void Confirm() => MudDialog.Close(DialogResult.Ok(true));
+
+    private void Cancel() => MudDialog.Cancel();
+}

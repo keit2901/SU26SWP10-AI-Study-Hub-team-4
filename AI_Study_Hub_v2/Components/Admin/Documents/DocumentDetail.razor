@@ -1,0 +1,324 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Documents
+@page "/admin/documents/{Id:guid}"
+@rendermode InteractiveServer
+@layout AdminLayout
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+@if (_isLoading)
+{
+    <MudStack Spacing="3" Class="page-enter">
+        <MudSkeleton Height="120px" Animation="Animation.Wave" />
+        <MudSkeleton Height="360px" Animation="Animation.Wave" />
+    </MudStack>
+}
+else if (!string.IsNullOrWhiteSpace(_errorMessage) || _document is null)
+{
+    <MudAlert Severity="Severity.Error" Variant="Variant.Filled">
+        @_errorMessage
+    </MudAlert>
+}
+else
+{
+    <MudStack Spacing="4" Class="document-detail-page page-enter">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap: wrap; gap: 1rem;">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudAvatar Color="@GetFileColor(_document.FileType)" Variant="Variant.Filled" Size="Size.Large">
+                    <MudIcon Icon="@GetFileIcon(_document.FileType)" />
+                </MudAvatar>
+                <div>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Document detail</MudText>
+                    <MudText Typo="Typo.h4">@_document.Title</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@_document.StoragePath</MudText>
+                </div>
+            </MudStack>
+            <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="BackToDocuments">Back</MudButton>
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditMetadata">Edit metadata</MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Sync" OnClick="ReindexAsync">Re-index</MudButton>
+                <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">Delete</MudButton>
+            </MudStack>
+        </MudStack>
+
+        <MudGrid>
+            <MudItem xs="12" md="3">
+                <MudPaper Elevation="0" Class="detail-card">
+                    <MudText Typo="Typo.caption">Status</MudText>
+                    <MudText Typo="Typo.h5">@_document.Status</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Elevation="0" Class="detail-card">
+                    <MudText Typo="Typo.caption">Subject</MudText>
+                    <MudText Typo="Typo.h5">@_document.SubjectCode</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Elevation="0" Class="detail-card">
+                    <MudText Typo="Typo.caption">Chunks</MudText>
+                    <MudText Typo="Typo.h5">@_document.ChunkCount</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" md="3">
+                <MudPaper Elevation="0" Class="detail-card">
+                    <MudText Typo="Typo.caption">File size</MudText>
+                    <MudText Typo="Typo.h5">@_document.FileSizeMb.ToString("N1") MB</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Elevation="0" Class="detail-tabs-card">
+            <MudTabs Rounded="true" Elevation="0" TabPanelsClass="pa-4">
+                <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.Info">
+                    <MudGrid>
+                        <MudItem xs="12" md="6">
+                            <MudList T="string" Dense="true">
+                                <MudListSubheader>Document fields</MudListSubheader>
+                                <MudListItem Text="ID" SecondaryText="@_document.Id.ToString()" />
+                                <MudListItem Text="Owner" SecondaryText="@($"{_document.OwnerName} ({_document.OwnerEmail})")" />
+                                <MudListItem Text="File type" SecondaryText="@_document.FileType.ToUpperInvariant()" />
+                                <MudListItem Text="Uploaded" SecondaryText="@FormatDateTime(_document.CreatedAt)" />
+                                <MudListItem Text="Last indexed" SecondaryText="@FormatDateTime(_document.IndexedAt)" />
+                            </MudList>
+                        </MudItem>
+                        <MudItem xs="12" md="6">
+                            <MudText Typo="Typo.subtitle2" Class="mb-2">Tags</MudText>
+                            <MudChipSet T="string">
+                                @foreach (var tag in _document.Tags)
+                                {
+                                    <MudChip T="string" Value="@tag" Color="Color.Primary" Variant="Variant.Outlined">@tag</MudChip>
+                                }
+                            </MudChipSet>
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-4">
+                                Connect this view to Supabase Storage and document_chunks to show signed download links and chunk previews.
+                            </MudAlert>
+                        </MudItem>
+                    </MudGrid>
+                </MudTabPanel>
+
+                <MudTabPanel Text="Chunks" Icon="@Icons.Material.Filled.Segment">
+                    <MudTable Items="@_chunks" Dense="true" Hover="true" Elevation="0">
+                        <HeaderContent>
+                            <MudTh>#</MudTh>
+                            <MudTh>Preview</MudTh>
+                            <MudTh>Tokens</MudTh>
+                            <MudTh>Status</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd DataLabel="#">@context.Index</MudTd>
+                            <MudTd DataLabel="Preview">@context.Preview</MudTd>
+                            <MudTd DataLabel="Tokens">@context.TokenCount</MudTd>
+                            <MudTd DataLabel="Status">
+                                <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined" Size="Size.Small">Embedded</MudChip>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+                </MudTabPanel>
+
+                <MudTabPanel Text="Audit" Icon="@Icons.Material.Filled.History">
+                    <MudTimeline Class="document-timeline">
+                        @foreach (var activity in _activities)
+                        {
+                            <MudTimelineItem Color="@activity.Color" Icon="@activity.Icon">
+                                <MudText Typo="Typo.subtitle2">@activity.Action</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary">@activity.Description</MudText>
+                                <MudText Typo="Typo.caption">@FormatDateTime(activity.CreatedAt)</MudText>
+                            </MudTimelineItem>
+                        }
+                    </MudTimeline>
+                </MudTabPanel>
+            </MudTabs>
+        </MudPaper>
+    </MudStack>
+}
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private DocumentDetailRow? _document;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private readonly List<ChunkPreviewRow> _chunks = new();
+    private readonly List<ActivityRow> _activities = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            await Task.Delay(300);
+            _document = BuildDocument(Id);
+            _chunks.AddRange(BuildChunks());
+            _activities.AddRange(BuildActivities());
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load document detail: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private void BackToDocuments() => Navigation.NavigateTo("/admin/documents");
+
+    private void EditMetadata()
+    {
+        if (_document is not null)
+        {
+            Snackbar.Add($"Edit metadata flow selected for {_document.Title}.", Severity.Info);
+        }
+    }
+
+    private async Task ReindexAsync()
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        _document.Status = "Processing";
+        await Task.Delay(250);
+        Snackbar.Add($"Re-index job queued for {_document.Title}.", Severity.Info);
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_document is null)
+        {
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Delete document",
+            ["Message"] = $"Delete {_document.Title}? This should also remove storage objects and document_chunks.",
+            ["ConfirmText"] = "Delete",
+            ["ConfirmationText"] = _document.Title,
+            ["ConfirmColor"] = Color.Error
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete document", parameters);
+        var result = await dialog.Result;
+
+        if (result is { Canceled: false })
+        {
+            Snackbar.Add($"Document {_document.Title} deleted.", Severity.Warning);
+            Navigation.NavigateTo("/admin/documents");
+        }
+    }
+
+    private static Color GetFileColor(string fileType)
+    {
+        return fileType.Equals("pdf", StringComparison.OrdinalIgnoreCase) ? Color.Error : Color.Primary;
+    }
+
+    private static string GetFileIcon(string fileType)
+    {
+        return fileType.ToLowerInvariant() switch
+        {
+            "pdf" => Icons.Material.Filled.PictureAsPdf,
+            "docx" => Icons.Material.Filled.Article,
+            "pptx" => Icons.Material.Filled.Slideshow,
+            _ => Icons.Material.Filled.Description
+        };
+    }
+
+    private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
+
+    private static DocumentDetailRow BuildDocument(Guid id)
+    {
+        return new DocumentDetailRow
+        {
+            Id = id,
+            Title = "RAG Evaluation Notes",
+            SubjectCode = "SWP391",
+            OwnerName = "Kiet Ngo",
+            OwnerEmail = "kiet.ngo@aistudyhub.edu",
+            Status = "Indexed",
+            FileType = "pdf",
+            FileSizeMb = 4.8,
+            StoragePath = "documents/swp391/rag-evaluation-notes.pdf",
+            ChunkCount = 42,
+            Tags = new List<string> { "rag", "evaluation", "project" },
+            CreatedAt = DateTime.UtcNow.AddDays(-7),
+            IndexedAt = DateTime.UtcNow.AddDays(-6).AddHours(-3)
+        };
+    }
+
+    private static IEnumerable<ChunkPreviewRow> BuildChunks()
+    {
+        return new[]
+        {
+            new ChunkPreviewRow(1, "Retrieval augmented generation evaluates answer quality by combining semantic search with grounded context.", 146),
+            new ChunkPreviewRow(2, "Chunking strategy, embedding model choice, and metadata filters affect both latency and relevance.", 132),
+            new ChunkPreviewRow(3, "Audit trails should record re-index operations, rejected files, and administrator overrides.", 118)
+        };
+    }
+
+    private static IEnumerable<ActivityRow> BuildActivities()
+    {
+        return new[]
+        {
+            new ActivityRow("Uploaded", "Document uploaded to Supabase Storage.", DateTime.UtcNow.AddDays(-7), Icons.Material.Filled.UploadFile, Color.Primary),
+            new ActivityRow("Indexed", "42 chunks embedded and ready for semantic search.", DateTime.UtcNow.AddDays(-6), Icons.Material.Filled.CheckCircle, Color.Success),
+            new ActivityRow("Reviewed", "Administrator verified subject mapping and tags.", DateTime.UtcNow.AddDays(-5), Icons.Material.Filled.Verified, Color.Secondary)
+        };
+    }
+
+    private sealed class DocumentDetailRow
+    {
+        public Guid Id { get; set; }
+        public string Title { get; set; } = string.Empty;
+        public string SubjectCode { get; set; } = string.Empty;
+        public string OwnerName { get; set; } = string.Empty;
+        public string OwnerEmail { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string FileType { get; set; } = string.Empty;
+        public double FileSizeMb { get; set; }
+        public string StoragePath { get; set; } = string.Empty;
+        public int ChunkCount { get; set; }
+        public List<string> Tags { get; set; } = new();
+        public DateTime CreatedAt { get; set; }
+        public DateTime IndexedAt { get; set; }
+    }
+
+    private sealed record ChunkPreviewRow(int Index, string Preview, int TokenCount);
+    private sealed record ActivityRow(string Action, string Description, DateTime CreatedAt, string Icon, Color Color);
+}
+
+<style>
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .detail-card,
+    .detail-tabs-card {
+        border-radius: 24px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .88);
+    }
+
+    .detail-card {
+        padding: 1.25rem;
+    }
+
+    .document-timeline {
+        max-width: 760px;
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

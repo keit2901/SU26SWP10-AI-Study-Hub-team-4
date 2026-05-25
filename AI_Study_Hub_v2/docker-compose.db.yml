@@ -1,0 +1,28 @@
+name: aistudyhub-db
+
+# DEPRECATED 2026-05-24 — Phase 1 Custom JWT stack ripped in favour of Supabase Local.
+# The new dev stack lives at: D:\FPT\summer2026\SWP391\infra\supabase\docker-compose.yml
+# This file is kept ONLY so the original aistudyhub-db_db-data volume can be
+# restarted for rollback (volume backup at D:\FPT\summer2026\SWP391\backups\).
+# Do NOT use for daily development. Use `docker compose up -d` from infra/supabase/ instead.
+
+services:
+  db:
+    image: pgvector/pgvector:pg15
+    container_name: aistudyhub-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: aistudyhub
+    ports:
+      - "5433:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  db-data:

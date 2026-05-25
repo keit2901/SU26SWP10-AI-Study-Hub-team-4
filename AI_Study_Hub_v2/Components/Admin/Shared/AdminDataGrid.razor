@@ -1,0 +1,114 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Shared
+@typeparam TItem
+@attribute [CascadingTypeParameter(nameof(TItem))]
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<MudPaper Elevation="0" Class="admin-grid-shell">
+    @if (!string.IsNullOrWhiteSpace(Title) || ToolbarContent is not null)
+    {
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="admin-grid-toolbar">
+            <div>
+                @if (!string.IsNullOrWhiteSpace(Title))
+                {
+                    <MudText Typo="Typo.h6">@Title</MudText>
+                }
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Subtitle</MudText>
+                }
+            </div>
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                @ToolbarContent
+            </MudStack>
+        </MudStack>
+    }
+
+    @if (IsLoading)
+    {
+        <MudStack Class="pa-6" Spacing="3">
+            <MudSkeleton Height="44px" Animation="Animation.Wave" />
+            <MudSkeleton Height="44px" Animation="Animation.Wave" />
+            <MudSkeleton Height="44px" Animation="Animation.Wave" />
+        </MudStack>
+    }
+    else if (!string.IsNullOrWhiteSpace(ErrorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="ma-4">
+            @ErrorMessage
+        </MudAlert>
+    }
+    else if (Items is null || !Items.Any())
+    {
+        <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Class="admin-grid-empty" Spacing="2">
+            <MudIcon Icon="@EmptyIcon" Size="Size.Large" Color="Color.Secondary" />
+            <MudText Typo="Typo.h6">@EmptyTitle</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">@EmptyText</MudText>
+            @EmptyContent
+        </MudStack>
+    }
+    else
+    {
+        <MudDataGrid T="TItem"
+                     Items="@Items"
+                     Dense="@Dense"
+                     Hover="true"
+                     Bordered="false"
+                     Striped="false"
+                     Filterable="@Filterable"
+                     SortMode="SortMode.Multiple"
+                     ReadOnly="true"
+                     Elevation="0"
+                     Class="admin-data-grid">
+            <Columns>
+                @Columns
+            </Columns>
+            <PagerContent>
+                <MudDataGridPager T="TItem" PageSizeOptions="@PageSizeOptions" />
+            </PagerContent>
+        </MudDataGrid>
+    }
+</MudPaper>
+
+@code {
+    [Parameter] public IEnumerable<TItem>? Items { get; set; }
+    [Parameter] public RenderFragment? Columns { get; set; }
+    [Parameter] public RenderFragment? ToolbarContent { get; set; }
+    [Parameter] public RenderFragment? EmptyContent { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public bool IsLoading { get; set; }
+    [Parameter] public string? ErrorMessage { get; set; }
+    [Parameter] public bool Filterable { get; set; } = true;
+    [Parameter] public bool Dense { get; set; } = true;
+    [Parameter] public int[] PageSizeOptions { get; set; } = new[] { 10, 25, 50 };
+    [Parameter] public string EmptyIcon { get; set; } = Icons.Material.Filled.Inventory2;
+    [Parameter] public string EmptyTitle { get; set; } = "No records found";
+    [Parameter] public string EmptyText { get; set; } = "Try changing filters or creating a new record.";
+}
+
+<style>
+    .admin-grid-shell {
+        border-radius: 24px;
+        overflow: hidden;
+        border: 1px solid rgba(15, 118, 110, .14);
+        background: rgba(255, 252, 246, .92);
+        box-shadow: 0 24px 80px rgba(29, 44, 37, .08);
+    }
+
+    .admin-grid-toolbar {
+        padding: 1.1rem 1.25rem;
+        border-bottom: 1px solid rgba(15, 118, 110, .1);
+        background: linear-gradient(90deg, rgba(15, 118, 110, .08), rgba(180, 83, 9, .06));
+    }
+
+    .admin-grid-empty {
+        min-height: 320px;
+        padding: 2rem;
+        text-align: center;
+    }
+
+    .admin-data-grid .mud-table-head {
+        background: rgba(15, 118, 110, .07);
+    }
+</style>

@@ -1,0 +1,106 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Users
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using AI_Study_Hub_v2.Components.Admin.Shared
+
+<EntitySheet Open="@Open"
+             OpenChanged="@OpenChanged"
+             Title="Invite user"
+             Subtitle="Create a profile invitation for Supabase authentication."
+             Width="480px">
+    <ChildContent>
+        <MudForm @ref="_form" @bind-IsValid="_isValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_model.FullName"
+                              Label="Full name"
+                              Variant="Variant.Outlined"
+                              Required="true"
+                              RequiredError="Full name is required" />
+                <MudTextField @bind-Value="_model.Email"
+                              Label="Email"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Email"
+                              Required="true"
+                              RequiredError="Email is required" />
+                <MudTextField @bind-Value="_model.StudentCode"
+                              Label="Student code"
+                              Variant="Variant.Outlined"
+                              Placeholder="Optional for staff" />
+                <MudSelect T="string" @bind-Value="_model.Role" Label="Role" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="string" Value="@("Student")">Student</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("Admin")">Admin</MudSelectItem>
+                </MudSelect>
+                <MudNumericField T="int" @bind-Value="_model.DailyTokenQuota" Label="Daily token quota" Variant="Variant.Outlined" Min="1000" Step="1000" />
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                    The invitation action should call your Supabase auth flow, insert or update profiles, seed quota settings, and write audit_logs.
+                </MudAlert>
+            </MudStack>
+        </MudForm>
+    </ChildContent>
+    <FooterContent>
+        <MudButton Variant="Variant.Text" OnClick="CancelAsync">Cancel</MudButton>
+        <MudButton Color="Color.Primary"
+                   Variant="Variant.Filled"
+                   StartIcon="@Icons.Material.Filled.Send"
+                   Disabled="@(!_isValid || IsSubmitting)"
+                   OnClick="SubmitAsync">
+            @(IsSubmitting ? "Sending..." : "Send invite")
+        </MudButton>
+    </FooterContent>
+</EntitySheet>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public EventCallback<InviteUserRequest> InviteSubmitted { get; set; }
+    [Parameter] public bool IsSubmitting { get; set; }
+
+    private MudForm? _form;
+    private bool _isValid;
+    private InviteUserRequest _model = new();
+
+    private async Task SubmitAsync()
+    {
+        if (_form is null)
+        {
+            return;
+        }
+
+        await _form.ValidateAsync();
+        if (!_form.IsValid)
+        {
+            return;
+        }
+
+        await InviteSubmitted.InvokeAsync(_model.Clone());
+        _model = new InviteUserRequest();
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    private async Task CancelAsync()
+    {
+        _model = new InviteUserRequest();
+        await OpenChanged.InvokeAsync(false);
+    }
+
+    public sealed class InviteUserRequest
+    {
+        public string FullName { get; set; } = string.Empty;
+        public string Email { get; set; } = string.Empty;
+        public string StudentCode { get; set; } = string.Empty;
+        public string Role { get; set; } = "Student";
+        public int DailyTokenQuota { get; set; } = 25_000;
+
+        public InviteUserRequest Clone()
+        {
+            return new InviteUserRequest
+            {
+                FullName = FullName,
+                Email = Email,
+                StudentCode = StudentCode,
+                Role = Role,
+                DailyTokenQuota = DailyTokenQuota
+            };
+        }
+    }
+}

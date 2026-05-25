@@ -1,0 +1,74 @@
+﻿@namespace AI_Study_Hub_v2.Components.Admin.Shared
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<MudDrawer Open="@Open"
+           OpenChanged="@OpenChanged"
+           Anchor="Anchor.Right"
+           Variant="DrawerVariant.Temporary"
+           Elevation="8"
+           Width="@Width"
+           Class="entity-sheet-drawer">
+    <MudStack Class="entity-sheet" Spacing="0">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="entity-sheet-header">
+            <div>
+                <MudText Typo="Typo.h5">@Title</MudText>
+                @if (!string.IsNullOrWhiteSpace(Subtitle))
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Subtitle</MudText>
+                }
+            </div>
+            <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="Close" />
+        </MudStack>
+
+        <MudDivider />
+
+        <div class="entity-sheet-body">
+            @ChildContent
+        </div>
+
+        @if (FooterContent is not null)
+        {
+            <MudDivider />
+            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.FlexEnd" Spacing="2" Class="entity-sheet-footer">
+                @FooterContent
+            </MudStack>
+        }
+    </MudStack>
+</MudDrawer>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public string Title { get; set; } = "Details";
+    [Parameter] public string? Subtitle { get; set; }
+    [Parameter] public string Width { get; set; } = "460px";
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public RenderFragment? FooterContent { get; set; }
+
+    private Task Close() => OpenChanged.InvokeAsync(false);
+}
+
+<style>
+    .entity-sheet-drawer .mud-drawer {
+        max-width: 100vw;
+    }
+
+    .entity-sheet {
+        min-height: 100%;
+        background:
+            radial-gradient(circle at top right, rgba(20, 184, 166, .16), transparent 18rem),
+            #fffcf6;
+    }
+
+    .entity-sheet-header,
+    .entity-sheet-footer {
+        padding: 1.25rem;
+    }
+
+    .entity-sheet-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 1.25rem;
+    }
+</style>

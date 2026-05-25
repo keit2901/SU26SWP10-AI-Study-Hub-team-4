@@ -1,0 +1,124 @@
+# ====================================================================
+# AI Study Hub v2 — monorepo .gitignore
+# ====================================================================
+# Repo root: D:\FPT\summer2026\SWP391
+# Tracked: AI_Study_Hub_v2/, infra/supabase/ (no secrets/data),
+#          previous_session/, SWP391_team_4.docx, top-level docs.
+# Untracked: legacy admin project, scratch notes, backups, installers,
+#            external archives, build artifacts, secrets.
+
+# --- Folders explicitly OUT of scope ---
+AI_Study_Hub_Admin/
+Skills/
+Skills.zip
+Suggest_from_Claude/
+backups/
+
+# --- Large binaries / archives at repo root ---
+Docker Desktop Installer.exe
+SWP391.rar
+SWP391(tham khảo nhóm khác).docx
+*.rar
+*.zip
+*.tgz
+*.tar
+*.tar.gz
+
+# --- Tham khảo file mã hoá tên unicode (Vietnamese filenames) ---
+prompt tạo diagram cho database.txt
+tổng kết webinar 22052026.txt
+
+# --- Random files from other projects (not part of AI Study Hub) ---
+MangaManagementSystem_Procedures_Views_Bootstrap.txt
+
+# ====================================================================
+# Visual Studio / Rider / VS Code
+# ====================================================================
+.vs/
+.idea/
+.vscode/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+*.codegraph/
+
+# ====================================================================
+# .NET build artifacts
+# ====================================================================
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+[Ll]og/
+[Ll]ogs/
+artifacts/
+publish/
+*.dll
+*.pdb
+*.exe
+*.cache
+*.tlog
+
+# Test results / coverage
+[Tt]est[Rr]esult*/
+[Cc]overage*/
+*.coverage
+*.coveragexml
+coverage*.json
+coverage*.xml
+coverage*.info
+*.trx
+
+# NuGet
+*.nupkg
+*.snupkg
+.nuget/
+packages/
+
+# ====================================================================
+# Secrets — NEVER commit
+# ====================================================================
+*.env
+.env
+.env.*
+!.env.example
+appsettings.*.local.json
+appsettings.Local.json
+secrets.json
+*.pfx
+*.p12
+*.key
+*.pem
+admin-pwd*.txt
+
+# ====================================================================
+# Supabase Local — runtime data + secrets
+# ====================================================================
+infra/supabase/.env
+infra/supabase/volumes/db/data/
+infra/supabase/volumes/storage/
+infra/supabase/volumes/logs/
+infra/supabase/volumes/pooler/
+infra/supabase/volumes/api/server.crt
+infra/supabase/volumes/api/server.key
+
+# ====================================================================
+# OS junk
+# ====================================================================
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+__MACOSX/
+
+# ====================================================================
+# Editor/temp scratch
+# ====================================================================
+*.swp
+*.swo
+*~
+*.bak
+*.tmp
+*.log

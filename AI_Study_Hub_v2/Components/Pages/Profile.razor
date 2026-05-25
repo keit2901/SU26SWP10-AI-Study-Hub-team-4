@@ -1,0 +1,143 @@
+@page "/profile"
+@rendermode InteractiveServer
+@using AI_Study_Hub_v2.Services
+@inject AuthApiClient AuthApi
+@inject AuthSessionState Session
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Profile - AI Study Hub v2</PageTitle>
+
+@if (!Session.IsAuthenticated)
+{
+    <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 60vh;">
+        <MudAlert Severity="Severity.Warning">You are not signed in.</MudAlert>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/login">Go to login</MudButton>
+    </MudStack>
+}
+else
+{
+    var u = Session.CurrentUser!;
+    var s = Session.Session!;
+
+    <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 80vh;">
+        <MudPaper Class="pa-6" Elevation="4" Style="width: 100%; max-width: 560px;">
+            <MudStack Spacing="3">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudAvatar Color="Color.Primary" Size="Size.Large">
+                        @(string.IsNullOrEmpty(u.FullName) ? "?" : u.FullName[0].ToString().ToUpperInvariant())
+                    </MudAvatar>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.h6">@u.FullName</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">@u.Email</MudText>
+                    </MudStack>
+                </MudStack>
+
+                <MudDivider />
+
+                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Striped="true">
+                    <tbody>
+                        <tr><td><b>User Id</b></td><td><code>@u.Id</code></td></tr>
+                        <tr><td><b>Username</b></td><td>@u.Username</td></tr>
+                        <tr><td><b>Role</b></td><td><MudChip T="string" Color="Color.Info" Size="Size.Small">@u.Role</MudChip></td></tr>
+                        <tr><td><b>Active</b></td><td>@(u.IsActive ? "Yes" : "No")</td></tr>
+                        <tr><td><b>Created</b></td><td>@u.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td></tr>
+                        <tr><td><b>Token expires</b></td><td>@s.ExpiresAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
+                    </tbody>
+                </MudSimpleTable>
+
+                <MudExpansionPanels>
+                    <MudExpansionPanel Text="Show JWT (for demo)">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Access token (Bearer):</MudText>
+                        <MudPaper Class="pa-2 mt-1" Elevation="0" Style="background:#f5f5f5; word-break:break-all; font-family:monospace; font-size:11px;">
+                            @s.AccessToken
+                        </MudPaper>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">Refresh token:</MudText>
+                        <MudPaper Class="pa-2 mt-1" Elevation="0" Style="background:#f5f5f5; word-break:break-all; font-family:monospace; font-size:11px;">
+                            @s.RefreshToken
+                        </MudPaper>
+                    </MudExpansionPanel>
+                </MudExpansionPanels>
+
+                <MudStack Row="true" Spacing="2" Justify="Justify.FlexEnd">
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               OnClick="ReloadAsync"
+                               Disabled="_busy"
+                               StartIcon="@Icons.Material.Filled.Refresh">
+                        Refresh /me
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Error"
+                               OnClick="LogoutAsync"
+                               Disabled="_busy"
+                               StartIcon="@Icons.Material.Filled.Logout">
+                        @(_busy ? "Signing out..." : "Sign out")
+                    </MudButton>
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    </MudStack>
+}
+
+@code {
+    private bool _busy;
+
+    private async Task LogoutAsync()
+    {
+        if (!Session.IsAuthenticated || string.IsNullOrEmpty(Session.AccessToken)) return;
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            await AuthApi.LogoutAsync(Session.AccessToken);
+            Snackbar.Add("Signed out. All refresh tokens revoked.", Severity.Success);
+        }
+        catch (AuthApiException ex)
+        {
+            Snackbar.Add($"Logout failed: {ex.Message}", Severity.Warning);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Network error during logout: {ex.Message}", Severity.Warning);
+        }
+        finally
+        {
+            Session.Clear();
+            _busy = false;
+            Nav.NavigateTo("/login", replace: true);
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken)) return;
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var me = await AuthApi.GetMeAsync(Session.AccessToken);
+            // Patch the current session's user without losing the tokens.
+            if (Session.Session is not null)
+            {
+                Session.Session.User = me;
+                Session.Set(Session.Session);
+            }
+            Snackbar.Add("Profile refreshed from /me.", Severity.Info);
+        }
+        catch (AuthApiException ex)
+        {
+            Snackbar.Add($"Failed to refresh: {ex.Message}", Severity.Warning);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+}
