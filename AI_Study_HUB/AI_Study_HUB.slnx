@@ -1,0 +1,9 @@
+<Solution>
+  <Project Path="AIStudyHub.WebApi/AIStudyHub.WebApi.csproj" />
+  <Project Path="src/AIStudyHub.Application/AIStudyHub.Application.csproj" />
+  <Project Path="src/AIStudyHub.BlazorWasm/AIStudyHub.BlazorWasm.csproj" />
+  <Project Path="src/AIStudyHub.Domain/AIStudyHub.Domain.csproj" />
+  <Project Path="src/AIStudyHub.Infrastructure/AIStudyHub.Infrastructure.csproj" />
+  <Project Path="tests/AIStudyHub.IntegrationTests/AIStudyHub.IntegrationTests.csproj" />
+  <Project Path="tests/AIStudyHub.UnitTests/AIStudyHub.UnitTests.csproj" />
+</Solution>
