@@ -1,10 +1,10 @@
 # AI Study Hub v2 — Resume Pack
 
 > **Mục đích:** Mở session mới với agent (Claude / OpenCode / Kiro / khác) → paste/đính kèm file này làm context đầu tiên → agent có đủ thông tin để **không hỏi lại** và **không phá tiến độ**.
-> **Cập nhật lần cuối:** 2026-05-26 (sau Sprint 1 D1+D2+D3+D4 — Phase 2 schema + Document backend pipeline + Blazor upload + list/detail/delete UI)
+> **Cập nhật lần cuối:** 2026-05-26 (sau Sprint 1 D1+D2+D3+D4+D5 — Phase 2 schema + Document backend pipeline + Blazor upload + list/detail/delete UI + 50 NUnit tests cover backend)
 > **Người maintain:** Kiệt — PM Team 4 SWP391 SU26
-> **Phase hoàn tất:** Phase 1 Auth (GoTrue) + **Sprint 1 D1-D4** của Phase 2: schema (folders/documents/document_chunks + pgvector ivfflat) + Storage bucket + backend CRUD + signed-URL download + Blazor upload UI + list/detail/delete UI. Còn lại Sprint 1: D5 backend tests, D6 demo polish + folder picker.
-> **File companion:** `13_Session_2026-05-26_Sprint1_D4_Handoff.md` (canonical close — D4 list/detail/delete UI), `12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` (D2 smoke + D3 upload form), `07_Phase2_Document_RAG_Plan.md` (Phase 2 plan v-final), `rule.md` (session-progress rule).
+> **Phase hoàn tất:** Phase 1 Auth (GoTrue) + **Sprint 1 D1-D5** của Phase 2: schema (folders/documents/document_chunks + pgvector ivfflat) + Storage bucket + backend CRUD + signed-URL download + Blazor upload UI + list/detail/delete UI + DocumentService/Controller NUnit coverage. Còn lại Sprint 1: D6 demo polish + folder picker.
+> **File companion:** `14_Session_2026-05-26_Sprint1_D5_Handoff.md` (canonical close — D5 backend tests), `13_Session_2026-05-26_Sprint1_D4_Handoff.md` (D4 list/detail/delete UI), `12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` (D2 smoke + D3 upload form), `07_Phase2_Document_RAG_Plan.md` (Phase 2 plan v-final), `rule.md` (session-progress rule).
 
 ---
 
@@ -174,17 +174,31 @@ AI_Study_Hub_v2.Tests/
 │                                     EF Core InMemory 8.0.10 + Mvc.Testing 8.0.10 + coverlet
 ├── SmokeTests.cs                    ← 3 sanity tests (pipeline OK, project ref compile)
 ├── Support/
-│   └── TestDb.cs                    ← InMemory AppDbContext factory, pre-seed 2 roles
+│   └── TestDb.cs                    ← InMemory AppDbContext factory, pre-seed 2 roles;
+│                                     +CreateInMemoryWithDocuments() (D5) keeps Document+Folder
+│                                     mapped, Ignores only DocumentChunk (pgvector)
 ├── Services/
-│   └── SupabaseAuthServiceTests.cs  ← 18 unit tests cover Register/Login/Refresh/Logout/Me
-│                                     mock IGoTrueClient, EF InMemory cho public.users
+│   ├── SupabaseAuthServiceTests.cs  ← 18 unit tests cover Register/Login/Refresh/Logout/Me
+│   │                                 mock IGoTrueClient, EF InMemory cho public.users
+│   └── DocumentServiceTests.cs      ← Phase 2 D5: 30 tests (29 pass, 1 documented skip
+│                                     for ILike-no-InMemory) — Upload (happy + filename
+│                                     sanitisation + 4 error branches + 415 mime matrix x4
+│                                     + allowed-mime matrix x5 + folder ownership +
+│                                     storage-throws-no-row), List (filter + isolation +
+│                                     ordering), GetById (happy w/ signed URL + 404),
+│                                     Delete (happy + 404 + storage-503-still-deletes)
 └── Controllers/
-    └── AuthControllerTests.cs       ← 17 tests cover claim parsing (sub/email fallback),
-                                     AuthException → status code mapping, Bearer header,
-                                     stub IAuthenticationService cho HttpContext.GetTokenAsync
+    ├── AuthControllerTests.cs       ← 17 tests cover claim parsing (sub/email fallback),
+    │                                  AuthException → status code mapping, Bearer header,
+    │                                  stub IAuthenticationService cho HttpContext.GetTokenAsync
+    └── DocumentsControllerTests.cs  ← Phase 2 D5: 20 tests — Upload (claim NameId+sub
+                                       fallback, missing_file 400, missing_user_id 401,
+                                       DocumentException matrix 6-codes, unexpected 500),
+                                       List/GetById/Delete (happy + DocumentException +
+                                       unexpected 500)
 ```
 
-> **Document backend test gap:** D2 (DocumentService + DocumentsController) chưa có unit/integration tests — backend coverage gap được track ở backlog Sprint 1 D5 / SCRUM-28. D2 đã verified live qua smoke E2E (8/8 PASS, see §4.1).
+> **Document backend coverage (D5 done):** DocumentService 30 tests + DocumentsController 20 tests = +50 tests. D2 live smoke (8/8 PASS, see §4.2) still gates the integration surface (storage REST + Postgres). Total tests 38 → 88 (87 pass + 1 documented skip + 0 fail).
 
 **Files đã DELETE sau migration (không còn trên disk):**
 `Services/PasswordHasher.cs`, `Services/JwtTokenService.cs`, `Services/RefreshTokenService.cs`, `Services/AuthService.cs`, `Data/Entities/RefreshToken.cs`, `Data/Configurations/RefreshTokenConfiguration.cs`, `Options/JwtOptions.cs`, migration cũ `20260523183927_InitialCreate.*`.
@@ -192,13 +206,15 @@ AI_Study_Hub_v2.Tests/
 ### 3.2 Build status
 
 ```
-dotnet build (cwd: AI_Study_Hub_v2)
-→ Build succeeded. 0 Warning(s). 0 Error(s).  (post-D4 2026-05-26T09:33Z)
-dotnet test → Passed! 38/38 (Duration: ~806 ms)
+dotnet build (sln)
+→ Build succeeded. 0 Warning(s). 0 Error(s).  (post-D5 2026-05-26T09:53Z)
+dotnet test (sln) → Passed! 87/88 + 1 skipped (Duration: ~1.8s)
             ├─ SmokeTests: 3 (pipeline sanity)
             ├─ SupabaseAuthServiceTests: 18 (Register/Login/Refresh/Logout/Me happy + error paths)
-            └─ AuthControllerTests: 17 (claim parsing + AuthException mapping + Bearer header)
-            (Document* coverage: 0 — backlog D5)
+            ├─ AuthControllerTests: 17 (claim parsing + AuthException mapping + Bearer header)
+            ├─ DocumentServiceTests: 30 (29 pass, 1 documented skip — ILike no InMemory)
+            └─ DocumentsControllerTests: 20 (claim parse + sub fallback +
+               DocumentException matrix + missing_file 400 + 500 fallback)
 ```
 
 ### 3.3 Database state (Postgres `postgres` DB on container `supabase-db` @ localhost:5432)
@@ -225,7 +241,7 @@ Seeded data:
 - DB clean — `public.documents`, `public.document_chunks`, `public.folders` all 0 rows after D2 smoke cleanup (2026-05-26T04:19Z step 8).
 
 Storage bucket (`http://localhost:8000/storage/v1`):
-- `documents` — private=true, file_size_limit=50MB, 5 allowed MIME (pdf, doc, docx, txt, md). Created via Storage REST POST `/bucket`.
+- `documents` — private=true, file_size_limit=50MB, 5 allowed MIME (pdf, docx, pptx, doc, ppt — verified live via Storage REST 2026-05-26T09:43Z; matches `DocumentService.AllowedMimeTypes` + `DocumentApiClient.AllowedMimeTypes` + `DocumentUpload.razor` AcceptAttr 4-way). Created via Storage REST POST `/bucket`.
 
 Extensions enabled in `postgres` DB: `vector 0.8.0`, `pgcrypto`, `uuid-ossp` (sẵn từ image).
 
@@ -270,8 +286,8 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | 9 | Phase 2 Sprint 1 D2 — Document backend pipeline (DocumentsController + DocumentService + SupabaseStorageClient) — code + smoke E2E | ✅ Done 2026-05-26 (smoke 8/8 GREEN) |
 | 10 | Phase 2 Sprint 1 D3 — Blazor upload form (`DocumentApiClient` + `/documents/upload` page + nav link) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred to Kiệt) |
 | 11 | Phase 2 Sprint 1 D4 — List/detail/delete UI (`/documents` + `/documents/{id}`) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred; folder picker split → D6) |
-| 12 | Phase 2 Sprint 1 D5 — Backend tests for DocumentService + DocumentsController (SCRUM-28) | ⏳ Pending (next session) |
-| 13 | Phase 2 Sprint 1 D6 — Demo polish (UX, error states, seeded sample) + Folder picker (FoldersController + IFolderService + FolderApiClient + dropdown) | ⏳ Pending |
+| 12 | Phase 2 Sprint 1 D5 — Backend tests for DocumentService + DocumentsController (SCRUM-28) | ✅ Done 2026-05-26 (50 new tests, 87/88 pass + 1 documented skip) |
+| 13 | Phase 2 Sprint 1 D6 — Demo polish (UX, error states, seeded sample) + Folder picker (FoldersController + IFolderService + FolderApiClient + dropdown) | ⏳ Pending (last Sprint 1 item) |
 | 14 | Phase 2 Sprint 2 — Chunking + embeddings + RAG retrieve + Groq generation | ⏳ Pending |
 
 ### 4.1 Smoke Test Results — Phase 1 (Supabase GoTrue)
@@ -334,6 +350,17 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | Commit | `50a8122 feat(documents): D4 list/detail/delete UI (SCRUM-15/25) — code-complete` |
 | Deferred | Folder picker → D6 (needs `FoldersController` + `IFolderService` + `FolderApiClient` + dropdown); manual browser smoke → Kiệt |
 | Origin note | Code came in as drift between session 12 close (07:20Z) and session 13 open (07:33Z) — reviewed, build/test green, accepted by Kiệt 09:33Z (D-2026-05-26-02). Lesson: extend session-open verify to include `git status --porcelain` mismatch check, not just tree-clean. |
+
+### 4.5 D5 Backend tests for DocumentService + DocumentsController (2026-05-26T09:54Z)
+
+| Item | Value |
+|---|---|
+| Service tests | `DocumentServiceTests.cs` — 30 NUnit tests (29 pass, 1 documented skip): Upload happy + filename sanitisation + 4 error branches (404 user_not_found, 403 user_inactive, 400 empty_file, 413 file_too_large) + 415 mime matrix x4 + allowed-mime regression matrix x5 + folder ownership 404/accept + storage upload throws → bubble + zero rows; List filter/order/isolation; GetById happy w/ signed URL + 404; Delete happy + 404 + storage 503 still removes row |
+| Controller tests | `DocumentsControllerTests.cs` — 20 NUnit tests: Upload (claim parsing NameId + sub fallback, missing_file 400 for null + empty file, missing_user_id 401 on non-GUID sub, DocumentException matrix x6 → status+code mapping, unexpected → 500); List/GetById/Delete (happy + DocumentException → status + unexpected → 500) |
+| Test harness | `Support/TestDb.cs` extended with `CreateInMemoryWithDocuments()` + `TestDocsDbContext` — keeps Document + Folder mapped (only DocumentChunk Ignored for pgvector); InMemory persists Document.Status enum as int |
+| Documented gap | `EF.Functions.ILike` Q-text branch in ListAsync has no InMemory translation → `[Ignore]`-d with reason; D2 live smoke covers it |
+| Build/Test gate | 0 warning, 0 error; **87/88 pass + 1 skipped, 0 failed** in 1.8s (was 38/38) |
+| Commit | `9dce4a0 test(documents): D5 backend tests for DocumentService + DocumentsController (SCRUM-28)` |
 
 ---
 
@@ -619,7 +646,7 @@ Nếu **app chưa chạy** (5240 not listening): chỉ là chưa start, không p
 
 ## 12. Phase 2 — Backlog (Sprint 1 còn D4-D6, Sprint 2 RAG)
 
-### Sprint 1 — Document Management (4/6 ✅ done)
+### Sprint 1 — Document Management (5/6 ✅ done)
 
 | Day | Scope | Status |
 |---|---|---|
@@ -627,8 +654,8 @@ Nếu **app chưa chạy** (5240 not listening): chỉ là chưa start, không p
 | D2 | Backend `DocumentsController` + `DocumentService` + `SupabaseStorageClient` + smoke E2E live | ✅ commit `0245045` (smoke green) |
 | D3 | Blazor `DocumentApiClient` + `/documents/upload` page + nav link | ✅ commit `8454b0d` (manual UI smoke deferred) |
 | D4 | Blazor list/detail/delete UI (`/documents` + `/documents/{id}`) — `MudTable` + filters + `ConfirmDialog` delete + signed-URL "Open file" | ✅ commit `50a8122` (manual UI smoke deferred; folder picker split → D6) |
-| D5 | NUnit tests for `DocumentService` (unit, mock IStorageClient + EF InMemory) + `DocumentsController` (integration via WebApplicationFactory) — SCRUM-28 | ⏳ next |
-| D6 | Demo polish — UX states, seeded sample PDFs, error scenarios, NavMenu icons + Folder picker (FoldersController + IFolderService + FolderApiClient + dropdown in Upload/List/Detail) | ⏳ |
+| D5 | NUnit tests for `DocumentService` (unit, mock IStorageClient + EF InMemory) + `DocumentsController` (unit-level claim + exception mapping) — SCRUM-28 | ✅ commit `9dce4a0` (50 new tests, 87/88 pass + 1 documented skip) |
+| D6 | Demo polish — UX states, seeded sample PDFs, error scenarios, NavMenu icons + Folder picker (FoldersController + IFolderService + FolderApiClient + dropdown in Upload/List/Detail) | ⏳ next |
 
 ### Sprint 2 — RAG pipeline (planned)
 
@@ -662,7 +689,8 @@ Trước khi bắt đầu Sprint 2, cần Kiệt confirm:
 | `previous_session/11_Session_2026-05-25_Sprint1_D1D2_Handoff.md` | Sprint 1 D1+D2 code-complete handoff (canonical) |
 | `previous_session/11a_Session_2026-05-25_Sprint1_D1_D2_Handoff_superseded.md` | Older near-dup of 11, marked SUPERSEDED |
 | `previous_session/12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` | D2 smoke E2E green + D3 upload form code-complete |
-| `previous_session/13_Session_2026-05-26_Sprint1_D4_Handoff.md` | **Latest** — D4 list/detail/delete UI code-complete |
+| `previous_session/13_Session_2026-05-26_Sprint1_D4_Handoff.md` | D4 list/detail/delete UI code-complete |
+| `previous_session/14_Session_2026-05-26_Sprint1_D5_Handoff.md` | **Latest** — D5 backend tests for DocumentService + DocumentsController (SCRUM-28) |
 | `previous_session/rule.md` | **Session-progress tracking rule** (mandatory for all agents) |
 | `previous_session/04_Next_Session_Handoff.md` | OBSOLETE — viết trước migration, giữ làm history |
 | `previous_session/archive/previous_session_raw_transcript.md` | Raw Q&A transcript session đầu |
@@ -695,13 +723,15 @@ Studio login:     supabase / <DASHBOARD_PASSWORD từ .env>
 Roles seeded:     Admin, Student
 Migrations:       20260524090408_InitialSupabaseAuth
                   20260525143314_AddDocumentSchema
-Storage bucket:   documents (private, 50MB, 5 MIME: pdf/doc/docx/txt/md)
+Storage bucket:   documents (private, 50MB, 5 MIME: pdf/docx/pptx/doc/ppt — verified live 2026-05-26T09:43Z, matches DocumentService.AllowedMimeTypes 4-way)
 .NET SDK:         10.0.300 (project targets net8.0)
 EF tool:          9.0.9 (works against net8.0 project)
 Docker:           29.4.3
-Tests:            38/38 pass (auth only; document backend coverage = D5 backlog)
-Build:            0 warning, 0 error (last verified 2026-05-26T09:33Z)
-Git HEAD:         50a8122  feat(documents): D4 list/detail/delete UI (SCRUM-15/25) — code-complete
+Tests:            87/88 pass + 1 documented skip (auth 35 + documents 50 + smoke 3; ILike-no-InMemory branch covered by D2 live smoke)
+Build:            0 warning, 0 error (last verified 2026-05-26T09:53Z)
+Git HEAD:         9dce4a0  test(documents): D5 backend tests for DocumentService + DocumentsController (SCRUM-28)
+                  679b0d4  docs(session): close 13 - D4 list/detail UI code-complete
+                  50a8122  feat(documents): D4 list/detail/delete UI (SCRUM-15/25) — code-complete
                   568177c  docs(session): close 12 - D2 smoke green + D3 upload form code-complete
                   8454b0d  feat(documents): D3 Blazor upload form (SCRUM-12/26) — code-complete
                   0245045  test(documents): D2 smoke E2E pass — upload/list/get/signed-download/delete
