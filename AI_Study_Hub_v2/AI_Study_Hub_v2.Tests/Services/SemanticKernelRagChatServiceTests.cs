@@ -81,6 +81,32 @@ public class SemanticKernelRagChatServiceTests
     }
 
     [Test]
+    public async Task AskAsync_WhitespaceSourceExcerpts_ReturnsFallback_AndDoesNotCallProvider()
+    {
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        rag.Setup(s => s.SearchAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<RagSearchRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new RagSearchResultDto("", Guid.NewGuid(), "blank-1.pdf", 0, null, "   ", 0.8),
+                new RagSearchResultDto("", Guid.NewGuid(), "blank-2.pdf", 1, null, "\r\n\t", 0.7),
+            });
+
+        var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        var sut = BuildSut(rag.Object, completion.Object);
+
+        var response = await sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("Explain the notes", null, null, null, null));
+
+        response.Answer.Should().Be(SemanticKernelRagChatService.NoSourcesAnswer);
+        response.RefusalReason.Should().Be("no_sources");
+        response.Sources.Should().BeEmpty();
+        rag.VerifyAll();
+        completion.VerifyNoOtherCalls();
+    }
+
+    [Test]
     public async Task AskAsync_WithSources_CallsProvider_WithGroundedPrompt_AndReturnsCitations()
     {
         var supabaseUserId = Guid.NewGuid();

@@ -67,6 +67,14 @@ public class AiChatControllerTests
     }
 
     [Test]
+    public void Ask_AllowAnonymousMetadataIsNotPresent()
+    {
+        typeof(AiChatController)
+            .GetCustomAttributes(inherit: false)
+            .Should().NotContain(attribute => attribute.GetType().Name == "AllowAnonymousAttribute");
+    }
+
+    [Test]
     public async Task Ask_InvalidAuthClaim_Returns401_AndSkipsService()
     {
         var service = new Mock<IAiChatService>(MockBehavior.Strict);
