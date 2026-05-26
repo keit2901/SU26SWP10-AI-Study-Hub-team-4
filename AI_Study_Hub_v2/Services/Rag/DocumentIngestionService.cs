@@ -61,7 +61,6 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
                 return Failure(documentId, "Document does not exist or does not belong to the caller.");
             }
 
-            document.Status = DocumentStatus.Processing;
             document.ErrorMessage = null;
             await _db.SaveChangesAsync(cancellationToken);
 
