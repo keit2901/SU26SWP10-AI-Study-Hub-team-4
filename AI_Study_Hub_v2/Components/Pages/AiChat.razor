@@ -220,7 +220,7 @@
                                            Color="Color.Primary"
                                            StartIcon="@Icons.Material.Filled.Send"
                                            OnClick="AskAsync"
-                                           Disabled="_busy || ReadyDocuments.Count == 0">
+                                           Disabled="_busy || ReadyDocuments.Count == 0 || string.IsNullOrWhiteSpace(_question)">
                                     @if (_busy)
                                     {
                                         <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
