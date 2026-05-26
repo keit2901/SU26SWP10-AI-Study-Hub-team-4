@@ -1,3 +1,8 @@
+> **⚠️ SUPERSEDED 2026-05-26T03:41Z** — file này được tạo lúc 2026-05-26T01:25Z (commit `00d0268`) nhưng bị **superseded** bởi `11_Session_2026-05-25_Sprint1_D1D2_Handoff.md` (commit `fde0c2b`, 2026-05-26T01:31Z) — phiên bản canonical đầy đủ hơn.
+> Giữ file này để bảo toàn history (rule §7 cấm xoá session log). Đừng đọc file này khi resume; đọc file `11_*_D1D2_Handoff.md` thay thế.
+
+---
+
 # 11 — Session 2026-05-25 Sprint 1 D1+D2 Handoff
 
 **Status:** Sprint 1 day 1 done + day 2 backend code-complete (commit pushed `0e4340c`). Live smoke chưa chạy. Frontend Blazor chưa đụng.

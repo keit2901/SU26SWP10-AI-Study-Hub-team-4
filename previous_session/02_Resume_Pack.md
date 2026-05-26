@@ -1,10 +1,10 @@
 # AI Study Hub v2 — Resume Pack
 
 > **Mục đích:** Mở session mới với agent (Claude / OpenCode / Kiro / khác) → paste/đính kèm file này làm context đầu tiên → agent có đủ thông tin để **không hỏi lại** và **không phá tiến độ**.
-> **Cập nhật lần cuối:** 2026-05-24 (sau migration sang Supabase Local Phase 1 + fix D6 `/me` email)
+> **Cập nhật lần cuối:** 2026-05-26 (sau Sprint 1 D1+D2+D3 — Phase 2 schema + Document backend pipeline + Blazor upload form)
 > **Người maintain:** Kiệt — PM Team 4 SWP391 SU26
-> **Phase hoàn tất:** Auth Phase 1 — đã migrate sang Supabase Local GoTrue, ready cho Phase 2 (Document Management + RAG)
-> **File companion:** `06_Session_2026-05-24_Build_Handoff.md` (chi tiết session migration), `05_Supabase_Local_Migration_Plan.md` (plan v-final)
+> **Phase hoàn tất:** Phase 1 Auth (GoTrue) + **Sprint 1 D1-D3** của Phase 2: schema (folders/documents/document_chunks + pgvector ivfflat) + Storage bucket + backend CRUD + signed-URL download + Blazor upload UI. Còn lại Sprint 1: D4 list/detail UI, D5 backend tests, D6 demo polish.
+> **File companion:** `12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` (canonical close — D2 smoke E2E + D3 upload form), `11_Session_2026-05-25_Sprint1_D1D2_Handoff.md` (D1+D2 code-complete), `07_Phase2_Document_RAG_Plan.md` (Phase 2 plan v-final), `rule.md` (session-progress rule).
 
 ---
 
@@ -96,35 +96,66 @@ AI_Study_Hub_v2/
 ├── Properties/launchSettings.json
 ├── Components/                      ← (như cũ — Blazor pages chưa rework cho refresh persistence)
 ├── Controllers/
-│   └── AuthController.cs            ← /api/auth/{register,login,refresh,logout,me}
-│                                     Logout đọc access token từ HttpContext.GetTokenAsync,
-│                                     Me đọc supabaseUserId từ sub claim + email từ ClaimTypes.Email
+│   ├── AuthController.cs            ← /api/auth/{register,login,refresh,logout,me}
+│   │                                  Logout đọc access token từ HttpContext.GetTokenAsync,
+│   │                                  Me đọc supabaseUserId từ sub claim + email từ ClaimTypes.Email
+│   └── DocumentsController.cs       ← [Authorize] /api/documents/{upload,GET list,GET {id},DELETE {id}}
+│                                      RequestSizeLimit/RequestFormLimits 50MB on upload
 ├── Data/
-│   ├── AppDbContext.cs              ← bỏ DbSet<RefreshToken>, dùng pgcrypto thay uuid-ossp
+│   ├── AppDbContext.cs              ← bỏ DbSet<RefreshToken>, dùng pgcrypto thay uuid-ossp;
+│   │                                  + DbSet<Folder>, DbSet<Document>, DbSet<DocumentChunk> (Phase 2)
 │   ├── AppDbContextFactory.cs       ← AddUserSecrets, throw rõ khi thiếu connstr
-│   ├── Entities/{User,Role}.cs      ← User: bỏ Email/PasswordHash/RefreshTokens,
-│   │                                  add SupabaseUserId Guid + index unique
-│   └── Configurations/{User,Role}Configuration.cs
+│   ├── Entities/
+│   │   ├── User.cs, Role.cs         ← (User: bỏ Email/PasswordHash/RefreshTokens, add SupabaseUserId Guid)
+│   │   ├── Folder.cs                ← Phase 2: id, owner_id (auth.users), parent_id (self FK), name, created_at
+│   │   ├── Document.cs              ← Phase 2: id, owner_id, folder_id?, file_name, mime, size_bytes,
+│   │   │                              storage_path, status (enum: 0=Uploading,1=Ready,2=Failed),
+│   │   │                              subject_code, semester, created_at, updated_at
+│   │   └── DocumentChunk.cs         ← Phase 2: id, document_id, chunk_index, page, content,
+│   │                                  embedding vector(384) (pgvector), created_at
+│   └── Configurations/
+│       ├── User/RoleConfiguration.cs
+│       ├── FolderConfiguration.cs   ← self-FK Restrict, name unique per (owner, parent)
+│       ├── DocumentConfiguration.cs ← composite ix_documents_subject_semester for filter
+│       └── DocumentChunkConfiguration.cs ← unique (document_id, chunk_index); ivfflat index via raw SQL
 ├── Migrations/
-│   ├── 20260524090408_InitialSupabaseAuth.cs    ← migration mới sạch
+│   ├── 20260524090408_InitialSupabaseAuth.cs
 │   ├── 20260524090408_InitialSupabaseAuth.Designer.cs
+│   ├── 20260525143314_AddDocumentSchema.cs    ← Phase 2 schema + ivfflat cosine + RLS enable
+│   ├── 20260525143314_AddDocumentSchema.Designer.cs
 │   └── AppDbContextModelSnapshot.cs
-├── Dtos/AuthDtos.cs                 ← (như cũ — RegisterRequest, LoginRequest, RefreshTokenRequest,
-│                                     AuthResponse, UserDto, ApiErrorResponse)
+├── Dtos/
+│   ├── AuthDtos.cs                  ← (như cũ)
+│   └── DocumentDtos.cs              ← UploadDocumentRequest ([FromForm] meta), DocumentDto,
+│                                      DocumentListQuery (subject/semester/folder/status filters)
 ├── Options/
 │   ├── SupabaseOptions.cs           ← Url, JwtIssuer, JwtAudience, JwtSecret, AnonKey, ServiceRoleKey
 │   └── SeedOptions.cs               ← DefaultAdmin { Email, Username, FullName, Password }
 │                                     (BỎ JwtOptions.cs sau migration)
 ├── Services/
-│   ├── AuthException.cs             ← tách từ RefreshTokenService cũ
+│   ├── AuthException.cs
+│   ├── DocumentApiException.cs      ← Phase 2: thrown by DocumentApiClient (status + code + message)
 │   ├── Supabase/
-│   │   ├── IGoTrueClient.cs         ← interface GoTrue HTTP wrapper
-│   │   ├── GoTrueClient.cs          ← raw HttpClient (signup, signInWithPassword, refresh,
-│   │   │                              signOut, admin getUser/createUser)
-│   │   └── GoTrueModels.cs          ← DTOs cho GoTrue API
-│   ├── SupabaseAuthService.cs       ← IAuthService impl mới (mirror profile vào public.users)
-│   ├── AuthApiClient.cs             ← typed HttpClient cho Blazor pages
+│   │   ├── IGoTrueClient.cs / GoTrueClient.cs / GoTrueModels.cs
+│   │   └── SupabaseStorageClient.cs ← POST object/{bucket}/{path} upload, POST object/sign signed URL,
+│   │                                  DELETE idempotent (404 swallow); composes <supabase_url>/storage/v1/<signedURL>
+│   ├── SupabaseAuthService.cs
+│   ├── DocumentService.cs           ← Phase 2: const MaxFileSizeBytes=50MB, SignedUrlTtlSeconds=300,
+│   │                                  BucketName="documents"; deterministic path users/{uid_n}/{yyyy}/{guid_n}-{slug};
+│   │                                  best-effort storage cleanup if DB insert fails after upload;
+│   │                                  SanitizeFileName strips path/special, caps 80 chars
+│   ├── AuthApiClient.cs
+│   ├── DocumentApiClient.cs         ← Phase 2: typed HttpClient for Blazor (UploadAsync, ListAsync);
+│   │                                  pinned constants synced with backend (50MB, AllowedMimeTypes)
 │   └── AuthSessionState.cs          ← scoped per-circuit holder (in-memory, demo-only)
+├── Components/
+│   ├── Layout/NavMenu.razor         ← + "Upload document" link (auth-only)
+│   └── Pages/DocumentUpload.razor   ← Phase 2 D3: @page "/documents/upload" InteractiveServer;
+│                                      MudForm validates SubjectCode (^[A-Z]{3}[0-9]{3}$) +
+│                                      Semester (^(SP|SU|FA|WI)[0-9]{2}$); MudFileUpload v9 Hidden=true
+│                                      + companion MudButton OpenFilePickerAsync; client guards
+│                                      50MB + MIME whitelist (with extension fallback);
+│                                      maps DocumentApiException 401/413/415 → friendly toast
 └── wwwroot/                         ← (như cũ)
 
 AI_Study_Hub_v2.Tests/
@@ -142,6 +173,8 @@ AI_Study_Hub_v2.Tests/
                                      stub IAuthenticationService cho HttpContext.GetTokenAsync
 ```
 
+> **Document backend test gap:** D2 (DocumentService + DocumentsController) chưa có unit/integration tests — backend coverage gap được track ở backlog Sprint 1 D5 / SCRUM-28. D2 đã verified live qua smoke E2E (8/8 PASS, see §4.1).
+
 **Files đã DELETE sau migration (không còn trên disk):**
 `Services/PasswordHasher.cs`, `Services/JwtTokenService.cs`, `Services/RefreshTokenService.cs`, `Services/AuthService.cs`, `Data/Entities/RefreshToken.cs`, `Data/Configurations/RefreshTokenConfiguration.cs`, `Options/JwtOptions.cs`, migration cũ `20260523183927_InitialCreate.*`.
 
@@ -149,11 +182,12 @@ AI_Study_Hub_v2.Tests/
 
 ```
 dotnet build (cwd: AI_Study_Hub_v2)
-→ Build succeeded. 0 Warning(s). 0 Error(s).
-dotnet test → Passed! 38/38 (Duration: ~870 ms)
+→ Build succeeded. 0 Warning(s). 0 Error(s).  (post-D3 2026-05-26T04:26Z)
+dotnet test → Passed! 38/38 (Duration: ~710 ms)
             ├─ SmokeTests: 3 (pipeline sanity)
             ├─ SupabaseAuthServiceTests: 18 (Register/Login/Refresh/Logout/Me happy + error paths)
             └─ AuthControllerTests: 17 (claim parsing + AuthException mapping + Bearer header)
+            (Document* coverage: 0 — backlog D5)
 ```
 
 ### 3.3 Database state (Postgres `postgres` DB on container `supabase-db` @ localhost:5432)
@@ -165,16 +199,33 @@ Tables in `public`:
 public | __EFMigrationsHistory | table | postgres
 public | roles                 | table | postgres   -- RLS ON
 public | users                 | table | postgres   -- RLS ON
+public | folders               | table | postgres   -- RLS ON  (Phase 2 D1)
+public | documents             | table | postgres   -- RLS ON  (Phase 2 D1)
+public | document_chunks       | table | postgres   -- RLS ON  (Phase 2 D1)
 ```
 
-Migrations applied: `20260524090408_InitialSupabaseAuth`
+Migrations applied:
+- `20260524090408_InitialSupabaseAuth`
+- `20260525143314_AddDocumentSchema`  ← Phase 2 D1 (folders + documents + document_chunks + ivfflat cosine `lists=100` + RLS enable)
 
 Seeded data:
 - 2 roles: `Admin`, `Student` (`public.roles`)
 - 1 admin: `admin@aistudyhub.local` (auth.users + public.users mirror, role=Admin)
-- DB clean — test student `student4090@aistudyhub.local` đã xoá 2026-05-24 (K3 trong file 06).
+- DB clean — `public.documents`, `public.document_chunks`, `public.folders` all 0 rows after D2 smoke cleanup (2026-05-26T04:19Z step 8).
+
+Storage bucket (`http://localhost:8000/storage/v1`):
+- `documents` — private=true, file_size_limit=50MB, 5 allowed MIME (pdf, doc, docx, txt, md). Created via Storage REST POST `/bucket`.
 
 Extensions enabled in `postgres` DB: `vector 0.8.0`, `pgcrypto`, `uuid-ossp` (sẵn từ image).
+
+Indexes on `public.document_chunks`:
+- `PK_document_chunks` (PK)
+- `IX_document_chunks_document_id` (FK index)
+- `IX_document_chunks_document_id_chunk_index` (unique composite)
+- `ix_document_chunks_embedding` (ivfflat cosine, lists=100 — added via raw SQL in migration)
+
+Index on `public.documents`:
+- `ix_documents_subject_semester` (composite for filter perf)
 
 ### 3.4 User Secrets (project `f7443cc6-0949-4e12-9bab-2badfa96be5a`)
 
@@ -204,7 +255,13 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | 7 | User Secrets + smoke test 5 endpoints + Blazor SSR pages | ✅ Done |
 | 7b | **Migrate sang Supabase Local Phase 1 (15/16 step plan v-final)** | ✅ Done 2026-05-24 |
 | 7c | **Fix D6 — `/me` trả email từ JWT claim** | ✅ Done 2026-05-24 |
-| 8 | Phase 2: Document upload + Supabase Storage + chunking + embeddings + RAG | ⏳ Pending |
+| 8 | Phase 2 Sprint 1 D1 — Schema + Storage bucket (folders, documents, document_chunks, ivfflat, RLS, bucket `documents`) | ✅ Done 2026-05-25 |
+| 9 | Phase 2 Sprint 1 D2 — Document backend pipeline (DocumentsController + DocumentService + SupabaseStorageClient) — code + smoke E2E | ✅ Done 2026-05-26 (smoke 8/8 GREEN) |
+| 10 | Phase 2 Sprint 1 D3 — Blazor upload form (`DocumentApiClient` + `/documents/upload` page + nav link) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred to Kiệt) |
+| 11 | Phase 2 Sprint 1 D4 — List/detail/delete UI + folder picker | ⏳ Pending (next session) |
+| 12 | Phase 2 Sprint 1 D5 — Backend tests for DocumentService + DocumentsController (SCRUM-28) | ⏳ Pending |
+| 13 | Phase 2 Sprint 1 D6 — Demo polish (UX, error states, seeded sample) | ⏳ Pending |
+| 14 | Phase 2 Sprint 2 — Chunking + embeddings + RAG retrieve + Groq generation | ⏳ Pending |
 
 ### 4.1 Smoke Test Results — Phase 1 (Supabase GoTrue)
 
@@ -221,6 +278,36 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | 9 | `dotnet test` | NUnit | 3/3 pass |
 
 > **Deviation D5 chi tiết:** GoTrue có `GOTRUE_REFRESH_TOKEN_REUSE_INTERVAL` mặc định 10s — RT cũ vẫn được chấp nhận trong cửa sổ này (cover network retry). Sau cửa sổ → 401 + chain-revoke ALL RTs của user (bảo mật hơn behavior cũ). Có thể set `=0` trong `infra/supabase/.env` nếu muốn match đúng plan v-final.
+
+### 4.2 Smoke Test Results — Sprint 1 D2 (Documents backend, 2026-05-26T04:19Z)
+
+| # | Step | Endpoint / Action | Result |
+|---|---|---|---|
+| 1 | Boot app | `dotnet run --urls http://localhost:5240` | (re-used existing PID 9928 already running, post-D1+D2 commit) |
+| 2 | Login admin | `POST /api/auth/login` | 200, accessToken returned |
+| 3 | Upload | `POST /api/documents/upload` (multipart, `smoke_small.pdf` 535B, SWP391/SU26) | 201, id=`a8182289-…`, status=Ready |
+| 4 | List | `GET /api/documents` | 1 entry, matches uploaded |
+| 5 | Get one | `GET /api/documents/{id}` | DTO + 5min signed URL pointing to `localhost:8000/storage/v1/object/sign/documents/users/{uid_n}/2026/{guid_n}-smoke_small.pdf?token=…` |
+| 6 | Anon download | GET signed URL (no auth header) | 200, 535 bytes, `Content-Type: application/pdf`, byte-equal to upload (Kong storage route reachable) |
+| 7 | Delete | `DELETE /api/documents/{id}` | 204 |
+| 8 | Cleanup verify | `GET /api/documents`, Storage REST `/object/list/documents`, `psql SELECT count(*) FROM public.documents` | API=0, bucket=0, DB=0 |
+
+> Both D2 known-unknowns from handoff 11 §3.1 cleared:
+> - `[FromForm] UploadDocumentRequest + IFormFile file` binding works on same multipart body (#1).
+> - Signed URL from Kong is reachable from browser-equivalent client without auth header (#4).
+> Commit: `0245045 test(documents): D2 smoke E2E pass — upload/list/get/signed-download/delete verified live`.
+
+### 4.3 D3 Blazor Upload Form (2026-05-26T04:27Z, manual browser UI smoke deferred)
+
+| Item | Value |
+|---|---|
+| Page | `/documents/upload` (`@rendermode InteractiveServer`, auth-gated) |
+| Validation | Client: `SubjectCode` `^[A-Z]{3}[0-9]{3}$`, `Semester` `^(SP|SU|FA|WI)[0-9]{2}$`, 50MB cap, MIME whitelist (with extension fallback for browsers dropping Office MIME) |
+| Upload mechanism | `IBrowserFile.OpenReadStream(50MB)` → `DocumentApiClient.UploadAsync` |
+| MudFileUpload | v9 `Hidden=true` + companion `MudButton OnClick=OpenFilePickerAsync` (v8 `<ActivatorContent>` removed in 9.4) |
+| Error mapping | `DocumentApiException.StatusCode` 401/413/415 → friendly `MudAlert` copy |
+| Build/Test gate | 0 warning, 0 error; 38/38 tests pass (no regression) |
+| Commit | `8454b0d feat(documents): D3 Blazor upload form (SCRUM-12/26) — code-complete` |
 
 ---
 
@@ -359,7 +446,7 @@ curl.exe -sS -X POST -H "Authorization: Bearer $($r2.accessToken)" http://localh
 
 ## 9. Schema (Hiện Có Trong DB)
 
-Phase 1 chỉ có 2 bảng app trong `public.*` (profile mirror + role). Identity (password, refresh, session) sống trong `auth.*` do GoTrue quản lý — **app KHÔNG đụng trực tiếp**, mọi thao tác qua HTTP API. Schema 14-bảng đầy đủ là Phase 2+, **chưa add** vào model.
+Phase 1 mirror profile + Phase 2 D1 schema (folders / documents / document_chunks). Identity (password, refresh, session) sống trong `auth.*` do GoTrue quản lý — **app KHÔNG đụng trực tiếp**, mọi thao tác qua HTTP API. Schema 14-bảng đầy đủ là Phase 2+ Sprint 2+ (chunks done, citations / sessions / messages / quiz / token-budget chưa add).
 
 ```sql
 -- public.roles (RLS ON)
@@ -380,11 +467,49 @@ created_at          TIMESTAMPTZ NOT NULL
 updated_at          TIMESTAMPTZ NOT NULL
 -- index unique trên supabase_user_id
 
+-- public.folders (RLS ON) — Phase 2 D1
+id           UUID PRIMARY KEY DEFAULT gen_random_uuid()
+owner_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+parent_id    UUID NULL REFERENCES public.folders(id) ON DELETE Restrict
+name         TEXT NOT NULL
+created_at   TIMESTAMPTZ NOT NULL
+-- unique (owner_id, parent_id, name)
+
+-- public.documents (RLS ON) — Phase 2 D1
+id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
+owner_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+folder_id       UUID NULL REFERENCES public.folders(id) ON DELETE SET NULL
+file_name       TEXT NOT NULL
+mime_type       TEXT NOT NULL
+size_bytes      BIGINT NOT NULL
+storage_path    TEXT NOT NULL  -- "users/{uid_n}/{yyyy}/{guid_n}-{slug}"
+status          INT NOT NULL  -- 0=Uploading, 1=Ready, 2=Failed
+subject_code    TEXT NOT NULL  -- e.g. SWP391
+semester        TEXT NOT NULL  -- e.g. SU26
+created_at      TIMESTAMPTZ NOT NULL
+updated_at      TIMESTAMPTZ NOT NULL
+-- composite ix_documents_subject_semester (subject_code, semester)
+
+-- public.document_chunks (RLS ON) — Phase 2 D1 (populated in Sprint 2)
+id            UUID PRIMARY KEY DEFAULT gen_random_uuid()
+document_id   UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE
+chunk_index   INT NOT NULL
+page          INT NULL
+content       TEXT NOT NULL
+embedding     vector(384) NULL  -- pgvector; ivfflat cosine index lists=100
+created_at    TIMESTAMPTZ NOT NULL
+-- unique (document_id, chunk_index)
+-- ix_document_chunks_embedding USING ivfflat (embedding vector_cosine_ops) WITH (lists=100)
+
 -- auth.* (GoTrue managed — đừng tạo migration đụng vào)
 auth.users          -- id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, ...
 auth.identities     -- provider linkage
 auth.refresh_tokens -- rotation + reuse detection (10s grace window)
 auth.sessions       -- aal level, factor_id
+
+-- storage.* (Supabase Storage)
+-- bucket 'documents': private=true, file_size_limit=50MB,
+--   allowed_mime_types = pdf, doc, docx, txt, md
 ```
 
 ---
@@ -466,21 +591,33 @@ Nếu **app chưa chạy** (5240 not listening): chỉ là chưa start, không p
 
 ---
 
-## 12. Phase 2 — Backlog (chưa làm, để session sau lên plan chi tiết)
+## 12. Phase 2 — Backlog (Sprint 1 còn D4-D6, Sprint 2 RAG)
 
-Sprint 2 scope:
-- Document upload qua Blazor → **Supabase Storage** (bật `--profile phase2`)
-- Chunking strategy (size, overlap, page metadata cho citation)
-- Embeddings → lưu pgvector cột `chunks.embedding vector(N)`
-- Vector search endpoint
-- RAG pipeline cơ bản (retrieve → prompt → Groq Llama 3.1 free tier → response)
-- Add Schema bảng `Folders, Documents, DocumentChunks` qua EF migration mới (đặt tên `AddDocumentSchema`)
+### Sprint 1 — Document Management (3/6 ✅ done)
 
-Trước khi bắt đầu Phase 2, cần Kiệt confirm:
-- Supabase Storage bucket: tên, public/private, size limit
+| Day | Scope | Status |
+|---|---|---|
+| D1 | EF schema (folders/documents/document_chunks) + ivfflat + RLS + Storage bucket `documents` | ✅ commit `c2d36cb` |
+| D2 | Backend `DocumentsController` + `DocumentService` + `SupabaseStorageClient` + smoke E2E live | ✅ commit `0245045` (smoke green) |
+| D3 | Blazor `DocumentApiClient` + `/documents/upload` page + nav link | ✅ commit `8454b0d` (manual UI smoke deferred) |
+| D4 | Blazor list/detail + signed-URL link + delete + folder picker (pages: `/documents`, `/documents/{id}`) | ⏳ next |
+| D5 | NUnit tests for `DocumentService` (unit, mock IStorageClient + EF InMemory) + `DocumentsController` (integration via WebApplicationFactory) — SCRUM-28 | ⏳ |
+| D6 | Demo polish — UX states, seeded sample PDFs, error scenarios, NavMenu icons | ⏳ |
+
+### Sprint 2 — RAG pipeline (planned)
+
+- Chunking ingestion worker (size 500-1000 tokens, 10-20% overlap, page metadata for citation) — triggered by `documents.status=Ready`
+- Embeddings via local sentence-transformers `all-MiniLM-L6-v2` (384-dim, matches schema) — confirm with Kiệt before locking
+- Vector search endpoint (`POST /api/rag/search` — top-k cosine, return chunks + page citations)
+- Generation via Groq Llama 3.1 free tier — prompt template with retrieved chunks
+- Token-budget tracking → `public.users.total_tokens_used`
+- Add bảng `chat_sessions, chat_messages, citations` qua migration `AddChatSchema`
+
+Trước khi bắt đầu Sprint 2, cần Kiệt confirm:
+- Embedding model + dim — schema khoá `vector(384)`, đổi model phải migration
 - Groq API key đã có chưa, quota free tier
-- Embedding model + N của `vector(N)` (Groq embed, sentence-transformers, ...)
-- Chunking config (size 500/1000 tokens? overlap 10/20%?)
+- Chunking config (size, overlap) cuối cùng
+- Citation format (page-level? chunk-level? cả hai?)
 
 ---
 
@@ -491,11 +628,18 @@ Trước khi bắt đầu Phase 2, cần Kiệt confirm:
 | `previous_session/02_Resume_Pack.md` | **File này** — primary resume context, đọc mỗi session mới |
 | `previous_session/01_Architecture_Reference.md` | Target schema + phase roadmap (đã refresh sau migration) |
 | `previous_session/03_Prompt_Playbook.md` | Template prompt sẵn cho session mới |
-| `previous_session/05_Supabase_Local_Migration_Plan.md` | Plan v-final của migration session |
-| `previous_session/06_Session_2026-05-24_Build_Handoff.md` | **Build log session migration** — deviations, smoke test, known issues |
+| `previous_session/05_Supabase_Local_Migration_Plan.md` | Plan v-final của migration session (Phase 1) |
+| `previous_session/06_Session_2026-05-24_Build_Handoff.md` | Build log session migration |
+| `previous_session/07_Phase2_Document_RAG_Plan.md` | **Phase 2 plan v-final** — schema + chunking + embeddings + RAG roadmap |
+| `previous_session/08_Session_2026-05-24_Close_Phase1_Handoff.md` | Phase 1 closeout |
+| `previous_session/09_NUnit_Demo_Script.md` + `10_*` + `10b_*` | Demo speaker notes |
+| `previous_session/11_Session_2026-05-25_Sprint1_D1D2_Handoff.md` | Sprint 1 D1+D2 code-complete handoff (canonical) |
+| `previous_session/11a_Session_2026-05-25_Sprint1_D1_D2_Handoff_superseded.md` | Older near-dup of 11, marked SUPERSEDED |
+| `previous_session/12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` | **Latest** — D2 smoke E2E green + D3 upload form code-complete |
+| `previous_session/rule.md` | **Session-progress tracking rule** (mandatory for all agents) |
 | `previous_session/04_Next_Session_Handoff.md` | OBSOLETE — viết trước migration, giữ làm history |
-| `previous_session/archive/previous_session_raw_transcript.md` | Raw Q&A transcript session trước, debug step-by-step |
-| `infra/supabase/docker-compose.yml` | Supabase Local stack (Phase 1 default + Phase 2 profile) |
+| `previous_session/archive/previous_session_raw_transcript.md` | Raw Q&A transcript session đầu |
+| `infra/supabase/docker-compose.yml` | Supabase Local stack (Phase 1 default + `--profile phase2` for storage/realtime/imgproxy/vector/supavisor) |
 | `infra/supabase/.env` | Secrets Supabase Local (gitignored) |
 | `AI_Study_Hub_Project_Overview.md` | Overview cũ của nhóm, cần update v2 sau Sprint 2 |
 | `SWP391_team_4.docx` | Sprint backlog, working plan, research proposal |
@@ -506,26 +650,36 @@ Trước khi bắt đầu Phase 2, cần Kiệt confirm:
 
 ```
 URL backend:      http://localhost:5240
-URL Supabase API: http://localhost:8000  (Kong → GoTrue + PostgREST + Studio)
+URL Supabase API: http://localhost:8000  (Kong → GoTrue + PostgREST + Studio + Storage)
 URL Postgres:     localhost:5432  (direct, Supavisor pooler skip Phase 1)
 Stack name:       aistudyhub-supabase  (compose project)
 DB name:          postgres
 DB user/pass:     postgres / <từ infra/supabase/.env POSTGRES_PASSWORD>
-Containers:       supabase-db, supabase-kong, supabase-auth, supabase-rest,
-                  supabase-meta, supabase-studio, supabase-analytics
-Phase 2 profile:  --profile phase2  (storage, realtime, functions, imgproxy, vector, supavisor)
+Containers:       Phase 1: supabase-db, supabase-kong, supabase-auth, supabase-rest,
+                           supabase-meta, supabase-studio, supabase-analytics
+                  Phase 2 (--profile phase2): + supabase-storage, supabase-vector,
+                           supabase-realtime, supabase-imgproxy
+                  Total expected: 11/11 healthy
 Project root:     D:\FPT\summer2026\SWP391\AI_Study_Hub_v2
 Solution:         AI_Study_Hub_v2.sln
 Infra root:       D:\FPT\summer2026\SWP391\infra\supabase
 Default admin:    admin@aistudyhub.local  (pwd ở password manager + dotnet user-secrets Seed:DefaultAdmin:Password)
 Studio login:     supabase / <DASHBOARD_PASSWORD từ .env>
 Roles seeded:     Admin, Student
-Migration ID:     20260524090408_InitialSupabaseAuth
+Migrations:       20260524090408_InitialSupabaseAuth
+                  20260525143314_AddDocumentSchema
+Storage bucket:   documents (private, 50MB, 5 MIME: pdf/doc/docx/txt/md)
 .NET SDK:         10.0.300 (project targets net8.0)
 EF tool:          9.0.9 (works against net8.0 project)
 Docker:           29.4.3
+Tests:            38/38 pass (auth only; document backend coverage = D5 backlog)
+Build:            0 warning, 0 error (last verified 2026-05-26T04:26Z)
+Git HEAD:         8454b0d  feat(documents): D3 Blazor upload form (SCRUM-12/26) — code-complete
+                  0245045  test(documents): D2 smoke E2E pass — upload/list/get/signed-download/delete
+                  0e4340c  feat(documents): D2 backend upload pipeline — code-complete
+                  c2d36cb  feat(documents): add Phase 2 schema (folders, documents, document_chunks)
 ```
 
 ---
 
-**End of Resume Pack.** Cập nhật file này sau mỗi phase hoàn tất (Section 4 + Section 3.3 nếu schema đổi).
+**End of Resume Pack.** Cập nhật file này sau mỗi phase / sprint hoàn tất (Section 4 + Section 3.3 nếu schema đổi + Section 14 git head).
