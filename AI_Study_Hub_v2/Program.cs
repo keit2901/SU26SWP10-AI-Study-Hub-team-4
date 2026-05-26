@@ -96,6 +96,8 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
+builder.Services.AddScoped<IEmbeddingService, FakeEmbeddingService>();
+builder.Services.AddScoped<IRagSearchService, RagSearchService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
