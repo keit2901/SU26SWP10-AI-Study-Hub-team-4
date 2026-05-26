@@ -1,0 +1,713 @@
+@page "/ai/chat"
+@rendermode InteractiveServer
+@using AI_Study_Hub_v2.Data.Entities
+@implements IDisposable
+@inject AuthSessionState Session
+@inject DocumentApiClient DocumentsApi
+@inject FolderApiClient FoldersApi
+@inject IHttpClientFactory HttpClientFactory
+@inject IServiceProvider Services
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>AI Chat - AI Study Hub v2</PageTitle>
+
+<MudStack Spacing="3" Class="ai-chat-shell pa-4">
+    <MudPaper Class="ai-chat-hero" Elevation="0">
+        <MudGrid Class="ai-chat-hero-grid">
+            <MudItem xs="12" md="8">
+                <MudStack Spacing="1">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled" Class="ai-chat-kicker">
+                        Sprint 2 RAG demo
+                    </MudChip>
+                    <MudText Typo="Typo.h4">Ask your study materials</MudText>
+                    <MudText Typo="Typo.body1" Class="ai-chat-hero-copy">
+                        Scope the assistant to all indexed documents, a folder, or one file, then review the grounded answer with source cards.
+                    </MudText>
+                </MudStack>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="ai-chat-status-card pa-3" Elevation="0">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.caption">Indexed documents</MudText>
+                            <MudText Typo="Typo.h5">@ReadyDocuments.Count</MudText>
+                        </MudStack>
+                        <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
+                            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" />
+                        </MudAvatar>
+                    </MudStack>
+                    <MudText Typo="Typo.caption" Class="mt-2">
+                        @(_documents.Count - ReadyDocuments.Count) not ready or failed
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudPaper>
+
+    @if (!Session.IsAuthenticated)
+    {
+        <MudAlert Severity="Severity.Warning" Variant="Variant.Filled">
+            Sign in to ask questions about your documents.
+        </MudAlert>
+    }
+    else if (_loadingScope)
+    {
+        <MudPaper Class="pa-5" Elevation="0" Outlined="true">
+            <MudStack Spacing="2">
+                <MudSkeleton Height="44px" Animation="Animation.Wave" />
+                <MudSkeleton Height="120px" Animation="Animation.Wave" />
+                <MudSkeleton Height="220px" Animation="Animation.Wave" />
+            </MudStack>
+        </MudPaper>
+    }
+    else
+    {
+        <MudGrid Class="ai-chat-grid">
+            <MudItem xs="12" lg="4">
+                <MudStack Spacing="3">
+                    <MudPaper Class="pa-4 ai-chat-scope-card" Elevation="0" Outlined="true">
+                        <MudStack Spacing="3">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
+                                <div>
+                                    <MudText Typo="Typo.h6">Scope</MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">Choose what the assistant should search.</MudText>
+                                </div>
+                                <MudChip T="string" Size="Size.Small" Color="@ScopeChipColor" Variant="Variant.Outlined">
+                                    @ScopeSummary
+                                </MudChip>
+                            </MudStack>
+
+                            @if (ReadyDocuments.Count == 0)
+                            {
+                                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                                    No indexed documents were found. Upload a document or wait for ingestion before asking.
+                                </MudAlert>
+                                <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" Href="/documents/upload">
+                                        Upload document
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FolderOpen" Href="/documents">
+                                        View documents
+                                    </MudButton>
+                                </MudStack>
+                            }
+
+                            <MudSelect T="Guid?"
+                                       Label="Document"
+                                       @bind-Value="SelectedDocumentId"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense"
+                                       Clearable="true"
+                                       Disabled="_busy || ReadyDocuments.Count == 0"
+                                       Placeholder="All indexed documents">
+                                <MudSelectItem T="Guid?" Value="@(null)">All indexed documents</MudSelectItem>
+                                @foreach (var document in ReadyDocuments)
+                                {
+                                    <MudSelectItem T="Guid?" Value="@document.Id">@document.FileName</MudSelectItem>
+                                }
+                            </MudSelect>
+
+                            <MudSelect T="Guid?"
+                                       Label="Folder"
+                                       @bind-Value="SelectedFolderId"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense"
+                                       Clearable="true"
+                                       Disabled="_busy || _folders.Count == 0"
+                                       Placeholder="Any folder">
+                                <MudSelectItem T="Guid?" Value="@(null)">Any folder</MudSelectItem>
+                                @foreach (var folder in _folders)
+                                {
+                                    <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name (@folder.DocumentCount)</MudSelectItem>
+                                }
+                            </MudSelect>
+
+                            <MudGrid Spacing="2">
+                                <MudItem xs="12" sm="6" lg="12" xl="6">
+                                    <MudTextField T="string"
+                                                  Label="Subject code"
+                                                  @bind-Value="_subjectCode"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Clearable="true"
+                                                  Disabled="_busy"
+                                                  Placeholder="SWP391" />
+                                </MudItem>
+                                <MudItem xs="12" sm="6" lg="12" xl="6">
+                                    <MudTextField T="string"
+                                                  Label="Semester"
+                                                  @bind-Value="_semester"
+                                                  Variant="Variant.Outlined"
+                                                  Margin="Margin.Dense"
+                                                  Clearable="true"
+                                                  Disabled="_busy"
+                                                  Placeholder="SU26" />
+                                </MudItem>
+                            </MudGrid>
+
+                            <MudSelect T="int"
+                                       Label="Sources to retrieve"
+                                       @bind-Value="_topK"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense"
+                                       Disabled="_busy">
+                                <MudSelectItem T="int" Value="3">3 sources</MudSelectItem>
+                                <MudSelectItem T="int" Value="5">5 sources</MudSelectItem>
+                                <MudSelectItem T="int" Value="8">8 sources</MudSelectItem>
+                                <MudSelectItem T="int" Value="10">10 sources</MudSelectItem>
+                            </MudSelect>
+
+                            <MudDivider />
+
+                            <MudStack Spacing="1">
+                                <MudText Typo="Typo.subtitle2">Suggested prompts</MudText>
+                                @foreach (var prompt in SuggestedPrompts)
+                                {
+                                    <MudButton Variant="Variant.Text"
+                                               Color="Color.Primary"
+                                               Size="Size.Small"
+                                               StartIcon="@Icons.Material.Filled.QuestionAnswer"
+                                               OnClick="() => UsePrompt(prompt)"
+                                               Disabled="_busy"
+                                               Class="ai-chat-prompt-button">
+                                        @prompt
+                                    </MudButton>
+                                }
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" lg="8">
+                <MudStack Spacing="3">
+                    <MudPaper Class="pa-4 ai-chat-composer" Elevation="0" Outlined="true">
+                        <MudStack Spacing="2">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
+                                <div>
+                                    <MudText Typo="Typo.h6">Question</MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">Ask for explanations, summaries, comparisons, or where a concept appears.</MudText>
+                                </div>
+                                <MudButton Variant="Variant.Outlined"
+                                           StartIcon="@Icons.Material.Filled.Refresh"
+                                           OnClick="LoadScopeAsync"
+                                           Disabled="_busy || _loadingScope">
+                                    Refresh scope
+                                </MudButton>
+                            </MudStack>
+
+                            <MudTextField T="string"
+                                          Label="What do you want to understand?"
+                                          @bind-Value="_question"
+                                          Variant="Variant.Outlined"
+                                          Lines="4"
+                                          Clearable="true"
+                                          Disabled="_busy"
+                                          Error="@(!string.IsNullOrWhiteSpace(_composerError))"
+                                          ErrorText="@_composerError" />
+
+                            @if (!string.IsNullOrWhiteSpace(_scopeWarning))
+                            {
+                                <MudAlert Severity="Severity.Info" Dense="true" Variant="Variant.Outlined">
+                                    @_scopeWarning
+                                </MudAlert>
+                            }
+
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">Answers depend on extracted chunks and may be incomplete.</MudText>
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Primary"
+                                           StartIcon="@Icons.Material.Filled.Send"
+                                           OnClick="AskAsync"
+                                           Disabled="_busy || ReadyDocuments.Count == 0">
+                                    @if (_busy)
+                                    {
+                                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                                        <MudText Class="ms-2">Asking...</MudText>
+                                    }
+                                    else
+                                    {
+                                        <MudText>Ask AI</MudText>
+                                    }
+                                </MudButton>
+                            </MudStack>
+                        </MudStack>
+                    </MudPaper>
+
+                    @if (_busy)
+                    {
+                        <MudPaper Class="pa-4 ai-chat-answer-card" Elevation="0" Outlined="true">
+                            <MudStack Spacing="2">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                                    <MudText Typo="Typo.subtitle1">Searching your documents and drafting an answer...</MudText>
+                                </MudStack>
+                                <MudSkeleton Height="24px" Animation="Animation.Wave" />
+                                <MudSkeleton Height="24px" Width="80%" Animation="Animation.Wave" />
+                                <MudSkeleton Height="96px" Animation="Animation.Wave" />
+                            </MudStack>
+                        </MudPaper>
+                    }
+
+                    @if (!string.IsNullOrWhiteSpace(_error))
+                    {
+                        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">
+                            @_error
+                        </MudAlert>
+                    }
+
+                    @if (!_busy && LatestExchange is null && string.IsNullOrWhiteSpace(_error))
+                    {
+                        <MudPaper Class="pa-5 ai-chat-empty-card" Elevation="0" Outlined="true">
+                            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                                <MudAvatar Size="Size.Large" Color="Color.Info" Variant="Variant.Filled">
+                                    <MudIcon Icon="@Icons.Material.Filled.Psychology" />
+                                </MudAvatar>
+                                <MudText Typo="Typo.h6" Align="Align.Center">Ready when your notes are indexed</MudText>
+                                <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center">
+                                    Start broad with all indexed documents, or narrow to a subject, semester, folder, or single file for cleaner citations.
+                                </MudText>
+                            </MudStack>
+                        </MudPaper>
+                    }
+
+                    @if (LatestExchange is not null)
+                    {
+                        @RenderExchange(LatestExchange, true)
+                    }
+
+                    @if (_history.Count > 1)
+                    {
+                        <MudExpansionPanels Elevation="0" Class="ai-chat-history">
+                            <MudExpansionPanel Text="Previous answers in this page session">
+                                <MudStack Spacing="2">
+                                    @foreach (var exchange in _history.Skip(1))
+                                    {
+                                        @RenderExchange(exchange, false)
+                                    }
+                                </MudStack>
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+                    }
+                </MudStack>
+            </MudItem>
+        </MudGrid>
+    }
+</MudStack>
+
+@code {
+    [SupplyParameterFromQuery(Name = "documentId")]
+    public Guid? QueryDocumentId { get; set; }
+
+    [SupplyParameterFromQuery(Name = "folderId")]
+    public Guid? QueryFolderId { get; set; }
+
+    private static readonly string[] SuggestedPrompts =
+    {
+        "Summarize the key ideas from my selected scope.",
+        "Explain this topic as if I am preparing for an exam.",
+        "List likely quiz questions and cite where each answer comes from.",
+    };
+
+    private AiChatApiClient? _chatApi;
+    private CancellationTokenSource? _askCts;
+    private bool _busy;
+    private bool _loadingScope;
+    private string? _error;
+    private string? _composerError;
+    private string? _question;
+    private string? _subjectCode;
+    private string? _semester;
+    private Guid? _documentId;
+    private Guid? _folderId;
+    private int _topK = 5;
+    private List<DocumentDto> _documents = new();
+    private List<FolderDto> _folders = new();
+    private readonly List<ChatExchange> _history = new();
+
+    private List<DocumentDto> ReadyDocuments => _documents
+        .Where(d => d.Status == DocumentStatus.Ready)
+        .OrderByDescending(d => d.UpdatedAt)
+        .ToList();
+
+    private ChatExchange? LatestExchange => _history.FirstOrDefault();
+
+    private Guid? SelectedDocumentId
+    {
+        get => _documentId;
+        set
+        {
+            _documentId = value;
+            if (value is not { } documentId)
+            {
+                return;
+            }
+
+            var document = ReadyDocuments.FirstOrDefault(d => d.Id == documentId);
+            if (document is null)
+            {
+                return;
+            }
+
+            _folderId = document.FolderId;
+            _subjectCode = document.SubjectCode;
+            _semester = document.Semester;
+        }
+    }
+
+    private Guid? SelectedFolderId
+    {
+        get => _folderId;
+        set
+        {
+            _folderId = value;
+            if (_documentId is { } documentId)
+            {
+                var document = ReadyDocuments.FirstOrDefault(d => d.Id == documentId);
+                if (document is not null && document.FolderId != value)
+                {
+                    _documentId = null;
+                }
+            }
+        }
+    }
+
+    private string ScopeSummary
+    {
+        get
+        {
+            if (_documentId.HasValue)
+            {
+                return "One document";
+            }
+
+            if (_folderId.HasValue || !string.IsNullOrWhiteSpace(_subjectCode) || !string.IsNullOrWhiteSpace(_semester))
+            {
+                return "Filtered";
+            }
+
+            return "All indexed documents";
+        }
+    }
+
+    private Color ScopeChipColor => ScopeSummary == "All indexed documents" ? Color.Info : Color.Primary;
+
+    private string? _scopeWarning => _documentId.HasValue
+        ? "Document scope takes priority over folder, subject, and semester filters."
+        : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _chatApi = ResolveChatApiClient();
+
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/login", replace: true);
+            return;
+        }
+
+        await LoadScopeAsync();
+    }
+
+    private async Task LoadScopeAsync()
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken))
+        {
+            return;
+        }
+
+        _loadingScope = true;
+        _error = null;
+        try
+        {
+            var documentsTask = DocumentsApi.ListAsync(Session.AccessToken!);
+            var foldersTask = FoldersApi.ListAsync(Session.AccessToken!);
+            await Task.WhenAll(documentsTask, foldersTask);
+
+            _documents = documentsTask.Result.ToList();
+            _folders = foldersTask.Result.OrderBy(f => f.Name).ToList();
+            ApplyQueryScope();
+        }
+        catch (DocumentApiException ex)
+        {
+            var message = MapDocumentError(ex);
+            _error = message;
+            Snackbar.Add(message, Severity.Warning);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load chat scope: {ex.Message}";
+        }
+        finally
+        {
+            _loadingScope = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task AskAsync()
+    {
+        _composerError = null;
+        _error = null;
+
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            Nav.NavigateTo("/login", replace: true);
+            return;
+        }
+
+        if (_chatApi is null)
+        {
+            _error = "AI chat client is not available.";
+            return;
+        }
+
+        var question = _question?.Trim();
+        if (string.IsNullOrWhiteSpace(question))
+        {
+            _composerError = "Enter a question before asking AI.";
+            return;
+        }
+
+        if (ReadyDocuments.Count == 0)
+        {
+            _error = "No indexed documents are available for chat yet.";
+            return;
+        }
+
+        var request = new AiChatAskRequest(
+            question,
+            _documentId,
+            _folderId,
+            NormalizeOrNull(_subjectCode),
+            NormalizeOrNull(_semester),
+            Math.Clamp(_topK, 1, 10));
+
+        _askCts?.Cancel();
+        _askCts?.Dispose();
+        _askCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+
+        _busy = true;
+        var askedAt = DateTimeOffset.Now;
+        try
+        {
+            var response = await _chatApi.AskAsync(Session.AccessToken!, request, _askCts.Token);
+            _history.Insert(0, new ChatExchange(question, BuildScopeLabel(), response, askedAt));
+            _question = string.Empty;
+            Snackbar.Add("AI answer ready.", Severity.Success);
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "The AI request timed out. Try again with a narrower scope.";
+        }
+        catch (AiChatApiException ex)
+        {
+            _error = MapChatError(ex);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Network error while asking AI: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private RenderFragment RenderExchange(ChatExchange exchange, bool featured) => @<MudPaper Class="@(featured ? "pa-4 ai-chat-answer-card" : "pa-3 ai-chat-answer-card ai-chat-answer-card-compact")" Elevation="0" Outlined="true">
+        <MudStack Spacing="3">
+            <MudStack Row="true" AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
+                <div>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@exchange.ScopeLabel</MudText>
+                    <MudText Typo="@(featured ? Typo.h6 : Typo.subtitle1)">@exchange.Question</MudText>
+                </div>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                        @exchange.AskedAt.ToString("HH:mm")
+                    </MudChip>
+                    @if (exchange.Response.DurationMs is { } duration)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">
+                            @duration ms
+                        </MudChip>
+                    }
+                </MudStack>
+            </MudStack>
+
+            @if (!string.IsNullOrWhiteSpace(exchange.Response.RefusalReason))
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                    @exchange.Response.RefusalReason
+                </MudAlert>
+            }
+
+            <MudPaper Class="pa-3 ai-chat-answer-body" Elevation="0">
+                <MudText Typo="Typo.body1">@exchange.Response.Answer</MudText>
+            </MudPaper>
+
+            <MudStack Spacing="2">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
+                    <MudText Typo="Typo.subtitle2">Sources</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">
+                        @SourceCountText(exchange.Response.Sources)
+                    </MudChip>
+                </MudStack>
+
+                @if (exchange.Response.Sources is null || exchange.Response.Sources.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                        No source citations were returned for this answer.
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudGrid Spacing="2">
+                        @foreach (var source in exchange.Response.Sources.Select((value, index) => new { value, index }))
+                        {
+                            <MudItem xs="12" md="6">
+                                <MudPaper Class="pa-3 ai-chat-source-card" Elevation="0" Outlined="true">
+                                    <MudStack Spacing="2">
+                                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.5rem;">
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">
+                                                @SourceLabel(source.value, source.index)
+                                            </MudChip>
+                                            <MudLink Href="@($"/documents/{source.value.DocumentId}")" Typo="Typo.caption">
+                                                Open document
+                                            </MudLink>
+                                        </MudStack>
+                                        <MudText Typo="Typo.subtitle2" Class="ai-chat-source-title">@source.value.FileName</MudText>
+                                        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
+                                            @if (source.value.PageNumber is { } pageNumber)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Page @pageNumber</MudChip>
+                                            }
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Chunk @source.value.ChunkIndex</MudChip>
+                                            @if (source.value.Score is { } score)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">Score @score.ToString("0.###")</MudChip>
+                                            }
+                                        </MudStack>
+                                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="ai-chat-excerpt">
+                                            @source.value.Excerpt
+                                        </MudText>
+                                    </MudStack>
+                                </MudPaper>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+            </MudStack>
+        </MudStack>
+    </MudPaper>;
+
+    private AiChatApiClient ResolveChatApiClient()
+    {
+        if (Services.GetService(typeof(AiChatApiClient)) is AiChatApiClient registeredClient)
+        {
+            return registeredClient;
+        }
+
+        var http = HttpClientFactory.CreateClient();
+        http.BaseAddress ??= new Uri(Nav.BaseUri);
+        http.Timeout = TimeSpan.FromMinutes(2);
+        return new AiChatApiClient(http);
+    }
+
+    private void ApplyQueryScope()
+    {
+        if (QueryDocumentId is { } documentId && ReadyDocuments.Any(d => d.Id == documentId))
+        {
+            SelectedDocumentId = documentId;
+        }
+        else if (QueryFolderId is { } folderId && _folders.Any(f => f.Id == folderId))
+        {
+            SelectedFolderId = folderId;
+        }
+    }
+
+    private void UsePrompt(string prompt)
+    {
+        _question = prompt;
+        _composerError = null;
+    }
+
+    private string BuildScopeLabel()
+    {
+        if (_documentId is { } documentId)
+        {
+            var fileName = ReadyDocuments.FirstOrDefault(d => d.Id == documentId)?.FileName;
+            return string.IsNullOrWhiteSpace(fileName) ? "One document" : $"Document: {fileName}";
+        }
+
+        var parts = new List<string>();
+        if (_folderId is { } folderId)
+        {
+            parts.Add($"Folder: {_folders.FirstOrDefault(f => f.Id == folderId)?.Name ?? "Unknown folder"}");
+        }
+        if (!string.IsNullOrWhiteSpace(_subjectCode))
+        {
+            parts.Add($"Subject: {_subjectCode.Trim().ToUpperInvariant()}");
+        }
+        if (!string.IsNullOrWhiteSpace(_semester))
+        {
+            parts.Add($"Semester: {_semester.Trim().ToUpperInvariant()}");
+        }
+
+        return parts.Count == 0 ? "All indexed documents" : string.Join(" | ", parts);
+    }
+
+    private static string? NormalizeOrNull(string? value)
+        => string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
+
+    private static string SourceLabel(AiChatSourceDto source, int index)
+        => string.IsNullOrWhiteSpace(source.Label) ? $"S{index + 1}" : source.Label;
+
+    private static string SourceCountText(IReadOnlyList<AiChatSourceDto>? sources)
+    {
+        var count = sources?.Count ?? 0;
+        return $"{count} source{(count == 1 ? string.Empty : "s")}";
+    }
+
+    private static string MapDocumentError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session has expired. Please sign in again.",
+        403 => "You do not have access to these documents.",
+        _ => ex.Message,
+    };
+
+    private static string MapChatError(AiChatApiException ex) => ex.StatusCode switch
+    {
+        400 => ex.Message,
+        401 => "Your session has expired. Please sign in again.",
+        403 => "You do not have permission to use AI chat.",
+        404 => "The AI chat endpoint is not available yet. Merge the Sprint 2 chat API before browser smoke.",
+        408 => "The AI request timed out. Try again with fewer sources or a narrower scope.",
+        429 => "The AI provider is rate limited right now. Wait a moment and try again.",
+        500 or 502 or 503 => $"AI service error: {ex.Message}",
+        _ => ex.Message,
+    };
+
+    public void Dispose()
+    {
+        _askCts?.Cancel();
+        _askCts?.Dispose();
+    }
+
+    private sealed record ChatExchange(
+        string Question,
+        string ScopeLabel,
+        AiChatAnswerResponse Response,
+        DateTimeOffset AskedAt);
+}
