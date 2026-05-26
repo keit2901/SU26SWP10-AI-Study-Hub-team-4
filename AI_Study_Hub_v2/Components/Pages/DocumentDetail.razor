@@ -1,0 +1,288 @@
+@page "/documents/{Id:guid}"
+@rendermode InteractiveServer
+@using AI_Study_Hub_v2.Data.Entities
+@using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Services
+@inject DocumentApiClient DocumentsApi
+@inject AuthSessionState Session
+@inject NavigationManager Nav
+@inject IDialogService Dialogs
+@inject ISnackbar Snackbar
+
+<PageTitle>@(_doc?.FileName ?? "Document") - AI Study Hub v2</PageTitle>
+
+<MudStack Spacing="3" Class="pa-4" Style="max-width: 900px; margin: 0 auto;">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap: wrap; gap: 0.5rem;">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                           Href="/documents"
+                           title="Back to list" />
+            <MudText Typo="Typo.h5">Document detail</MudText>
+        </MudStack>
+        @if (_doc is not null)
+        {
+            <MudStack Row="true" Spacing="1">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="LoadAsync"
+                           Disabled="_busy">
+                    Refresh
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.Delete"
+                           OnClick="ConfirmDeleteAsync"
+                           Disabled="_busy">
+                    Delete
+                </MudButton>
+            </MudStack>
+        }
+    </MudStack>
+
+    @if (_busy && _doc is null)
+    {
+        <MudPaper Class="pa-6" Elevation="0" Outlined="true">
+            <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                <MudProgressCircular Indeterminate="true" />
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Loading…</MudText>
+            </MudStack>
+        </MudPaper>
+    }
+    else if (_error is not null)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_error</MudAlert>
+        <MudButton Variant="Variant.Outlined"
+                   StartIcon="@Icons.Material.Filled.ArrowBack"
+                   Href="/documents">
+            Back to list
+        </MudButton>
+    }
+    else if (_doc is not null)
+    {
+        <MudPaper Class="pa-4" Elevation="0" Outlined="true">
+            <MudStack Spacing="3">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
+                    <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large">
+                        <MudIcon Icon="@GetFileIcon(_doc.MimeType)" />
+                    </MudAvatar>
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.h6">@_doc.FileName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @FormatBytes(_doc.FileSizeBytes) — @_doc.MimeType
+                        </MudText>
+                    </MudStack>
+                </MudStack>
+
+                <MudDivider />
+
+                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Striped="true">
+                    <tbody>
+                        <tr>
+                            <td><b>Status</b></td>
+                            <td>
+                                <MudChip T="string" Size="Size.Small" Color="@StatusColor(_doc.Status)" Variant="Variant.Filled">
+                                    @_doc.Status.ToString()
+                                </MudChip>
+                            </td>
+                        </tr>
+                        <tr><td><b>Subject</b></td><td>@_doc.SubjectCode</td></tr>
+                        <tr><td><b>Semester</b></td><td>@_doc.Semester</td></tr>
+                        <tr><td><b>Folder</b></td><td>@(_doc.FolderId?.ToString() ?? "—")</td></tr>
+                        <tr><td><b>Page count</b></td><td>@(_doc.PageCount?.ToString() ?? "—")</td></tr>
+                        <tr><td><b>Document Id</b></td><td><code>@_doc.Id</code></td></tr>
+                        <tr><td><b>Uploaded</b></td><td>@_doc.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
+                        <tr><td><b>Updated</b></td><td>@_doc.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
+                        @if (!string.IsNullOrWhiteSpace(_doc.ErrorMessage))
+                        {
+                            <tr>
+                                <td><b>Error</b></td>
+                                <td>
+                                    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">@_doc.ErrorMessage</MudAlert>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </MudSimpleTable>
+
+                <MudDivider />
+
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.subtitle2">Download</MudText>
+                    @if (!string.IsNullOrEmpty(_doc.DownloadUrl))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Signed link, valid for ~5 minutes. Click to open in a new tab.
+                        </MudText>
+                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Style="flex-wrap: wrap;">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.Download"
+                                       Href="@_doc.DownloadUrl"
+                                       Target="_blank">
+                                Open file
+                            </MudButton>
+                            <MudButton Variant="Variant.Text"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       OnClick="LoadAsync"
+                                       Disabled="_busy">
+                                Get fresh link
+                            </MudButton>
+                        </MudStack>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Variant="Variant.Outlined">
+                            Download link is not available right now. Try refreshing.
+                        </MudAlert>
+                    }
+                </MudStack>
+            </MudStack>
+        </MudPaper>
+    }
+</MudStack>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private bool _busy;
+    private string? _error;
+    private DocumentDto? _doc;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/login", replace: true);
+            return;
+        }
+        await LoadAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reload when navigating between /documents/{id1} and /documents/{id2}.
+        if (_doc is not null && _doc.Id != Id)
+        {
+            _doc = null;
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken)) return;
+        _busy = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            _doc = await DocumentsApi.GetAsync(Session.AccessToken!, Id);
+        }
+        catch (DocumentApiException ex)
+        {
+            _doc = null;
+            _error = MapError(ex);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Network error: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfirmDeleteAsync()
+    {
+        if (_doc is null) return;
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Delete document?",
+            ["Message"] = $"Delete \"{_doc.FileName}\"? This cannot be undone — chunks and the stored file will be removed.",
+            ["ConfirmText"] = "Delete",
+            ["ConfirmColor"] = Color.Error,
+            ["Icon"] = Icons.Material.Filled.DeleteForever,
+            ["IconColor"] = Color.Error,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialogRef = await Dialogs.ShowAsync<AI_Study_Hub_v2.Components.Admin.Shared.ConfirmDialog>("Delete document", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+
+        await DeleteAsync();
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (_doc is null || string.IsNullOrEmpty(Session.AccessToken)) return;
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            await DocumentsApi.DeleteAsync(Session.AccessToken!, _doc.Id);
+            Snackbar.Add($"Deleted \"{_doc.FileName}\".", Severity.Success);
+            Nav.NavigateTo("/documents");
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex), Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Network error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string MapError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session has expired. Please sign in again.",
+        403 => "You do not have access to that document.",
+        404 => "Document not found — it may have been deleted already.",
+        _ => ex.Message,
+    };
+
+    private static Color StatusColor(DocumentStatus s) => s switch
+    {
+        DocumentStatus.Ready => Color.Success,
+        DocumentStatus.Uploading => Color.Info,
+        DocumentStatus.Processing => Color.Warning,
+        DocumentStatus.Failed => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string GetFileIcon(string? mime) => mime switch
+    {
+        "application/pdf" => Icons.Material.Filled.PictureAsPdf,
+        "application/msword" => Icons.Material.Filled.Description,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Icons.Material.Filled.Description,
+        "application/vnd.ms-powerpoint" => Icons.Material.Filled.Slideshow,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Icons.Material.Filled.Slideshow,
+        _ => Icons.Material.Filled.InsertDriveFile,
+    };
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024.0:0.#} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):0.#} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
+    }
+}

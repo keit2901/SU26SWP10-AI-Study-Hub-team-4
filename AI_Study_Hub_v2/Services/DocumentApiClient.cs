@@ -109,6 +109,46 @@ public sealed class DocumentApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    /// <summary>Fetches one document by id. The returned DTO carries a 5-minute signed download URL.</summary>
+    public async Task<DocumentDto> GetAsync(
+        string accessToken,
+        Guid id,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/documents/{id}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<DocumentDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    /// <summary>Hard-deletes a document. Cascades chunks; storage object removal is best-effort server-side.</summary>
+    public async Task DeleteAsync(
+        string accessToken,
+        Guid id,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Delete, $"api/documents/{id}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            return;
+        }
+        await ThrowFromResponseAsync(resp, ct);
+    }
+
     private static string BuildQueryString(DocumentListQuery? q)
     {
         if (q is null) return string.Empty;
