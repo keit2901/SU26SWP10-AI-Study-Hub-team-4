@@ -127,6 +127,11 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         {
             var result = searchResults[i];
             var excerpt = NormalizeWhitespace(result.ContentExcerpt);
+            if (string.IsNullOrWhiteSpace(excerpt))
+            {
+                continue;
+            }
+
             if (excerpt.Length > remainingContextChars)
             {
                 excerpt = Truncate(excerpt, remainingContextChars);
@@ -135,7 +140,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
             remainingContextChars = Math.Max(0, remainingContextChars - excerpt.Length);
 
             sources.Add(new AiChatSourceDto(
-                $"S{i + 1}",
+                $"S{sources.Count + 1}",
                 result.DocumentId,
                 result.FileName,
                 result.ChunkIndex,
