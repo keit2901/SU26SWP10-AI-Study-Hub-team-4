@@ -1,7 +1,7 @@
 # AI Study Hub v2 — Resume Pack
 
 > **Mục đích:** Mở session mới với agent (Claude / OpenCode / Kiro / khác) → paste/đính kèm file này làm context đầu tiên → agent có đủ thông tin để **không hỏi lại** và **không phá tiến độ**.
-> **Cập nhật lần cuối:** 2026-05-26 (sau Sprint 1 D1-D6 code-complete — D6 folder picker + document/folder E2E smoke PASS; parallel AI/RAG backend present uncommitted)
+> **Cập nhật lần cuối:** 2026-05-26 (sau Sprint 1 D1-D6 code-complete — D6 folder picker + document/folder E2E smoke PASS, commit `2a0c5d5`; parallel AI/RAG backend present uncommitted)
 > **Người maintain:** Kiệt — PM Team 4 SWP391 SU26
 > **Phase hoàn tất:** Phase 1 Auth (GoTrue) + **Sprint 1 D1-D6 code-complete** của Phase 2: schema + Storage bucket + document backend CRUD + signed download + Blazor upload/list/detail/delete + folder picker/move-to-folder + NUnit coverage. Sprint 2 RAG backend work đang xuất hiện song song, chưa close/commit chính thức.
 > **File companion:** `previous_session/_CURRENT_SESSION.md` (session 15 live — D6 folder picker), `_CURRENT_SESSION_AI_CHATBOT_RAG.md` (parallel AI/RAG live), `14_Session_2026-05-26_Sprint1_D5_Handoff.md` (D5 backend tests), `07_Phase2_Document_RAG_Plan.md` (Phase 2 plan v-final), `rule.md` (session-progress rule).
@@ -279,7 +279,7 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | 10 | Phase 2 Sprint 1 D3 — Blazor upload form (`DocumentApiClient` + `/documents/upload` page + nav link) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred to Kiệt) |
 | 11 | Phase 2 Sprint 1 D4 — List/detail/delete UI (`/documents` + `/documents/{id}`) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred; folder picker split → D6) |
 | 12 | Phase 2 Sprint 1 D5 — Backend tests for DocumentService + DocumentsController (SCRUM-28) | ✅ Done 2026-05-26 (50 new tests, 87/88 pass + 1 documented skip) |
-| 13 | Phase 2 Sprint 1 D6 — Demo polish + Folder picker (`FoldersController` + `IFolderService` + `FolderApiClient` + dropdown/filter/move UI) | ✅ Code-complete 2026-05-26 (uncommitted; E2E smoke PASS) |
+| 13 | Phase 2 Sprint 1 D6 — Demo polish + Folder picker (`FoldersController` + `IFolderService` + `FolderApiClient` + dropdown/filter/move UI) | ✅ Done 2026-05-26 commit `2a0c5d5` (E2E smoke PASS) |
 | 14 | Phase 2 Sprint 2 — Chunking + embeddings + RAG retrieve + Groq generation | ⏳ Pending (parallel AI/RAG backend surface present uncommitted) |
 
 ### 4.1 Smoke Test Results — Phase 1 (Supabase GoTrue)
@@ -354,7 +354,7 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | Build/Test gate | 0 warning, 0 error; **87/88 pass + 1 skipped, 0 failed** in 1.8s (was 38/38) |
 | Commit | `9dce4a0 test(documents): D5 backend tests for DocumentService + DocumentsController (SCRUM-28)` |
 
-### 4.6 D6 Folder picker + demo polish (2026-05-26T12:20Z, uncommitted)
+### 4.6 D6 Folder picker + demo polish (2026-05-26T12:20Z, committed `2a0c5d5`)
 
 | Item | Value |
 |---|---|
@@ -366,7 +366,7 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | Tests | +18 D6 tests: `FolderServiceTests` 7, `FoldersControllerTests` 6, `DocumentServiceTests` +3 move tests, `DocumentsControllerTests` +2 move endpoint tests |
 | E2E smoke | PASS: admin login -> create folder -> upload PDF with FolderId -> list folder -> detail signed URL -> move to loose -> delete doc/folder -> final absent |
 | Build/Test gate | 0 warning, 0 error; combined workspace **110 passed + 1 skipped + 0 failed** |
-| Commit | Not committed yet; stage D6 files separately from parallel AI/RAG + Home/Dashboard changes |
+| Commit | `2a0c5d5 feat(documents): D6 folder picker and move-to-folder flow` |
 
 ---
 
@@ -661,7 +661,7 @@ Nếu **app chưa chạy** (5240 not listening): chỉ là chưa start, không p
 | D3 | Blazor `DocumentApiClient` + `/documents/upload` page + nav link | ✅ commit `8454b0d` (manual UI smoke deferred) |
 | D4 | Blazor list/detail/delete UI (`/documents` + `/documents/{id}`) — `MudTable` + filters + `ConfirmDialog` delete + signed-URL "Open file" | ✅ commit `50a8122` (manual UI smoke deferred; folder picker split → D6) |
 | D5 | NUnit tests for `DocumentService` (unit, mock IStorageClient + EF InMemory) + `DocumentsController` (unit-level claim + exception mapping) — SCRUM-28 | ✅ commit `9dce4a0` (50 new tests, 87/88 pass + 1 documented skip) |
-| D6 | Demo polish + folder picker (`FoldersController`, `FolderService`, `FolderApiClient`, Upload/List/Detail dropdown/filter/move) | ✅ code-complete, uncommitted; E2E smoke PASS 2026-05-26T12:20Z |
+| D6 | Demo polish + folder picker (`FoldersController`, `FolderService`, `FolderApiClient`, Upload/List/Detail dropdown/filter/move) | ✅ commit `2a0c5d5`; E2E smoke PASS 2026-05-26T12:20Z |
 
 ### Sprint 2 — RAG pipeline (planned)
 
@@ -739,8 +739,9 @@ Tests:            110/111 pass + 1 documented skip (combined workspace, final ve
                   D6 adds 18 folder/move tests; parallel RAG adds 5 tests
 Build:            0 warning, 0 error (last verified 2026-05-26T11:58Z)
 E2E smoke:        D6 document+folder flow PASS 2026-05-26T12:20Z; backend stopped after smoke
-Worktree:         uncommitted D6 + parallel AI/RAG + Home/Dashboard changes; stage by scope
-Git HEAD:         e03423e  docs(session): close 14 - D5 backend tests + Resume Pack refresh + F1 MIME drift fix
+Worktree:         D6 code committed; remaining uncommitted = parallel AI/RAG + Home/Dashboard + live logs
+Git HEAD:         2a0c5d5  feat(documents): D6 folder picker and move-to-folder flow
+                  e03423e  docs(session): close 14 - D5 backend tests + Resume Pack refresh + F1 MIME drift fix
                   9dce4a0  test(documents): D5 backend tests for DocumentService + DocumentsController (SCRUM-28)
                   679b0d4  docs(session): close 13 - D4 list/detail UI code-complete
                   50a8122  feat(documents): D4 list/detail/delete UI (SCRUM-15/25) — code-complete
