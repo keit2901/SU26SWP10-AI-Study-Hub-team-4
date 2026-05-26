@@ -2,6 +2,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
+using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -10,8 +11,8 @@ namespace AI_Study_Hub_v2.Services;
 
 /// <summary>
 /// EF Core + Supabase Storage implementation of <see cref="IDocumentService"/>.
-/// Sprint 1 scope: CRUD + filter. Chunking + embedding live in a separate
-/// background service called from <see cref="UploadAsync"/> in D6.
+/// Sprint 1 scope: CRUD + filter. Sprint 2 invokes ingestion after PDF upload
+/// so text chunks and embeddings are ready for RAG search.
 /// </summary>
 public sealed class DocumentService : IDocumentService
 {
@@ -35,15 +36,18 @@ public sealed class DocumentService : IDocumentService
 
     private readonly AppDbContext _db;
     private readonly ISupabaseStorageClient _storage;
+    private readonly IDocumentIngestionService? _ingestion;
     private readonly ILogger<DocumentService> _logger;
 
     public DocumentService(
         AppDbContext db,
         ISupabaseStorageClient storage,
-        ILogger<DocumentService> logger)
+        ILogger<DocumentService> logger,
+        IDocumentIngestionService? ingestion = null)
     {
         _db = db;
         _storage = storage;
+        _ingestion = ingestion;
         _logger = logger;
     }
 
@@ -161,6 +165,25 @@ public sealed class DocumentService : IDocumentService
         _logger.LogInformation(
             "Document uploaded: id={Id} user={UserId} subject={Subject} semester={Semester} size={Size}B path={Path}",
             doc.Id, profile.Id, doc.SubjectCode, doc.Semester, doc.FileSizeBytes, doc.StoragePath);
+
+        if (_ingestion is not null && IsIngestionCandidate(contentType))
+        {
+            var ingestion = await _ingestion.IngestAsync(doc.Id, supabaseUserId, cancellationToken);
+            if (!ingestion.Success)
+            {
+                _logger.LogWarning(
+                    "Document ingestion finished with failure after upload: id={Id} error={Error}",
+                    doc.Id, ingestion.ErrorMessage);
+            }
+
+            var reloaded = await _db.Documents
+                .AsNoTracking()
+                .FirstOrDefaultAsync(d => d.Id == doc.Id, cancellationToken);
+            if (reloaded is not null)
+            {
+                return ToDto(reloaded, signedUrl: null);
+            }
+        }
 
         return ToDto(doc, signedUrl: null);
     }
@@ -295,6 +318,9 @@ public sealed class DocumentService : IDocumentService
                 "Storage delete failed for {Path} after row removal. Object may be leaked.", pathToDelete);
         }
     }
+
+    private static bool IsIngestionCandidate(string contentType) =>
+        string.Equals(contentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
 
     private static DocumentDto ToDto(Document doc, string? signedUrl) => new()
     {

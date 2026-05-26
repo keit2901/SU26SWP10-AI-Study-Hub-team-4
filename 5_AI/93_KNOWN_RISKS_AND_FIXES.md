@@ -1,25 +1,23 @@
 # Sprint 2 RAG Known Risks And Fixes
 
-This file tracks QA/integration risks found from the contract baseline in `feature/s2-qa-docs` and the Sprint 2 plan. It should be updated after worker branches are merged.
+This file tracks QA/integration risks for the merged `sprint2/integration` branch and the Sprint 2 RAG plan.
 
 ## Verified Baseline
 
-- Branch: `feature/s2-qa-docs`.
-- Base commit: `ccbaedd feat(rag): add sprint 2 shared contracts`.
-- Worktree before docs: clean.
-- Build evidence: `dotnet build AI_Study_Hub_v2.sln --nologo` passed with 0 warnings / 0 errors.
-- Test evidence: `dotnet test AI_Study_Hub_v2.sln --nologo` passed with 105 passed, 1 skipped, 0 failed.
-- Runtime smoke: not executed because `infra/supabase/.env` is absent in this QA worktree and Supabase services were not listening on `5432`/`8000`.
+- Branch: `sprint2/integration`.
+- Base contract commit: `ccbaedd feat(rag): add sprint 2 shared contracts`.
+- Worker commits merged: `a04900f`, `7706dda`, `8f6cdca`, `611825c`, `9c243c1`.
+- Final build evidence: `dotnet build AI_Study_Hub_v2\AI_Study_Hub_v2.sln --nologo` passed with 0 warnings / 0 errors.
+- Final test evidence: `dotnet test AI_Study_Hub_v2\AI_Study_Hub_v2.sln --nologo --no-build` passed with 132 passed, 1 skipped, 0 failed.
+- Runtime smoke: not executed in this session; it still requires local Supabase `.env`/containers and `Groq:ApiKey` in user-secrets.
 
 ## Integration Blockers On This Branch
 
 | Blocker | Impact | Recommended Fix / Owner |
 |---|---|---|
-| No ingestion implementation is merged | Upload does not yet prove extract/chunk/embed behavior. | Merge AI 1 ingestion branch; ensure upload triggers ingestion or add a documented manual `POST /api/documents/{id}/ingest`. |
-| No embedding/search implementation is merged | `POST /api/rag/search` does not exist; cannot validate top-K or owner-only retrieval. | Merge AI 2 embedding/search branch; keep `RagSearchRequest` / `RagSearchResultDto` contract unchanged unless coordinator updates all users. |
-| No chat API implementation is merged | `POST /api/ai/chat/ask` does not exist; cannot validate grounded answer or Groq error behavior. | Merge AI 3 chat API branch; map errors to controlled API responses, not unhandled 500s. |
-| No chat UI is merged | `/ai/chat` route and nav entry do not exist; browser demo cannot be completed. | Merge AI 4 UI branch after API route is stable. |
-| Supabase `.env` is missing in QA worktree | Runtime smoke cannot start local stack from this branch without setup. | Run `setup.ps1` in this worktree or copy/recreate local env through approved setup flow; never commit `.env`. |
+| Runtime smoke not executed | End-to-end browser/API evidence is still pending. | Start Supabase, configure user-secrets, run the smoke checklist, then stop the backend. |
+| Groq API key not committed by design | Chat generation returns provider-unavailable until `Groq:ApiKey` is set locally. | Set with `dotnet user-secrets set "Groq:ApiKey" "<key>" --project AI_Study_Hub_v2\AI_Study_Hub_v2.csproj`; never commit it. |
+| Scanned PDFs/OCR unsupported | Image-only PDFs will fail ingestion with no extractable text. | Use text-based PDFs for Sprint 2 demo or add OCR in a later sprint. |
 
 ## High-Risk Merge Files
 
@@ -46,13 +44,13 @@ Watch these during integration because multiple Sprint 2 branches are likely to 
 | Groq secret | `Groq:ApiKey` should come from user-secrets. | Accidental appsettings secret or missing key can break demo. | Validate key only where chat is used; return clear configuration error in Development. Never commit key. |
 | Test DB | InMemory support ignores `DocumentChunk`. | Search service tests using EF InMemory cannot cover pgvector queries. | Use service-level fakes for unit tests; add provider/integration test only when local Postgres is part of CI/manual smoke. |
 
-## Recommended Merge Order
+## Merge Order Applied
 
-1. Merge AI 1 ingestion first so uploads can produce chunks/status evidence.
-2. Merge AI 2 embedding/search next and verify owner-only top-K retrieval before LLM work.
-3. Merge AI 3 chat API after retrieval contract is stable.
-4. Merge AI 4 chat UI after `POST /api/ai/chat/ask` response shape is stable.
-5. Re-run AI 5 smoke checklist after each merge, especially build/test and DB status/chunk checks.
+1. AI 1 ingestion merged first so uploads can produce chunks/status evidence.
+2. AI 2 embedding/search merged next to validate owner-only top-K retrieval before LLM work.
+3. AI 3 chat API merged after retrieval contracts were stable.
+4. AI 4 chat UI merged after `POST /api/ai/chat/ask` response shape was stable.
+5. AI 5 QA docs merged last and updated for the integration branch.
 
 ## Focused Tests To Add After Feature Merge
 

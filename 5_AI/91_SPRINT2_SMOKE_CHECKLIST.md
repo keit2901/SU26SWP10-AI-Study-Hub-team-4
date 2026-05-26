@@ -1,6 +1,6 @@
 # Sprint 2 RAG Smoke Checklist
 
-Scope: QA/integration smoke guidance for `feature/s2-qa-docs` in `D:\FPT\summer2026\SWP391_parallel\s2_qa`. This file is intentionally local to this QA worktree and does not edit the original planning folder.
+Scope: QA/integration smoke guidance for `sprint2/integration` in `D:\FPT\summer2026\SWP391_parallel\s2_integration`. This file is intentionally local to the integration worktree and does not edit the original planning folder.
 
 ## Session Evidence
 
@@ -20,13 +20,13 @@ Scope: QA/integration smoke guidance for `feature/s2-qa-docs` in `D:\FPT\summer2
 | Contract DTOs | Ready | `Dtos/RagDtos.cs`, `Dtos/AiChatDtos.cs` compile. |
 | RAG interfaces | Ready | `Services/Rag/RagContracts.cs` compiles. |
 | RAG options | Ready | `Options/RagOptions.cs`, `Options/GroqOptions.cs` compile and config sections exist. |
-| Build | Passed | `dotnet build AI_Study_Hub_v2.sln --nologo`. |
-| Unit tests | Passed | `dotnet test AI_Study_Hub_v2.sln --nologo`: 105 passed, 1 skipped. |
-| Supabase stack | Blocked | `infra/supabase/.env` missing in QA worktree; ports not listening. |
-| Ingestion | Not available on this branch | No implementation merged beyond shared contracts. |
-| `/api/rag/search` | Not available on this branch | No RAG controller merged. |
-| `/api/ai/chat/ask` | Not available on this branch | No AI chat controller merged. |
-| `/ai/chat` UI | Not available on this branch | No AI chat page/nav entry merged. |
+| Build | Passed | `dotnet build AI_Study_Hub_v2\AI_Study_Hub_v2.sln --nologo`: 0 warnings, 0 errors after final integration wiring. |
+| Unit tests | Passed | `dotnet test AI_Study_Hub_v2\AI_Study_Hub_v2.sln --nologo --no-build`: 132 passed, 1 skipped. |
+| Supabase stack | Not executed | Runtime smoke still needs local Supabase `.env`/containers and a user-secrets Groq key. |
+| Ingestion | Integrated | PDF upload invokes ingestion; manual `POST /api/documents/{id}/ingest` is available for re-ingest/debug. |
+| `/api/rag/search` | Integrated | `RagController` returns owner-scoped top-K chunk results. |
+| `/api/ai/chat/ask` | Integrated | `AiChatController` returns grounded answers and citations via Groq when `Groq:ApiKey` is configured. |
+| `/ai/chat` UI | Integrated | AI chat page and nav entry are available. |
 
 ## Pre-Smoke Setup
 

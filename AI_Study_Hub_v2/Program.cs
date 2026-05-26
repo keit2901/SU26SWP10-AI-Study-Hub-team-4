@@ -6,6 +6,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -96,6 +97,17 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 
+// Sprint 2 RAG services -------------------------------------------------------
+builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
+builder.Services.AddScoped<IChunkingService, ChunkingService>();
+builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
+builder.Services.AddScoped<IDocumentStorageReadService, SupabaseDocumentStorageReadService>();
+builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
+builder.Services.AddScoped<IEmbeddingService, FakeEmbeddingService>();
+builder.Services.AddScoped<IRagSearchService, RagSearchService>();
+builder.Services.AddScoped<IAiChatService, SemanticKernelRagChatService>();
+builder.Services.AddHttpClient<IAiChatCompletionClient, GroqChatCompletionClient>();
+
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
 {
@@ -127,6 +139,11 @@ builder.Services.AddHttpClient<DocumentApiClient>((sp, http) =>
 builder.Services.AddHttpClient<FolderApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
+builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+    http.Timeout = TimeSpan.FromMinutes(2);
 });
 builder.Services.AddScoped<AuthSessionState>();
 

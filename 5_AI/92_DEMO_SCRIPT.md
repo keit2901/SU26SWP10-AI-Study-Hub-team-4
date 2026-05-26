@@ -1,6 +1,6 @@
 # Sprint 2 RAG Demo Script
 
-Audience: Sprint 2 demo for AI Study Hub RAG flow. This script assumes the feature branches for ingestion, embedding/search, chat API, and chat UI have been merged into an integration branch. On `feature/s2-qa-docs` alone, only shared contracts are present.
+Audience: Sprint 2 demo for AI Study Hub RAG flow. This script targets the merged `sprint2/integration` branch with ingestion, embedding/search, chat API, and chat UI integrated.
 
 ## Demo Goal
 
@@ -36,7 +36,7 @@ Use metadata:
 2. Start the app:
 
 ```powershell
-cd D:\FPT\summer2026\SWP391_parallel\s2_qa\AI_Study_Hub_v2
+cd D:\FPT\summer2026\SWP391_parallel\s2_integration\AI_Study_Hub_v2
 $env:ASPNETCORE_ENVIRONMENT = "Development"
 dotnet run --no-launch-profile --urls http://localhost:5240
 ```
