@@ -105,6 +105,26 @@ public class DocumentIngestionServiceTests
     }
 
     [Test]
+    public async Task IngestAsync_ExtractionFailure_MarksFailedAndReturnsFailure()
+    {
+        await using var db = CreateDb();
+        var profile = SeedActiveStudent(db);
+        var document = SeedDocument(db, profile.Id);
+        var sut = BuildSut(db, new ThrowingTextExtractionService("PDF parser failed"));
+
+        var result = await sut.IngestAsync(document.Id, profile.SupabaseUserId);
+
+        result.Success.Should().BeFalse();
+        result.ChunkCount.Should().Be(0);
+        result.ErrorMessage.Should().Contain("PDF parser failed");
+
+        var reloaded = await db.Documents.SingleAsync(d => d.Id == document.Id);
+        reloaded.Status.Should().Be(DocumentStatus.Failed);
+        reloaded.ErrorMessage.Should().Contain("PDF parser failed");
+        (await db.DocumentChunks.CountAsync(c => c.DocumentId == document.Id)).Should().Be(0);
+    }
+
+    [Test]
     public async Task IngestAsync_NotOwner_ReturnsFailureAndDoesNotModifyDocument()
     {
         await using var db = CreateDb();
@@ -247,6 +267,22 @@ public class DocumentIngestionServiceTests
             string mimeType,
             CancellationToken cancellationToken = default) =>
             Task.FromResult(_pages);
+    }
+
+    private sealed class ThrowingTextExtractionService : ITextExtractionService
+    {
+        private readonly string _message;
+
+        public ThrowingTextExtractionService(string message)
+        {
+            _message = message;
+        }
+
+        public Task<IReadOnlyList<ExtractedPage>> ExtractPagesAsync(
+            Stream fileStream,
+            string mimeType,
+            CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException(_message);
     }
 
     private sealed class FakeEmbeddingService : IEmbeddingService
