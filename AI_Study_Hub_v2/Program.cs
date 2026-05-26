@@ -94,7 +94,7 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
-builder.Services.AddHttpClient<AuthApiClient>((sp, http) =>
+static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
 {
     var cfg = sp.GetRequiredService<IConfiguration>();
     var baseUrl = cfg["DemoUi:BackendBaseUrl"];
@@ -107,7 +107,19 @@ builder.Services.AddHttpClient<AuthApiClient>((sp, http) =>
     {
         baseUrl += "/";
     }
-    http.BaseAddress = new Uri(baseUrl);
+    return new Uri(baseUrl);
+}
+
+builder.Services.AddHttpClient<AuthApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
+// SCRUM-12/26: Blazor upload form posts here (multipart). Same backend base URL.
+builder.Services.AddHttpClient<DocumentApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+    // 50 MB body + slow Kestrel re-entry: bump above default 100s for big PDFs.
+    http.Timeout = TimeSpan.FromMinutes(2);
 });
 builder.Services.AddScoped<AuthSessionState>();
 

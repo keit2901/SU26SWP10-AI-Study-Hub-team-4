@@ -1,0 +1,225 @@
+@page "/documents/upload"
+@rendermode InteractiveServer
+@using System.ComponentModel.DataAnnotations
+@using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Services
+@inject DocumentApiClient DocumentsApi
+@inject AuthSessionState Session
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Upload document - AI Study Hub v2</PageTitle>
+
+<MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 80vh;">
+    <MudPaper Class="pa-8" Elevation="4" Style="width: 100%; max-width: 560px;">
+        <MudStack Spacing="3">
+            <MudText Typo="Typo.h5" Align="Align.Center">Upload study document</MudText>
+            <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
+                PDF / DOC / DOCX / PPT / PPTX, up to 50 MB.
+            </MudText>
+
+            <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid">
+                <MudTextField T="string"
+                              Label="Subject code (e.g. SWP391)"
+                              @bind-Value="_model.SubjectCode"
+                              Required="true"
+                              RequiredError="Subject code is required"
+                              Validation="@(new RegularExpressionAttribute(@"^[A-Z]{3}[0-9]{3}$") { ErrorMessage = "3 uppercase letters + 3 digits, e.g. SWP391" })"
+                              Variant="Variant.Outlined"
+                              Disabled="_busy" />
+
+                <MudTextField T="string"
+                              Label="Semester (e.g. SU26)"
+                              @bind-Value="_model.Semester"
+                              Required="true"
+                              RequiredError="Semester is required"
+                              Validation="@(new RegularExpressionAttribute(@"^(SP|SU|FA|WI)[0-9]{2}$") { ErrorMessage = "SP/SU/FA/WI + 2 digits, e.g. SU26" })"
+                              Variant="Variant.Outlined"
+                              Class="mt-3"
+                              Disabled="_busy" />
+            </MudForm>
+
+            <MudFileUpload T="IBrowserFile"
+                           @ref="_uploader"
+                           OnFilesChanged="OnInputFileChangedAsync"
+                           Accept="@AcceptAttr"
+                           MaximumFileCount="1"
+                           MaxFileSize="MaxFileSizeBytes"
+                           Hidden="true"
+                           Disabled="_busy" />
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Default"
+                       StartIcon="@Icons.Material.Filled.AttachFile"
+                       FullWidth="true"
+                       OnClick="OpenFilePickerAsync"
+                       Disabled="_busy">
+                @(_file is null ? "Choose file" : "Replace file")
+            </MudButton>
+
+            @if (_file is not null)
+            {
+                <MudPaper Class="pa-3" Outlined="true">
+                    <MudStack Spacing="0">
+                        <MudText Typo="Typo.body2"><b>@_file.Name</b></MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            @FormatBytes(_file.Size) — @_file.ContentType
+                        </MudText>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Filled">@_error</MudAlert>
+            }
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       OnClick="SubmitAsync"
+                       Disabled="_busy || !_isValid || _file is null">
+                @if (_busy)
+                {
+                    <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                    <MudText Class="ms-2">Uploading...</MudText>
+                }
+                else
+                {
+                    <MudText>Upload</MudText>
+                }
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+</MudStack>
+
+@code {
+    private const long MaxFileSizeBytes = DocumentApiClient.MaxFileSizeBytes;
+    private const string AcceptAttr = ".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation";
+
+    private MudForm? _form;
+    private MudFileUpload<IBrowserFile>? _uploader;
+    private bool _isValid;
+    private bool _busy;
+    private string? _error;
+    private IBrowserFile? _file;
+    private readonly UploadDocumentRequest _model = new();
+
+    protected override void OnInitialized()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/login", replace: true);
+        }
+    }
+
+    private Task OpenFilePickerAsync()
+        => _uploader?.OpenFilePickerAsync() ?? Task.CompletedTask;
+
+    private Task OnInputFileChangedAsync(InputFileChangeEventArgs e)
+    {
+        _error = null;
+        var file = e.FileCount > 0 ? e.File : null;
+        if (file is null)
+        {
+            _file = null;
+            return Task.CompletedTask;
+        }
+
+        if (file.Size > MaxFileSizeBytes)
+        {
+            _file = null;
+            _error = $"File is {FormatBytes(file.Size)}; the 50 MB limit applies.";
+            return Task.CompletedTask;
+        }
+
+        if (!IsAllowedMime(file.ContentType, file.Name))
+        {
+            _file = null;
+            _error = "Only PDF, DOC, DOCX, PPT, PPTX files are accepted.";
+            return Task.CompletedTask;
+        }
+
+        _file = file;
+        return Task.CompletedTask;
+    }
+
+    private static bool IsAllowedMime(string? contentType, string fileName)
+    {
+        if (!string.IsNullOrWhiteSpace(contentType) && DocumentApiClient.AllowedMimeTypes.Contains(contentType))
+        {
+            return true;
+        }
+        // Browsers occasionally drop the MIME for less common Office types — fall back to extension.
+        var ext = Path.GetExtension(fileName).ToLowerInvariant();
+        return ext is ".pdf" or ".doc" or ".docx" or ".ppt" or ".pptx";
+    }
+
+    private async Task SubmitAsync()
+    {
+        _error = null;
+        if (_form is null || _file is null) return;
+        await _form.ValidateAsync();
+        if (!_isValid) return;
+
+        if (!Session.IsAuthenticated || string.IsNullOrEmpty(Session.AccessToken))
+        {
+            _error = "Your session has expired. Please sign in again.";
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            // IBrowserFile streams must be opened with the size limit explicitly.
+            await using var stream = _file.OpenReadStream(MaxFileSizeBytes);
+            var dto = await DocumentsApi.UploadAsync(
+                Session.AccessToken!,
+                stream,
+                _file.Name,
+                _file.ContentType,
+                _file.Size,
+                _model);
+
+            Snackbar.Add($"Uploaded \"{dto.FileName}\" ({FormatBytes(dto.FileSizeBytes)}).", Severity.Success);
+            // Reset for another upload.
+            _file = null;
+            _model.SubjectCode = string.Empty;
+            _model.Semester = string.Empty;
+            _model.FolderId = null;
+            await _form.ResetAsync();
+            if (_uploader is not null)
+            {
+                await _uploader.ClearAsync();
+            }
+        }
+        catch (DocumentApiException ex)
+        {
+            _error = ex.StatusCode switch
+            {
+                401 => "Your session has expired. Please sign in again.",
+                413 => "File is larger than the 50 MB server limit.",
+                415 => "That file type isn't supported.",
+                _   => ex.Message,
+            };
+        }
+        catch (Exception ex)
+        {
+            _error = $"Network error: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024.0:0.#} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):0.#} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
+    }
+}
