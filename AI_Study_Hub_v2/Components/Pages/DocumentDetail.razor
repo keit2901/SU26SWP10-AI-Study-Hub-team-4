@@ -137,6 +137,24 @@
 
                 <MudDivider />
 
+                <MudPaper Class="pa-3" Elevation="0" Outlined="true">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
+                        <MudStack Spacing="0">
+                            <MudText Typo="Typo.subtitle2">AI study chat</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Ask questions scoped to this document and review cited chunks.</MudText>
+                        </MudStack>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.AutoAwesome"
+                                   Href="@($"/ai/chat?documentId={_doc.Id}")"
+                                   Disabled="_busy || _doc.Status != DocumentStatus.Ready">
+                            Ask AI about this document
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+
+                <MudDivider />
+
                 <MudStack Spacing="1">
                     <MudText Typo="Typo.subtitle2">Download</MudText>
                     @if (!string.IsNullOrEmpty(_doc.DownloadUrl))
