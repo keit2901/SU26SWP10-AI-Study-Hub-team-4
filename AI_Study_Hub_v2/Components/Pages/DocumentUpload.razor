@@ -4,6 +4,7 @@
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
 @inject DocumentApiClient DocumentsApi
+@inject FolderApiClient FoldersApi
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -37,6 +38,39 @@
                               Variant="Variant.Outlined"
                               Class="mt-3"
                               Disabled="_busy" />
+
+                <MudSelect T="Guid?"
+                           Label="Folder"
+                           @bind-Value="_model.FolderId"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Class="mt-3"
+                           Clearable="true"
+                           Disabled="_busy || _foldersBusy"
+                           Placeholder="Loose document">
+                    <MudSelectItem T="Guid?" Value="@(null)">Loose document</MudSelectItem>
+                    @foreach (var folder in _folders)
+                    {
+                        <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name (@folder.DocumentCount)</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudStack Row="true" Spacing="1" Class="mt-2" Style="flex-wrap: wrap;">
+                    <MudTextField T="string"
+                                  Label="New folder name"
+                                  @bind-Value="_newFolderName"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Disabled="_busy || _foldersBusy"
+                                  Style="flex: 1; min-width: 210px;" />
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Secondary"
+                               StartIcon="@Icons.Material.Filled.CreateNewFolder"
+                               OnClick="CreateFolderAsync"
+                               Disabled="_busy || _foldersBusy || string.IsNullOrWhiteSpace(_newFolderName)">
+                        Create folder
+                    </MudButton>
+                </MudStack>
             </MudForm>
 
             <MudFileUpload T="IBrowserFile"
@@ -101,20 +135,90 @@
     private MudFileUpload<IBrowserFile>? _uploader;
     private bool _isValid;
     private bool _busy;
+    private bool _foldersBusy;
     private string? _error;
+    private string? _newFolderName;
     private IBrowserFile? _file;
+    private List<FolderDto> _folders = new();
     private readonly UploadDocumentRequest _model = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         if (!Session.IsAuthenticated)
         {
             Nav.NavigateTo("/login", replace: true);
+            return;
         }
+
+        await LoadFoldersAsync();
     }
 
     private Task OpenFilePickerAsync()
         => _uploader?.OpenFilePickerAsync() ?? Task.CompletedTask;
+
+    private async Task LoadFoldersAsync()
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken)) return;
+        _foldersBusy = true;
+        try
+        {
+            _folders = (await FoldersApi.ListAsync(Session.AccessToken!)).ToList();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex), Severity.Warning);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not load folders: {ex.Message}", Severity.Warning);
+        }
+        finally
+        {
+            _foldersBusy = false;
+        }
+    }
+
+    private async Task CreateFolderAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken) || string.IsNullOrWhiteSpace(_newFolderName)) return;
+        _foldersBusy = true;
+        _error = null;
+        try
+        {
+            var folder = await FoldersApi.CreateAsync(
+                Session.AccessToken!,
+                new CreateFolderRequest { Name = _newFolderName.Trim() });
+
+            _folders.Add(folder);
+            _folders = _folders.OrderBy(f => f.Name).ToList();
+            _model.FolderId = folder.Id;
+            _newFolderName = null;
+            Snackbar.Add($"Created folder \"{folder.Name}\".", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            _error = MapError(ex);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not create folder: {ex.Message}";
+        }
+        finally
+        {
+            _foldersBusy = false;
+            StateHasChanged();
+        }
+    }
 
     private Task OnInputFileChangedAsync(InputFileChangeEventArgs e)
     {
@@ -183,12 +287,15 @@
                 _model);
 
             Snackbar.Add($"Uploaded \"{dto.FileName}\" ({FormatBytes(dto.FileSizeBytes)}).", Severity.Success);
-            // Reset for another upload.
+            var selectedFolderId = _model.FolderId;
+            await LoadFoldersAsync();
+            // Reset for another upload, but keep the selected folder for batch uploads.
             _file = null;
             _model.SubjectCode = string.Empty;
             _model.Semester = string.Empty;
-            _model.FolderId = null;
+            _model.FolderId = selectedFolderId;
             await _form.ResetAsync();
+            _model.FolderId = selectedFolderId;
             if (_uploader is not null)
             {
                 await _uploader.ClearAsync();
@@ -201,7 +308,7 @@
                 401 => "Your session has expired. Please sign in again.",
                 413 => "File is larger than the 50 MB server limit.",
                 415 => "That file type isn't supported.",
-                _   => ex.Message,
+                _   => MapError(ex),
             };
         }
         catch (Exception ex)
@@ -214,6 +321,14 @@
             StateHasChanged();
         }
     }
+
+    private static string MapError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session has expired. Please sign in again.",
+        409 => "A folder with that name already exists.",
+        400 => ex.Code == "folder_name_required" ? "Folder name is required." : ex.Message,
+        _ => ex.Message,
+    };
 
     private static string FormatBytes(long bytes)
     {

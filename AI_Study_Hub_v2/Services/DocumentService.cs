@@ -227,6 +227,41 @@ public sealed class DocumentService : IDocumentService
         return ToDto(doc, signedUrl);
     }
 
+    public async Task<DocumentDto> MoveToFolderAsync(
+        Guid supabaseUserId,
+        Guid documentId,
+        Guid? folderId,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, cancellationToken)
+            ?? throw new DocumentException(404, "user_not_found",
+                "Authenticated user has no profile in public.users.");
+
+        var doc = await _db.Documents
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            ?? throw new DocumentException(404, "document_not_found",
+                "Document does not exist or does not belong to the caller.");
+
+        if (folderId.HasValue)
+        {
+            var folderOwned = await _db.Folders
+                .AsNoTracking()
+                .AnyAsync(f => f.Id == folderId.Value && f.UserId == profile.Id, cancellationToken);
+            if (!folderOwned)
+            {
+                throw new DocumentException(404, "folder_not_found",
+                    "Folder does not exist or does not belong to the caller.");
+            }
+        }
+
+        doc.FolderId = folderId;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return ToDto(doc, signedUrl: null);
+    }
+
     public async Task DeleteAsync(
         Guid supabaseUserId,
         Guid documentId,

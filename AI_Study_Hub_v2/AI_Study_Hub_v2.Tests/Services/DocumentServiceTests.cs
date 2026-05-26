@@ -529,6 +529,88 @@ public class DocumentServiceTests
     }
 
     // -------------------------------------------------------------------------
+    // MoveToFolderAsync
+    // -------------------------------------------------------------------------
+
+    [Test]
+    public async Task MoveToFolderAsync_OwnFolder_UpdatesFolderId()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var folder = new Folder
+        {
+            Id = Guid.NewGuid(),
+            UserId = me.Id,
+            Name = "Sprint notes",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Folders.Add(folder);
+        var doc = SeedDocument(db, me.Id);
+
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        var sut = BuildSut(db, storage.Object);
+
+        var dto = await sut.MoveToFolderAsync(me.SupabaseUserId, doc.Id, folder.Id);
+
+        dto.FolderId.Should().Be(folder.Id);
+        (await db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id)).FolderId.Should().Be(folder.Id);
+    }
+
+    [Test]
+    public async Task MoveToFolderAsync_NullFolder_MovesBackToLooseDocuments()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var folder = new Folder
+        {
+            Id = Guid.NewGuid(),
+            UserId = me.Id,
+            Name = "Sprint notes",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Folders.Add(folder);
+        var doc = SeedDocument(db, me.Id, folderId: folder.Id);
+
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        var sut = BuildSut(db, storage.Object);
+
+        var dto = await sut.MoveToFolderAsync(me.SupabaseUserId, doc.Id, folderId: null);
+
+        dto.FolderId.Should().BeNull();
+        (await db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id)).FolderId.Should().BeNull();
+    }
+
+    [Test]
+    public async Task MoveToFolderAsync_ForeignFolder_Throws404_FolderNotFound()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var other = SeedActiveStudent(db);
+        var foreignFolder = new Folder
+        {
+            Id = Guid.NewGuid(),
+            UserId = other.Id,
+            Name = "Private",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Folders.Add(foreignFolder);
+        var doc = SeedDocument(db, me.Id);
+
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        var sut = BuildSut(db, storage.Object);
+
+        var act = () => sut.MoveToFolderAsync(me.SupabaseUserId, doc.Id, foreignFolder.Id);
+
+        var ex = await act.Should().ThrowAsync<DocumentException>();
+        ex.Which.StatusCode.Should().Be(404);
+        ex.Which.Code.Should().Be("folder_not_found");
+        (await db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id)).FolderId.Should().BeNull();
+    }
+
+    // -------------------------------------------------------------------------
     // DeleteAsync
     // -------------------------------------------------------------------------
 

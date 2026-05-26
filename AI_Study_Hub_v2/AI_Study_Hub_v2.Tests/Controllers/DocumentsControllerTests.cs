@@ -332,6 +332,66 @@ public class DocumentsControllerTests
     }
 
     // -------------------------------------------------------------------------
+    // MoveToFolder
+    // -------------------------------------------------------------------------
+
+    [Test]
+    public async Task MoveToFolder_HappyPath_Returns200_AndPassesFolderId()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var dto = SampleDto(documentId);
+        dto.FolderId = folderId;
+        Guid? capturedUser = null;
+        Guid? capturedDoc = null;
+        Guid? capturedFolder = null;
+
+        var svc = new Mock<IDocumentService>();
+        svc.Setup(s => s.MoveToFolderAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<Guid>(),
+                It.IsAny<Guid?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Guid, Guid, Guid?, CancellationToken>((uid, did, fid, _) =>
+            {
+                capturedUser = uid;
+                capturedDoc = did;
+                capturedFolder = fid;
+            })
+            .ReturnsAsync(dto);
+
+        var sut = BuildSut(svc.Object, Principal(supabaseUserId));
+
+        var result = await sut.MoveToFolder(
+            documentId,
+            new MoveDocumentFolderRequest { FolderId = folderId },
+            CancellationToken.None);
+
+        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        ok.Value.Should().BeSameAs(dto);
+        capturedUser.Should().Be(supabaseUserId);
+        capturedDoc.Should().Be(documentId);
+        capturedFolder.Should().Be(folderId);
+    }
+
+    [Test]
+    public async Task MoveToFolder_FolderNotFound_Returns404()
+    {
+        var svc = new Mock<IDocumentService>();
+        svc.Setup(s => s.MoveToFolderAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DocumentException(404, "folder_not_found", "missing"));
+
+        var sut = BuildSut(svc.Object, Principal(Guid.NewGuid()));
+
+        var result = await sut.MoveToFolder(Guid.NewGuid(), new MoveDocumentFolderRequest { FolderId = Guid.NewGuid() }, CancellationToken.None);
+
+        var obj = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        obj.StatusCode.Should().Be(404);
+        obj.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("folder_not_found");
+    }
+
+    // -------------------------------------------------------------------------
     // Delete
     // -------------------------------------------------------------------------
 

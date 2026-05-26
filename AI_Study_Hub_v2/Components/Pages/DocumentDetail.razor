@@ -4,6 +4,7 @@
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
 @inject DocumentApiClient DocumentsApi
+@inject FolderApiClient FoldersApi
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 @inject IDialogService Dialogs
@@ -88,7 +89,7 @@
                         </tr>
                         <tr><td><b>Subject</b></td><td>@_doc.SubjectCode</td></tr>
                         <tr><td><b>Semester</b></td><td>@_doc.Semester</td></tr>
-                        <tr><td><b>Folder</b></td><td>@(_doc.FolderId?.ToString() ?? "—")</td></tr>
+                        <tr><td><b>Folder</b></td><td>@FolderName(_doc.FolderId)</td></tr>
                         <tr><td><b>Page count</b></td><td>@(_doc.PageCount?.ToString() ?? "—")</td></tr>
                         <tr><td><b>Document Id</b></td><td><code>@_doc.Id</code></td></tr>
                         <tr><td><b>Uploaded</b></td><td>@_doc.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
@@ -104,6 +105,35 @@
                         }
                     </tbody>
                 </MudSimpleTable>
+
+                <MudDivider />
+
+                <MudStack Spacing="1">
+                    <MudText Typo="Typo.subtitle2">Folder</MudText>
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap: wrap;">
+                        <MudSelect T="Guid?"
+                                   Label="Move to folder"
+                                   @bind-Value="_selectedFolderId"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   Clearable="true"
+                                   Disabled="_busy"
+                                   Style="min-width: 240px;">
+                            <MudSelectItem T="Guid?" Value="@(null)">Loose document</MudSelectItem>
+                            @foreach (var folder in _folders)
+                            {
+                                <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name (@folder.DocumentCount)</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Variant="Variant.Outlined"
+                                   Color="Color.Secondary"
+                                   StartIcon="@Icons.Material.Filled.DriveFileMove"
+                                   OnClick="MoveFolderAsync"
+                                   Disabled="_busy || _selectedFolderId == _doc.FolderId">
+                            Save folder
+                        </MudButton>
+                    </MudStack>
+                </MudStack>
 
                 <MudDivider />
 
@@ -147,7 +177,9 @@
 
     private bool _busy;
     private string? _error;
+    private Guid? _selectedFolderId;
     private DocumentDto? _doc;
+    private List<FolderDto> _folders = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -156,6 +188,7 @@
             Nav.NavigateTo("/login", replace: true);
             return;
         }
+        await LoadFoldersAsync();
         await LoadAsync();
     }
 
@@ -169,6 +202,28 @@
         }
     }
 
+    private async Task LoadFoldersAsync()
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken)) return;
+        try
+        {
+            _folders = (await FoldersApi.ListAsync(Session.AccessToken!)).ToList();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex), Severity.Warning);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not load folders: {ex.Message}", Severity.Warning);
+        }
+    }
+
     private async Task LoadAsync()
     {
         if (string.IsNullOrEmpty(Session.AccessToken)) return;
@@ -178,6 +233,7 @@
         try
         {
             _doc = await DocumentsApi.GetAsync(Session.AccessToken!, Id);
+            _selectedFolderId = _doc.FolderId;
         }
         catch (DocumentApiException ex)
         {
@@ -192,6 +248,37 @@
         catch (Exception ex)
         {
             _error = $"Network error: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task MoveFolderAsync()
+    {
+        if (_doc is null || string.IsNullOrEmpty(Session.AccessToken)) return;
+        _busy = true;
+        try
+        {
+            _doc = await DocumentsApi.MoveToFolderAsync(Session.AccessToken!, _doc.Id, _selectedFolderId);
+            _selectedFolderId = _doc.FolderId;
+            await LoadFoldersAsync();
+            Snackbar.Add("Folder updated.", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex), Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not move document: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -251,11 +338,16 @@
         }
     }
 
+    private string FolderName(Guid? folderId)
+        => folderId is { } id
+            ? _folders.FirstOrDefault(f => f.Id == id)?.Name ?? "Unknown folder"
+            : "Loose document";
+
     private static string MapError(DocumentApiException ex) => ex.StatusCode switch
     {
         401 => "Your session has expired. Please sign in again.",
         403 => "You do not have access to that document.",
-        404 => "Document not found — it may have been deleted already.",
+        404 => ex.Code == "folder_not_found" ? "Folder not found." : "Document not found — it may have been deleted already.",
         _ => ex.Message,
     };
 

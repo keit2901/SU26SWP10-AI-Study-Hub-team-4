@@ -4,6 +4,7 @@
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
 @inject DocumentApiClient DocumentsApi
+@inject FolderApiClient FoldersApi
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 @inject IDialogService Dialogs
@@ -43,8 +44,23 @@
                           Margin="Margin.Dense"
                           Clearable="true"
                           Style="min-width: 140px;" />
+            <MudSelect T="Guid?"
+                       Label="Folder"
+                       @bind-Value="_folderFilter"
+                       Variant="Variant.Outlined"
+                       Margin="Margin.Dense"
+                       Clearable="true"
+                       Disabled="_busy"
+                       Style="min-width: 190px;">
+                <MudSelectItem T="Guid?" Value="@(null)">All folders</MudSelectItem>
+                @foreach (var folder in _folders)
+                {
+                    <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name (@folder.DocumentCount)</MudSelectItem>
+                }
+            </MudSelect>
             <MudTextField T="string"
-                          Label="Search file name"
+                          Label="Search documents"
+                          HelperText="File name contains"
                           @bind-Value="_textFilter"
                           Variant="Variant.Outlined"
                           Margin="Margin.Dense"
@@ -59,11 +75,61 @@
             </MudButton>
             <MudButton Variant="Variant.Text"
                        OnClick="ClearFiltersAsync"
-                       Disabled="_busy || (string.IsNullOrEmpty(_subjectFilter) && string.IsNullOrEmpty(_semesterFilter) && string.IsNullOrEmpty(_textFilter))">
+                       Disabled="_busy || !HasFilters">
                 Clear
             </MudButton>
+            <MudButton Variant="Variant.Outlined"
+                       Color="Color.Secondary"
+                       StartIcon="@Icons.Material.Filled.CreateNewFolder"
+                       OnClick="ShowNewFolderBox"
+                       Disabled="_busy">
+                New folder
+            </MudButton>
+        </MudStack>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mt-2" Style="flex-wrap: wrap;">
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@ResultSummary</MudText>
+            @if (!string.IsNullOrWhiteSpace(_subjectFilter))
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Subject: @_subjectFilter.Trim().ToUpperInvariant()</MudChip>
+            }
+            @if (!string.IsNullOrWhiteSpace(_semesterFilter))
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">Semester: @_semesterFilter.Trim().ToUpperInvariant()</MudChip>
+            }
+            @if (_folderFilter.HasValue)
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">Folder: @FolderName(_folderFilter)</MudChip>
+            }
+            @if (!string.IsNullOrWhiteSpace(_textFilter))
+            {
+                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Search: @_textFilter.Trim()</MudChip>
+            }
         </MudStack>
     </MudPaper>
+
+    @if (_showNewFolder)
+    {
+        <MudPaper Class="pa-3" Elevation="0" Outlined="true">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="flex-wrap: wrap;">
+                <MudTextField T="string"
+                              Label="Folder name"
+                              @bind-Value="_newFolderName"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Style="min-width: 240px; flex: 1;" />
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Check"
+                           OnClick="CreateFolderAsync"
+                           Disabled="_busy || string.IsNullOrWhiteSpace(_newFolderName)">
+                    Create
+                </MudButton>
+                <MudButton Variant="Variant.Text" OnClick="HideNewFolderBox" Disabled="_busy">
+                    Cancel
+                </MudButton>
+            </MudStack>
+        </MudPaper>
+    }
 
     @if (!string.IsNullOrEmpty(_error))
     {
@@ -82,6 +148,7 @@
             <MudTh>File</MudTh>
             <MudTh>Subject</MudTh>
             <MudTh>Semester</MudTh>
+            <MudTh>Folder</MudTh>
             <MudTh>Size</MudTh>
             <MudTh>Status</MudTh>
             <MudTh>Uploaded</MudTh>
@@ -96,6 +163,7 @@
             </MudTd>
             <MudTd DataLabel="Subject">@context.SubjectCode</MudTd>
             <MudTd DataLabel="Semester">@context.Semester</MudTd>
+            <MudTd DataLabel="Folder">@FolderName(context.FolderId)</MudTd>
             <MudTd DataLabel="Size">@FormatBytes(context.FileSizeBytes)</MudTd>
             <MudTd DataLabel="Status">
                 <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)" Variant="Variant.Filled">
@@ -148,12 +216,21 @@
     private string? _subjectFilter;
     private string? _semesterFilter;
     private string? _textFilter;
+    private string? _newFolderName;
+    private Guid? _folderFilter;
+    private bool _showNewFolder;
     private List<DocumentDto> _rows = new();
+    private List<FolderDto> _folders = new();
 
     private bool HasFilters =>
         !string.IsNullOrWhiteSpace(_subjectFilter) ||
         !string.IsNullOrWhiteSpace(_semesterFilter) ||
-        !string.IsNullOrWhiteSpace(_textFilter);
+        !string.IsNullOrWhiteSpace(_textFilter) ||
+        _folderFilter.HasValue;
+
+    private string ResultSummary => _busy
+        ? "Loading documents..."
+        : $"{_rows.Count} document{(_rows.Count == 1 ? string.Empty : "s")} shown{(HasFilters ? " with active filters" : string.Empty)}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -162,7 +239,30 @@
             Nav.NavigateTo("/login", replace: true);
             return;
         }
+        await LoadFoldersAsync();
         await LoadAsync();
+    }
+
+    private async Task LoadFoldersAsync()
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken)) return;
+        try
+        {
+            _folders = (await FoldersApi.ListAsync(Session.AccessToken!)).ToList();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex), Severity.Warning);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not load folders: {ex.Message}", Severity.Warning);
+        }
     }
 
     private async Task LoadAsync()
@@ -177,6 +277,7 @@
             {
                 SubjectCode = NormalizeOrNull(_subjectFilter),
                 Semester = NormalizeOrNull(_semesterFilter),
+                FolderId = _folderFilter,
                 Q = string.IsNullOrWhiteSpace(_textFilter) ? null : _textFilter.Trim(),
             };
             var rows = await DocumentsApi.ListAsync(Session.AccessToken!, query);
@@ -209,7 +310,53 @@
         _subjectFilter = null;
         _semesterFilter = null;
         _textFilter = null;
+        _folderFilter = null;
         await LoadAsync();
+    }
+
+    private void ShowNewFolderBox()
+    {
+        _showNewFolder = true;
+        _newFolderName = null;
+    }
+
+    private void HideNewFolderBox()
+    {
+        _showNewFolder = false;
+        _newFolderName = null;
+    }
+
+    private async Task CreateFolderAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken) || string.IsNullOrWhiteSpace(_newFolderName)) return;
+        _busy = true;
+        try
+        {
+            var folder = await FoldersApi.CreateAsync(Session.AccessToken!, new CreateFolderRequest { Name = _newFolderName.Trim() });
+            await LoadFoldersAsync();
+            _folderFilter = folder.Id;
+            HideNewFolderBox();
+            Snackbar.Add($"Created folder \"{folder.Name}\".", Severity.Success);
+            await LoadAsync();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex), Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not create folder: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
     }
 
     private async Task ConfirmDeleteAsync(DocumentDto doc)
@@ -240,6 +387,7 @@
         {
             await DocumentsApi.DeleteAsync(Session.AccessToken!, doc.Id);
             _rows.RemoveAll(d => d.Id == doc.Id);
+            await LoadFoldersAsync();
             Snackbar.Add($"Deleted \"{doc.FileName}\".", Severity.Success);
         }
         catch (DocumentApiException ex)
@@ -265,11 +413,17 @@
     private static string? NormalizeOrNull(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null : s.Trim().ToUpperInvariant();
 
+    private string FolderName(Guid? folderId)
+        => folderId is { } id
+            ? _folders.FirstOrDefault(f => f.Id == id)?.Name ?? "Unknown folder"
+            : "Loose";
+
     private static string MapError(DocumentApiException ex) => ex.StatusCode switch
     {
         401 => "Your session has expired. Please sign in again.",
         403 => "You do not have access to that document.",
-        404 => "Document not found — it may have been deleted already.",
+        404 => ex.Code == "folder_not_found" ? "Folder not found." : "Document not found — it may have been deleted already.",
+        409 => "A folder with that name already exists.",
         _ => ex.Message,
     };
 

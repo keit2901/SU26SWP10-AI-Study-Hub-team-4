@@ -130,6 +130,31 @@ public sealed class DocumentApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    /// <summary>Moves a document into a folder, or back to loose documents.</summary>
+    public async Task<DocumentDto> MoveToFolderAsync(
+        string accessToken,
+        Guid id,
+        Guid? folderId,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Put, $"api/documents/{id}/folder")
+        {
+            Content = JsonContent.Create(new MoveDocumentFolderRequest { FolderId = folderId })
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<DocumentDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     /// <summary>Hard-deletes a document. Cascades chunks; storage object removal is best-effort server-side.</summary>
     public async Task DeleteAsync(
         string accessToken,

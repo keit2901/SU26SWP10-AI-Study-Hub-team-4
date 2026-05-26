@@ -142,6 +142,37 @@ public sealed class DocumentsController : ControllerBase
         }
     }
 
+    /// <summary>Move a document into a folder, or back to loose documents.</summary>
+    [HttpPut("{id:guid}/folder")]
+    [ProducesResponseType(typeof(DocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DocumentDto>> MoveToFolder(
+        Guid id,
+        [FromBody] MoveDocumentFolderRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var dto = await _service.MoveToFolderAsync(supabaseUserId, id, request.FolderId, cancellationToken);
+            return Ok(dto);
+        }
+        catch (DocumentException ex)
+        {
+            return ToErrorResult(ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected document move failure.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while moving the document."
+            });
+        }
+    }
+
     /// <summary>Hard delete — removes row, cascades chunks, deletes storage object.</summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

@@ -92,6 +92,7 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 });
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IFolderService, FolderService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
@@ -120,6 +121,10 @@ builder.Services.AddHttpClient<DocumentApiClient>((sp, http) =>
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
     // 50 MB body + slow Kestrel re-entry: bump above default 100s for big PDFs.
     http.Timeout = TimeSpan.FromMinutes(2);
+});
+builder.Services.AddHttpClient<FolderApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
 builder.Services.AddScoped<AuthSessionState>();
 
