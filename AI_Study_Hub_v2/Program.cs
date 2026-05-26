@@ -29,6 +29,8 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
+builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
+builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 
 // Database --------------------------------------------------------------------
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
