@@ -1,10 +1,10 @@
 # AI Study Hub v2 — Resume Pack
 
 > **Mục đích:** Mở session mới với agent (Claude / OpenCode / Kiro / khác) → paste/đính kèm file này làm context đầu tiên → agent có đủ thông tin để **không hỏi lại** và **không phá tiến độ**.
-> **Cập nhật lần cuối:** 2026-05-26 (sau Sprint 1 D1+D2+D3 — Phase 2 schema + Document backend pipeline + Blazor upload form)
+> **Cập nhật lần cuối:** 2026-05-26 (sau Sprint 1 D1+D2+D3+D4 — Phase 2 schema + Document backend pipeline + Blazor upload + list/detail/delete UI)
 > **Người maintain:** Kiệt — PM Team 4 SWP391 SU26
-> **Phase hoàn tất:** Phase 1 Auth (GoTrue) + **Sprint 1 D1-D3** của Phase 2: schema (folders/documents/document_chunks + pgvector ivfflat) + Storage bucket + backend CRUD + signed-URL download + Blazor upload UI. Còn lại Sprint 1: D4 list/detail UI, D5 backend tests, D6 demo polish.
-> **File companion:** `12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` (canonical close — D2 smoke E2E + D3 upload form), `11_Session_2026-05-25_Sprint1_D1D2_Handoff.md` (D1+D2 code-complete), `07_Phase2_Document_RAG_Plan.md` (Phase 2 plan v-final), `rule.md` (session-progress rule).
+> **Phase hoàn tất:** Phase 1 Auth (GoTrue) + **Sprint 1 D1-D4** của Phase 2: schema (folders/documents/document_chunks + pgvector ivfflat) + Storage bucket + backend CRUD + signed-URL download + Blazor upload UI + list/detail/delete UI. Còn lại Sprint 1: D5 backend tests, D6 demo polish + folder picker.
+> **File companion:** `13_Session_2026-05-26_Sprint1_D4_Handoff.md` (canonical close — D4 list/detail/delete UI), `12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` (D2 smoke + D3 upload form), `07_Phase2_Document_RAG_Plan.md` (Phase 2 plan v-final), `rule.md` (session-progress rule).
 
 ---
 
@@ -145,17 +145,28 @@ AI_Study_Hub_v2/
 │   │                                  best-effort storage cleanup if DB insert fails after upload;
 │   │                                  SanitizeFileName strips path/special, caps 80 chars
 │   ├── AuthApiClient.cs
-│   ├── DocumentApiClient.cs         ← Phase 2: typed HttpClient for Blazor (UploadAsync, ListAsync);
-│   │                                  pinned constants synced with backend (50MB, AllowedMimeTypes)
+│   ├── DocumentApiClient.cs         ← Phase 2: typed HttpClient for Blazor (UploadAsync, ListAsync,
+│   │                                  GetAsync, DeleteAsync); pinned constants synced with backend
+│   │                                  (50MB, AllowedMimeTypes)
 │   └── AuthSessionState.cs          ← scoped per-circuit holder (in-memory, demo-only)
 ├── Components/
-│   ├── Layout/NavMenu.razor         ← + "Upload document" link (auth-only)
-│   └── Pages/DocumentUpload.razor   ← Phase 2 D3: @page "/documents/upload" InteractiveServer;
-│                                      MudForm validates SubjectCode (^[A-Z]{3}[0-9]{3}$) +
-│                                      Semester (^(SP|SU|FA|WI)[0-9]{2}$); MudFileUpload v9 Hidden=true
-│                                      + companion MudButton OpenFilePickerAsync; client guards
-│                                      50MB + MIME whitelist (with extension fallback);
-│                                      maps DocumentApiException 401/413/415 → friendly toast
+│   ├── Layout/NavMenu.razor         ← + "My documents" + "Upload document" links (auth-only)
+│   └── Pages/
+│       ├── DocumentUpload.razor     ← Phase 2 D3: @page "/documents/upload" InteractiveServer;
+│       │                              MudForm validates SubjectCode (^[A-Z]{3}[0-9]{3}$) +
+│       │                              Semester (^(SP|SU|FA|WI)[0-9]{2}$); MudFileUpload v9 Hidden=true
+│       │                              + companion MudButton OpenFilePickerAsync; client guards
+│       │                              50MB + MIME whitelist (with extension fallback);
+│       │                              maps DocumentApiException 401/413/415 → friendly toast
+│       ├── DocumentList.razor       ← Phase 2 D4: @page "/documents" InteractiveServer;
+│       │                              MudTable with subject/semester/text filters +
+│       │                              MudTablePager (10/25/50/100); ConfirmDialog-driven delete;
+│       │                              status chips, MIME-aware icons, file-size formatter;
+│       │                              auth gate + 401 → /login
+│       └── DocumentDetail.razor     ← Phase 2 D4: @page "/documents/{Id:guid}" InteractiveServer;
+│                                      detail card + 5min signed-URL "Open file" + "Get fresh link";
+│                                      delete via ConfirmDialog → nav back to /documents;
+│                                      OnParametersSetAsync reload on id change
 └── wwwroot/                         ← (như cũ)
 
 AI_Study_Hub_v2.Tests/
@@ -182,8 +193,8 @@ AI_Study_Hub_v2.Tests/
 
 ```
 dotnet build (cwd: AI_Study_Hub_v2)
-→ Build succeeded. 0 Warning(s). 0 Error(s).  (post-D3 2026-05-26T04:26Z)
-dotnet test → Passed! 38/38 (Duration: ~710 ms)
+→ Build succeeded. 0 Warning(s). 0 Error(s).  (post-D4 2026-05-26T09:33Z)
+dotnet test → Passed! 38/38 (Duration: ~806 ms)
             ├─ SmokeTests: 3 (pipeline sanity)
             ├─ SupabaseAuthServiceTests: 18 (Register/Login/Refresh/Logout/Me happy + error paths)
             └─ AuthControllerTests: 17 (claim parsing + AuthException mapping + Bearer header)
@@ -258,9 +269,9 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | 8 | Phase 2 Sprint 1 D1 — Schema + Storage bucket (folders, documents, document_chunks, ivfflat, RLS, bucket `documents`) | ✅ Done 2026-05-25 |
 | 9 | Phase 2 Sprint 1 D2 — Document backend pipeline (DocumentsController + DocumentService + SupabaseStorageClient) — code + smoke E2E | ✅ Done 2026-05-26 (smoke 8/8 GREEN) |
 | 10 | Phase 2 Sprint 1 D3 — Blazor upload form (`DocumentApiClient` + `/documents/upload` page + nav link) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred to Kiệt) |
-| 11 | Phase 2 Sprint 1 D4 — List/detail/delete UI + folder picker | ⏳ Pending (next session) |
-| 12 | Phase 2 Sprint 1 D5 — Backend tests for DocumentService + DocumentsController (SCRUM-28) | ⏳ Pending |
-| 13 | Phase 2 Sprint 1 D6 — Demo polish (UX, error states, seeded sample) | ⏳ Pending |
+| 11 | Phase 2 Sprint 1 D4 — List/detail/delete UI (`/documents` + `/documents/{id}`) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred; folder picker split → D6) |
+| 12 | Phase 2 Sprint 1 D5 — Backend tests for DocumentService + DocumentsController (SCRUM-28) | ⏳ Pending (next session) |
+| 13 | Phase 2 Sprint 1 D6 — Demo polish (UX, error states, seeded sample) + Folder picker (FoldersController + IFolderService + FolderApiClient + dropdown) | ⏳ Pending |
 | 14 | Phase 2 Sprint 2 — Chunking + embeddings + RAG retrieve + Groq generation | ⏳ Pending |
 
 ### 4.1 Smoke Test Results — Phase 1 (Supabase GoTrue)
@@ -308,6 +319,21 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | Error mapping | `DocumentApiException.StatusCode` 401/413/415 → friendly `MudAlert` copy |
 | Build/Test gate | 0 warning, 0 error; 38/38 tests pass (no regression) |
 | Commit | `8454b0d feat(documents): D3 Blazor upload form (SCRUM-12/26) — code-complete` |
+
+### 4.4 D4 Blazor List/Detail/Delete UI (2026-05-26T09:34Z, manual browser UI smoke deferred)
+
+| Item | Value |
+|---|---|
+| List page | `/documents` (`@rendermode InteractiveServer`, auth-gated) — `MudTable` with `subject/semester/text` filters + `MudTablePager` (10/25/50/100); `ConfirmDialog`-driven delete; status chips, MIME-aware icons, file-size formatter |
+| Detail page | `/documents/{Id:guid}` — detail card; 5min signed-URL "Open file" button + "Get fresh link" refresh; delete via ConfirmDialog → nav back to `/documents`; `OnParametersSetAsync` reload on id change |
+| Client API | `DocumentApiClient.GetAsync(id)` + `DocumentApiClient.DeleteAsync(id)` (added) |
+| NavMenu | + "My documents" link before existing "Upload document" (auth-only) |
+| Reused | `Components/Admin/Shared/ConfirmDialog.razor` (pre-existing, supports type-to-confirm pattern) |
+| Error mapping | `DocumentApiException.StatusCode` 401 (clear session + /login), 403, 404, fallback `ex.Message`; network errors via `Snackbar.Severity.Error` |
+| Build/Test gate | 0 warning, 0 error; 38/38 tests pass (no regression) |
+| Commit | `50a8122 feat(documents): D4 list/detail/delete UI (SCRUM-15/25) — code-complete` |
+| Deferred | Folder picker → D6 (needs `FoldersController` + `IFolderService` + `FolderApiClient` + dropdown); manual browser smoke → Kiệt |
+| Origin note | Code came in as drift between session 12 close (07:20Z) and session 13 open (07:33Z) — reviewed, build/test green, accepted by Kiệt 09:33Z (D-2026-05-26-02). Lesson: extend session-open verify to include `git status --porcelain` mismatch check, not just tree-clean. |
 
 ---
 
@@ -593,16 +619,16 @@ Nếu **app chưa chạy** (5240 not listening): chỉ là chưa start, không p
 
 ## 12. Phase 2 — Backlog (Sprint 1 còn D4-D6, Sprint 2 RAG)
 
-### Sprint 1 — Document Management (3/6 ✅ done)
+### Sprint 1 — Document Management (4/6 ✅ done)
 
 | Day | Scope | Status |
 |---|---|---|
 | D1 | EF schema (folders/documents/document_chunks) + ivfflat + RLS + Storage bucket `documents` | ✅ commit `c2d36cb` |
 | D2 | Backend `DocumentsController` + `DocumentService` + `SupabaseStorageClient` + smoke E2E live | ✅ commit `0245045` (smoke green) |
 | D3 | Blazor `DocumentApiClient` + `/documents/upload` page + nav link | ✅ commit `8454b0d` (manual UI smoke deferred) |
-| D4 | Blazor list/detail + signed-URL link + delete + folder picker (pages: `/documents`, `/documents/{id}`) | ⏳ next |
-| D5 | NUnit tests for `DocumentService` (unit, mock IStorageClient + EF InMemory) + `DocumentsController` (integration via WebApplicationFactory) — SCRUM-28 | ⏳ |
-| D6 | Demo polish — UX states, seeded sample PDFs, error scenarios, NavMenu icons | ⏳ |
+| D4 | Blazor list/detail/delete UI (`/documents` + `/documents/{id}`) — `MudTable` + filters + `ConfirmDialog` delete + signed-URL "Open file" | ✅ commit `50a8122` (manual UI smoke deferred; folder picker split → D6) |
+| D5 | NUnit tests for `DocumentService` (unit, mock IStorageClient + EF InMemory) + `DocumentsController` (integration via WebApplicationFactory) — SCRUM-28 | ⏳ next |
+| D6 | Demo polish — UX states, seeded sample PDFs, error scenarios, NavMenu icons + Folder picker (FoldersController + IFolderService + FolderApiClient + dropdown in Upload/List/Detail) | ⏳ |
 
 ### Sprint 2 — RAG pipeline (planned)
 
@@ -635,7 +661,8 @@ Trước khi bắt đầu Sprint 2, cần Kiệt confirm:
 | `previous_session/09_NUnit_Demo_Script.md` + `10_*` + `10b_*` | Demo speaker notes |
 | `previous_session/11_Session_2026-05-25_Sprint1_D1D2_Handoff.md` | Sprint 1 D1+D2 code-complete handoff (canonical) |
 | `previous_session/11a_Session_2026-05-25_Sprint1_D1_D2_Handoff_superseded.md` | Older near-dup of 11, marked SUPERSEDED |
-| `previous_session/12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` | **Latest** — D2 smoke E2E green + D3 upload form code-complete |
+| `previous_session/12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` | D2 smoke E2E green + D3 upload form code-complete |
+| `previous_session/13_Session_2026-05-26_Sprint1_D4_Handoff.md` | **Latest** — D4 list/detail/delete UI code-complete |
 | `previous_session/rule.md` | **Session-progress tracking rule** (mandatory for all agents) |
 | `previous_session/04_Next_Session_Handoff.md` | OBSOLETE — viết trước migration, giữ làm history |
 | `previous_session/archive/previous_session_raw_transcript.md` | Raw Q&A transcript session đầu |
@@ -673,8 +700,10 @@ Storage bucket:   documents (private, 50MB, 5 MIME: pdf/doc/docx/txt/md)
 EF tool:          9.0.9 (works against net8.0 project)
 Docker:           29.4.3
 Tests:            38/38 pass (auth only; document backend coverage = D5 backlog)
-Build:            0 warning, 0 error (last verified 2026-05-26T04:26Z)
-Git HEAD:         8454b0d  feat(documents): D3 Blazor upload form (SCRUM-12/26) — code-complete
+Build:            0 warning, 0 error (last verified 2026-05-26T09:33Z)
+Git HEAD:         50a8122  feat(documents): D4 list/detail/delete UI (SCRUM-15/25) — code-complete
+                  568177c  docs(session): close 12 - D2 smoke green + D3 upload form code-complete
+                  8454b0d  feat(documents): D3 Blazor upload form (SCRUM-12/26) — code-complete
                   0245045  test(documents): D2 smoke E2E pass — upload/list/get/signed-download/delete
                   0e4340c  feat(documents): D2 backend upload pipeline — code-complete
                   c2d36cb  feat(documents): add Phase 2 schema (folders, documents, document_chunks)
