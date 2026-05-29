@@ -1,21 +1,12 @@
 ﻿@inherits LayoutComponentBase
 
-<MudThemeProvider />
-<MudPopoverProvider />
-<MudDialogProvider />
-<MudSnackbarProvider />
+<MudThemeProvider Theme="@_theme" IsDarkMode="true" />
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+<div class="page app-shell">
+    <NavMenu />
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
+    <main class="main-stage">
+        <article class="content">
             @Body
         </article>
     </main>
@@ -24,5 +15,57 @@
 <div id="blazor-error-ui">
     An unhandled error has occurred.
     <a href="" class="reload">Reload</a>
-    <a class="dismiss">🗙</a>
+    <a class="dismiss">x</a>
 </div>
+
+@code {
+    private readonly MudTheme _theme = new()
+    {
+        PaletteDark = new PaletteDark
+        {
+            Primary = "#A78BFA",
+            Secondary = "#22D3EE",
+            Tertiary = "#F0ABFC",
+            Background = "#050713",
+            Surface = "#10142A",
+            AppbarBackground = "#080B18",
+            AppbarText = "#F7F2FF",
+            DrawerBackground = "#070A17",
+            DrawerText = "#EDE7FF",
+            DrawerIcon = "#BFA6FF",
+            TextPrimary = "#F7F2FF",
+            TextSecondary = "#AAB0D5",
+            LinesDefault = "#262B49",
+            Info = "#38BDF8",
+            Success = "#34D399",
+            Warning = "#FBBF24",
+            Error = "#FB7185"
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography
+            {
+                FontFamily = new[] { "IBM Plex Sans", "Segoe UI", "sans-serif" },
+                FontSize = ".95rem"
+            },
+            H4 = new H4Typography
+            {
+                FontFamily = new[] { "Space Grotesk", "IBM Plex Sans", "sans-serif" },
+                FontWeight = "700",
+                LetterSpacing = "-.045em"
+            },
+            H5 = new H5Typography
+            {
+                FontFamily = new[] { "Space Grotesk", "IBM Plex Sans", "sans-serif" },
+                FontWeight = "700",
+                LetterSpacing = "-.035em"
+            },
+            H6 = new H6Typography
+            {
+                FontFamily = new[] { "Space Grotesk", "IBM Plex Sans", "sans-serif" },
+                FontWeight = "700",
+                LetterSpacing = "-.02em"
+            }
+        }
+    };
+}

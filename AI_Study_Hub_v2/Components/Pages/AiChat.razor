@@ -1,5 +1,4 @@
 @page "/ai/chat"
-@rendermode InteractiveServer
 @using AI_Study_Hub_v2.Data.Entities
 @implements IDisposable
 @inject AuthSessionState Session
@@ -12,14 +11,12 @@
 
 <PageTitle>AI Chat - AI Study Hub v2</PageTitle>
 
-<MudStack Spacing="3" Class="ai-chat-shell pa-4">
+<MudStack Spacing="3" Class="ai-chat-shell workspace-shell pa-4">
     <MudPaper Class="ai-chat-hero" Elevation="0">
         <MudGrid Class="ai-chat-hero-grid">
             <MudItem xs="12" md="8">
                 <MudStack Spacing="1">
-                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled" Class="ai-chat-kicker">
-                        Sprint 2 RAG demo
-                    </MudChip>
+                    <span class="section-kicker ai-chat-kicker">Sprint 2 RAG demo</span>
                     <MudText Typo="Typo.h4">Ask your study materials</MudText>
                     <MudText Typo="Typo.body1" Class="ai-chat-hero-copy">
                         Scope the assistant to all indexed documents, a folder, or one file, then review the grounded answer with source cards.

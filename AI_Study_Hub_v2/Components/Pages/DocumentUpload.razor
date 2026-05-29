@@ -1,5 +1,4 @@
 @page "/documents/upload"
-@rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
@@ -11,13 +10,17 @@
 
 <PageTitle>Upload document - AI Study Hub v2</PageTitle>
 
-<MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 80vh;">
-    <MudPaper Class="pa-8" Elevation="4" Style="width: 100%; max-width: 560px;">
+<MudStack Class="workspace-shell pa-4" Spacing="3">
+    <section class="workspace-hero">
+        <span class="section-kicker">Source ingestion</span>
+        <MudText Typo="Typo.h4" Class="mt-3">Upload study document</MudText>
+        <MudText Typo="Typo.body1" Class="workspace-copy">
+            Add PDFs, Word files, and slides to the private retrieval pipeline. Accepted files are capped at 50 MB.
+        </MudText>
+    </section>
+
+    <MudPaper Class="pa-8 glass-card" Elevation="0" Style="width: 100%; max-width: 680px; margin: 0 auto;">
         <MudStack Spacing="3">
-            <MudText Typo="Typo.h5" Align="Align.Center">Upload study document</MudText>
-            <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
-                PDF / DOC / DOCX / PPT / PPTX, up to 50 MB.
-            </MudText>
 
             <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid">
                 <MudTextField T="string"
@@ -93,7 +96,7 @@
 
             @if (_file is not null)
             {
-                <MudPaper Class="pa-3" Outlined="true">
+                <MudPaper Class="pa-3 glass-card-soft" Outlined="false" Elevation="0">
                     <MudStack Spacing="0">
                         <MudText Typo="Typo.body2"><b>@_file.Name</b></MudText>
                         <MudText Typo="Typo.caption" Color="Color.Secondary">

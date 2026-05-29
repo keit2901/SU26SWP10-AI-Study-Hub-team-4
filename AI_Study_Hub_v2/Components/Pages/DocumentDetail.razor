@@ -1,5 +1,4 @@
 @page "/documents/{Id:guid}"
-@rendermode InteractiveServer
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
@@ -12,13 +11,16 @@
 
 <PageTitle>@(_doc?.FileName ?? "Document") - AI Study Hub v2</PageTitle>
 
-<MudStack Spacing="3" Class="pa-4" Style="max-width: 900px; margin: 0 auto;">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap: wrap; gap: 0.5rem;">
+<MudStack Spacing="3" Class="workspace-shell document-detail-shell pa-4">
+    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="workspace-hero" Style="flex-wrap: wrap; gap: 0.5rem;">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
             <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
                            Href="/documents"
                            title="Back to list" />
-            <MudText Typo="Typo.h5">Document detail</MudText>
+            <div>
+                <span class="section-kicker">Source detail</span>
+                <MudText Typo="Typo.h4" Class="mt-3">Document detail</MudText>
+            </div>
         </MudStack>
         @if (_doc is not null)
         {
@@ -43,7 +45,7 @@
 
     @if (_busy && _doc is null)
     {
-        <MudPaper Class="pa-6" Elevation="0" Outlined="true">
+        <MudPaper Class="pa-6 glass-card" Elevation="0" Outlined="false">
             <MudStack AlignItems="AlignItems.Center" Spacing="2">
                 <MudProgressCircular Indeterminate="true" />
                 <MudText Typo="Typo.body2" Color="Color.Secondary">Loading…</MudText>
@@ -61,7 +63,7 @@
     }
     else if (_doc is not null)
     {
-        <MudPaper Class="pa-4" Elevation="0" Outlined="true">
+        <MudPaper Class="pa-4 glass-card" Elevation="0" Outlined="false">
             <MudStack Spacing="3">
                 <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
                     <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large">
@@ -137,7 +139,7 @@
 
                 <MudDivider />
 
-                <MudPaper Class="pa-3" Elevation="0" Outlined="true">
+                <MudPaper Class="pa-3 glass-card-soft" Elevation="0" Outlined="false">
                     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
                         <MudStack Spacing="0">
                             <MudText Typo="Typo.subtitle2">AI study chat</MudText>

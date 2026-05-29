@@ -1,5 +1,4 @@
 @page "/register"
-@rendermode InteractiveServer
 @using System.ComponentModel.DataAnnotations
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
@@ -8,15 +7,34 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
-<PageTitle>Register - AI Study Hub v2</PageTitle>
+<PageTitle>Register - AI Study Hub</PageTitle>
 
-<MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 80vh;">
-    <MudPaper Class="pa-8" Elevation="4" Style="width: 100%; max-width: 460px;">
+<section class="auth-shell">
+    <div class="auth-visual">
+        <div class="auth-visual-grid" aria-hidden="true"></div>
+        <div class="auth-orb" aria-hidden="true"></div>
+        <div style="position: relative; z-index: 1; max-width: 640px;">
+            <span class="section-kicker">Student onboarding</span>
+            <h1 class="workspace-title mt-4">Build a private <span class="gradient-text">AI study base</span>.</h1>
+            <p class="workspace-copy mt-3">
+                Create a student account, upload course material, and keep every answer traceable to your own documents.
+            </p>
+            <div class="auth-metric-row">
+                <div class="auth-metric"><strong>Student</strong><span>default role</span></div>
+                <div class="auth-metric"><strong>Folders</strong><span>organized sources</span></div>
+                <div class="auth-metric"><strong>Cites</strong><span>visible evidence</span></div>
+            </div>
+        </div>
+    </div>
+
+    <MudPaper Class="auth-card glass-card" Elevation="0">
         <MudStack Spacing="3">
-            <MudText Typo="Typo.h5" Align="Align.Center">Create account</MudText>
-            <MudText Typo="Typo.body2" Align="Align.Center" Color="Color.Secondary">
-                Default role: Student
-            </MudText>
+            <div>
+                <MudText Typo="Typo.h4">Create account</MudText>
+                <MudText Typo="Typo.body2" Class="workspace-copy">
+                    Start as a student and open the document-first AI workspace.
+                </MudText>
+            </div>
 
             <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid">
                 <MudTextField T="string"
@@ -67,10 +85,10 @@
             }
 
             <MudButton Variant="Variant.Filled"
-                       Color="Color.Primary"
                        FullWidth="true"
+                       Class="premium-button"
                        OnClick="SubmitAsync"
-                       Disabled="_busy || !_isValid">
+                       Disabled="_busy">
                 @if (_busy)
                 {
                     <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
@@ -84,13 +102,13 @@
 
             <MudDivider />
 
-            <MudStack Row="true" Justify="Justify.Center" Spacing="1">
+            <MudStack Row="true" Justify="Justify.Center" Spacing="1" Style="flex-wrap: wrap;">
                 <MudText Typo="Typo.body2" Color="Color.Secondary">Already have an account?</MudText>
                 <MudLink Href="/login" Underline="Underline.Always">Sign in</MudLink>
             </MudStack>
         </MudStack>
     </MudPaper>
-</MudStack>
+</section>
 
 @code {
     private MudForm? _form;

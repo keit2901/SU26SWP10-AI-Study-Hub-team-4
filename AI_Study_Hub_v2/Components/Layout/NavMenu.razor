@@ -1,75 +1,60 @@
-﻿@rendermode InteractiveServer
-@implements IDisposable
+﻿@implements IDisposable
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">AI_Study_Hub_v2</a>
-    </div>
-</div>
+<header class="community-topbar">
+    <div class="community-topbar-inner">
+        <a class="brand-link" href="">
+            <span class="brand-orb">AI</span>
+            <span>
+                <span class="brand-name">AI Study Hub</span>
+                <span class="brand-subtitle">Secure RAG Forum</span>
+            </span>
+        </a>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+        <input id="community-nav-toggle" type="checkbox" title="Navigation menu" class="navbar-toggler" />
+        <label for="community-nav-toggle" class="navbar-toggler-label" aria-label="Toggle navigation"></label>
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
+        <nav class="community-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
+            <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Forum</NavLink>
+            @if (Session.IsAuthenticated)
+            {
+                <NavLink class="nav-pill" href="documents">Documents</NavLink>
+                <NavLink class="nav-pill" href="ai/chat">AI Chat</NavLink>
+                <NavLink class="nav-pill" href="documents/upload">Upload</NavLink>
+                <NavLink class="nav-pill" href="profile">Profile</NavLink>
+            }
+            else
+            {
+                <NavLink class="nav-pill" href="login">Login</NavLink>
+                <NavLink class="nav-pill" href="register">Register</NavLink>
+            }
+        </nav>
+
+        <div class="community-actions">
+            @if (Session.IsAuthenticated)
+            {
+                <span class="status-dot" title="Authenticated"></span>
+                <a class="user-chip" href="profile">
+                    <span class="user-avatar">@UserInitial</span>
+                    <span>@Session.CurrentUser?.Username</span>
+                </a>
+                <button type="button" class="signout-button" @onclick="Logout">Sign out</button>
+            }
+            else
+            {
+                <a class="login-link" href="login">Login</a>
+                <a class="join-button" href="register">Join beta</a>
+            }
         </div>
-
-        @if (Session.IsAuthenticated)
-        {
-            <div class="nav-section px-3">Study workspace</div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="profile">
-                    <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> Profile
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="documents">
-                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> My documents
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="ai/chat">
-                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> AI Chat
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="documents/upload">
-                    <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Upload document
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="ai/chat">
-                    <span class="bi bi-list-nested-nav-menu" aria-hidden="true"></span> AI Chat
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <span class="nav-link" style="cursor:default; opacity:.85;">
-                    Signed in as <b>@Session.CurrentUser?.Username</b>
-                </span>
-            </div>
-        }
-        else
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="login">
-                    <span class="bi bi-lock-fill-nav-menu" aria-hidden="true"></span> Login
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="register">
-                    <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Register
-                </NavLink>
-            </div>
-        }
-    </nav>
-</div>
+    </div>
+</header>
 
 @code {
+    private string UserInitial => string.IsNullOrWhiteSpace(Session.CurrentUser?.Username)
+        ? "A"
+        : Session.CurrentUser!.Username[0].ToString().ToUpperInvariant();
+
     protected override void OnInitialized()
     {
         Session.OnChange += OnSessionChanged;
@@ -78,6 +63,12 @@
     private void OnSessionChanged()
     {
         InvokeAsync(StateHasChanged);
+    }
+
+    private void Logout()
+    {
+        Session.Clear();
+        Nav.NavigateTo("/login", replace: true);
     }
 
     public void Dispose()

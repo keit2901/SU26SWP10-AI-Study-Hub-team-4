@@ -6,13 +6,14 @@
 .ai-chat-hero {
     position: relative;
     overflow: hidden;
-    padding: 2rem;
-    border: 1px solid rgba(20, 83, 45, 0.14);
-    border-radius: 24px;
+    padding: clamp(1.35rem, 4vw, 2.4rem);
+    border: 1px solid rgba(198, 181, 255, 0.18);
+    border-radius: 30px;
     background:
-        radial-gradient(circle at 12% 18%, rgba(52, 211, 153, 0.22), transparent 28%),
-        radial-gradient(circle at 92% 12%, rgba(14, 165, 233, 0.18), transparent 24%),
-        linear-gradient(135deg, #f8faf5 0%, #eef7f1 52%, #edf7fb 100%);
+        radial-gradient(circle at 12% 18%, rgba(167, 139, 250, 0.35), transparent 24rem),
+        radial-gradient(circle at 92% 12%, rgba(34, 211, 238, 0.2), transparent 22rem),
+        linear-gradient(135deg, rgba(255, 255, 255, 0.105), rgba(255, 255, 255, 0.035));
+    box-shadow: var(--ash-shadow);
 }
 
 .ai-chat-hero::after {
@@ -20,10 +21,10 @@
     position: absolute;
     right: -70px;
     bottom: -90px;
-    width: 230px;
-    height: 230px;
+    width: 250px;
+    height: 250px;
     border-radius: 999px;
-    border: 34px solid rgba(20, 184, 166, 0.12);
+    border: 36px solid rgba(167, 139, 250, 0.14);
 }
 
 .ai-chat-hero-grid {
@@ -36,14 +37,16 @@
 
 .ai-chat-hero-copy {
     max-width: 720px;
-    color: #365447;
+    color: var(--ash-muted);
 }
 
 .ai-chat-status-card {
-    border: 1px solid rgba(15, 118, 110, 0.16);
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.72);
-    backdrop-filter: blur(8px);
+    border: 1px solid rgba(198, 181, 255, 0.18);
+    border-radius: 20px;
+    background:
+        radial-gradient(circle at 100% 0%, rgba(34, 211, 238, 0.16), transparent 10rem),
+        rgba(255, 255, 255, 0.07) !important;
+    backdrop-filter: blur(16px);
 }
 
 .ai-chat-grid {
@@ -54,43 +57,60 @@
 .ai-chat-composer,
 .ai-chat-answer-card,
 .ai-chat-empty-card {
-    border-radius: 20px;
+    border: 1px solid rgba(198, 181, 255, 0.16) !important;
+    border-radius: 24px !important;
+    background:
+        linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)),
+        rgba(10, 13, 30, 0.74) !important;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.28);
+    backdrop-filter: blur(16px);
 }
 
 .ai-chat-scope-card {
-    background: linear-gradient(180deg, #ffffff 0%, #fbfdf9 100%);
+    position: sticky;
+    top: 5.2rem;
 }
 
 .ai-chat-composer {
-    border-color: rgba(15, 118, 110, 0.18) !important;
+    border-color: rgba(34, 211, 238, 0.18) !important;
 }
 
 .ai-chat-prompt-button {
     justify-content: flex-start;
     text-align: left;
+    border-radius: 14px !important;
+    color: #d8c9ff !important;
+    text-transform: none !important;
+}
+
+.ai-chat-prompt-button:hover {
+    background: rgba(167, 139, 250, 0.12) !important;
 }
 
 .ai-chat-answer-card {
     background:
-        linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 252, 249, 0.96)),
-        linear-gradient(135deg, rgba(15, 118, 110, 0.1), rgba(245, 158, 11, 0.1));
+        radial-gradient(circle at 8% 12%, rgba(52, 211, 153, 0.12), transparent 18rem),
+        linear-gradient(145deg, rgba(255, 255, 255, 0.09), rgba(255, 255, 255, 0.035)),
+        rgba(10, 13, 30, 0.82) !important;
 }
 
 .ai-chat-answer-card-compact {
-    background: #ffffff;
+    background: rgba(255, 255, 255, 0.055) !important;
 }
 
 .ai-chat-answer-body {
-    border-radius: 16px;
-    background: #f7fbf8;
-    border: 1px solid rgba(21, 128, 61, 0.1);
+    border-radius: 18px;
+    color: var(--ash-text);
+    background: rgba(255, 255, 255, 0.06);
+    border: 1px solid rgba(198, 181, 255, 0.12);
     white-space: pre-wrap;
 }
 
 .ai-chat-source-card {
     height: 100%;
-    border-radius: 16px;
-    background: #fffefa;
+    border: 1px solid rgba(198, 181, 255, 0.13) !important;
+    border-radius: 18px !important;
+    background: rgba(255, 255, 255, 0.055) !important;
 }
 
 .ai-chat-source-title {
@@ -100,13 +120,23 @@
 .ai-chat-excerpt {
     display: -webkit-box;
     overflow: hidden;
+    color: var(--ash-muted);
     -webkit-line-clamp: 5;
     -webkit-box-orient: vertical;
 }
 
 .ai-chat-history .mud-expand-panel {
-    border-radius: 18px;
-    border: 1px solid rgba(30, 41, 59, 0.1);
+    overflow: hidden;
+    border: 1px solid rgba(198, 181, 255, 0.14);
+    border-radius: 20px;
+    background: rgba(255, 255, 255, 0.055) !important;
+}
+
+@media (max-width: 960px) {
+    .ai-chat-scope-card {
+        position: relative;
+        top: auto;
+    }
 }
 
 @media (max-width: 600px) {
@@ -116,6 +146,6 @@
 
     .ai-chat-hero {
         padding: 1.25rem;
-        border-radius: 18px;
+        border-radius: 22px;
     }
 }

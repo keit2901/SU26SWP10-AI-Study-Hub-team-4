@@ -1,20 +1,165 @@
 ﻿@page "/"
-@rendermode InteractiveServer
 @inject AuthSessionState Session
-@inject NavigationManager Nav
 
-<PageTitle>AI Study Hub v2</PageTitle>
+<PageTitle>AI Study Hub - Secure Study Forum</PageTitle>
 
-<MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 60vh;">
-    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
-    <MudText Typo="Typo.body1" Color="Color.Secondary">Redirecting...</MudText>
-</MudStack>
+<section class="forum-page">
+    <div class="forum-announcement glass-card-soft">
+        <div class="announcement-orb">AI</div>
+        <div>
+            <strong>AI Study Hub community workspace</strong>
+            <span>Keep the premium dark RAG tone, now arranged like a forum dashboard for faster study navigation.</span>
+        </div>
+    </div>
+
+    <section class="forum-header glass-card">
+        <div class="forum-toolbar">
+            <a href="documents">Documents</a>
+            <a href="documents/upload">Upload source</a>
+            <a href="ai/chat">Ask AI</a>
+            <a href="profile">Profile</a>
+        </div>
+        <div class="forum-title-row">
+            <div>
+                <span class="section-kicker">Secure RAG Forum</span>
+                <h1>AI Study Hub Community</h1>
+            </div>
+            <div class="forum-header-actions">
+                @if (Session.IsAuthenticated)
+                {
+                    <a class="forum-primary" href="ai/chat">New question</a>
+                    <a class="forum-secondary" href="documents/upload">Upload file</a>
+                }
+                else
+                {
+                    <a class="forum-primary" href="login">Enter workspace</a>
+                    <a class="forum-secondary" href="register">Join beta</a>
+                }
+            </div>
+        </div>
+    </section>
+
+    <section class="forum-grid">
+        <main class="forum-main">
+            <article class="topic-board glass-card">
+                <div class="topic-tabs">
+                    <span class="topic-tab active">Discussion</span>
+                    <span class="topic-tab">Newest sources</span>
+                    <span class="topic-tab">Most cited</span>
+                </div>
+
+                <div class="topic-table">
+                    <div class="topic-head">
+                        <span>Topic</span>
+                        <span>Forum</span>
+                        <span>Reply</span>
+                        <span>View</span>
+                        <span>Date</span>
+                        <span>Author</span>
+                    </div>
+                    @foreach (var topic in Topics)
+                    {
+                        <div class="topic-row">
+                            <div class="topic-title">
+                                <span class="topic-rank">@topic.Rank</span>
+                                <span class="topic-badge">@topic.Tag</span>
+                                <a href="@topic.Href">@topic.Title</a>
+                            </div>
+                            <span>@topic.Forum</span>
+                            <span>@topic.Replies</span>
+                            <span>@topic.Views</span>
+                            <span>@topic.Date</span>
+                            <span class="topic-author"><span>@topic.Initial</span>@topic.Author</span>
+                        </div>
+                    }
+                </div>
+            </article>
+
+            <input class="forum-search" placeholder="Search your study workspace..." />
+
+            <article class="lounge-card glass-card">
+                <div class="lounge-title">
+                    <h2>Study lounge</h2>
+                    <span>Live prompts</span>
+                </div>
+                <div class="lounge-post">
+                    <strong>Try asking:</strong>
+                    <p>Summarize the newest SWP391 notes and cite every paragraph back to the source cards.</p>
+                    <a href="ai/chat">Open AI Chat</a>
+                </div>
+            </article>
+        </main>
+
+        <aside class="forum-sidebar">
+            <article class="profile-card glass-card">
+                <div class="profile-avatar">@ProfileInitial</div>
+                <div>
+                    <h2>@(Session.IsAuthenticated ? Session.CurrentUser?.Username : "Guest")</h2>
+                    <p>AI Study Hub member</p>
+                </div>
+                <dl>
+                    <div><dt>Indexed</dt><dd>RAG ready</dd></div>
+                    <div><dt>Role</dt><dd>@(Session.IsAuthenticated ? Session.CurrentUser?.Role : "Visitor")</dd></div>
+                    <div><dt>Status</dt><dd>@(Session.IsAuthenticated ? "Active" : "Preview")</dd></div>
+                </dl>
+            </article>
+
+            <article class="discord-card glass-card">
+                <div class="sidebar-card-title">
+                    <h2>Retrieval room</h2>
+                    <span><i></i>128 online</span>
+                </div>
+                <div class="online-list">
+                    @foreach (var member in OnlineMembers)
+                    {
+                        <span><b>@member[0]</b>@member</span>
+                    }
+                </div>
+                <a class="forum-secondary sidebar-button" href="documents">Open vault</a>
+            </article>
+
+            <article class="orb-card glass-card">
+                <div class="dashboard-orb" aria-hidden="true"></div>
+                <h2>Grounded answers</h2>
+                <p>Ask across indexed sources and review citations like forum replies with evidence.</p>
+            </article>
+        </aside>
+    </section>
+</section>
 
 @code {
-    protected override void OnAfterRender(bool firstRender)
+    private string ProfileInitial => string.IsNullOrWhiteSpace(Session.CurrentUser?.Username)
+        ? "G"
+        : Session.CurrentUser!.Username[0].ToString().ToUpperInvariant();
+
+    private static readonly string[] OnlineMembers =
     {
-        if (!firstRender) return;
-        var target = Session.IsAuthenticated ? "/profile" : "/login";
-        Nav.NavigateTo(target, replace: true);
-    }
+        "RAGBot", "SWP391", "Admin", "StudyMate", "Citations", "Indexer", "Uploader", "Mentor"
+    };
+
+    private static readonly TopicRow[] Topics =
+    {
+        new(1, "Question", "How do I connect upload -> ingestion -> AI chat?", "RAG", 3, 71, "Today", "Kiet", "K", "ai/chat"),
+        new(2, "Guide", "Sprint 2 UI redesign notes and visual smoke checklist", "Docs", 2, 69, "Today", "Long", "L", "documents"),
+        new(3, "Source", "Review SWP391 lecture material with cited summaries", "Study", 1, 228, "Yesterday", "Bao", "B", "ai/chat"),
+        new(4, "Upload", "Which document types are accepted by the vault?", "Vault", 0, 131, "16/5/26", "Son", "S", "documents/upload"),
+        new(5, "AI", "Create quiz questions from the newest indexed sources", "RAG", 1, 150, "15/5/26", "Phuoc", "P", "ai/chat"),
+        new(6, "Admin", "Runtime provider fix: root MudBlazor providers", "System", 0, 29, "14/5/26", "Admin", "A", "profile"),
+        new(7, "Demo", "Prepare a ten-minute demo using source cards", "QA", 0, 67, "14/5/26", "Team", "T", "documents"),
+        new(8, "Search", "Filter documents by semester, subject, folder", "Vault", 0, 94, "13/5/26", "Mentor", "M", "documents"),
+        new(9, "Citation", "Explain why answer chunks include page metadata", "RAG", 1, 195, "12/5/26", "AI", "A", "ai/chat"),
+        new(10, "Review", "Final visual pass before Sprint 2 runtime smoke", "QA", 1, 288, "10/5/26", "Team", "T", "profile")
+    };
+
+    private sealed record TopicRow(
+        int Rank,
+        string Tag,
+        string Title,
+        string Forum,
+        int Replies,
+        int Views,
+        string Date,
+        string Author,
+        string Initial,
+        string Href);
 }
