@@ -271,7 +271,7 @@ IMGPROXY_AUTO_WEBP=true
 # TLS Proxy --  not used Phase 1
 ############
 PROXY_DOMAIN=your-domain.example.com
-[email protected]
+CERTBOT_EMAIL=admin@example.com
 '@
 
     foreach ($k in $secrets.Keys) {
