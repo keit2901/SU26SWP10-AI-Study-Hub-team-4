@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MudBlazor.Services;
+using Npgsql;
 using Pgvector.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -46,6 +47,7 @@ var connectionString = builder.Configuration.GetConnectionString("Postgres")
 var npgsqlDataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
 npgsqlDataSourceBuilder.MapEnum<AI_Study_Hub_v2.Data.Entities.DocumentStatus>(
     pgName: "public.document_status");
+npgsqlDataSourceBuilder.UseVector();
 var npgsqlDataSource = npgsqlDataSourceBuilder.Build();
 builder.Services.AddSingleton(npgsqlDataSource);
 

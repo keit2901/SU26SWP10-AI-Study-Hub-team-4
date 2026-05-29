@@ -14,11 +14,13 @@ public class SemanticKernelRagChatServiceTests
     private static SemanticKernelRagChatService BuildSut(
         IRagSearchService ragSearchService,
         IAiChatCompletionClient completionClient,
-        RagOptions? options = null) =>
+        RagOptions? options = null,
+        GroqOptions? groqOptions = null) =>
         new(
             ragSearchService,
             completionClient,
             Microsoft.Extensions.Options.Options.Create(options ?? new RagOptions()),
+            Microsoft.Extensions.Options.Options.Create(groqOptions ?? new GroqOptions()),
             NullLogger<SemanticKernelRagChatService>.Instance);
 
     [Test]
@@ -191,6 +193,42 @@ public class SemanticKernelRagChatServiceTests
         ex.Which.StatusCode.Should().Be(403);
         ex.Which.Code.Should().Be("user_inactive");
         completion.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task AskAsync_ProviderFailure_WithDemoFallback_ReturnsGroundedFallback()
+    {
+        var documentId = Guid.NewGuid();
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        rag.Setup(s => s.SearchAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<RagSearchRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new RagSearchResultDto("", documentId, "rag.pdf", 0, 1, "Semantic Kernel calls Groq after retrieval.", 0.5),
+            });
+
+        var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        completion.Setup(c => c.CompleteAsync(
+                It.IsAny<AiChatCompletionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiChatProviderException("groq_http_error", "unavailable"));
+
+        var sut = BuildSut(
+            rag.Object,
+            completion.Object,
+            groqOptions: new GroqOptions { UseLocalDemoFallback = true });
+
+        var response = await sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("How is Groq used?", null, null, null, null));
+
+        response.RefusalReason.Should().BeNull();
+        response.Answer.Should().Contain("Local demo fallback answer");
+        response.Answer.Should().Contain("[S1]");
+        response.Sources.Should().ContainSingle();
+        response.Sources[0].DocumentId.Should().Be(documentId);
+        rag.VerifyAll();
+        completion.VerifyAll();
     }
 
     [Test]

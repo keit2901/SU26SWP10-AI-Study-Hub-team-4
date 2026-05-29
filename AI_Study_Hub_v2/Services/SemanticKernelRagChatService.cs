@@ -20,17 +20,20 @@ public sealed class SemanticKernelRagChatService : IAiChatService
     private readonly IRagSearchService _ragSearchService;
     private readonly IAiChatCompletionClient _completionClient;
     private readonly RagOptions _ragOptions;
+    private readonly GroqOptions _groqOptions;
     private readonly ILogger<SemanticKernelRagChatService> _logger;
 
     public SemanticKernelRagChatService(
         IRagSearchService ragSearchService,
         IAiChatCompletionClient completionClient,
         IOptions<RagOptions> ragOptions,
+        IOptions<GroqOptions> groqOptions,
         ILogger<SemanticKernelRagChatService> logger)
     {
         _ragSearchService = ragSearchService;
         _completionClient = completionClient;
         _ragOptions = ragOptions.Value;
+        _groqOptions = groqOptions.Value;
         _logger = logger;
     }
 
@@ -91,11 +94,20 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "AI chat provider failed while answering a grounded RAG question.");
-            throw new AiChatException(
-                StatusCodes.Status503ServiceUnavailable,
-                "ai_provider_unavailable",
-                "The AI provider is currently unavailable. Please try again later.");
+            if (_groqOptions.UseLocalDemoFallback)
+            {
+                _logger.LogWarning(ex,
+                    "AI chat provider failed; using local demo fallback answer because Groq:UseLocalDemoFallback is enabled.");
+                answer = BuildLocalDemoFallbackAnswer(question, sources);
+            }
+            else
+            {
+                _logger.LogError(ex, "AI chat provider failed while answering a grounded RAG question.");
+                throw new AiChatException(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "ai_provider_unavailable",
+                    "The AI provider is currently unavailable. Please try again later.");
+            }
         }
 
         if (string.IsNullOrWhiteSpace(answer))
@@ -179,6 +191,16 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         sb.AppendLine("- If the excerpts do not contain enough information, say the indexed documents do not contain enough information.");
         sb.AppendLine("- Do not use outside knowledge or invent citations.");
         return sb.ToString();
+    }
+
+    private static string BuildLocalDemoFallbackAnswer(string question, IReadOnlyList<AiChatSourceDto> sources)
+    {
+        var firstSource = sources[0];
+        var excerpt = firstSource.Excerpt.Length <= 260
+            ? firstSource.Excerpt
+            : firstSource.Excerpt[..260].TrimEnd() + "...";
+
+        return $"Local demo fallback answer: based on the retrieved source, the relevant information is: {excerpt} [{firstSource.Label}]";
     }
 
     private int NormalizeTopK(int topK)

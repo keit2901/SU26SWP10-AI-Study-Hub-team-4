@@ -13,4 +13,6 @@ public sealed class GroqOptions
     public double Temperature { get; set; } = 0.2;
 
     public int MaxTokens { get; set; } = 1024;
+
+    public bool UseLocalDemoFallback { get; set; }
 }
