@@ -1,6 +1,5 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.Users
 @page "/admin/users"
-@rendermode InteractiveServer
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
@@ -278,11 +277,10 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         try
         {
-            await Task.Delay(350);
             _users.AddRange(BuildSeedUsers());
         }
         catch (Exception ex)

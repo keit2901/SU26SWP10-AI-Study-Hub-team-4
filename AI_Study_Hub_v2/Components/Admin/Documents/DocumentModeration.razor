@@ -1,6 +1,5 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.Documents
 @page "/admin/documents/moderation"
-@rendermode InteractiveServer
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
@@ -22,7 +21,7 @@
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Description" OnClick="OpenDocumentLibrary">
                 Document library
             </MudButton>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="Reload">
                 Refresh queue
             </MudButton>
         </MudStack>
@@ -262,19 +261,18 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await ReloadAsync();
+        Reload();
     }
 
-    private async Task ReloadAsync()
+    private void Reload()
     {
         _isLoading = true;
         _errorMessage = null;
 
         try
         {
-            await Task.Delay(300);
             _documents.Clear();
             _documents.AddRange(BuildSeedDocuments());
             _selectedDocument = _documents.FirstOrDefault();

@@ -1,6 +1,5 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.Documents
 @page "/admin/documents"
-@rendermode InteractiveServer
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
@@ -252,11 +251,10 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         try
         {
-            await Task.Delay(300);
             _documents.AddRange(BuildSeedDocuments());
         }
         catch (Exception ex)

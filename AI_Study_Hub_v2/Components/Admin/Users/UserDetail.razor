@@ -1,6 +1,5 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.Users
 @page "/admin/users/{Id:guid}"
-@rendermode InteractiveServer
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
@@ -136,11 +135,10 @@ else
     private readonly List<DocumentRow> _documents = new();
     private readonly List<ActivityRow> _activities = new();
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         try
         {
-            await Task.Delay(300);
             _user = BuildUser(Id);
             _documents.AddRange(BuildDocuments());
             _activities.AddRange(BuildActivities());
