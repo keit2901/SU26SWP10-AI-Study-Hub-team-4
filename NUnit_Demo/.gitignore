@@ -1,0 +1,14 @@
+bin/
+obj/
+.vs/
+TestResults/
+coverage/
+*.coverage
+*.coveragexml
+coverage.cobertura.xml
+*.trx
+*.zip
+*.user
+*.suo
+*.nupkg
+packages/
