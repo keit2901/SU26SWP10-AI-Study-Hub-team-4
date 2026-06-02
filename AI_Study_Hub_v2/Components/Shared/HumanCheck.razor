@@ -1,0 +1,81 @@
+@namespace AI_Study_Hub_v2.Components.Shared
+
+<MudPaper Class="pa-3 human-check" Elevation="0" Outlined="true">
+    <MudStack Spacing="1">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap: wrap;">
+            <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Color="Color.Primary" Size="Size.Small" />
+            <MudText Typo="Typo.subtitle2">Human check</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Local app-level check only.</MudText>
+        </MudStack>
+        <MudTextField T="string"
+                      Label="@ChallengeText"
+                      Value="_answer"
+                      ValueChanged="OnAnswerChangedAsync"
+                      Immediate="true"
+                      Required="true"
+                      RequiredError="Human check is required"
+                      Error="@(_touched && !IsValid)"
+                      ErrorText="@ErrorText"
+                      Variant="Variant.Outlined"
+                      Margin="Margin.Dense"
+                      InputType="InputType.Number"
+                      Disabled="Disabled" />
+    </MudStack>
+</MudPaper>
+
+@code {
+    private const int Left = 7;
+    private const int Right = 5;
+    private string? _answer;
+    private bool _touched;
+
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public EventCallback<bool> ValidChanged { get; set; }
+
+    public bool IsValid => int.TryParse(_answer, out var value) && value == Left + Right;
+
+    private string ChallengeText => $"What is {Left} + {Right}?";
+
+    private string ErrorText => string.IsNullOrWhiteSpace(_answer)
+        ? "Solve the human check before continuing."
+        : "Human check answer is incorrect.";
+
+    public async Task<bool> ValidateAsync()
+    {
+        _touched = true;
+        await ValidChanged.InvokeAsync(IsValid);
+        StateHasChanged();
+        return IsValid;
+    }
+
+    public bool Validate()
+    {
+        _touched = true;
+        _ = ValidChanged.InvokeAsync(IsValid);
+        StateHasChanged();
+        return IsValid;
+    }
+
+    public async Task ResetAsync()
+    {
+        _answer = string.Empty;
+        _touched = false;
+        await ValidChanged.InvokeAsync(false);
+        StateHasChanged();
+    }
+
+    public void Reset()
+    {
+        _answer = string.Empty;
+        _touched = false;
+        _ = ValidChanged.InvokeAsync(false);
+        StateHasChanged();
+    }
+
+    private async Task OnAnswerChangedAsync(string? value)
+    {
+        _answer = value;
+        _touched = true;
+        await ValidChanged.InvokeAsync(IsValid);
+    }
+}

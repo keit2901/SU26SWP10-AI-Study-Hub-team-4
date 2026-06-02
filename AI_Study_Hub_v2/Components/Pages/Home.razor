@@ -1,165 +1,154 @@
 ﻿@page "/"
 @inject AuthSessionState Session
 
-<PageTitle>AI Study Hub - Secure Study Forum</PageTitle>
+<PageTitle>AI Study Hub - Academic AI Workspace</PageTitle>
 
-<section class="forum-page">
-    <div class="forum-announcement glass-card-soft">
-        <div class="announcement-orb">AI</div>
-        <div>
-            <strong>AI Study Hub community workspace</strong>
-            <span>Keep the premium dark RAG tone, now arranged like a forum dashboard for faster study navigation.</span>
-        </div>
-    </div>
+<main class="landing-page teammate-landing-page">
+    <section class="landing-hero" aria-labelledby="landing-title">
+        <div class="landing-ambient landing-ambient-one" aria-hidden="true"></div>
+        <div class="landing-ambient landing-ambient-two" aria-hidden="true"></div>
 
-    <section class="forum-header glass-card">
-        <div class="forum-toolbar">
-            <a href="documents">Documents</a>
-            <a href="documents/upload">Upload source</a>
-            <a href="ai/chat">Ask AI</a>
-            <a href="profile">Profile</a>
-        </div>
-        <div class="forum-title-row">
-            <div>
-                <span class="section-kicker">Secure RAG Forum</span>
-                <h1>AI Study Hub Community</h1>
-            </div>
-            <div class="forum-header-actions">
-                @if (Session.IsAuthenticated)
-                {
-                    <a class="forum-primary" href="ai/chat">New question</a>
-                    <a class="forum-secondary" href="documents/upload">Upload file</a>
-                }
-                else
-                {
-                    <a class="forum-primary" href="login">Enter workspace</a>
-                    <a class="forum-secondary" href="register">Join beta</a>
-                }
-            </div>
-        </div>
-    </section>
+        <div class="landing-hero-inner">
+            <div class="landing-hero-copy">
+                <span class="landing-badge" id="gpt-powered-badge">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />
+                    Gemini Inspired Academic Modes
+                </span>
 
-    <section class="forum-grid">
-        <main class="forum-main">
-            <article class="topic-board glass-card">
-                <div class="topic-tabs">
-                    <span class="topic-tab active">Discussion</span>
-                    <span class="topic-tab">Newest sources</span>
-                    <span class="topic-tab">Most cited</span>
+                <h1 id="landing-title">Harness AI for <span>Academic Excellence.</span></h1>
+                <p>
+                    AI Study Hub converts messy lectures, raw notes, and textbooks into structured,
+                    personalized study workspaces. Generate summaries, suggested Q&amp;As, and custom quizzes
+                    instantly with AI while preserving your real document library and RAG citations.
+                </p>
+
+                <div class="landing-cta-row">
+                    <a id="btn-hero-start" class="landing-primary-button" href="@(Session.IsAuthenticated ? "/documents" : "/register")">
+                        Start My Study Session
+                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                    </a>
+                    <a id="btn-hero-demo" class="landing-secondary-button" href="@(Session.IsAuthenticated ? "/ai/chat" : "/login")">
+                        Try the Demo Room
+                    </a>
                 </div>
 
-                <div class="topic-table">
-                    <div class="topic-head">
-                        <span>Topic</span>
-                        <span>Forum</span>
-                        <span>Reply</span>
-                        <span>View</span>
-                        <span>Date</span>
-                        <span>Author</span>
+                <div class="landing-quick-metrics" aria-label="AI Study Hub highlights">
+                    <div>
+                        <strong>100%</strong>
+                        <span>Source Grounded</span>
                     </div>
-                    @foreach (var topic in Topics)
-                    {
-                        <div class="topic-row">
-                            <div class="topic-title">
-                                <span class="topic-rank">@topic.Rank</span>
-                                <span class="topic-badge">@topic.Tag</span>
-                                <a href="@topic.Href">@topic.Title</a>
-                            </div>
-                            <span>@topic.Forum</span>
-                            <span>@topic.Replies</span>
-                            <span>@topic.Views</span>
-                            <span>@topic.Date</span>
-                            <span class="topic-author"><span>@topic.Initial</span>@topic.Author</span>
-                        </div>
-                    }
+                    <div>
+                        <strong>24/7</strong>
+                        <span>Smart Feedback</span>
+                    </div>
                 </div>
-            </article>
+            </div>
 
-            <input class="forum-search" placeholder="Search your study workspace..." />
-
-            <article class="lounge-card glass-card">
-                <div class="lounge-title">
-                    <h2>Study lounge</h2>
-                    <span>Live prompts</span>
+            <div class="landing-hero-visual" aria-label="Students collaborating with AI Study Hub">
+                <div class="landing-visual-glow" aria-hidden="true"></div>
+                <div class="landing-image-frame">
+                    <img src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&amp;w=1000&amp;auto=format&amp;fit=crop"
+                         alt="A group of students discussing study material together" />
                 </div>
-                <div class="lounge-post">
-                    <strong>Try asking:</strong>
-                    <p>Summarize the newest SWP391 notes and cite every paragraph back to the source cards.</p>
-                    <a href="ai/chat">Open AI Chat</a>
-                </div>
-            </article>
-        </main>
-
-        <aside class="forum-sidebar">
-            <article class="profile-card glass-card">
-                <div class="profile-avatar">@ProfileInitial</div>
-                <div>
-                    <h2>@(Session.IsAuthenticated ? Session.CurrentUser?.Username : "Guest")</h2>
-                    <p>AI Study Hub member</p>
-                </div>
-                <dl>
-                    <div><dt>Indexed</dt><dd>RAG ready</dd></div>
-                    <div><dt>Role</dt><dd>@(Session.IsAuthenticated ? Session.CurrentUser?.Role : "Visitor")</dd></div>
-                    <div><dt>Status</dt><dd>@(Session.IsAuthenticated ? "Active" : "Preview")</dd></div>
-                </dl>
-            </article>
-
-            <article class="discord-card glass-card">
-                <div class="sidebar-card-title">
-                    <h2>Retrieval room</h2>
-                    <span><i></i>128 online</span>
-                </div>
-                <div class="online-list">
-                    @foreach (var member in OnlineMembers)
-                    {
-                        <span><b>@member[0]</b>@member</span>
-                    }
-                </div>
-                <a class="forum-secondary sidebar-button" href="documents">Open vault</a>
-            </article>
-
-            <article class="orb-card glass-card">
-                <div class="dashboard-orb" aria-hidden="true"></div>
-                <h2>Grounded answers</h2>
-                <p>Ask across indexed sources and review citations like forum replies with evidence.</p>
-            </article>
-        </aside>
+            </div>
+        </div>
     </section>
-</section>
 
-@code {
-    private string ProfileInitial => string.IsNullOrWhiteSpace(Session.CurrentUser?.Username)
-        ? "G"
-        : Session.CurrentUser!.Username[0].ToString().ToUpperInvariant();
+    <section id="features-container" class="landing-features" aria-labelledby="features-title">
+        <div class="landing-section-heading">
+            <h2 id="features-title">One Workspace. Endless Academic Leverage.</h2>
+            <p>
+                Say goodbye to scattered files and disjointed bookmarks. The app synthesizes standard academic
+                formats into interactive studying components while keeping the real Blazor document and chat flows.
+            </p>
+        </div>
 
-    private static readonly string[] OnlineMembers =
-    {
-        "RAGBot", "SWP391", "Admin", "StudyMate", "Citations", "Indexer", "Uploader", "Mentor"
-    };
+        <div class="landing-bento-grid">
+            <article class="landing-bento-card indigo compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.Psychology" /></span>
+                <div>
+                    <h3>AI Guided Study</h3>
+                    <p>Surgically extract structured learning materials from dense files and textbook segments.</p>
+                </div>
+            </article>
 
-    private static readonly TopicRow[] Topics =
-    {
-        new(1, "Question", "How do I connect upload -> ingestion -> AI chat?", "RAG", 3, 71, "Today", "Kiet", "K", "ai/chat"),
-        new(2, "Guide", "Sprint 2 UI redesign notes and visual smoke checklist", "Docs", 2, 69, "Today", "Long", "L", "documents"),
-        new(3, "Source", "Review SWP391 lecture material with cited summaries", "Study", 1, 228, "Yesterday", "Bao", "B", "ai/chat"),
-        new(4, "Upload", "Which document types are accepted by the vault?", "Vault", 0, 131, "16/5/26", "Son", "S", "documents/upload"),
-        new(5, "AI", "Create quiz questions from the newest indexed sources", "RAG", 1, 150, "15/5/26", "Phuoc", "P", "ai/chat"),
-        new(6, "Admin", "Runtime provider fix: root MudBlazor providers", "System", 0, 29, "14/5/26", "Admin", "A", "profile"),
-        new(7, "Demo", "Prepare a ten-minute demo using source cards", "QA", 0, 67, "14/5/26", "Team", "T", "documents"),
-        new(8, "Search", "Filter documents by semester, subject, folder", "Vault", 0, 94, "13/5/26", "Mentor", "M", "documents"),
-        new(9, "Citation", "Explain why answer chunks include page metadata", "RAG", 1, 195, "12/5/26", "AI", "A", "ai/chat"),
-        new(10, "Review", "Final visual pass before Sprint 2 runtime smoke", "QA", 1, 288, "10/5/26", "Team", "T", "profile")
-    };
+            <article class="landing-bento-card emerald wide">
+                <div>
+                    <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.Article" /></span>
+                    <h3>Cornell Notes Summary</h3>
+                    <p>Convert long chapters into high-yield briefing outlines centered around examinable insights.</p>
+                </div>
+                <div class="bento-note-preview" aria-hidden="true">
+                    <span></span><span></span><span></span>
+                </div>
+            </article>
 
-    private sealed record TopicRow(
-        int Rank,
-        string Tag,
-        string Title,
-        string Forum,
-        int Replies,
-        int Views,
-        string Date,
-        string Author,
-        string Initial,
-        string Href);
-}
+            <article class="landing-bento-card violet compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.TipsAndUpdates" /></span>
+                <div>
+                    <h3>Smart Flashcards</h3>
+                    <p>Memory prompts designed to trigger targeted retention directly from source material.</p>
+                </div>
+            </article>
+
+            <article class="landing-bento-card amber compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.FactCheck" /></span>
+                <div>
+                    <h3>Practice Quiz Maker</h3>
+                    <p>Generate exam-style multiple-choice questions with immediate explanation paths.</p>
+                </div>
+            </article>
+
+            <article class="landing-bento-card navy compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" /></span>
+                <div>
+                    <h3>Interactive Q&amp;A</h3>
+                    <p>Challenge your own documents with grounded answers and visible source citations.</p>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section id="pricing-container" class="landing-final-cta" aria-labelledby="cta-title">
+        <span class="landing-badge soft"><MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" /> Empower Your Mind</span>
+        <h2 id="cta-title">Ready to Accelerate Your Learning?</h2>
+        <p>
+            Create your account today and gain immediate access to the specialized study engine. Build folders,
+            upload notes, generate summaries, and test your knowledge from one polished academic dashboard.
+        </p>
+        <a id="cta-get-started" class="landing-primary-button" href="@(Session.IsAuthenticated ? "/documents" : "/register")">
+            Get Started for Free
+        </a>
+    </section>
+
+    <footer class="landing-footer">
+        <div class="landing-footer-grid">
+            <div>
+                <div class="landing-footer-brand">
+                    <span><MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Small" /></span>
+                    <strong>AI Study Hub</strong>
+                </div>
+                <p>The next-generation, context-aware study intelligence designed to maximize academic recall.</p>
+            </div>
+            <div>
+                <h4>Product</h4>
+                <a href="#pricing-container">Pricing model</a>
+                <a href="/documents">Library</a>
+                <a href="/ai/chat">Workspace</a>
+            </div>
+            <div>
+                <h4>Resources</h4>
+                <a href="#features-container">Features</a>
+                <a href="/documents/upload">Upload center</a>
+                <a href="/profile">Profile</a>
+            </div>
+            <div>
+                <h4>Legal</h4>
+                <a href="#">Terms of Service</a>
+                <a href="#">Privacy Policy</a>
+                <a href="#">Guidelines</a>
+            </div>
+        </div>
+        <div class="landing-footer-bottom">© @DateTime.Now.Year AI Study Hub. Built with care for lifelong learners.</div>
+    </footer>
+</main>

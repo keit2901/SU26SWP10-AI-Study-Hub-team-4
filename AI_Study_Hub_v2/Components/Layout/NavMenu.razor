@@ -2,58 +2,60 @@
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
-<header class="community-topbar">
-    <div class="community-topbar-inner">
-        <a class="brand-link" href="">
-            <span class="brand-orb">AI</span>
-            <span>
-                <span class="brand-name">AI Study Hub</span>
-                <span class="brand-subtitle">Secure RAG Forum</span>
-            </span>
+<header class="community-topbar teammate-topbar">
+    <div class="community-topbar-inner teammate-topbar-inner">
+        <a class="brand-link teammate-brand" href="">
+            <span class="brand-orb teammate-brand-mark"><MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Small" /></span>
+            <span class="brand-name">AI Study Hub</span>
         </a>
 
         <input id="community-nav-toggle" type="checkbox" title="Navigation menu" class="navbar-toggler" />
         <label for="community-nav-toggle" class="navbar-toggler-label" aria-label="Toggle navigation"></label>
 
-        <nav class="community-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
-            <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Forum</NavLink>
+        <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
+            <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
             @if (Session.IsAuthenticated)
             {
-                <NavLink class="nav-pill" href="documents">Documents</NavLink>
-                <NavLink class="nav-pill" href="ai/chat">AI Chat</NavLink>
+                <NavLink class="nav-pill" href="documents">Library</NavLink>
+                <NavLink class="nav-pill" href="ai/chat">Workspace</NavLink>
                 <NavLink class="nav-pill" href="documents/upload">Upload</NavLink>
-                <NavLink class="nav-pill" href="profile">Profile</NavLink>
             }
             else
             {
-                <NavLink class="nav-pill" href="login">Login</NavLink>
-                <NavLink class="nav-pill" href="register">Register</NavLink>
+                <NavLink class="nav-pill" href="login">Sign In</NavLink>
+                <NavLink class="nav-pill" href="register">Get Started</NavLink>
             }
         </nav>
 
-        <div class="community-actions">
+        <div class="community-actions teammate-actions">
             @if (Session.IsAuthenticated)
             {
-                <span class="status-dot" title="Authenticated"></span>
-                <a class="user-chip" href="profile">
-                    <span class="user-avatar">@UserInitial</span>
-                    <span>@Session.CurrentUser?.Username</span>
+                <div class="teammate-user-meta">
+                    <span>@DisplayName</span>
+                    <small>Pro Plan</small>
+                </div>
+                <a class="user-chip teammate-user-chip" href="profile">
+                    <span class="user-avatar"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
                 </a>
-                <button type="button" class="signout-button" @onclick="Logout">Sign out</button>
+                <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
+                    <MudIcon Icon="@Icons.Material.Filled.Logout" Size="Size.Small" />
+                </button>
             }
             else
             {
-                <a class="login-link" href="login">Login</a>
-                <a class="join-button" href="register">Join beta</a>
+                <a class="login-link" href="login">Sign In</a>
+                <a class="join-button" href="register">Get Started</a>
             }
         </div>
     </div>
 </header>
 
 @code {
-    private string UserInitial => string.IsNullOrWhiteSpace(Session.CurrentUser?.Username)
-        ? "A"
-        : Session.CurrentUser!.Username[0].ToString().ToUpperInvariant();
+    private string DisplayName =>
+        Session.CurrentUser?.FullName
+        ?? Session.CurrentUser?.Username
+        ?? Session.CurrentUser?.Email
+        ?? "Student";
 
     protected override void OnInitialized()
     {

@@ -1,4 +1,5 @@
 @page "/documents"
+@using Microsoft.AspNetCore.Components.Web
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
@@ -9,205 +10,373 @@
 @inject IDialogService Dialogs
 @inject ISnackbar Snackbar
 
-<PageTitle>My documents - AI Study Hub v2</PageTitle>
+<PageTitle>Thư viện học tập - AI Study Hub v2</PageTitle>
 
-<MudStack Spacing="3" Class="workspace-shell document-shell pa-4">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="workspace-hero" Style="flex-wrap: wrap; gap: 0.5rem;">
-        <div>
-            <span class="section-kicker">Document vault</span>
-            <MudText Typo="Typo.h4" Class="mt-3">My documents</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary">
-                Documents you have uploaded. Newest first.
-            </MudText>
+<MudStack Spacing="0" Class="workspace-shell document-shell library-dashboard teammate-library-shell">
+    <header class="library-workspace-header">
+        <div class="library-search-bar" id="dashboard-search-bar">
+            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
+            <input value="@_textFilter"
+                   @oninput="e => _textFilter = e.Value?.ToString()"
+                   @onkeydown="HandleSearchKeyDownAsync"
+                   placeholder="Tìm kiếm nhanh chuyên đề, tài liệu học tập..." />
         </div>
-        <MudButton Variant="Variant.Filled"
-                   Color="Color.Primary"
-                   StartIcon="@Icons.Material.Filled.UploadFile"
-                   Href="/documents/upload">
-            Upload document
-        </MudButton>
-    </MudStack>
+        <div class="library-header-actions">
+            <span class="library-pro-badge"><MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" /> Khoá Học Pro Đang Kích Hoạt</span>
+            <MudIconButton Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Class="library-help-button" title="Trợ giúp" />
+        </div>
+    </header>
 
-    <MudPaper Class="pa-3 glass-card" Elevation="0" Outlined="false">
-        <MudStack Row="true" Spacing="2" Style="flex-wrap: wrap;">
-            <MudTextField T="string"
-                          Label="Subject code"
-                          @bind-Value="_subjectFilter"
-                          Variant="Variant.Outlined"
-                          Margin="Margin.Dense"
-                          Clearable="true"
-                          Style="min-width: 160px;" />
-            <MudTextField T="string"
-                          Label="Semester"
-                          @bind-Value="_semesterFilter"
-                          Variant="Variant.Outlined"
-                          Margin="Margin.Dense"
-                          Clearable="true"
-                          Style="min-width: 140px;" />
-            <MudSelect T="Guid?"
-                       Label="Folder"
-                       @bind-Value="_folderFilter"
-                       Variant="Variant.Outlined"
-                       Margin="Margin.Dense"
-                       Clearable="true"
-                       Disabled="_busy"
-                       Style="min-width: 190px;">
-                <MudSelectItem T="Guid?" Value="@(null)">All folders</MudSelectItem>
-                @foreach (var folder in _folders)
-                {
-                    <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name (@folder.DocumentCount)</MudSelectItem>
-                }
-            </MudSelect>
-            <MudTextField T="string"
-                          Label="Search documents"
-                          HelperText="File name contains"
-                          @bind-Value="_textFilter"
-                          Variant="Variant.Outlined"
-                          Margin="Margin.Dense"
-                          Clearable="true"
-                          Style="min-width: 220px; flex: 1;" />
+    <main class="library-scroll-stage custom-scrollbar">
+        <section class="library-hero">
+            <div class="library-hero-copy">
+                <span class="section-kicker">Study Hub Dashboard</span>
+                <MudText Typo="Typo.h4" Class="mt-3">@Greeting, <span class="library-name-gradient">@DisplayName</span></MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    @TodayLabel — Hôm nay bạn muốn chinh phục kiến thức nào?
+                </MudText>
+            </div>
+            <div class="library-action-row">
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Class="library-action-button"
+                           StartIcon="@Icons.Material.Filled.FolderOpen"
+                           OnClick="ShowNewFolderBox"
+                           Disabled="_busy">
+                    Khai phá chuyên đề mới
+                </MudButton>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           Class="library-action-button"
+                           StartIcon="@Icons.Material.Filled.UploadFile"
+                           Href="/documents/upload">
+                    Tải tài liệu
+                </MudButton>
+            </div>
+        </section>
+
+    <section class="library-metrics-grid" aria-label="Library summary">
+        <article class="library-metric-card accent-violet">
+            <div class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.FolderOpen" /></div>
+            <div>
+                <span>Thư mục</span>
+                <strong>@_folders.Count</strong>
+                <small>@FolderSummary</small>
+            </div>
+        </article>
+        <article class="library-metric-card accent-cyan">
+            <div class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.Article" /></div>
+            <div>
+                <span>Tài liệu hiển thị</span>
+                <strong>@_rows.Count</strong>
+                <small>@ResultSummary</small>
+            </div>
+        </article>
+        <article class="library-metric-card accent-green">
+            <div class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" /></div>
+            <div>
+                <span>Sẵn sàng RAG</span>
+                <strong>@ReadyDocuments</strong>
+                <small>@ProcessingSummary</small>
+            </div>
+        </article>
+        <article class="library-metric-card accent-amber">
+            <div class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.Storage" /></div>
+            <div>
+                <span>Dung lượng hiển thị</span>
+                <strong>@FormatBytes(TotalVisibleBytes)</strong>
+                <small>Mới nhất: @LatestUploadText</small>
+            </div>
+        </article>
+    </section>
+
+    <div class="library-workspace-grid">
+        <aside class="library-side-panel glass-card" aria-label="Document library navigation">
             <MudButton Variant="Variant.Filled"
-                       Color="Color.Default"
-                       StartIcon="@Icons.Material.Filled.Search"
-                       OnClick="ApplyFiltersAsync"
-                       Disabled="_busy">
-                Apply
-            </MudButton>
-            <MudButton Variant="Variant.Text"
-                       OnClick="ClearFiltersAsync"
-                       Disabled="_busy || !HasFilters">
-                Clear
-            </MudButton>
-            <MudButton Variant="Variant.Outlined"
-                       Color="Color.Secondary"
+                       Color="Color.Primary"
+                       FullWidth="true"
                        StartIcon="@Icons.Material.Filled.CreateNewFolder"
                        OnClick="ShowNewFolderBox"
                        Disabled="_busy">
-                New folder
+                Tạo thư mục mới
             </MudButton>
-        </MudStack>
-        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="mt-2" Style="flex-wrap: wrap;">
-            <MudText Typo="Typo.caption" Color="Color.Secondary">@ResultSummary</MudText>
-            @if (!string.IsNullOrWhiteSpace(_subjectFilter))
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Subject: @_subjectFilter.Trim().ToUpperInvariant()</MudChip>
-            }
-            @if (!string.IsNullOrWhiteSpace(_semesterFilter))
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">Semester: @_semesterFilter.Trim().ToUpperInvariant()</MudChip>
-            }
-            @if (_folderFilter.HasValue)
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">Folder: @FolderName(_folderFilter)</MudChip>
-            }
-            @if (!string.IsNullOrWhiteSpace(_textFilter))
-            {
-                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Search: @_textFilter.Trim()</MudChip>
-            }
-        </MudStack>
-    </MudPaper>
 
-    @if (_showNewFolder)
-    {
-        <MudPaper Class="pa-3 glass-card-soft" Elevation="0" Outlined="false">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="flex-wrap: wrap;">
-                <MudTextField T="string"
-                              Label="Folder name"
-                              @bind-Value="_newFolderName"
-                              Variant="Variant.Outlined"
-                              Margin="Margin.Dense"
-                              Style="min-width: 240px; flex: 1;" />
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Check"
-                           OnClick="CreateFolderAsync"
-                           Disabled="_busy || string.IsNullOrWhiteSpace(_newFolderName)">
-                    Create
+            <div class="library-nav-block">
+                <p>Thư viện học tập</p>
+                <button type="button" class="library-nav-item @(IsAllDocumentsView ? "active" : string.Empty)" @onclick="ClearFiltersAsync" disabled="@_busy">
+                    <span><MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" /> Tất cả tài liệu</span>
+                    <b>@_rows.Count</b>
+                </button>
+                <button type="button" class="library-nav-item @(IsLooseDocumentsView ? "active" : string.Empty)" @onclick="ShowLooseDocumentsAsync" disabled="@_busy">
+                    <span><MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" Size="Size.Small" /> Tài liệu chưa phân loại</span>
+                    <b>@LooseDocumentsCount</b>
+                </button>
+            </div>
+
+            <div class="library-nav-block">
+                <p>Mở AI Chat theo thư mục</p>
+                <div class="library-mini-folder-list custom-scrollbar">
+                    @if (_folders.Count == 0)
+                    {
+                        <span class="library-empty-note">Chưa có thư mục.</span>
+                    }
+                    else
+                    {
+                        @foreach (var folder in _folders.Take(8))
+                        {
+                            <button type="button"
+                                    class="library-mini-folder @FolderAccentClass(folder)"
+                                    @onclick="() => OpenFolderChat(folder.Id)"
+                                    disabled="@_busy">
+                                <span class="folder-dot"></span>
+                                <span>@folder.Name</span>
+                                <small>@folder.DocumentCount</small>
+                            </button>
+                        }
+                    }
+                </div>
+            </div>
+
+            <div class="library-insight-card">
+                <span><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" /> Gợi ý AI Study</span>
+                <p>Ưu tiên tải PDF để demo RAG tốt nhất: hệ thống sẽ ingest, tạo chunk, tìm kiếm nguồn và trả citation trong AI Chat.</p>
+                <MudButton Variant="Variant.Text" Color="Color.Secondary" Href="/ai/chat" EndIcon="@Icons.Material.Filled.ArrowForward">
+                    Mở AI Chat
                 </MudButton>
-                <MudButton Variant="Variant.Text" OnClick="HideNewFolderBox" Disabled="_busy">
-                    Cancel
-                </MudButton>
-            </MudStack>
-        </MudPaper>
-    }
+            </div>
+        </aside>
 
-    @if (!string.IsNullOrEmpty(_error))
-    {
-        <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true">@_error</MudAlert>
-    }
-
-    <MudTable Items="_rows"
-              Hover="true"
-              Bordered="false"
-              Striped="true"
-              Dense="false"
-              Loading="_busy"
-              LoadingProgressColor="Color.Primary"
-              Class="glass-card document-table">
-        <HeaderContent>
-            <MudTh>File</MudTh>
-            <MudTh>Subject</MudTh>
-            <MudTh>Semester</MudTh>
-            <MudTh>Folder</MudTh>
-            <MudTh>Size</MudTh>
-            <MudTh>Status</MudTh>
-            <MudTh>Uploaded</MudTh>
-            <MudTh Style="width: 1%; white-space: nowrap;">Actions</MudTh>
-        </HeaderContent>
-        <RowTemplate>
-            <MudTd DataLabel="File">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                    <MudIcon Icon="@GetFileIcon(context.MimeType)" Color="Color.Primary" />
-                    <MudLink Href="@($"/documents/{context.Id}")">@context.FileName</MudLink>
-                </MudStack>
-            </MudTd>
-            <MudTd DataLabel="Subject">@context.SubjectCode</MudTd>
-            <MudTd DataLabel="Semester">@context.Semester</MudTd>
-            <MudTd DataLabel="Folder">@FolderName(context.FolderId)</MudTd>
-            <MudTd DataLabel="Size">@FormatBytes(context.FileSizeBytes)</MudTd>
-            <MudTd DataLabel="Status">
-                <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)" Variant="Variant.Filled">
-                    @context.Status.ToString()
-                </MudChip>
-            </MudTd>
-            <MudTd DataLabel="Uploaded">@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
-            <MudTd DataLabel="Actions">
-                <MudStack Row="true" Spacing="1">
-                    <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
-                                   Size="Size.Small"
-                                   Color="Color.Primary"
-                                   Href="@($"/documents/{context.Id}")"
-                                   title="View detail" />
-                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                   Size="Size.Small"
-                                   Color="Color.Error"
-                                   OnClick="() => ConfirmDeleteAsync(context)"
-                                   title="Delete" />
-                </MudStack>
-            </MudTd>
-        </RowTemplate>
-        <NoRecordsContent>
-            <MudStack AlignItems="AlignItems.Center" Class="pa-6" Spacing="2">
-                <MudIcon Icon="@Icons.Material.Filled.FolderOff" Size="Size.Large" Color="Color.Default" />
-                <MudText Typo="Typo.subtitle1">No documents yet.</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">
-                    @(HasFilters ? "Try clearing the filters above." : "Upload your first study material to get started.")
-                </MudText>
-                @if (!HasFilters)
-                {
+        <section class="library-main-panel">
+            <MudPaper Class="pa-3 glass-card library-toolbar" Elevation="0" Outlined="false">
+                <div class="library-filter-grid">
+                    <MudTextField T="string"
+                                  Label="Mã môn"
+                                  @bind-Value="_subjectFilter"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Clearable="true" />
+                    <MudTextField T="string"
+                                  Label="Học kỳ"
+                                  @bind-Value="_semesterFilter"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Clearable="true" />
+                    <MudSelect T="Guid?"
+                               Label="Thư mục"
+                               @bind-Value="_folderFilter"
+                               Variant="Variant.Outlined"
+                               Margin="Margin.Dense"
+                               Clearable="true"
+                               Disabled="_busy">
+                        <MudSelectItem T="Guid?" Value="@(null)">Tất cả thư mục</MudSelectItem>
+                        @foreach (var folder in _folders)
+                        {
+                            <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name (@folder.DocumentCount)</MudSelectItem>
+                        }
+                    </MudSelect>
+                    <MudTextField T="string"
+                                  Label="Tìm tài liệu"
+                                  HelperText="Theo tên file"
+                                  @bind-Value="_textFilter"
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Clearable="true" />
                     <MudButton Variant="Variant.Filled"
-                               Color="Color.Primary"
-                               StartIcon="@Icons.Material.Filled.UploadFile"
-                               Href="/documents/upload">
-                        Upload document
+                               Color="Color.Default"
+                               FullWidth="true"
+                               StartIcon="@Icons.Material.Filled.Search"
+                               OnClick="ApplyFiltersAsync"
+                               Disabled="_busy">
+                        Lọc
                     </MudButton>
-                }
-            </MudStack>
-        </NoRecordsContent>
-        <PagerContent>
-            <MudTablePager PageSizeOptions="new[] { 10, 25, 50, 100 }" />
-        </PagerContent>
-    </MudTable>
+                    <MudButton Variant="Variant.Text"
+                               FullWidth="true"
+                               OnClick="ClearFiltersAsync"
+                               Disabled="_busy || !HasFilters">
+                        Xoá lọc
+                    </MudButton>
+                </div>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="library-active-filters mt-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">@ResultSummary</MudText>
+                    @if (!string.IsNullOrWhiteSpace(_subjectFilter))
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">Môn: @_subjectFilter.Trim().ToUpperInvariant()</MudChip>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_semesterFilter))
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined">Kỳ: @_semesterFilter.Trim().ToUpperInvariant()</MudChip>
+                    }
+                    @if (_folderFilter.HasValue)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">Thư mục: @FolderName(_folderFilter)</MudChip>
+                    }
+                    @if (_looseOnly)
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">Chưa phân loại</MudChip>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(_textFilter))
+                    {
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Tìm: @_textFilter.Trim()</MudChip>
+                    }
+                </MudStack>
+            </MudPaper>
+
+            @if (_showNewFolder)
+            {
+                <MudPaper Class="pa-3 glass-card-soft library-create-panel" Elevation="0" Outlined="false">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2" Style="flex-wrap: wrap;">
+                        <MudTextField T="string"
+                                      Label="Tên thư mục"
+                                      @bind-Value="_newFolderName"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Style="min-width: 240px; flex: 1;" />
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Check"
+                                   OnClick="CreateFolderAsync"
+                                   Disabled="_busy || string.IsNullOrWhiteSpace(_newFolderName)">
+                            Tạo
+                        </MudButton>
+                        <MudButton Variant="Variant.Text" OnClick="HideNewFolderBox" Disabled="_busy">
+                            Huỷ
+                        </MudButton>
+                    </MudStack>
+                </MudPaper>
+            }
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true">@_error</MudAlert>
+            }
+
+            <section class="library-folder-section glass-card-soft">
+                <div class="library-folder-header">
+                    <div>
+                        <span class="section-kicker">AI Study Chat folders</span>
+                        <h2>Mở thư mục trong AI Chat</h2>
+                        <p>Chọn một thư mục để hỏi đáp với phạm vi tài liệu trong thư mục đó.</p>
+                    </div>
+                    <div class="library-view-label" aria-label="Current folder board view">
+                        <MudIcon Icon="@Icons.Material.Filled.GridView" Size="Size.Small" />
+                        <span>Thẻ thư mục</span>
+                    </div>
+                </div>
+
+                <div class="library-folder-grid">
+                    @foreach (var folder in _folders)
+                    {
+                        <button type="button"
+                                class="library-folder-card @FolderAccentClass(folder)"
+                                @onclick="() => OpenFolderChat(folder.Id)"
+                                disabled="@_busy">
+                            <div class="folder-card-main">
+                                <div class="folder-icon"><MudIcon Icon="@Icons.Material.Filled.Folder" /></div>
+                                <div>
+                                    <strong>@folder.Name</strong>
+                                    <span>@folder.DocumentCount tài liệu</span>
+                                </div>
+                            </div>
+                            <div class="folder-card-meta">
+                                <span>Mở AI Chat cho thư mục</span>
+                                <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                            </div>
+                        </button>
+                    }
+
+                    <article class="library-folder-card loose-card loose-card-static" aria-label="Tóm tắt tài liệu chưa phân loại">
+                        <div class="folder-card-main">
+                            <div class="folder-icon"><MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" /></div>
+                            <div>
+                                <strong>Tài liệu chưa phân loại</strong>
+                                <span>@LooseDocumentsCount tài liệu đang hiển thị</span>
+                            </div>
+                        </div>
+                        <div class="folder-card-meta">
+                            <span>Dùng mục bên trái để lọc nhanh</span>
+                            <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" />
+                        </div>
+                    </article>
+                </div>
+            </section>
+
+            <MudTable Items="_rows"
+                      Hover="true"
+                      Bordered="false"
+                      Striped="true"
+                      Dense="false"
+                      Loading="_busy"
+                      LoadingProgressColor="Color.Primary"
+                      Class="glass-card document-table">
+                <HeaderContent>
+                    <MudTh>Tệp</MudTh>
+                    <MudTh>Môn</MudTh>
+                    <MudTh>Học kỳ</MudTh>
+                    <MudTh>Thư mục</MudTh>
+                    <MudTh>Dung lượng</MudTh>
+                    <MudTh>Trạng thái</MudTh>
+                    <MudTh>Ngày tải</MudTh>
+                    <MudTh Style="width: 1%; white-space: nowrap;">Thao tác</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Tệp">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@GetFileIcon(context.MimeType)" Color="Color.Primary" />
+                            <MudLink Href="@($"/documents/{context.Id}")">@context.FileName</MudLink>
+                        </MudStack>
+                    </MudTd>
+                    <MudTd DataLabel="Môn">@context.SubjectCode</MudTd>
+                    <MudTd DataLabel="Học kỳ">@context.Semester</MudTd>
+                    <MudTd DataLabel="Thư mục">@FolderName(context.FolderId)</MudTd>
+                    <MudTd DataLabel="Dung lượng">@FormatBytes(context.FileSizeBytes)</MudTd>
+                    <MudTd DataLabel="Trạng thái">
+                        <MudChip T="string" Size="Size.Small" Color="@StatusColor(context.Status)" Variant="Variant.Filled">
+                            @context.Status.ToString()
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Ngày tải">@context.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</MudTd>
+                    <MudTd DataLabel="Thao tác">
+                        <MudStack Row="true" Spacing="1">
+                            <MudIconButton Icon="@Icons.Material.Filled.OpenInNew"
+                                           Size="Size.Small"
+                                           Color="Color.Primary"
+                                           Href="@($"/documents/{context.Id}")"
+                                           title="Xem chi tiết" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                           Size="Size.Small"
+                                           Color="Color.Error"
+                                           OnClick="() => ConfirmDeleteAsync(context)"
+                                           title="Xoá" />
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+                <NoRecordsContent>
+                    <MudStack AlignItems="AlignItems.Center" Class="pa-6 library-empty-state" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.FolderOff" Size="Size.Large" Color="Color.Default" />
+                        <MudText Typo="Typo.subtitle1">Không tìm thấy tài liệu.</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">
+                            @(HasFilters ? "Thử xoá bộ lọc phía trên." : "Tải học liệu đầu tiên để xây dựng kho tri thức AI có thể tìm kiếm.")
+                        </MudText>
+                        @if (!HasFilters)
+                        {
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.UploadFile"
+                                       Href="/documents/upload">
+                                Tải tài liệu
+                            </MudButton>
+                        }
+                    </MudStack>
+                </NoRecordsContent>
+                <PagerContent>
+                    <MudTablePager PageSizeOptions="new[] { 10, 25, 50, 100 }"
+                                   RowsPerPageString="Số dòng mỗi trang:"
+                                   InfoFormat="{first_item}-{last_item} / {all_items}" />
+                </PagerContent>
+            </MudTable>
+        </section>
+    </div>
+    </main>
 </MudStack>
 
 @code {
@@ -218,6 +387,7 @@
     private string? _textFilter;
     private string? _newFolderName;
     private Guid? _folderFilter;
+    private bool _looseOnly;
     private bool _showNewFolder;
     private List<DocumentDto> _rows = new();
     private List<FolderDto> _folders = new();
@@ -226,11 +396,63 @@
         !string.IsNullOrWhiteSpace(_subjectFilter) ||
         !string.IsNullOrWhiteSpace(_semesterFilter) ||
         !string.IsNullOrWhiteSpace(_textFilter) ||
-        _folderFilter.HasValue;
+        _folderFilter.HasValue ||
+        _looseOnly;
+
+    private bool IsAllDocumentsView => !HasFilters;
+
+    private bool IsLooseDocumentsView => _looseOnly;
+
+    private string DisplayName =>
+        Session.CurrentUser?.FullName
+        ?? Session.CurrentUser?.Username
+        ?? Session.CurrentUser?.Email
+        ?? "student";
+
+    private static string Greeting
+    {
+        get
+        {
+            var hour = DateTime.Now.Hour;
+            if (hour < 12) return "Chào buổi sáng";
+            if (hour < 18) return "Chào buổi chiều";
+            return "Chào buổi tối";
+        }
+    }
+
+    private static string TodayLabel
+    {
+        get
+        {
+            var now = DateTime.Now;
+            var days = new[] { "Chủ Nhật", "Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy" };
+            return $"{days[(int)now.DayOfWeek]}, ngày {now.Day} tháng {now.Month}, {now.Year}";
+        }
+    }
+
+    private int ReadyDocuments => _rows.Count(d => d.Status == DocumentStatus.Ready);
+
+    private int ProcessingDocuments => _rows.Count(d => d.Status is DocumentStatus.Uploading or DocumentStatus.Processing);
+
+    private int LooseDocumentsCount => _rows.Count(d => !d.FolderId.HasValue);
+
+    private long TotalVisibleBytes => _rows.Sum(d => d.FileSizeBytes);
+
+    private string FolderSummary => _folders.Count == 0
+        ? "Tạo thư mục để quản lý theo môn"
+        : $"{_folders.Sum(f => f.DocumentCount)} tài liệu đã phân thư mục";
+
+    private string ProcessingSummary => ProcessingDocuments == 0
+        ? "Nguồn sẵn sàng dùng cho AI Chat"
+        : $"{ProcessingDocuments} tài liệu đang xử lý";
+
+    private string LatestUploadText => _rows.FirstOrDefault() is { } latest
+        ? latest.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+        : "Chưa có tài liệu";
 
     private string ResultSummary => _busy
-        ? "Loading documents..."
-        : $"{_rows.Count} document{(_rows.Count == 1 ? string.Empty : "s")} shown{(HasFilters ? " with active filters" : string.Empty)}";
+        ? "Đang tải tài liệu..."
+        : $"Đang hiển thị {_rows.Count} tài liệu{(HasFilters ? " theo bộ lọc" : string.Empty)}";
 
     protected override async Task OnInitializedAsync()
     {
@@ -241,6 +463,14 @@
         }
         await LoadFoldersAsync();
         await LoadAsync();
+    }
+
+    private async Task HandleSearchKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter")
+        {
+            await ApplyFiltersAsync();
+        }
     }
 
     private async Task LoadFoldersAsync()
@@ -261,7 +491,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Could not load folders: {ex.Message}", Severity.Warning);
+            Snackbar.Add($"Không thể tải thư mục: {ex.Message}", Severity.Warning);
         }
     }
 
@@ -277,11 +507,13 @@
             {
                 SubjectCode = NormalizeOrNull(_subjectFilter),
                 Semester = NormalizeOrNull(_semesterFilter),
-                FolderId = _folderFilter,
+                FolderId = _looseOnly ? null : _folderFilter,
                 Q = string.IsNullOrWhiteSpace(_textFilter) ? null : _textFilter.Trim(),
             };
             var rows = await DocumentsApi.ListAsync(Session.AccessToken!, query);
-            _rows = rows.ToList();
+            _rows = _looseOnly
+                ? rows.Where(d => !d.FolderId.HasValue).ToList()
+                : rows.ToList();
         }
         catch (DocumentApiException ex)
         {
@@ -294,7 +526,7 @@
         }
         catch (Exception ex)
         {
-            _error = $"Network error: {ex.Message}";
+            _error = $"Lỗi mạng: {ex.Message}";
         }
         finally
         {
@@ -303,13 +535,34 @@
         }
     }
 
-    private Task ApplyFiltersAsync() => LoadAsync();
+    private async Task ApplyFiltersAsync()
+    {
+        if (_folderFilter.HasValue)
+        {
+            _looseOnly = false;
+        }
+
+        await LoadAsync();
+    }
 
     private async Task ClearFiltersAsync()
     {
         _subjectFilter = null;
         _semesterFilter = null;
         _textFilter = null;
+        _folderFilter = null;
+        _looseOnly = false;
+        await LoadAsync();
+    }
+
+    private void OpenFolderChat(Guid folderId)
+    {
+        Nav.NavigateTo($"/ai/chat?folderId={folderId}");
+    }
+
+    private async Task ShowLooseDocumentsAsync()
+    {
+        _looseOnly = true;
         _folderFilter = null;
         await LoadAsync();
     }
@@ -333,10 +586,58 @@
         try
         {
             var folder = await FoldersApi.CreateAsync(Session.AccessToken!, new CreateFolderRequest { Name = _newFolderName.Trim() });
-            await LoadFoldersAsync();
-            _folderFilter = folder.Id;
             HideNewFolderBox();
-            Snackbar.Add($"Created folder \"{folder.Name}\".", Severity.Success);
+            Snackbar.Add($"Đã tạo thư mục \"{folder.Name}\". Đang mở AI Chat cho thư mục này.", Severity.Success);
+            Nav.NavigateTo($"/ai/chat?folderId={folder.Id}");
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex), Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Không thể tạo thư mục: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfirmDeleteAsync(DocumentDto doc)
+    {
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Xoá tài liệu?",
+            ["Message"] = $"Xoá \"{doc.FileName}\"? Thao tác này không thể hoàn tác — chunks và file lưu trữ sẽ bị xoá.",
+            ["ConfirmText"] = "Xoá",
+            ["ConfirmColor"] = Color.Error,
+            ["Icon"] = Icons.Material.Filled.DeleteForever,
+            ["IconColor"] = Color.Error,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialogRef = await Dialogs.ShowAsync<AI_Study_Hub_v2.Components.Admin.Shared.ConfirmDialog>("Xoá tài liệu", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+
+        await DeleteAsync(doc);
+    }
+
+    private async Task DeleteAsync(DocumentDto doc)
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken)) return;
+        _busy = true;
+        try
+        {
+            await DocumentsApi.DeleteAsync(Session.AccessToken!, doc.Id);
+            Snackbar.Add($"Đã xoá {doc.FileName}.", Severity.Success);
+            await LoadFoldersAsync();
             await LoadAsync();
         }
         catch (DocumentApiException ex)
@@ -350,58 +651,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Could not create folder: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _busy = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task ConfirmDeleteAsync(DocumentDto doc)
-    {
-        var parameters = new DialogParameters
-        {
-            ["Title"] = "Delete document?",
-            ["Message"] = $"Delete \"{doc.FileName}\"? This cannot be undone — chunks and the stored file will be removed.",
-            ["ConfirmText"] = "Delete",
-            ["ConfirmColor"] = Color.Error,
-            ["Icon"] = Icons.Material.Filled.DeleteForever,
-            ["IconColor"] = Color.Error,
-        };
-        var options = new DialogOptions { CloseOnEscapeKey = true };
-        var dialogRef = await Dialogs.ShowAsync<AI_Study_Hub_v2.Components.Admin.Shared.ConfirmDialog>("Delete document", parameters, options);
-        var result = await dialogRef.Result;
-        if (result is null || result.Canceled) return;
-
-        await DeleteAsync(doc);
-    }
-
-    private async Task DeleteAsync(DocumentDto doc)
-    {
-        if (string.IsNullOrEmpty(Session.AccessToken)) return;
-        _busy = true;
-        StateHasChanged();
-        try
-        {
-            await DocumentsApi.DeleteAsync(Session.AccessToken!, doc.Id);
-            _rows.RemoveAll(d => d.Id == doc.Id);
-            await LoadFoldersAsync();
-            Snackbar.Add($"Deleted \"{doc.FileName}\".", Severity.Success);
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(MapError(ex), Severity.Error);
-            if (ex.StatusCode == 401)
-            {
-                Session.Clear();
-                Nav.NavigateTo("/login", replace: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Network error: {ex.Message}", Severity.Error);
+            Snackbar.Add($"Lỗi mạng: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -415,15 +665,21 @@
 
     private string FolderName(Guid? folderId)
         => folderId is { } id
-            ? _folders.FirstOrDefault(f => f.Id == id)?.Name ?? "Unknown folder"
-            : "Loose";
+            ? _folders.FirstOrDefault(f => f.Id == id)?.Name ?? "Không rõ thư mục"
+            : "Chưa phân loại";
+
+    private static string FolderAccentClass(FolderDto folder)
+    {
+        var index = Math.Abs(folder.Name.GetHashCode() % 6) + 1;
+        return $"accent-{index}";
+    }
 
     private static string MapError(DocumentApiException ex) => ex.StatusCode switch
     {
-        401 => "Your session has expired. Please sign in again.",
-        403 => "You do not have access to that document.",
-        404 => ex.Code == "folder_not_found" ? "Folder not found." : "Document not found — it may have been deleted already.",
-        409 => "A folder with that name already exists.",
+        401 => "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
+        403 => "Bạn không có quyền truy cập tài liệu này.",
+        404 => ex.Code == "folder_not_found" ? "Không tìm thấy thư mục." : "Không tìm thấy tài liệu — có thể tài liệu đã bị xoá.",
+        409 => "Tên thư mục này đã tồn tại.",
         _ => ex.Message,
     };
 

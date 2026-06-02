@@ -1,6 +1,6 @@
 ﻿@inherits LayoutComponentBase
 
-<MudThemeProvider Theme="@_theme" IsDarkMode="true" />
+<MudThemeProvider Theme="@_theme" IsDarkMode="false" />
 
 <div class="page app-shell">
     <NavMenu />
@@ -21,50 +21,50 @@
 @code {
     private readonly MudTheme _theme = new()
     {
-        PaletteDark = new PaletteDark
+        PaletteLight = new PaletteLight
         {
-            Primary = "#A78BFA",
-            Secondary = "#22D3EE",
-            Tertiary = "#F0ABFC",
-            Background = "#050713",
-            Surface = "#10142A",
-            AppbarBackground = "#080B18",
-            AppbarText = "#F7F2FF",
-            DrawerBackground = "#070A17",
-            DrawerText = "#EDE7FF",
-            DrawerIcon = "#BFA6FF",
-            TextPrimary = "#F7F2FF",
-            TextSecondary = "#AAB0D5",
-            LinesDefault = "#262B49",
-            Info = "#38BDF8",
-            Success = "#34D399",
-            Warning = "#FBBF24",
-            Error = "#FB7185"
+            Primary = "#4F46E5",
+            Secondary = "#0F766E",
+            Tertiary = "#7C3AED",
+            Background = "#F8FAFC",
+            Surface = "#FFFFFF",
+            AppbarBackground = "rgba(255,255,255,0.86)",
+            AppbarText = "#312E81",
+            DrawerBackground = "#FFFFFF",
+            DrawerText = "#334155",
+            DrawerIcon = "#4F46E5",
+            TextPrimary = "#0F172A",
+            TextSecondary = "#64748B",
+            LinesDefault = "#E2E8F0",
+            Info = "#0284C7",
+            Success = "#10B981",
+            Warning = "#F59E0B",
+            Error = "#E11D48"
         },
         Typography = new Typography
         {
             Default = new DefaultTypography
             {
-                FontFamily = new[] { "IBM Plex Sans", "Segoe UI", "sans-serif" },
-                FontSize = ".95rem"
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "Segoe UI", "sans-serif" },
+                FontSize = ".93rem"
             },
             H4 = new H4Typography
             {
-                FontFamily = new[] { "Space Grotesk", "IBM Plex Sans", "sans-serif" },
-                FontWeight = "700",
-                LetterSpacing = "-.045em"
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "sans-serif" },
+                FontWeight = "800",
+                LetterSpacing = "-.035em"
             },
             H5 = new H5Typography
             {
-                FontFamily = new[] { "Space Grotesk", "IBM Plex Sans", "sans-serif" },
-                FontWeight = "700",
-                LetterSpacing = "-.035em"
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "sans-serif" },
+                FontWeight = "800",
+                LetterSpacing = "-.025em"
             },
             H6 = new H6Typography
             {
-                FontFamily = new[] { "Space Grotesk", "IBM Plex Sans", "sans-serif" },
-                FontWeight = "700",
-                LetterSpacing = "-.02em"
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "sans-serif" },
+                FontWeight = "800",
+                LetterSpacing = "-.015em"
             }
         }
     };

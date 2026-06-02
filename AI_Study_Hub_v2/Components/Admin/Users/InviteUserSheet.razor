@@ -27,10 +27,13 @@
                               Variant="Variant.Outlined"
                               Placeholder="Optional for staff" />
                 <MudSelect T="string" @bind-Value="_model.Role" Label="Role" Variant="Variant.Outlined" Required="true">
-                    <MudSelectItem T="string" Value="@("Student")">Student</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("Admin")">Admin</MudSelectItem>
+                    @foreach (var role in AvailableRoles)
+                    {
+                        <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
+                    }
                 </MudSelect>
                 <MudNumericField T="int" @bind-Value="_model.DailyTokenQuota" Label="Daily token quota" Variant="Variant.Outlined" Min="1000" Step="1000" />
+                <HumanCheck @ref="_humanCheck" Disabled="IsSubmitting" ValidChanged="OnHumanCheckChanged" />
                 <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
                     The invitation action should call your Supabase auth flow, insert or update profiles, seed quota settings, and write audit_logs.
                 </MudAlert>
@@ -42,7 +45,7 @@
         <MudButton Color="Color.Primary"
                    Variant="Variant.Filled"
                    StartIcon="@Icons.Material.Filled.Send"
-                   Disabled="@(!_isValid || IsSubmitting)"
+                   Disabled="@(!_isValid || !_humanCheckValid || IsSubmitting)"
                    OnClick="SubmitAsync">
             @(IsSubmitting ? "Sending..." : "Send invite")
         </MudButton>
@@ -53,11 +56,28 @@
     [Parameter] public bool Open { get; set; }
     [Parameter] public EventCallback<bool> OpenChanged { get; set; }
     [Parameter] public EventCallback<InviteUserRequest> InviteSubmitted { get; set; }
+    [Parameter] public IReadOnlyList<string> AvailableRoles { get; set; } = Array.Empty<string>();
     [Parameter] public bool IsSubmitting { get; set; }
 
     private MudForm? _form;
+    private HumanCheck? _humanCheck;
     private bool _isValid;
+    private bool _humanCheckValid;
     private InviteUserRequest _model = new();
+
+    protected override void OnParametersSet()
+    {
+        if (AvailableRoles.Count > 0 && !AvailableRoles.Contains(_model.Role, StringComparer.OrdinalIgnoreCase))
+        {
+            _model.Role = AvailableRoles[0];
+        }
+    }
+
+    private Task OnHumanCheckChanged(bool valid)
+    {
+        _humanCheckValid = valid;
+        return Task.CompletedTask;
+    }
 
     private async Task SubmitAsync()
     {
@@ -67,19 +87,28 @@
         }
 
         await _form.ValidateAsync();
-        if (!_form.IsValid)
+        var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
+        if (!_form.IsValid || !humanOk)
         {
             return;
         }
 
         await InviteSubmitted.InvokeAsync(_model.Clone());
         _model = new InviteUserRequest();
+        if (_humanCheck is not null)
+        {
+            await _humanCheck.ResetAsync();
+        }
         await OpenChanged.InvokeAsync(false);
     }
 
     private async Task CancelAsync()
     {
         _model = new InviteUserRequest();
+        if (_humanCheck is not null)
+        {
+            await _humanCheck.ResetAsync();
+        }
         await OpenChanged.InvokeAsync(false);
     }
 

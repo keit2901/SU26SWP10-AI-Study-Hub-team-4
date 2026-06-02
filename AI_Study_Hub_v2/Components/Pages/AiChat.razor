@@ -11,36 +11,22 @@
 
 <PageTitle>AI Chat - AI Study Hub v2</PageTitle>
 
-<MudStack Spacing="3" Class="ai-chat-shell workspace-shell pa-4">
-    <MudPaper Class="ai-chat-hero" Elevation="0">
-        <MudGrid Class="ai-chat-hero-grid">
-            <MudItem xs="12" md="8">
-                <MudStack Spacing="1">
-                    <span class="section-kicker ai-chat-kicker">Sprint 2 RAG demo</span>
-                    <MudText Typo="Typo.h4">Ask your study materials</MudText>
-                    <MudText Typo="Typo.body1" Class="ai-chat-hero-copy">
-                        Scope the assistant to all indexed documents, a folder, or one file, then review the grounded answer with source cards.
-                    </MudText>
-                </MudStack>
-            </MudItem>
-            <MudItem xs="12" md="4">
-                <MudPaper Class="ai-chat-status-card pa-3" Elevation="0">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                        <MudStack Spacing="0">
-                            <MudText Typo="Typo.caption">Indexed documents</MudText>
-                            <MudText Typo="Typo.h5">@ReadyDocuments.Count</MudText>
-                        </MudStack>
-                        <MudAvatar Color="Color.Primary" Variant="Variant.Filled">
-                            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" />
-                        </MudAvatar>
-                    </MudStack>
-                    <MudText Typo="Typo.caption" Class="mt-2">
-                        @(_documents.Count - ReadyDocuments.Count) not ready or failed
-                    </MudText>
-                </MudPaper>
-            </MudItem>
-        </MudGrid>
-    </MudPaper>
+<MudStack Spacing="0" Class="ai-chat-shell workspace-shell teammate-workspace-shell">
+    <header class="ai-workspace-topbar">
+        <div class="ai-workspace-crumbs">
+            <MudButton Variant="Variant.Text" Href="/documents" Class="ai-back-link" StartIcon="@Icons.Material.Filled.ArrowBack">
+                Cabinets
+            </MudButton>
+            <span class="crumb-divider"></span>
+            <span class="scope-pill">@ScopeSummary</span>
+            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
+            <strong>Session Studio</strong>
+        </div>
+        <div class="ai-online-status">
+            <span>Active Matrix: Online</span>
+            <i></i>
+        </div>
+    </header>
 
     @if (!Session.IsAuthenticated)
     {
@@ -61,19 +47,51 @@
     else
     {
         <MudGrid Class="ai-chat-grid">
-            <MudItem xs="12" lg="4">
-                <MudStack Spacing="3">
+            <MudItem xs="12" lg="3">
+                <MudStack Spacing="3" Class="ai-chat-left-rail">
                     <MudPaper Class="pa-4 ai-chat-scope-card" Elevation="0" Outlined="true">
                         <MudStack Spacing="3">
                             <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
                                 <div>
-                                    <MudText Typo="Typo.h6">Scope</MudText>
+                                    <MudText Typo="Typo.caption" Class="ai-chat-rail-label">Document rail</MudText>
+                                    <MudText Typo="Typo.h6">Search scope</MudText>
                                     <MudText Typo="Typo.body2" Color="Color.Secondary">Choose what the assistant should search.</MudText>
                                 </div>
                                 <MudChip T="string" Size="Size.Small" Color="@ScopeChipColor" Variant="Variant.Outlined">
                                     @ScopeSummary
                                 </MudChip>
                             </MudStack>
+
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       FullWidth="true"
+                                       StartIcon="@Icons.Material.Filled.UploadFile"
+                                       Href="/documents/upload"
+                                       Disabled="_busy">
+                                Upload document
+                            </MudButton>
+
+                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                                Folder and all-indexed scopes can retrieve sources from multiple files; single-document scope stays pinned to one file for precise citations.
+                            </MudAlert>
+
+                            <div class="ai-chat-library-strip">
+                                @foreach (var document in ReadyDocuments.Take(4))
+                                {
+                                    <button type="button"
+                                            class="@($"ai-chat-library-item {(SelectedDocumentId == document.Id ? "is-active" : string.Empty)}")"
+                                            disabled="@_busy"
+                                            title="@document.FileName"
+                                            @onclick="() => SelectedDocumentId = document.Id">
+                                        <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                                        <span>@ShortFileName(document.FileName)</span>
+                                    </button>
+                                }
+                                @if (ReadyDocuments.Count == 0)
+                                {
+                                    <div class="ai-chat-library-empty">No indexed files yet</div>
+                                }
+                            </div>
 
                             @if (ReadyDocuments.Count == 0)
                             {
@@ -177,22 +195,31 @@
                 </MudStack>
             </MudItem>
 
-            <MudItem xs="12" lg="8">
-                <MudStack Spacing="3">
+            <MudItem xs="12" lg="6">
+                <MudStack Spacing="3" Class="ai-chat-center-stage">
                     <MudPaper Class="pa-4 ai-chat-composer" Elevation="0" Outlined="true">
                         <MudStack Spacing="2">
                             <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
                                 <div>
-                                    <MudText Typo="Typo.h6">Question</MudText>
+                                    <MudText Typo="Typo.caption" Class="ai-chat-rail-label">Central chat</MudText>
+                                    <MudText Typo="Typo.h6">Ask the tutor</MudText>
                                     <MudText Typo="Typo.body2" Color="Color.Secondary">Ask for explanations, summaries, comparisons, or where a concept appears.</MudText>
                                 </div>
                                 <MudButton Variant="Variant.Outlined"
+                                           Class="ghost-button"
                                            StartIcon="@Icons.Material.Filled.Refresh"
                                            OnClick="LoadScopeAsync"
                                            Disabled="_busy || _loadingScope">
                                     Refresh scope
                                 </MudButton>
                             </MudStack>
+
+                            <div class="ai-chat-message ai-chat-message-assistant">
+                                <div class="ai-chat-message-avatar"><MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" /></div>
+                                <div class="ai-chat-message-bubble">
+                                    I can read your indexed documents, compare concepts, draft exam prep, and return citations for every grounded answer.
+                                </div>
+                            </div>
 
                             <MudTextField T="string"
                                           Label="What do you want to understand?"
@@ -211,10 +238,10 @@
                                 </MudAlert>
                             }
 
-                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="ai-chat-composer-footer">
                                 <MudText Typo="Typo.caption" Color="Color.Secondary">Answers depend on extracted chunks and may be incomplete.</MudText>
                                 <MudButton Variant="Variant.Filled"
-                                           Color="Color.Primary"
+                                           Class="premium-button"
                                            StartIcon="@Icons.Material.Filled.Send"
                                            OnClick="AskAsync"
                                            Disabled="_busy || ReadyDocuments.Count == 0 || string.IsNullOrWhiteSpace(_question)">
@@ -287,6 +314,45 @@
                             </MudExpansionPanel>
                         </MudExpansionPanels>
                     }
+                </MudStack>
+            </MudItem>
+
+            <MudItem xs="12" lg="3">
+                <MudStack Spacing="3" Class="ai-chat-right-rail">
+                    <MudPaper Class="pa-4 ai-chat-action-card" Elevation="0" Outlined="true">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.caption" Class="ai-chat-rail-label">Workspace views</MudText>
+                            <MudText Typo="Typo.h6">Study actions</MudText>
+                            <div class="ai-chat-action-list">
+                                <div class="ai-chat-action-item is-active">
+                                    <MudIcon Icon="@Icons.Material.Filled.ChatBubbleOutline" />
+                                    <div><strong>Chat</strong><span>Ask questions & cite sources.</span></div>
+                                </div>
+                                <button type="button" class="ai-chat-action-item" @onclick="UseQuizPrompt" disabled="@_busy">
+                                    <MudIcon Icon="@Icons.Material.Filled.Quiz" />
+                                    <div><strong>Quiz Generation</strong><span>Create practice questions from this scope.</span></div>
+                                </button>
+                                <button type="button" class="ai-chat-action-item" @onclick="UseSummaryPrompt" disabled="@_busy">
+                                    <MudIcon Icon="@Icons.Material.Filled.Summarize" />
+                                    <div><strong>Auto Summary</strong><span>Draft a cited study summary.</span></div>
+                                </button>
+                                <MudLink Href="/documents" Underline="Underline.None" Class="ai-chat-action-item">
+                                    <MudIcon Icon="@Icons.Material.Filled.LibraryBooks" />
+                                    <div><strong>Library</strong><span>Review files and folders.</span></div>
+                                </MudLink>
+                            </div>
+                        </MudStack>
+                    </MudPaper>
+
+                    <MudPaper Class="pa-4 ai-chat-action-card ai-chat-context-card" Elevation="0" Outlined="true">
+                        <MudStack Spacing="2">
+                            <MudText Typo="Typo.caption" Class="ai-chat-rail-label">Active context</MudText>
+                            <div class="ai-chat-context-row"><span>Scope</span><strong>@ScopeSummary</strong></div>
+                            <div class="ai-chat-context-row"><span>Indexed files</span><strong>@ReadyDocuments.Count</strong></div>
+                            <div class="ai-chat-context-row"><span>Folders</span><strong>@_folders.Count</strong></div>
+                            <div class="ai-chat-context-row"><span>Retrieval depth</span><strong>@_topK sources</strong></div>
+                        </MudStack>
+                    </MudPaper>
                 </MudStack>
             </MudItem>
         </MudGrid>
@@ -638,6 +704,29 @@
     {
         _question = prompt;
         _composerError = null;
+    }
+
+    private void UseQuizPrompt()
+        => UsePrompt("Generate 8 quiz questions from my current scope. Include a short answer key and cite the source for each answer.");
+
+    private void UseSummaryPrompt()
+        => UsePrompt("Create an auto summary for my current scope with key concepts, exam tips, and citations for the most important points.");
+
+    private static string ShortFileName(string fileName, int maxLength = 34)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.Length <= maxLength)
+        {
+            return fileName;
+        }
+
+        var extension = Path.GetExtension(fileName);
+        var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+        var reserved = string.IsNullOrEmpty(extension) ? 1 : extension.Length + 1;
+        var available = Math.Max(8, maxLength - reserved);
+        var prefix = nameWithoutExtension.Length <= available
+            ? nameWithoutExtension
+            : nameWithoutExtension[..available];
+        return $"{prefix}…{extension}";
     }
 
     private string BuildScopeLabel()

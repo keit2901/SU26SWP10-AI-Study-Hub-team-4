@@ -12,43 +12,12 @@
 <PageTitle>@(_doc?.FileName ?? "Document") - AI Study Hub v2</PageTitle>
 
 <MudStack Spacing="3" Class="workspace-shell document-detail-shell pa-4">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="workspace-hero" Style="flex-wrap: wrap; gap: 0.5rem;">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
-                           Href="/documents"
-                           title="Back to list" />
-            <div>
-                <span class="section-kicker">Source detail</span>
-                <MudText Typo="Typo.h4" Class="mt-3">Document detail</MudText>
-            </div>
-        </MudStack>
-        @if (_doc is not null)
-        {
-            <MudStack Row="true" Spacing="1">
-                <MudButton Variant="Variant.Outlined"
-                           Color="Color.Primary"
-                           StartIcon="@Icons.Material.Filled.Refresh"
-                           OnClick="LoadAsync"
-                           Disabled="_busy">
-                    Refresh
-                </MudButton>
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Error"
-                           StartIcon="@Icons.Material.Filled.Delete"
-                           OnClick="ConfirmDeleteAsync"
-                           Disabled="_busy">
-                    Delete
-                </MudButton>
-            </MudStack>
-        }
-    </MudStack>
-
     @if (_busy && _doc is null)
     {
-        <MudPaper Class="pa-6 glass-card" Elevation="0" Outlined="false">
+        <MudPaper Class="detail-loading glass-card" Elevation="0" Outlined="false">
             <MudStack AlignItems="AlignItems.Center" Spacing="2">
                 <MudProgressCircular Indeterminate="true" />
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Loading…</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Loading document workspace…</MudText>
             </MudStack>
         </MudPaper>
     }
@@ -63,122 +32,137 @@
     }
     else if (_doc is not null)
     {
-        <MudPaper Class="pa-4 glass-card" Elevation="0" Outlined="false">
-            <MudStack Spacing="3">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
-                    <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Large">
-                        <MudIcon Icon="@GetFileIcon(_doc.MimeType)" />
-                    </MudAvatar>
-                    <MudStack Spacing="0">
-                        <MudText Typo="Typo.h6">@_doc.FileName</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            @FormatBytes(_doc.FileSizeBytes) — @_doc.MimeType
-                        </MudText>
-                    </MudStack>
-                </MudStack>
+        <section class="detail-hero" aria-labelledby="detail-title">
+            <div class="detail-hero-main">
+                <MudIconButton Icon="@Icons.Material.Filled.ArrowBack"
+                               Href="/documents"
+                               title="Back to list"
+                               Class="detail-back-button" />
+                <div class="detail-file-orb">
+                    <MudIcon Icon="@GetFileIcon(_doc.MimeType)" />
+                </div>
+                <div class="detail-title-wrap">
+                    <span class="section-kicker">Document workspace</span>
+                    <MudText id="detail-title" Typo="Typo.h3" Class="detail-title">@_doc.FileName</MudText>
+                    <MudText Typo="Typo.body1" Class="detail-subtitle">
+                        @FormatBytes(_doc.FileSizeBytes) — @_doc.MimeType
+                    </MudText>
+                    <div class="detail-chip-row">
+                        <MudChip T="string" Size="Size.Small" Color="@StatusColor(_doc.Status)" Variant="Variant.Filled" Icon="@StatusIcon(_doc.Status)">
+                            @_doc.Status.ToString()
+                        </MudChip>
+                        <span>@_doc.SubjectCode</span>
+                        <span>@_doc.Semester</span>
+                        <span>@FolderName(_doc.FolderId)</span>
+                    </div>
+                </div>
+            </div>
+            <div class="detail-hero-actions">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="LoadAsync"
+                           Disabled="_busy">
+                    Refresh
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Error"
+                           StartIcon="@Icons.Material.Filled.Delete"
+                           OnClick="ConfirmDeleteAsync"
+                           Disabled="_busy">
+                    Delete
+                </MudButton>
+            </div>
+        </section>
 
-                <MudDivider />
+        <section class="detail-metrics-grid" aria-label="Document facts">
+            <MudPaper Class="detail-metric-card accent-cyan" Elevation="0" Outlined="false">
+                <span class="metric-icon"><MudIcon Icon="@StatusIcon(_doc.Status)" /></span>
+                <div><small>Status</small><strong>@_doc.Status</strong><em>@StatusHint(_doc.Status)</em></div>
+            </MudPaper>
+            <MudPaper Class="detail-metric-card accent-violet" Elevation="0" Outlined="false">
+                <span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.AutoStories" /></span>
+                <div><small>Pages</small><strong>@(_doc.PageCount?.ToString() ?? "—")</strong><em>Extracted page count</em></div>
+            </MudPaper>
+            <MudPaper Class="detail-metric-card accent-green" Elevation="0" Outlined="false">
+                <span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.FolderOpen" /></span>
+                <div><small>Folder</small><strong>@FolderName(_doc.FolderId)</strong><em>Current cabinet</em></div>
+            </MudPaper>
+            <MudPaper Class="detail-metric-card accent-amber" Elevation="0" Outlined="false">
+                <span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.Schedule" /></span>
+                <div><small>Updated</small><strong>@_doc.UpdatedAt.ToLocalTime().ToString("MMM dd")</strong><em>@_doc.UpdatedAt.ToLocalTime().ToString("HH:mm")</em></div>
+            </MudPaper>
+        </section>
 
-                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Striped="true">
-                    <tbody>
-                        <tr>
-                            <td><b>Status</b></td>
-                            <td>
-                                <MudChip T="string" Size="Size.Small" Color="@StatusColor(_doc.Status)" Variant="Variant.Filled">
-                                    @_doc.Status.ToString()
-                                </MudChip>
-                            </td>
-                        </tr>
-                        <tr><td><b>Subject</b></td><td>@_doc.SubjectCode</td></tr>
-                        <tr><td><b>Semester</b></td><td>@_doc.Semester</td></tr>
-                        <tr><td><b>Folder</b></td><td>@FolderName(_doc.FolderId)</td></tr>
-                        <tr><td><b>Page count</b></td><td>@(_doc.PageCount?.ToString() ?? "—")</td></tr>
-                        <tr><td><b>Document Id</b></td><td><code>@_doc.Id</code></td></tr>
-                        <tr><td><b>Uploaded</b></td><td>@_doc.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
-                        <tr><td><b>Updated</b></td><td>@_doc.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
-                        @if (!string.IsNullOrWhiteSpace(_doc.ErrorMessage))
-                        {
-                            <tr>
-                                <td><b>Error</b></td>
-                                <td>
-                                    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Outlined">@_doc.ErrorMessage</MudAlert>
-                                </td>
-                            </tr>
-                        }
-                    </tbody>
-                </MudSimpleTable>
+        @if (!string.IsNullOrWhiteSpace(_doc.ErrorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Filled">@_doc.ErrorMessage</MudAlert>
+        }
 
-                <MudDivider />
+        <section class="detail-workspace-grid" aria-label="Document workspace controls">
+            <MudPaper Class="detail-panel detail-metadata-panel glass-card" Elevation="0" Outlined="false">
+                <div class="detail-panel-header">
+                    <span class="detail-panel-icon"><MudIcon Icon="@Icons.Material.Filled.DataObject" /></span>
+                    <div>
+                        <MudText Typo="Typo.h6">Metadata registry</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Canonical fields used by library search and RAG scoping.</MudText>
+                    </div>
+                </div>
 
-                <MudStack Spacing="1">
-                    <MudText Typo="Typo.subtitle2">Folder</MudText>
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap: wrap;">
-                        <MudSelect T="Guid?"
-                                   Label="Move to folder"
-                                   @bind-Value="_selectedFolderId"
-                                   Variant="Variant.Outlined"
-                                   Margin="Margin.Dense"
-                                   Clearable="true"
-                                   Disabled="_busy"
-                                   Style="min-width: 240px;">
-                            <MudSelectItem T="Guid?" Value="@(null)">Loose document</MudSelectItem>
-                            @foreach (var folder in _folders)
-                            {
-                                <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name (@folder.DocumentCount)</MudSelectItem>
-                            }
-                        </MudSelect>
-                        <MudButton Variant="Variant.Outlined"
-                                   Color="Color.Secondary"
-                                   StartIcon="@Icons.Material.Filled.DriveFileMove"
-                                   OnClick="MoveFolderAsync"
-                                   Disabled="_busy || _selectedFolderId == _doc.FolderId">
-                            Save folder
-                        </MudButton>
-                    </MudStack>
-                </MudStack>
+                <dl class="detail-meta-list">
+                    <div><dt>Subject</dt><dd>@_doc.SubjectCode</dd></div>
+                    <div><dt>Semester</dt><dd>@_doc.Semester</dd></div>
+                    <div><dt>Folder</dt><dd>@FolderName(_doc.FolderId)</dd></div>
+                    <div><dt>Uploaded</dt><dd>@_doc.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+                    <div><dt>Updated</dt><dd>@_doc.UpdatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</dd></div>
+                    <div class="wide"><dt>Document ID</dt><dd><code>@_doc.Id</code></dd></div>
+                </dl>
+            </MudPaper>
 
-                <MudDivider />
-
-                <MudPaper Class="pa-3 glass-card-soft" Elevation="0" Outlined="false">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 0.75rem; flex-wrap: wrap;">
-                        <MudStack Spacing="0">
-                            <MudText Typo="Typo.subtitle2">AI study chat</MudText>
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Ask questions scoped to this document and review cited chunks.</MudText>
-                        </MudStack>
-                        <MudButton Variant="Variant.Filled"
-                                   Color="Color.Primary"
-                                   StartIcon="@Icons.Material.Filled.AutoAwesome"
-                                   Href="@($"/ai/chat?documentId={_doc.Id}")"
-                                   Disabled="_busy || _doc.Status != DocumentStatus.Ready">
-                            Ask AI about this document
-                        </MudButton>
-                    </MudStack>
+            <div class="detail-action-stack">
+                <MudPaper Class="detail-action-card ai glass-card-soft" Elevation="0" Outlined="false">
+                    <span class="detail-action-icon"><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" /></span>
+                    <div>
+                        <MudText Typo="Typo.h6">AI study chat</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Ask questions scoped to this document and review cited chunks.</MudText>
+                    </div>
+                    <MudButton Variant="Variant.Filled"
+                               Color="Color.Primary"
+                               Class="premium-button"
+                               StartIcon="@Icons.Material.Filled.Chat"
+                               Href="@($"/ai/chat?documentId={_doc.Id}")"
+                               Disabled="_busy || _doc.Status != DocumentStatus.Ready">
+                        Ask AI about this document
+                    </MudButton>
+                    @if (_doc.Status != DocumentStatus.Ready)
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">AI chat unlocks when ingestion status is Ready.</MudText>
+                    }
                 </MudPaper>
 
-                <MudDivider />
+            </div>
 
-                <MudStack Spacing="1">
-                    <MudText Typo="Typo.subtitle2">Download</MudText>
+            <aside class="detail-side-rail" aria-label="Download and source actions">
+                <MudPaper Class="detail-rail-card download glass-card-soft" Elevation="0" Outlined="false">
+                    <span class="section-kicker">Source file</span>
+                    <MudIcon Icon="@GetFileIcon(_doc.MimeType)" Class="detail-rail-file-icon" />
+                    <MudText Typo="Typo.subtitle2">Download original</MudText>
                     @if (!string.IsNullOrEmpty(_doc.DownloadUrl))
                     {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            Signed link, valid for ~5 minutes. Click to open in a new tab.
-                        </MudText>
-                        <MudStack Row="true" Spacing="1" AlignItems="AlignItems.Center" Style="flex-wrap: wrap;">
-                            <MudButton Variant="Variant.Filled"
-                                       Color="Color.Primary"
-                                       StartIcon="@Icons.Material.Filled.Download"
-                                       Href="@_doc.DownloadUrl"
-                                       Target="_blank">
-                                Open file
-                            </MudButton>
-                            <MudButton Variant="Variant.Text"
-                                       StartIcon="@Icons.Material.Filled.Refresh"
-                                       OnClick="LoadAsync"
-                                       Disabled="_busy">
-                                Get fresh link
-                            </MudButton>
-                        </MudStack>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Signed link, valid for ~5 minutes. Open in a new tab or refresh for a fresh URL.</MudText>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.Download"
+                                   Href="@_doc.DownloadUrl"
+                                   Target="_blank">
+                            Open file
+                        </MudButton>
+                        <MudButton Variant="Variant.Text"
+                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                   OnClick="LoadAsync"
+                                   Disabled="_busy">
+                            Get fresh link
+                        </MudButton>
                     }
                     else
                     {
@@ -186,9 +170,18 @@
                             Download link is not available right now. Try refreshing.
                         </MudAlert>
                     }
-                </MudStack>
-            </MudStack>
-        </MudPaper>
+                </MudPaper>
+
+                <MudPaper Class="detail-rail-card lifecycle glass-card-soft" Elevation="0" Outlined="false">
+                    <MudText Typo="Typo.subtitle2">Ingestion lifecycle</MudText>
+                    <ol class="detail-lifecycle">
+                        <li class="done"><span></span>Uploaded</li>
+                        <li class="@(IsAtLeastProcessing(_doc.Status) ? "done" : null)"><span></span>Processing</li>
+                        <li class="@(_doc.Status == DocumentStatus.Ready ? "done" : null)"><span></span>Ready for AI</li>
+                    </ol>
+                </MudPaper>
+            </aside>
+        </section>
     }
 </MudStack>
 
@@ -197,7 +190,6 @@
 
     private bool _busy;
     private string? _error;
-    private Guid? _selectedFolderId;
     private DocumentDto? _doc;
     private List<FolderDto> _folders = new();
 
@@ -253,7 +245,6 @@
         try
         {
             _doc = await DocumentsApi.GetAsync(Session.AccessToken!, Id);
-            _selectedFolderId = _doc.FolderId;
         }
         catch (DocumentApiException ex)
         {
@@ -268,37 +259,6 @@
         catch (Exception ex)
         {
             _error = $"Network error: {ex.Message}";
-        }
-        finally
-        {
-            _busy = false;
-            StateHasChanged();
-        }
-    }
-
-    private async Task MoveFolderAsync()
-    {
-        if (_doc is null || string.IsNullOrEmpty(Session.AccessToken)) return;
-        _busy = true;
-        try
-        {
-            _doc = await DocumentsApi.MoveToFolderAsync(Session.AccessToken!, _doc.Id, _selectedFolderId);
-            _selectedFolderId = _doc.FolderId;
-            await LoadFoldersAsync();
-            Snackbar.Add("Folder updated.", Severity.Success);
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(MapError(ex), Severity.Error);
-            if (ex.StatusCode == 401)
-            {
-                Session.Clear();
-                Nav.NavigateTo("/login", replace: true);
-            }
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Could not move document: {ex.Message}", Severity.Error);
         }
         finally
         {
@@ -379,6 +339,27 @@
         DocumentStatus.Failed => Color.Error,
         _ => Color.Default,
     };
+
+    private static string StatusIcon(DocumentStatus s) => s switch
+    {
+        DocumentStatus.Ready => Icons.Material.Filled.TaskAlt,
+        DocumentStatus.Uploading => Icons.Material.Filled.CloudUpload,
+        DocumentStatus.Processing => Icons.Material.Filled.AutoMode,
+        DocumentStatus.Failed => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.RadioButtonUnchecked,
+    };
+
+    private static string StatusHint(DocumentStatus s) => s switch
+    {
+        DocumentStatus.Ready => "Available for cited chat",
+        DocumentStatus.Uploading => "Source is being stored",
+        DocumentStatus.Processing => "Chunks are being prepared",
+        DocumentStatus.Failed => "Review the ingestion error",
+        _ => "Pipeline status",
+    };
+
+    private static bool IsAtLeastProcessing(DocumentStatus s)
+        => s is DocumentStatus.Processing or DocumentStatus.Ready or DocumentStatus.Failed;
 
     private static string GetFileIcon(string? mime) => mime switch
     {

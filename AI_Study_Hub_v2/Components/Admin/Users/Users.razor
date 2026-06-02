@@ -7,6 +7,7 @@
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject IRoleCatalogService Roles
 
 <MudStack Spacing="4" Class="admin-users-page page-enter">
     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
@@ -14,7 +15,7 @@
             <MudText Typo="Typo.overline" Color="Color.Secondary">UC09 + UC16 - Profiles and quotas</MudText>
             <MudText Typo="Typo.h4">Users & Permissions</MudText>
             <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Search profiles, manage account access, switch Student/Admin roles, and control daily token quotas.
+                Search profiles, manage account access, switch roles from the database, and control daily token quotas.
             </MudText>
         </div>
         <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
@@ -41,8 +42,10 @@
                    Margin="Margin.Dense"
                    Clearable="true"
                    Class="user-filter">
-            <MudSelectItem T="string" Value="@StudentRole">Student</MudSelectItem>
-            <MudSelectItem T="string" Value="@AdminRole">Admin</MudSelectItem>
+            @foreach (var role in AvailableRoleNames)
+            {
+                <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
+            }
         </MudSelect>
         <MudSelect T="string"
                    Value="@_selectedStatus"
@@ -165,8 +168,10 @@
                         <ChildContent>
                             <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(cell.Item))">View details</MudMenuItem>
                             <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => OpenQuotaSheet(cell.Item))">Edit quota</MudMenuItem>
-                            <MudMenuItem Icon="@Icons.Material.Filled.AdminPanelSettings" Disabled="@(cell.Item.Role == AdminRole)" OnClick="@(() => ChangeRoleAsync(cell.Item, AdminRole))">Promote to Admin</MudMenuItem>
-                            <MudMenuItem Icon="@Icons.Material.Filled.School" Disabled="@(cell.Item.Role == StudentRole || IsCurrentAdmin(cell.Item))" OnClick="@(() => ChangeRoleAsync(cell.Item, StudentRole))">Demote to Student</MudMenuItem>
+                            @foreach (var role in AvailableRoleNames.Where(role => !role.Equals(cell.Item.Role, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                <MudMenuItem Icon="@GetRoleIcon(role)" Disabled="@IsRoleChangeDisabled(cell.Item, role)" OnClick="@(() => ChangeRoleAsync(cell.Item, role))">Change role to @role</MudMenuItem>
+                            }
                             @if (cell.Item.IsActive)
                             {
                                 <MudMenuItem Icon="@Icons.Material.Filled.Block" Disabled="@IsCurrentAdmin(cell.Item)" OnClick="@(() => ToggleActiveAsync(cell.Item))">Deactivate</MudMenuItem>
@@ -186,6 +191,7 @@
 <InviteUserSheet Open="@_inviteSheetOpen"
                  OpenChanged="@(value => _inviteSheetOpen = value)"
                  InviteSubmitted="InviteUserAsync"
+                 AvailableRoles="@AvailableRoleNames"
                  IsSubmitting="@_isInviting" />
 
 <EntitySheet Open="@_quotaSheetOpen"
@@ -236,6 +242,7 @@
     private static readonly Guid CurrentAdminId = Guid.Parse("a8b3e2f7-1b99-401c-b558-1ba1ea5568e8");
 
     private readonly List<UserRow> _users = new();
+    private readonly List<RoleOption> _roles = new();
     private bool _isLoading = true;
     private bool _inviteSheetOpen;
     private bool _quotaSheetOpen;
@@ -255,6 +262,14 @@
         .OrderByDescending(user => IsCurrentAdmin(user))
         .ThenByDescending(user => user.TokenUsagePercent)
         .ThenBy(user => user.FullName);
+
+    private IReadOnlyList<string> AvailableRoleNames => _roles
+        .Select(role => role.RoleName)
+        .Where(role => !string.IsNullOrWhiteSpace(role))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(role => role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+        .ThenBy(role => role)
+        .ToList();
 
     private IEnumerable<string> ActiveFilters
     {
@@ -277,19 +292,32 @@
         }
     }
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         try
         {
+            await LoadRolesAsync();
             _users.AddRange(BuildSeedUsers());
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Unable to load users: {ex.Message}";
+            _errorMessage = $"Unable to load users or roles: {ex.Message}";
         }
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task LoadRolesAsync()
+    {
+        var roles = await Roles.ListAsync();
+        _roles.Clear();
+        _roles.AddRange(roles.Select(role => new RoleOption(role.RoleName, role.Description)));
+
+        if (_roles.Count == 0)
+        {
+            _roles.AddRange(BuildFallbackRoles());
         }
     }
 
@@ -352,6 +380,19 @@
     {
         return string.IsNullOrWhiteSpace(_selectedRole)
             || user.Role.Equals(_selectedRole, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool IsRoleChangeDisabled(UserRow user, string targetRole)
+    {
+        return user.Role.Equals(targetRole, StringComparison.OrdinalIgnoreCase)
+            || (IsCurrentAdmin(user) && !targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetRoleIcon(string role)
+    {
+        return role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase)
+            ? Icons.Material.Filled.AdminPanelSettings
+            : Icons.Material.Filled.Badge;
     }
 
     private bool MatchesStatus(UserRow user)
@@ -422,13 +463,19 @@
 
     private async Task ChangeRoleAsync(UserRow user, string targetRole)
     {
-        if (IsCurrentAdmin(user) && targetRole != AdminRole)
+        if (!AvailableRoleNames.Contains(targetRole, StringComparer.OrdinalIgnoreCase))
+        {
+            Snackbar.Add($"Role '{targetRole}' is not present in the database roles list.", Severity.Error);
+            return;
+        }
+
+        if (IsCurrentAdmin(user) && !targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase))
         {
             Snackbar.Add("You cannot demote your own administrator account.", Severity.Error);
             return;
         }
 
-        if (user.Role == targetRole)
+        if (user.Role.Equals(targetRole, StringComparison.OrdinalIgnoreCase))
         {
             return;
         }
@@ -450,7 +497,7 @@
         {
             var previousRole = user.Role;
             user.Role = targetRole;
-            if (targetRole == AdminRole && user.DailyTokenQuota < 75_000)
+            if (targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase) && user.DailyTokenQuota < 75_000)
             {
                 user.DailyTokenQuota = 75_000;
             }
@@ -565,11 +612,9 @@
 
     private static Color GetRoleColor(string role)
     {
-        return role switch
-        {
-            AdminRole => Color.Error,
-            _ => Color.Primary
-        };
+        return role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase)
+            ? Color.Error
+            : Color.Primary;
     }
 
     private static Color GetQuotaChipColor(double usagePercent)
@@ -580,6 +625,15 @@
     private static Color GetQuotaProgressColor(double usagePercent)
     {
         return usagePercent >= 100 ? Color.Error : usagePercent >= 85 ? Color.Warning : Color.Success;
+    }
+
+    private static IEnumerable<RoleOption> BuildFallbackRoles()
+    {
+        return new[]
+        {
+            new RoleOption(AdminRole, "Fallback admin role"),
+            new RoleOption(StudentRole, "Fallback student role")
+        };
     }
 
     private static IEnumerable<UserRow> BuildSeedUsers()
@@ -593,6 +647,8 @@
             new UserRow { Id = Guid.Parse("e7d57d35-98a3-4774-a07c-331bb5665662"), FullName = "Linh Pham", Email = "linh.pham@aistudyhub.edu", StudentCode = "SE201220", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-3), LastActiveAt = DateTime.UtcNow.AddDays(-1), IsActive = false, DailyTokenQuota = 25_000, TokensUsedToday = 1_200, DocumentCount = 1 }
         };
     }
+
+    private sealed record RoleOption(string RoleName, string? Description);
 
     private sealed class UserRow
     {

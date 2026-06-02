@@ -8,42 +8,68 @@
 
 <PageTitle>Login - AI Study Hub</PageTitle>
 
-<section class="auth-shell">
-    <div class="auth-visual">
+<section class="auth-shell auth-shell-premium">
+    <div class="auth-visual auth-visual-premium">
         <div class="auth-visual-grid" aria-hidden="true"></div>
         <div class="auth-orb" aria-hidden="true"></div>
-        <div style="position: relative; z-index: 1; max-width: 620px;">
+        <div class="auth-matrix-card" aria-hidden="true">
+            <div class="auth-matrix-topline">
+                <span></span><span></span><span></span>
+            </div>
+            <div class="auth-matrix-core">
+                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" />
+            </div>
+            <p>Active Matrix Mode</p>
+        </div>
+        <div class="auth-hero-copy">
+            <MudLink Href="/" Class="auth-brand-link" Underline="Underline.None">
+                <span class="auth-brand-mark"><MudIcon Icon="@Icons.Material.Filled.School" /></span>
+                <span>AI Study Hub</span>
+            </MudLink>
             <span class="section-kicker">Secure access</span>
-            <h1 class="workspace-title mt-4">Enter the <span class="gradient-text">study vault</span>.</h1>
+            <h1 class="workspace-title mt-4">Welcome back to your <span class="gradient-text">study hub</span>.</h1>
             <p class="workspace-copy mt-3">
-                Continue your RAG workspace with source-backed answers, document folders, and authenticated study sessions.
+                Your personalized AI library is ready. Continue research where you left off with private documents, grounded answers, and visible citations.
             </p>
+            <div class="auth-chip-row">
+                <span><MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" /> JWT protected</span>
+                <span><MudIcon Icon="@Icons.Material.Filled.AutoStories" Size="Size.Small" /> Source backed</span>
+                <span><MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" /> RAG ready</span>
+            </div>
             <div class="auth-metric-row">
-                <div class="auth-metric"><strong>JWT</strong><span>protected session</span></div>
+                <div class="auth-metric"><strong>24/7</strong><span>study workspace</span></div>
                 <div class="auth-metric"><strong>RAG</strong><span>cited chat</span></div>
-                <div class="auth-metric"><strong>Local</strong><span>dev stack ready</span></div>
+                <div class="auth-metric"><strong>Vault</strong><span>private library</span></div>
             </div>
         </div>
     </div>
 
-    <MudPaper Class="auth-card glass-card" Elevation="0">
+    <MudPaper Class="auth-card glass-card auth-form-card" Elevation="0">
         <MudStack Spacing="3">
+            <div class="auth-mobile-brand">
+                <span class="auth-brand-mark"><MudIcon Icon="@Icons.Material.Filled.School" /></span>
+                <span>AI Study Hub</span>
+            </div>
+
             <div>
-                <MudText Typo="Typo.h4">Welcome back</MudText>
+                <span class="auth-form-eyebrow">Log in</span>
+                <MudText Typo="Typo.h4">Log In</MudText>
                 <MudText Typo="Typo.body2" Class="workspace-copy">
-                    Sign in to upload documents, open AI Chat, and manage your private study library.
+                    Enter your credentials to access your academic dashboard.
                 </MudText>
             </div>
 
-            <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid">
+            <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid" Class="auth-form-stack">
                 <MudTextField T="string"
-                              Label="Email"
+                              Label="Email address"
                               @bind-Value="_model.Email"
                               Required="true"
                               RequiredError="Email is required"
                               Validation="@(new EmailAddressAttribute() { ErrorMessage = "Invalid email" })"
                               InputType="InputType.Email"
                               Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.AlternateEmail"
                               Disabled="_busy" />
 
                 <MudTextField T="string"
@@ -53,9 +79,12 @@
                               RequiredError="Password is required"
                               InputType="InputType.Password"
                               Variant="Variant.Outlined"
-                              Class="mt-3"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Lock"
                               Disabled="_busy" />
             </MudForm>
+
+            <HumanCheck @ref="_humanCheck" Disabled="_busy" ValidChanged="OnHumanCheckChanged" />
 
             @if (!string.IsNullOrEmpty(_error))
             {
@@ -64,13 +93,14 @@
 
             <MudButton Variant="Variant.Filled"
                        FullWidth="true"
-                       Class="premium-button"
+                       Class="premium-button auth-submit-button"
+                       EndIcon="@Icons.Material.Filled.ArrowForward"
                        OnClick="SubmitAsync"
-                       Disabled="_busy">
+                       Disabled="_busy || !_humanCheckValid">
                 @if (_busy)
                 {
                     <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                    <MudText Class="ms-2">Signing in...</MudText>
+                    <MudText Class="ms-2">Authenticating...</MudText>
                 }
                 else
                 {
@@ -78,11 +108,11 @@
                 }
             </MudButton>
 
-            <MudDivider />
+            <div class="auth-divider"><span>Protected academic session</span></div>
 
             <MudStack Row="true" Justify="Justify.Center" Spacing="1" Style="flex-wrap: wrap;">
                 <MudText Typo="Typo.body2" Color="Color.Secondary">No account yet?</MudText>
-                <MudLink Href="/register" Underline="Underline.Always">Create one</MudLink>
+                <MudLink Href="/register" Underline="Underline.Always">Get started</MudLink>
             </MudStack>
         </MudStack>
     </MudPaper>
@@ -90,7 +120,9 @@
 
 @code {
     private MudForm? _form;
+    private HumanCheck? _humanCheck;
     private bool _isValid;
+    private bool _humanCheckValid;
     private bool _busy;
     private string? _error;
     private readonly LoginRequest _model = new();
@@ -103,12 +135,19 @@
         }
     }
 
+    private Task OnHumanCheckChanged(bool valid)
+    {
+        _humanCheckValid = valid;
+        return Task.CompletedTask;
+    }
+
     private async Task SubmitAsync()
     {
         _error = null;
         if (_form is null) return;
         await _form.ValidateAsync();
-        if (!_isValid) return;
+        var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
+        if (!_isValid || !humanOk) return;
 
         _busy = true;
         StateHasChanged();

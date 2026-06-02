@@ -147,6 +147,7 @@ builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
     http.Timeout = TimeSpan.FromMinutes(2);
 });
+builder.Services.AddScoped<IRoleCatalogService, RoleCatalogService>();
 builder.Services.AddScoped<AuthSessionState>();
 
 // Authentication / Authorization ---------------------------------------------

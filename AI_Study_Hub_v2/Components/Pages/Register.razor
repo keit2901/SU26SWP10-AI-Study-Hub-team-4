@@ -9,42 +9,68 @@
 
 <PageTitle>Register - AI Study Hub</PageTitle>
 
-<section class="auth-shell">
-    <div class="auth-visual">
+<section class="auth-shell auth-shell-premium">
+    <div class="auth-visual auth-visual-premium">
         <div class="auth-visual-grid" aria-hidden="true"></div>
         <div class="auth-orb" aria-hidden="true"></div>
-        <div style="position: relative; z-index: 1; max-width: 640px;">
-            <span class="section-kicker">Student onboarding</span>
-            <h1 class="workspace-title mt-4">Build a private <span class="gradient-text">AI study base</span>.</h1>
+        <div class="auth-matrix-card" aria-hidden="true">
+            <div class="auth-matrix-topline">
+                <span></span><span></span><span></span>
+            </div>
+            <div class="auth-matrix-core">
+                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" />
+            </div>
+            <p>Onboarding Matrix</p>
+        </div>
+        <div class="auth-hero-copy">
+            <MudLink Href="/" Class="auth-brand-link" Underline="Underline.None">
+                <span class="auth-brand-mark"><MudIcon Icon="@Icons.Material.Filled.School" /></span>
+                <span>AI Study Hub</span>
+            </MudLink>
+            <span class="section-kicker">Account onboarding</span>
+            <h1 class="workspace-title mt-4">Unlock your full <span class="gradient-text">learning potential</span>.</h1>
             <p class="workspace-copy mt-3">
-                Create a student account, upload course material, and keep every answer traceable to your own documents.
+                Transform course documents into study guides, practice questions, and interactive chat sessions grounded in your own material.
             </p>
+            <div class="auth-chip-row">
+                <span><MudIcon Icon="@Icons.Material.Filled.PersonAdd" Size="Size.Small" /> Database-backed role</span>
+                <span><MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" /> Organized folders</span>
+                <span><MudIcon Icon="@Icons.Material.Filled.FactCheck" Size="Size.Small" /> Cited evidence</span>
+            </div>
             <div class="auth-metric-row">
-                <div class="auth-metric"><strong>Student</strong><span>default role</span></div>
-                <div class="auth-metric"><strong>Folders</strong><span>organized sources</span></div>
-                <div class="auth-metric"><strong>Cites</strong><span>visible evidence</span></div>
+                <div class="auth-metric"><strong>Start</strong><span>new study vault</span></div>
+                <div class="auth-metric"><strong>Upload</strong><span>course sources</span></div>
+                <div class="auth-metric"><strong>Ask</strong><span>grounded tutor</span></div>
             </div>
         </div>
     </div>
 
-    <MudPaper Class="auth-card glass-card" Elevation="0">
+    <MudPaper Class="auth-card glass-card auth-form-card" Elevation="0">
         <MudStack Spacing="3">
+            <div class="auth-mobile-brand">
+                <span class="auth-brand-mark"><MudIcon Icon="@Icons.Material.Filled.School" /></span>
+                <span>AI Study Hub</span>
+            </div>
+
             <div>
-                <MudText Typo="Typo.h4">Create account</MudText>
+                <span class="auth-form-eyebrow">Create account</span>
+                <MudText Typo="Typo.h4">Create Account</MudText>
                 <MudText Typo="Typo.body2" Class="workspace-copy">
-                    Start as a student and open the document-first AI workspace.
+                    Start your AI-powered study journey today.
                 </MudText>
             </div>
 
-            <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid">
+            <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid" Class="auth-form-stack">
                 <MudTextField T="string"
-                              Label="Email"
+                              Label="Email address"
                               @bind-Value="_model.Email"
                               Required="true"
                               RequiredError="Email is required"
                               Validation="@(new EmailAddressAttribute() { ErrorMessage = "Invalid email" })"
                               InputType="InputType.Email"
                               Variant="Variant.Outlined"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.AlternateEmail"
                               Disabled="_busy" />
 
                 <MudTextField T="string"
@@ -54,7 +80,8 @@
                               RequiredError="Username is required"
                               Validation="@(new RegularExpressionAttribute(@"^[a-zA-Z0-9_]{3,15}$") { ErrorMessage = "3-15 chars, alphanumeric or underscore" })"
                               Variant="Variant.Outlined"
-                              Class="mt-3"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.AlternateEmail"
                               Disabled="_busy" />
 
                 <MudTextField T="string"
@@ -64,7 +91,8 @@
                               RequiredError="Full name is required"
                               Validation="@(new StringLengthAttribute(100) { MinimumLength = 2, ErrorMessage = "2-100 characters" })"
                               Variant="Variant.Outlined"
-                              Class="mt-3"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Badge"
                               Disabled="_busy" />
 
                 <MudTextField T="string"
@@ -75,9 +103,12 @@
                               Validation="@(new StringLengthAttribute(128) { MinimumLength = 8, ErrorMessage = "Minimum 8 characters" })"
                               InputType="InputType.Password"
                               Variant="Variant.Outlined"
-                              Class="mt-3"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Lock"
                               Disabled="_busy" />
             </MudForm>
+
+            <HumanCheck @ref="_humanCheck" Disabled="_busy" ValidChanged="OnHumanCheckChanged" />
 
             @if (!string.IsNullOrEmpty(_error))
             {
@@ -86,9 +117,10 @@
 
             <MudButton Variant="Variant.Filled"
                        FullWidth="true"
-                       Class="premium-button"
+                       Class="premium-button auth-submit-button"
+                       EndIcon="@Icons.Material.Filled.ArrowForward"
                        OnClick="SubmitAsync"
-                       Disabled="_busy">
+                       Disabled="_busy || !_humanCheckValid">
                 @if (_busy)
                 {
                     <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
@@ -100,7 +132,7 @@
                 }
             </MudButton>
 
-            <MudDivider />
+            <div class="auth-divider"><span>Private account • Real Supabase auth</span></div>
 
             <MudStack Row="true" Justify="Justify.Center" Spacing="1" Style="flex-wrap: wrap;">
                 <MudText Typo="Typo.body2" Color="Color.Secondary">Already have an account?</MudText>
@@ -112,7 +144,9 @@
 
 @code {
     private MudForm? _form;
+    private HumanCheck? _humanCheck;
     private bool _isValid;
+    private bool _humanCheckValid;
     private bool _busy;
     private string? _error;
     private readonly RegisterRequest _model = new();
@@ -125,12 +159,19 @@
         }
     }
 
+    private Task OnHumanCheckChanged(bool valid)
+    {
+        _humanCheckValid = valid;
+        return Task.CompletedTask;
+    }
+
     private async Task SubmitAsync()
     {
         _error = null;
         if (_form is null) return;
         await _form.ValidateAsync();
-        if (!_isValid) return;
+        var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
+        if (!_isValid || !humanOk) return;
 
         _busy = true;
         StateHasChanged();
