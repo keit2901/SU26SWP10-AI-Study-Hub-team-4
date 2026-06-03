@@ -44,15 +44,22 @@ function Fail($m)       { Write-Host "FAIL $m" -ForegroundColor Red; exit 1 }
 # 1. Prerequisites
 # ---------------------------------------------------------------------------
 Write-Step 'Checking prerequisites...'
-foreach ($tool in @('docker','dotnet')) {
-    if (-not (Get-Command $tool -ErrorAction SilentlyContinue)) {
-        Fail "$tool not in PATH. Install: Docker Desktop + .NET 8 SDK."
-    }
+if (-not (Get-Command 'dotnet' -ErrorAction SilentlyContinue)) {
+    Fail 'dotnet not in PATH. Install .NET 8 SDK.'
 }
-& docker info *> $null
-if ($LASTEXITCODE -ne 0) { Fail 'Docker daemon not reachable. Start Docker Desktop.' }
 $dotnetVer = (& dotnet --version) 2>&1
-Write-Ok "docker OK, dotnet $dotnetVer"
+
+if ($SkipUp) {
+    Write-Hint 'Skipping Docker daemon check because -SkipUp was provided.'
+    Write-Ok "dotnet $dotnetVer"
+} else {
+    if (-not (Get-Command 'docker' -ErrorAction SilentlyContinue)) {
+        Fail 'docker not in PATH. Install/start Docker Desktop or rerun with -SkipUp to only generate .env + user-secrets.'
+    }
+    & docker info *> $null
+    if ($LASTEXITCODE -ne 0) { Fail 'Docker daemon not reachable. Start Docker Desktop or rerun with -SkipUp.' }
+    Write-Ok "docker OK, dotnet $dotnetVer"
+}
 
 if (-not (Test-Path -LiteralPath $infraDir)) { Fail "Missing folder: $infraDir" }
 if (-not (Test-Path -LiteralPath $appDir))   { Fail "Missing folder: $appDir" }
@@ -374,11 +381,20 @@ Write-Host "  Default admin email: admin@aistudyhub.local" -ForegroundColor Yell
 Write-Host "  Default admin pwd  : $adminPwd  ($adminPwdSource)" -ForegroundColor Yellow
 Write-Host '  ^ Copy now --  pwd is also kept in dotnet user-secrets for re-seed.' -ForegroundColor DarkYellow
 Write-Host ''
+Write-Host 'AI provider key (per machine, not committed):' -ForegroundColor Cyan
+Write-Host '  dotnet user-secrets set "Groq:ApiKey" "<your-groq-api-key>" --project AI_Study_Hub_v2\AI_Study_Hub_v2.csproj'
+Write-Host ''
 Write-Host 'Next steps:' -ForegroundColor Cyan
 Write-Host '  cd AI_Study_Hub_v2'
 Write-Host '  $env:ASPNETCORE_ENVIRONMENT = "Development"'
 Write-Host '  dotnet run --no-launch-profile --urls http://localhost:5240'
 Write-Host ''
+Write-Host 'Open in browser:' -ForegroundColor Cyan
+Write-Host '  http://localhost:5240/login'
+Write-Host ''
 Write-Host 'Run all tests (offline, no stack required):' -ForegroundColor Cyan
-Write-Host '  dotnet test AI_Study_Hub_v2\AI_Study_Hub_v2.Tests\AI_Study_Hub_v2.Tests.csproj'
+Write-Host '  dotnet test AI_Study_Hub_v2\AI_Study_Hub_v2.sln --nologo'
+Write-Host ''
+Write-Host 'Docs:' -ForegroundColor Cyan
+Write-Host '  See QUICK_START.md for .env, .env.example, user-secrets, and API key rules.'
 Write-Host ''

@@ -60,7 +60,7 @@ The storage system uses **Hybrid Database**:
 
 ## 🚀 Installation
 
-*(Detailed installation instructions are being finalized - Building is On-going)*
+For local setup, see [`setup tutorial/README.md`](setup%20tutorial/README.md). It explains `setup.ps1`, local `.env`, `dotnet user-secrets`, and per-machine AI API keys.
 
 ## 💻 Usage
 
