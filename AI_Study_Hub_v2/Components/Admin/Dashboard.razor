@@ -1,7 +1,6 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin
 @page "/admin"
 @page "/admin/dashboard"
-@rendermode InteractiveServer
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
@@ -233,11 +232,10 @@
         new ChartSeries<double> { Name = "Documents", Data = new double[] { 7, 18, 126, 4 } }
     };
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         try
         {
-            await Task.Delay(350);
             _metrics = new DashboardMetrics
             {
                 TotalUsers = 1248,

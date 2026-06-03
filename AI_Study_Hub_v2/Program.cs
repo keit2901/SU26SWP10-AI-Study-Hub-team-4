@@ -6,12 +6,14 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MudBlazor.Services;
+using Npgsql;
 using Pgvector.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -29,6 +31,8 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
+builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
+builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 
 // Database --------------------------------------------------------------------
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
@@ -43,6 +47,7 @@ var connectionString = builder.Configuration.GetConnectionString("Postgres")
 var npgsqlDataSourceBuilder = new Npgsql.NpgsqlDataSourceBuilder(connectionString);
 npgsqlDataSourceBuilder.MapEnum<AI_Study_Hub_v2.Data.Entities.DocumentStatus>(
     pgName: "public.document_status");
+npgsqlDataSourceBuilder.UseVector();
 var npgsqlDataSource = npgsqlDataSourceBuilder.Build();
 builder.Services.AddSingleton(npgsqlDataSource);
 
@@ -92,9 +97,21 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 });
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IFolderService, FolderService>();
+
+// Sprint 2 RAG services -------------------------------------------------------
+builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
+builder.Services.AddScoped<IChunkingService, ChunkingService>();
+builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
+builder.Services.AddScoped<IDocumentStorageReadService, SupabaseDocumentStorageReadService>();
+builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
+builder.Services.AddScoped<IEmbeddingService, FakeEmbeddingService>();
+builder.Services.AddScoped<IRagSearchService, RagSearchService>();
+builder.Services.AddScoped<IAiChatService, SemanticKernelRagChatService>();
+builder.Services.AddHttpClient<IAiChatCompletionClient, GroqChatCompletionClient>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
-builder.Services.AddHttpClient<AuthApiClient>((sp, http) =>
+static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
 {
     var cfg = sp.GetRequiredService<IConfiguration>();
     var baseUrl = cfg["DemoUi:BackendBaseUrl"];
@@ -107,8 +124,30 @@ builder.Services.AddHttpClient<AuthApiClient>((sp, http) =>
     {
         baseUrl += "/";
     }
-    http.BaseAddress = new Uri(baseUrl);
+    return new Uri(baseUrl);
+}
+
+builder.Services.AddHttpClient<AuthApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
+// SCRUM-12/26: Blazor upload form posts here (multipart). Same backend base URL.
+builder.Services.AddHttpClient<DocumentApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+    // 50 MB body + slow Kestrel re-entry: bump above default 100s for big PDFs.
+    http.Timeout = TimeSpan.FromMinutes(2);
+});
+builder.Services.AddHttpClient<FolderApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
+builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+    http.Timeout = TimeSpan.FromMinutes(2);
+});
+builder.Services.AddScoped<IRoleCatalogService, RoleCatalogService>();
 builder.Services.AddScoped<AuthSessionState>();
 
 // Authentication / Authorization ---------------------------------------------

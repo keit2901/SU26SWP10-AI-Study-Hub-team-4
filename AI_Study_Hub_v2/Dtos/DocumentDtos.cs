@@ -75,3 +75,44 @@ public sealed class DocumentListQuery
     /// <summary>Free-text search over <c>file_name</c>. Matched case-insensitive.</summary>
     public string? Q { get; set; }
 }
+
+public sealed class MoveDocumentFolderRequest
+{
+    /// <summary>Target folder id. Null moves the document back to loose documents.</summary>
+    public Guid? FolderId { get; set; }
+}
+
+public sealed class FolderDto
+{
+    public Guid Id { get; set; }
+
+    public string Name { get; set; } = string.Empty;
+
+    public string? Description { get; set; }
+
+    public int DocumentCount { get; set; }
+
+    public DateTimeOffset CreatedAt { get; set; }
+
+    public DateTimeOffset UpdatedAt { get; set; }
+}
+
+public sealed class CreateFolderRequest
+{
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string Name { get; set; } = string.Empty;
+
+    [StringLength(500)]
+    public string? Description { get; set; }
+}
+
+public sealed class UpdateFolderRequest
+{
+    [Required]
+    [StringLength(100, MinimumLength = 1)]
+    public string Name { get; set; } = string.Empty;
+
+    [StringLength(500)]
+    public string? Description { get; set; }
+}

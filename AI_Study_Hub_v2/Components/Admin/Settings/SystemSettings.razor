@@ -1,6 +1,5 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.Settings
 @page "/admin/settings"
-@rendermode InteractiveServer
 @layout AdminLayout
 @using System.Globalization
 @using System.Text.Json
@@ -22,7 +21,7 @@
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ManageSearch" OnClick="ShowAuditHint">
                 Audit trail
             </MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="Reload">
                 Reload configs
             </MudButton>
         </MudStack>
@@ -246,19 +245,18 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await ReloadAsync();
+        Reload();
     }
 
-    private async Task ReloadAsync()
+    private void Reload()
     {
         _isLoading = true;
         _errorMessage = null;
 
         try
         {
-            await Task.Delay(300);
             _configs.Clear();
             _configs.AddRange(BuildSeedConfigs());
         }

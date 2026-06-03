@@ -1,6 +1,5 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.Documents
 @page "/admin/documents"
-@rendermode InteractiveServer
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
@@ -184,6 +183,7 @@
                 </MudSelect>
                 <MudTextField @bind-Value="_editingDocument.StoragePath" Label="Storage path" Variant="Variant.Outlined" Required="true" />
                 <MudTextField @bind-Value="_editingDocument.TagsCsv" Label="Tags" Variant="Variant.Outlined" Placeholder="rag, supabase, project" />
+                <HumanCheck @ref="_humanCheck" ValidChanged="OnHumanCheckChanged" />
                 <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
                     Use Document Moderation for approve/reject/remove decisions that require owner notification and audit log details.
                 </MudAlert>
@@ -192,7 +192,7 @@
     </ChildContent>
     <FooterContent>
         <MudButton Variant="Variant.Text" OnClick="CloseSheetAsync">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!_isFormValid)" OnClick="SaveDocumentAsync">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!_isFormValid || !_humanCheckValid)" OnClick="SaveDocumentAsync">
             Save document
         </MudButton>
     </FooterContent>
@@ -219,6 +219,8 @@
     private string? _selectedSubject;
     private string? _errorMessage;
     private MudForm? _form;
+    private HumanCheck? _humanCheck;
+    private bool _humanCheckValid;
     private DocumentEditModel _editingDocument = DocumentEditModel.New();
 
     private string DocumentSheetTitle => _editingDocument.Id == Guid.Empty ? "Register document" : "Edit document";
@@ -252,11 +254,10 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
         try
         {
-            await Task.Delay(300);
             _documents.AddRange(BuildSeedDocuments());
         }
         catch (Exception ex)
@@ -375,10 +376,19 @@
         _documentSheetOpen = true;
     }
 
-    private Task CloseSheetAsync()
+    private async Task CloseSheetAsync()
     {
         _documentSheetOpen = false;
         _editingDocument = DocumentEditModel.New();
+        if (_humanCheck is not null)
+        {
+            await _humanCheck.ResetAsync();
+        }
+    }
+
+    private Task OnHumanCheckChanged(bool valid)
+    {
+        _humanCheckValid = valid;
         return Task.CompletedTask;
     }
 
@@ -390,7 +400,8 @@
         }
 
         await _form.ValidateAsync();
-        if (!_form.IsValid)
+        var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
+        if (!_form.IsValid || !humanOk)
         {
             return;
         }

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -21,12 +22,17 @@ public sealed class DocumentsController : ControllerBase
     public const long MaxRequestBodyBytes = 50L * 1024 * 1024;
 
     private readonly IDocumentService _service;
+    private readonly IDocumentIngestionService? _ingestionService;
     private readonly ILogger<DocumentsController> _logger;
 
-    public DocumentsController(IDocumentService service, ILogger<DocumentsController> logger)
+    public DocumentsController(
+        IDocumentService service,
+        ILogger<DocumentsController> logger,
+        IDocumentIngestionService? ingestionService = null)
     {
         _service = service;
         _logger = logger;
+        _ingestionService = ingestionService;
     }
 
     /// <summary>SCRUM-13: multipart upload of a single document.</summary>
@@ -80,6 +86,45 @@ public sealed class DocumentsController : ControllerBase
             {
                 Code = "unexpected_error",
                 Message = "An unexpected error occurred while uploading the document."
+            });
+        }
+    }
+
+    /// <summary>Manual Sprint 2 RAG re-ingestion endpoint for smoke/debug.</summary>
+    [HttpPost("{id:guid}/ingest")]
+    [ProducesResponseType(typeof(DocumentIngestionResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    public async Task<ActionResult<DocumentIngestionResult>> Ingest(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        if (_ingestionService is null)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiErrorResponse
+            {
+                Code = "ingestion_unavailable",
+                Message = "Document ingestion service is not configured."
+            });
+        }
+
+        try
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var result = await _ingestionService.IngestAsync(id, supabaseUserId, cancellationToken);
+            return Ok(result);
+        }
+        catch (DocumentException ex)
+        {
+            return ToErrorResult(ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected document ingestion failure.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while ingesting the document."
             });
         }
     }
@@ -138,6 +183,37 @@ public sealed class DocumentsController : ControllerBase
             {
                 Code = "unexpected_error",
                 Message = "An unexpected error occurred while fetching the document."
+            });
+        }
+    }
+
+    /// <summary>Move a document into a folder, or back to loose documents.</summary>
+    [HttpPut("{id:guid}/folder")]
+    [ProducesResponseType(typeof(DocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DocumentDto>> MoveToFolder(
+        Guid id,
+        [FromBody] MoveDocumentFolderRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var dto = await _service.MoveToFolderAsync(supabaseUserId, id, request.FolderId, cancellationToken);
+            return Ok(dto);
+        }
+        catch (DocumentException ex)
+        {
+            return ToErrorResult(ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected document move failure.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while moving the document."
             });
         }
     }

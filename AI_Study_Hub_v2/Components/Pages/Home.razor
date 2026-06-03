@@ -1,20 +1,154 @@
 ﻿@page "/"
-@rendermode InteractiveServer
 @inject AuthSessionState Session
-@inject NavigationManager Nav
 
-<PageTitle>AI Study Hub v2</PageTitle>
+<PageTitle>AI Study Hub - Academic AI Workspace</PageTitle>
 
-<MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 60vh;">
-    <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
-    <MudText Typo="Typo.body1" Color="Color.Secondary">Redirecting...</MudText>
-</MudStack>
+<main class="landing-page teammate-landing-page">
+    <section class="landing-hero" aria-labelledby="landing-title">
+        <div class="landing-ambient landing-ambient-one" aria-hidden="true"></div>
+        <div class="landing-ambient landing-ambient-two" aria-hidden="true"></div>
 
-@code {
-    protected override void OnAfterRender(bool firstRender)
-    {
-        if (!firstRender) return;
-        var target = Session.IsAuthenticated ? "/profile" : "/login";
-        Nav.NavigateTo(target, replace: true);
-    }
-}
+        <div class="landing-hero-inner">
+            <div class="landing-hero-copy">
+                <span class="landing-badge" id="gpt-powered-badge">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />
+                    Gemini Inspired Academic Modes
+                </span>
+
+                <h1 id="landing-title">Harness AI for <span>Academic Excellence.</span></h1>
+                <p>
+                    AI Study Hub converts messy lectures, raw notes, and textbooks into structured,
+                    personalized study workspaces. Generate summaries, suggested Q&amp;As, and custom quizzes
+                    instantly with AI while preserving your real document library and RAG citations.
+                </p>
+
+                <div class="landing-cta-row">
+                    <a id="btn-hero-start" class="landing-primary-button" href="@(Session.IsAuthenticated ? "/documents" : "/register")">
+                        Start My Study Session
+                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                    </a>
+                    <a id="btn-hero-demo" class="landing-secondary-button" href="@(Session.IsAuthenticated ? "/ai/chat" : "/login")">
+                        Try the Demo Room
+                    </a>
+                </div>
+
+                <div class="landing-quick-metrics" aria-label="AI Study Hub highlights">
+                    <div>
+                        <strong>100%</strong>
+                        <span>Source Grounded</span>
+                    </div>
+                    <div>
+                        <strong>24/7</strong>
+                        <span>Smart Feedback</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="landing-hero-visual" aria-label="Students collaborating with AI Study Hub">
+                <div class="landing-visual-glow" aria-hidden="true"></div>
+                <div class="landing-image-frame">
+                    <img src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&amp;w=1000&amp;auto=format&amp;fit=crop"
+                         alt="A group of students discussing study material together" />
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="features-container" class="landing-features" aria-labelledby="features-title">
+        <div class="landing-section-heading">
+            <h2 id="features-title">One Workspace. Endless Academic Leverage.</h2>
+            <p>
+                Say goodbye to scattered files and disjointed bookmarks. The app synthesizes standard academic
+                formats into interactive studying components while keeping the real Blazor document and chat flows.
+            </p>
+        </div>
+
+        <div class="landing-bento-grid">
+            <article class="landing-bento-card indigo compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.Psychology" /></span>
+                <div>
+                    <h3>AI Guided Study</h3>
+                    <p>Surgically extract structured learning materials from dense files and textbook segments.</p>
+                </div>
+            </article>
+
+            <article class="landing-bento-card emerald wide">
+                <div>
+                    <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.Article" /></span>
+                    <h3>Cornell Notes Summary</h3>
+                    <p>Convert long chapters into high-yield briefing outlines centered around examinable insights.</p>
+                </div>
+                <div class="bento-note-preview" aria-hidden="true">
+                    <span></span><span></span><span></span>
+                </div>
+            </article>
+
+            <article class="landing-bento-card violet compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.TipsAndUpdates" /></span>
+                <div>
+                    <h3>Smart Flashcards</h3>
+                    <p>Memory prompts designed to trigger targeted retention directly from source material.</p>
+                </div>
+            </article>
+
+            <article class="landing-bento-card amber compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.FactCheck" /></span>
+                <div>
+                    <h3>Practice Quiz Maker</h3>
+                    <p>Generate exam-style multiple-choice questions with immediate explanation paths.</p>
+                </div>
+            </article>
+
+            <article class="landing-bento-card navy compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" /></span>
+                <div>
+                    <h3>Interactive Q&amp;A</h3>
+                    <p>Challenge your own documents with grounded answers and visible source citations.</p>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section id="pricing-container" class="landing-final-cta" aria-labelledby="cta-title">
+        <span class="landing-badge soft"><MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" /> Empower Your Mind</span>
+        <h2 id="cta-title">Ready to Accelerate Your Learning?</h2>
+        <p>
+            Create your account today and gain immediate access to the specialized study engine. Build folders,
+            upload notes, generate summaries, and test your knowledge from one polished academic dashboard.
+        </p>
+        <a id="cta-get-started" class="landing-primary-button" href="@(Session.IsAuthenticated ? "/documents" : "/register")">
+            Get Started for Free
+        </a>
+    </section>
+
+    <footer class="landing-footer">
+        <div class="landing-footer-grid">
+            <div>
+                <div class="landing-footer-brand">
+                    <span><MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Small" /></span>
+                    <strong>AI Study Hub</strong>
+                </div>
+                <p>The next-generation, context-aware study intelligence designed to maximize academic recall.</p>
+            </div>
+            <div>
+                <h4>Product</h4>
+                <a href="#pricing-container">Pricing model</a>
+                <a href="/documents">Library</a>
+                <a href="/ai/chat">Workspace</a>
+            </div>
+            <div>
+                <h4>Resources</h4>
+                <a href="#features-container">Features</a>
+                <a href="/documents/upload">Upload center</a>
+                <a href="/profile">Profile</a>
+            </div>
+            <div>
+                <h4>Legal</h4>
+                <a href="#">Terms of Service</a>
+                <a href="#">Privacy Policy</a>
+                <a href="#">Guidelines</a>
+            </div>
+        </div>
+        <div class="landing-footer-bottom">© @DateTime.Now.Year AI Study Hub. Built with care for lifelong learners.</div>
+    </footer>
+</main>

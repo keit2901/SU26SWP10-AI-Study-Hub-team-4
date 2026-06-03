@@ -1,54 +1,62 @@
-﻿@rendermode InteractiveServer
-@implements IDisposable
+﻿@implements IDisposable
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
-<div class="top-row ps-3 navbar navbar-dark">
-    <div class="container-fluid">
-        <a class="navbar-brand" href="">AI_Study_Hub_v2</a>
-    </div>
-</div>
+<header class="community-topbar teammate-topbar">
+    <div class="community-topbar-inner teammate-topbar-inner">
+        <a class="brand-link teammate-brand" href="">
+            <span class="brand-orb teammate-brand-mark"><MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Small" /></span>
+            <span class="brand-name">AI Study Hub</span>
+        </a>
 
-<input type="checkbox" title="Navigation menu" class="navbar-toggler" />
+        <input id="community-nav-toggle" type="checkbox" title="Navigation menu" class="navbar-toggler" />
+        <label for="community-nav-toggle" class="navbar-toggler-label" aria-label="Toggle navigation"></label>
 
-<div class="nav-scrollable" onclick="document.querySelector('.navbar-toggler').click()">
-    <nav class="flex-column">
-        <div class="nav-item px-3">
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill-nav-menu" aria-hidden="true"></span> Home
-            </NavLink>
+        <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
+            <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
+            @if (Session.IsAuthenticated)
+            {
+                <NavLink class="nav-pill" href="documents">Library</NavLink>
+                <NavLink class="nav-pill" href="ai/chat">Workspace</NavLink>
+                <NavLink class="nav-pill" href="documents/upload">Upload</NavLink>
+            }
+            else
+            {
+                <NavLink class="nav-pill" href="login">Sign In</NavLink>
+                <NavLink class="nav-pill" href="register">Get Started</NavLink>
+            }
+        </nav>
+
+        <div class="community-actions teammate-actions">
+            @if (Session.IsAuthenticated)
+            {
+                <div class="teammate-user-meta">
+                    <span>@DisplayName</span>
+                    <small>Pro Plan</small>
+                </div>
+                <a class="user-chip teammate-user-chip" href="profile">
+                    <span class="user-avatar"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
+                </a>
+                <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
+                    <MudIcon Icon="@Icons.Material.Filled.Logout" Size="Size.Small" />
+                </button>
+            }
+            else
+            {
+                <a class="login-link" href="login">Sign In</a>
+                <a class="join-button" href="register">Get Started</a>
+            }
         </div>
-
-        @if (Session.IsAuthenticated)
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="profile">
-                    <span class="bi bi-person-fill-nav-menu" aria-hidden="true"></span> Profile
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <span class="nav-link" style="cursor:default; opacity:.85;">
-                    Signed in as <b>@Session.CurrentUser?.Username</b>
-                </span>
-            </div>
-        }
-        else
-        {
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="login">
-                    <span class="bi bi-lock-fill-nav-menu" aria-hidden="true"></span> Login
-                </NavLink>
-            </div>
-            <div class="nav-item px-3">
-                <NavLink class="nav-link" href="register">
-                    <span class="bi bi-plus-square-fill-nav-menu" aria-hidden="true"></span> Register
-                </NavLink>
-            </div>
-        }
-    </nav>
-</div>
+    </div>
+</header>
 
 @code {
+    private string DisplayName =>
+        Session.CurrentUser?.FullName
+        ?? Session.CurrentUser?.Username
+        ?? Session.CurrentUser?.Email
+        ?? "Student";
+
     protected override void OnInitialized()
     {
         Session.OnChange += OnSessionChanged;
@@ -57,6 +65,12 @@
     private void OnSessionChanged()
     {
         InvokeAsync(StateHasChanged);
+    }
+
+    private void Logout()
+    {
+        Session.Clear();
+        Nav.NavigateTo("/login", replace: true);
     }
 
     public void Dispose()

@@ -1,21 +1,12 @@
 ﻿@inherits LayoutComponentBase
 
-<MudThemeProvider />
-<MudPopoverProvider />
-<MudDialogProvider />
-<MudSnackbarProvider />
+<MudThemeProvider Theme="@_theme" IsDarkMode="false" />
 
-<div class="page">
-    <div class="sidebar">
-        <NavMenu />
-    </div>
+<div class="page app-shell">
+    <NavMenu />
 
-    <main>
-        <div class="top-row px-4">
-            <a href="https://learn.microsoft.com/aspnet/core/" target="_blank">About</a>
-        </div>
-
-        <article class="content px-4">
+    <main class="main-stage">
+        <article class="content">
             @Body
         </article>
     </main>
@@ -24,5 +15,57 @@
 <div id="blazor-error-ui">
     An unhandled error has occurred.
     <a href="" class="reload">Reload</a>
-    <a class="dismiss">🗙</a>
+    <a class="dismiss">x</a>
 </div>
+
+@code {
+    private readonly MudTheme _theme = new()
+    {
+        PaletteLight = new PaletteLight
+        {
+            Primary = "#4F46E5",
+            Secondary = "#0F766E",
+            Tertiary = "#7C3AED",
+            Background = "#F8FAFC",
+            Surface = "#FFFFFF",
+            AppbarBackground = "rgba(255,255,255,0.86)",
+            AppbarText = "#312E81",
+            DrawerBackground = "#FFFFFF",
+            DrawerText = "#334155",
+            DrawerIcon = "#4F46E5",
+            TextPrimary = "#0F172A",
+            TextSecondary = "#64748B",
+            LinesDefault = "#E2E8F0",
+            Info = "#0284C7",
+            Success = "#10B981",
+            Warning = "#F59E0B",
+            Error = "#E11D48"
+        },
+        Typography = new Typography
+        {
+            Default = new DefaultTypography
+            {
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "Segoe UI", "sans-serif" },
+                FontSize = ".93rem"
+            },
+            H4 = new H4Typography
+            {
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "sans-serif" },
+                FontWeight = "800",
+                LetterSpacing = "-.035em"
+            },
+            H5 = new H5Typography
+            {
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "sans-serif" },
+                FontWeight = "800",
+                LetterSpacing = "-.025em"
+            },
+            H6 = new H6Typography
+            {
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "sans-serif" },
+                FontWeight = "800",
+                LetterSpacing = "-.015em"
+            }
+        }
+    };
+}

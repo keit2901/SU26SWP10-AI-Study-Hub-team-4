@@ -31,12 +31,13 @@
                               Label="Description"
                               Variant="Variant.Outlined"
                               Lines="4" />
+                <HumanCheck @ref="_humanCheck" ValidChanged="OnHumanCheckChanged" />
             </MudStack>
         </MudForm>
     </ChildContent>
     <FooterContent>
         <MudButton Variant="Variant.Text" OnClick="CancelAsync">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!_isValid)" OnClick="SaveAsync">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!_isValid || !_humanCheckValid)" OnClick="SaveAsync">
             Save subject
         </MudButton>
     </FooterContent>
@@ -49,7 +50,9 @@
     [Parameter] public EventCallback<SubjectFormModel> Saved { get; set; }
 
     private MudForm? _form;
+    private HumanCheck? _humanCheck;
     private bool _isValid;
+    private bool _humanCheckValid;
     private SubjectFormModel _model = SubjectFormModel.New();
 
     private string SheetTitle => _model.Id == Guid.Empty ? "Create subject" : "Edit subject";
@@ -68,6 +71,12 @@
         }
     }
 
+    private Task OnHumanCheckChanged(bool valid)
+    {
+        _humanCheckValid = valid;
+        return Task.CompletedTask;
+    }
+
     private async Task SaveAsync()
     {
         if (_form is null)
@@ -76,17 +85,26 @@
         }
 
         await _form.ValidateAsync();
-        if (!_form.IsValid)
+        var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
+        if (!_form.IsValid || !humanOk)
         {
             return;
         }
 
         await Saved.InvokeAsync(_model.Clone());
+        if (_humanCheck is not null)
+        {
+            await _humanCheck.ResetAsync();
+        }
         await OpenChanged.InvokeAsync(false);
     }
 
     private async Task CancelAsync()
     {
+        if (_humanCheck is not null)
+        {
+            await _humanCheck.ResetAsync();
+        }
         await OpenChanged.InvokeAsync(false);
     }
 

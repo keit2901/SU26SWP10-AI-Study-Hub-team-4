@@ -1,10 +1,10 @@
 # AI Study Hub v2 — Resume Pack
 
 > **Mục đích:** Mở session mới với agent (Claude / OpenCode / Kiro / khác) → paste/đính kèm file này làm context đầu tiên → agent có đủ thông tin để **không hỏi lại** và **không phá tiến độ**.
-> **Cập nhật lần cuối:** 2026-05-24 (sau migration sang Supabase Local Phase 1 + fix D6 `/me` email)
+> **Cập nhật lần cuối:** 2026-05-26 (sau Sprint 1 D1-D6 code-complete — D6 folder picker + document/folder E2E smoke PASS, commit `2a0c5d5`; parallel AI/RAG backend present uncommitted)
 > **Người maintain:** Kiệt — PM Team 4 SWP391 SU26
-> **Phase hoàn tất:** Auth Phase 1 — đã migrate sang Supabase Local GoTrue, ready cho Phase 2 (Document Management + RAG)
-> **File companion:** `06_Session_2026-05-24_Build_Handoff.md` (chi tiết session migration), `05_Supabase_Local_Migration_Plan.md` (plan v-final)
+> **Phase hoàn tất:** Phase 1 Auth (GoTrue) + **Sprint 1 D1-D6 code-complete** của Phase 2: schema + Storage bucket + document backend CRUD + signed download + Blazor upload/list/detail/delete + folder picker/move-to-folder + NUnit coverage. Sprint 2 RAG backend work đang xuất hiện song song, chưa close/commit chính thức.
+> **File companion:** `previous_session/_CURRENT_SESSION.md` (session 15 live — D6 folder picker), `_CURRENT_SESSION_AI_CHATBOT_RAG.md` (parallel AI/RAG live), `14_Session_2026-05-26_Sprint1_D5_Handoff.md` (D5 backend tests), `07_Phase2_Document_RAG_Plan.md` (Phase 2 plan v-final), `rule.md` (session-progress rule).
 
 ---
 
@@ -81,12 +81,14 @@ Quy tắc bất di bất dịch cho agent:
 AI_Study_Hub_v2/
 ├── AI_Study_Hub_v2.csproj          ← packages: EF Core 8.0.10, Npgsql 8.0.10,
 │                                     Pgvector.EntityFrameworkCore 0.2.0,
-│                                     JwtBearer 8.0.10, MudBlazor 9.4.0
+│                                     JwtBearer 8.0.10, MudBlazor 9.4.0,
+│                                     Microsoft.SemanticKernel 1.76.0 (parallel RAG)
 │                                     (BỎ BCrypt.Net-Next sau migration)
 ├── AI_Study_Hub_v2.sln
 ├── Program.cs                       ← DI, JwtBearer (validate GoTrue token), EF migrate-on-startup,
 │                                     OnTokenValidated map app_metadata.role → ClaimTypes.Role,
-│                                     SeedDefaultAdminAsync (gọi GoTrue admin API + insert public.users)
+│                                     SeedDefaultAdminAsync; +FolderService/FolderApiClient (D6)
+│                                     +Groq/SemanticKernel AI chat DI (parallel RAG)
 ├── appsettings.json                 ← prod skeleton (no secrets)
 ├── appsettings.Development.json     ← dev: connstr port 5432 DB=postgres,
 │                                     Supabase:{Url, JwtIssuer, JwtAudience, JwtSecret(secret),
@@ -96,35 +98,76 @@ AI_Study_Hub_v2/
 ├── Properties/launchSettings.json
 ├── Components/                      ← (như cũ — Blazor pages chưa rework cho refresh persistence)
 ├── Controllers/
-│   └── AuthController.cs            ← /api/auth/{register,login,refresh,logout,me}
-│                                     Logout đọc access token từ HttpContext.GetTokenAsync,
-│                                     Me đọc supabaseUserId từ sub claim + email từ ClaimTypes.Email
+│   ├── AuthController.cs            ← /api/auth/{register,login,refresh,logout,me}
+│   │                                  Logout đọc access token từ HttpContext.GetTokenAsync,
+│   │                                  Me đọc supabaseUserId từ sub claim + email từ ClaimTypes.Email
+│   ├── DocumentsController.cs       ← [Authorize] /api/documents/{upload,GET list,GET {id},
+│   │                                  PUT {id}/folder, DELETE {id}}; 50MB upload limits
+│   ├── FoldersController.cs         ← D6 [Authorize] /api/folders CRUD for folder picker
+│   └── AiChatController.cs          ← parallel RAG `POST /api/ai/chat/ask` (uncommitted)
 ├── Data/
-│   ├── AppDbContext.cs              ← bỏ DbSet<RefreshToken>, dùng pgcrypto thay uuid-ossp
+│   ├── AppDbContext.cs              ← bỏ DbSet<RefreshToken>, dùng pgcrypto thay uuid-ossp;
+│   │                                  + DbSet<Folder>, DbSet<Document>, DbSet<DocumentChunk> (Phase 2)
 │   ├── AppDbContextFactory.cs       ← AddUserSecrets, throw rõ khi thiếu connstr
-│   ├── Entities/{User,Role}.cs      ← User: bỏ Email/PasswordHash/RefreshTokens,
-│   │                                  add SupabaseUserId Guid + index unique
-│   └── Configurations/{User,Role}Configuration.cs
+│   ├── Entities/
+│   │   ├── User.cs, Role.cs         ← (User: bỏ Email/PasswordHash/RefreshTokens, add SupabaseUserId Guid)
+│   │   ├── Folder.cs                ← Phase 2: id, owner_id (auth.users), parent_id (self FK), name, created_at
+│   │   ├── Document.cs              ← Phase 2: id, owner_id, folder_id?, file_name, mime, size_bytes,
+│   │   │                              storage_path, status (enum: 0=Uploading,1=Ready,2=Failed),
+│   │   │                              subject_code, semester, created_at, updated_at
+│   │   └── DocumentChunk.cs         ← Phase 2: id, document_id, chunk_index, page, content,
+│   │                                  embedding vector(384) (pgvector), created_at
+│   └── Configurations/
+│       ├── User/RoleConfiguration.cs
+│       ├── FolderConfiguration.cs   ← self-FK Restrict, name unique per (owner, parent)
+│       ├── DocumentConfiguration.cs ← composite ix_documents_subject_semester for filter
+│       └── DocumentChunkConfiguration.cs ← unique (document_id, chunk_index); ivfflat index via raw SQL
 ├── Migrations/
-│   ├── 20260524090408_InitialSupabaseAuth.cs    ← migration mới sạch
+│   ├── 20260524090408_InitialSupabaseAuth.cs
 │   ├── 20260524090408_InitialSupabaseAuth.Designer.cs
+│   ├── 20260525143314_AddDocumentSchema.cs    ← Phase 2 schema + ivfflat cosine + RLS enable
+│   ├── 20260525143314_AddDocumentSchema.Designer.cs
 │   └── AppDbContextModelSnapshot.cs
-├── Dtos/AuthDtos.cs                 ← (như cũ — RegisterRequest, LoginRequest, RefreshTokenRequest,
-│                                     AuthResponse, UserDto, ApiErrorResponse)
+├── Dtos/
+│   ├── AuthDtos.cs                  ← (như cũ)
+│   ├── DocumentDtos.cs              ← UploadDocumentRequest, DocumentDto, DocumentListQuery,
+│   │                                  MoveDocumentFolderRequest, FolderDto/Create/Update requests
+│   └── AiChatDtos.cs                ← parallel RAG ask/answer/citation DTOs (uncommitted)
 ├── Options/
 │   ├── SupabaseOptions.cs           ← Url, JwtIssuer, JwtAudience, JwtSecret, AnonKey, ServiceRoleKey
+│   ├── GroqOptions.cs               ← parallel RAG Groq/Semantic Kernel config (no API key in file)
 │   └── SeedOptions.cs               ← DefaultAdmin { Email, Username, FullName, Password }
 │                                     (BỎ JwtOptions.cs sau migration)
 ├── Services/
-│   ├── AuthException.cs             ← tách từ RefreshTokenService cũ
+│   ├── AuthException.cs
+│   ├── DocumentApiException.cs      ← Phase 2: thrown by DocumentApiClient (status + code + message)
 │   ├── Supabase/
-│   │   ├── IGoTrueClient.cs         ← interface GoTrue HTTP wrapper
-│   │   ├── GoTrueClient.cs          ← raw HttpClient (signup, signInWithPassword, refresh,
-│   │   │                              signOut, admin getUser/createUser)
-│   │   └── GoTrueModels.cs          ← DTOs cho GoTrue API
-│   ├── SupabaseAuthService.cs       ← IAuthService impl mới (mirror profile vào public.users)
-│   ├── AuthApiClient.cs             ← typed HttpClient cho Blazor pages
+│   │   ├── IGoTrueClient.cs / GoTrueClient.cs / GoTrueModels.cs
+│   │   └── SupabaseStorageClient.cs ← POST object/{bucket}/{path} upload, POST object/sign signed URL,
+│   │                                  DELETE idempotent (404 swallow); composes <supabase_url>/storage/v1/<signedURL>
+│   ├── SupabaseAuthService.cs
+│   ├── DocumentService.cs           ← Phase 2: const MaxFileSizeBytes=50MB, SignedUrlTtlSeconds=300,
+│   │                                  BucketName="documents"; deterministic path users/{uid_n}/{yyyy}/{guid_n}-{slug};
+│   │                                  best-effort storage cleanup if DB insert fails after upload;
+│   │                                  D6 MoveToFolderAsync validates folder ownership/null loose move
+│   ├── FolderService.cs             ← D6 folder CRUD + owner checks + duplicate-name guard
+│   ├── SemanticKernelRagChatService.cs ← parallel RAG retrieval + SK/Groq generation (uncommitted)
+│   ├── AuthApiClient.cs
+│   ├── DocumentApiClient.cs         ← Phase 2 typed HttpClient for Upload/List/Get/Delete + D6 MoveToFolder
+│   ├── FolderApiClient.cs           ← D6 typed HttpClient for `/api/folders`
 │   └── AuthSessionState.cs          ← scoped per-circuit holder (in-memory, demo-only)
+├── Components/
+│   ├── Layout/NavMenu.razor         ← + Study workspace label, My documents, Upload document links
+│   └── Pages/
+│       ├── DocumentUpload.razor     ← D3 upload form + D6 folder dropdown/create-inline;
+│       │                              validates SubjectCode/Semester, 50MB + MIME whitelist,
+│       │                              keeps selected folder for batch uploads
+│       ├── DocumentList.razor       ← D4 list/delete + D6 folder filter, folder column,
+│       │                              quick folder creation, folder counts refresh after delete
+│       ├── DocumentDetail.razor     ← D4 detail/download/delete + D6 folder name display
+│       │                              and move-to-folder / loose-document control
+│       ├── Home.razor               ← Dashboard/Home UI polish present in workspace (parallel)
+│       └── Home.razor.css           ← companion Home CSS (parallel, uncommitted)
 └── wwwroot/                         ← (như cũ)
 
 AI_Study_Hub_v2.Tests/
@@ -132,15 +175,20 @@ AI_Study_Hub_v2.Tests/
 │                                     EF Core InMemory 8.0.10 + Mvc.Testing 8.0.10 + coverlet
 ├── SmokeTests.cs                    ← 3 sanity tests (pipeline OK, project ref compile)
 ├── Support/
-│   └── TestDb.cs                    ← InMemory AppDbContext factory, pre-seed 2 roles
+│   └── TestDb.cs                    ← InMemory AppDbContext factory, pre-seed 2 roles;
+│                                     +CreateInMemoryWithDocuments() (D5), +RAG context (parallel)
 ├── Services/
-│   └── SupabaseAuthServiceTests.cs  ← 18 unit tests cover Register/Login/Refresh/Logout/Me
-│                                     mock IGoTrueClient, EF InMemory cho public.users
+│   ├── SupabaseAuthServiceTests.cs  ← 18 unit tests cover Register/Login/Refresh/Logout/Me
+│   ├── DocumentServiceTests.cs      ← 33 tests after D6 (29 D5 pass + 3 move tests + 1 skip)
+│   ├── FolderServiceTests.cs        ← D6 7 tests: list/counts, create/update/delete, 403/404/409
+│   └── SemanticKernelRagChatServiceTests.cs ← parallel RAG 5 tests (uncommitted)
 └── Controllers/
-    └── AuthControllerTests.cs       ← 17 tests cover claim parsing (sub/email fallback),
-                                     AuthException → status code mapping, Bearer header,
-                                     stub IAuthenticationService cho HttpContext.GetTokenAsync
+    ├── AuthControllerTests.cs       ← 17 tests cover claim parsing, AuthException mapping
+    ├── DocumentsControllerTests.cs  ← 22 tests after D6 (+2 move-to-folder endpoint tests)
+    └── FoldersControllerTests.cs    ← D6 6 tests: list/create/update/delete + 401/mapping
 ```
+
+> **Coverage status:** D5 added 50 document tests; D6 adds 18 folder/move tests. Combined workspace (D6 + parallel RAG) now verifies at **110 passed + 1 skipped + 0 failed**. D2 and D6 live smoke gate the Storage/Postgres integration surface.
 
 **Files đã DELETE sau migration (không còn trên disk):**
 `Services/PasswordHasher.cs`, `Services/JwtTokenService.cs`, `Services/RefreshTokenService.cs`, `Services/AuthService.cs`, `Data/Entities/RefreshToken.cs`, `Data/Configurations/RefreshTokenConfiguration.cs`, `Options/JwtOptions.cs`, migration cũ `20260523183927_InitialCreate.*`.
@@ -148,12 +196,17 @@ AI_Study_Hub_v2.Tests/
 ### 3.2 Build status
 
 ```
-dotnet build (cwd: AI_Study_Hub_v2)
-→ Build succeeded. 0 Warning(s). 0 Error(s).
-dotnet test → Passed! 38/38 (Duration: ~870 ms)
+dotnet build (sln)
+→ Build succeeded. 0 Warning(s). 0 Error(s).  (combined workspace final verify 2026-05-26T11:58Z)
+dotnet test (sln) → Passed! 110/111 + 1 skipped (Duration: ~1s)
             ├─ SmokeTests: 3 (pipeline sanity)
-            ├─ SupabaseAuthServiceTests: 18 (Register/Login/Refresh/Logout/Me happy + error paths)
-            └─ AuthControllerTests: 17 (claim parsing + AuthException mapping + Bearer header)
+            ├─ SupabaseAuthServiceTests: 18
+            ├─ AuthControllerTests: 17
+            ├─ DocumentServiceTests: 33 (includes D6 move-to-folder; 1 documented ILike skip)
+            ├─ DocumentsControllerTests: 22 (includes D6 move endpoint)
+            ├─ FolderServiceTests: 7
+            ├─ FoldersControllerTests: 6
+            └─ SemanticKernelRagChatServiceTests: 5 (parallel RAG)
 ```
 
 ### 3.3 Database state (Postgres `postgres` DB on container `supabase-db` @ localhost:5432)
@@ -165,16 +218,33 @@ Tables in `public`:
 public | __EFMigrationsHistory | table | postgres
 public | roles                 | table | postgres   -- RLS ON
 public | users                 | table | postgres   -- RLS ON
+public | folders               | table | postgres   -- RLS ON  (Phase 2 D1)
+public | documents             | table | postgres   -- RLS ON  (Phase 2 D1)
+public | document_chunks       | table | postgres   -- RLS ON  (Phase 2 D1)
 ```
 
-Migrations applied: `20260524090408_InitialSupabaseAuth`
+Migrations applied:
+- `20260524090408_InitialSupabaseAuth`
+- `20260525143314_AddDocumentSchema`  ← Phase 2 D1 (folders + documents + document_chunks + ivfflat cosine `lists=100` + RLS enable)
 
 Seeded data:
 - 2 roles: `Admin`, `Student` (`public.roles`)
 - 1 admin: `admin@aistudyhub.local` (auth.users + public.users mirror, role=Admin)
-- DB clean — test student `student4090@aistudyhub.local` đã xoá 2026-05-24 (K3 trong file 06).
+- DB clean — `public.documents`, `public.document_chunks`, `public.folders` all 0 rows after D6 document+folder E2E cleanup (2026-05-26T12:20Z smoke).
+
+Storage bucket (`http://localhost:8000/storage/v1`):
+- `documents` — private=true, file_size_limit=50MB, 5 allowed MIME (pdf, docx, pptx, doc, ppt — verified live via Storage REST 2026-05-26T09:43Z; matches `DocumentService.AllowedMimeTypes` + `DocumentApiClient.AllowedMimeTypes` + `DocumentUpload.razor` AcceptAttr 4-way). Created via Storage REST POST `/bucket`.
 
 Extensions enabled in `postgres` DB: `vector 0.8.0`, `pgcrypto`, `uuid-ossp` (sẵn từ image).
+
+Indexes on `public.document_chunks`:
+- `PK_document_chunks` (PK)
+- `IX_document_chunks_document_id` (FK index)
+- `IX_document_chunks_document_id_chunk_index` (unique composite)
+- `ix_document_chunks_embedding` (ivfflat cosine, lists=100 — added via raw SQL in migration)
+
+Index on `public.documents`:
+- `ix_documents_subject_semester` (composite for filter perf)
 
 ### 3.4 User Secrets (project `f7443cc6-0949-4e12-9bab-2badfa96be5a`)
 
@@ -204,7 +274,13 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | 7 | User Secrets + smoke test 5 endpoints + Blazor SSR pages | ✅ Done |
 | 7b | **Migrate sang Supabase Local Phase 1 (15/16 step plan v-final)** | ✅ Done 2026-05-24 |
 | 7c | **Fix D6 — `/me` trả email từ JWT claim** | ✅ Done 2026-05-24 |
-| 8 | Phase 2: Document upload + Supabase Storage + chunking + embeddings + RAG | ⏳ Pending |
+| 8 | Phase 2 Sprint 1 D1 — Schema + Storage bucket (folders, documents, document_chunks, ivfflat, RLS, bucket `documents`) | ✅ Done 2026-05-25 |
+| 9 | Phase 2 Sprint 1 D2 — Document backend pipeline (DocumentsController + DocumentService + SupabaseStorageClient) — code + smoke E2E | ✅ Done 2026-05-26 (smoke 8/8 GREEN) |
+| 10 | Phase 2 Sprint 1 D3 — Blazor upload form (`DocumentApiClient` + `/documents/upload` page + nav link) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred to Kiệt) |
+| 11 | Phase 2 Sprint 1 D4 — List/detail/delete UI (`/documents` + `/documents/{id}`) | ✅ Done 2026-05-26 (code-complete; manual UI smoke deferred; folder picker split → D6) |
+| 12 | Phase 2 Sprint 1 D5 — Backend tests for DocumentService + DocumentsController (SCRUM-28) | ✅ Done 2026-05-26 (50 new tests, 87/88 pass + 1 documented skip) |
+| 13 | Phase 2 Sprint 1 D6 — Demo polish + Folder picker (`FoldersController` + `IFolderService` + `FolderApiClient` + dropdown/filter/move UI) | ✅ Done 2026-05-26 commit `2a0c5d5` (E2E smoke PASS) |
+| 14 | Phase 2 Sprint 2 — Chunking + embeddings + RAG retrieve + Groq generation | ⏳ Pending (parallel AI/RAG backend surface present uncommitted) |
 
 ### 4.1 Smoke Test Results — Phase 1 (Supabase GoTrue)
 
@@ -221,6 +297,76 @@ Seed:DefaultAdmin:Password   = <generated, lưu ở C:\Users\pc\AppData\Local\Te
 | 9 | `dotnet test` | NUnit | 3/3 pass |
 
 > **Deviation D5 chi tiết:** GoTrue có `GOTRUE_REFRESH_TOKEN_REUSE_INTERVAL` mặc định 10s — RT cũ vẫn được chấp nhận trong cửa sổ này (cover network retry). Sau cửa sổ → 401 + chain-revoke ALL RTs của user (bảo mật hơn behavior cũ). Có thể set `=0` trong `infra/supabase/.env` nếu muốn match đúng plan v-final.
+
+### 4.2 Smoke Test Results — Sprint 1 D2 (Documents backend, 2026-05-26T04:19Z)
+
+| # | Step | Endpoint / Action | Result |
+|---|---|---|---|
+| 1 | Boot app | `dotnet run --urls http://localhost:5240` | (re-used existing PID 9928 already running, post-D1+D2 commit) |
+| 2 | Login admin | `POST /api/auth/login` | 200, accessToken returned |
+| 3 | Upload | `POST /api/documents/upload` (multipart, `smoke_small.pdf` 535B, SWP391/SU26) | 201, id=`a8182289-…`, status=Ready |
+| 4 | List | `GET /api/documents` | 1 entry, matches uploaded |
+| 5 | Get one | `GET /api/documents/{id}` | DTO + 5min signed URL pointing to `localhost:8000/storage/v1/object/sign/documents/users/{uid_n}/2026/{guid_n}-smoke_small.pdf?token=…` |
+| 6 | Anon download | GET signed URL (no auth header) | 200, 535 bytes, `Content-Type: application/pdf`, byte-equal to upload (Kong storage route reachable) |
+| 7 | Delete | `DELETE /api/documents/{id}` | 204 |
+| 8 | Cleanup verify | `GET /api/documents`, Storage REST `/object/list/documents`, `psql SELECT count(*) FROM public.documents` | API=0, bucket=0, DB=0 |
+
+> Both D2 known-unknowns from handoff 11 §3.1 cleared:
+> - `[FromForm] UploadDocumentRequest + IFormFile file` binding works on same multipart body (#1).
+> - Signed URL from Kong is reachable from browser-equivalent client without auth header (#4).
+> Commit: `0245045 test(documents): D2 smoke E2E pass — upload/list/get/signed-download/delete verified live`.
+
+### 4.3 D3 Blazor Upload Form (2026-05-26T04:27Z, manual browser UI smoke deferred)
+
+| Item | Value |
+|---|---|
+| Page | `/documents/upload` (`@rendermode InteractiveServer`, auth-gated) |
+| Validation | Client: `SubjectCode` `^[A-Z]{3}[0-9]{3}$`, `Semester` `^(SP|SU|FA|WI)[0-9]{2}$`, 50MB cap, MIME whitelist (with extension fallback for browsers dropping Office MIME) |
+| Upload mechanism | `IBrowserFile.OpenReadStream(50MB)` → `DocumentApiClient.UploadAsync` |
+| MudFileUpload | v9 `Hidden=true` + companion `MudButton OnClick=OpenFilePickerAsync` (v8 `<ActivatorContent>` removed in 9.4) |
+| Error mapping | `DocumentApiException.StatusCode` 401/413/415 → friendly `MudAlert` copy |
+| Build/Test gate | 0 warning, 0 error; 38/38 tests pass (no regression) |
+| Commit | `8454b0d feat(documents): D3 Blazor upload form (SCRUM-12/26) — code-complete` |
+
+### 4.4 D4 Blazor List/Detail/Delete UI (2026-05-26T09:34Z, manual browser UI smoke deferred)
+
+| Item | Value |
+|---|---|
+| List page | `/documents` (`@rendermode InteractiveServer`, auth-gated) — `MudTable` with `subject/semester/text` filters + `MudTablePager` (10/25/50/100); `ConfirmDialog`-driven delete; status chips, MIME-aware icons, file-size formatter |
+| Detail page | `/documents/{Id:guid}` — detail card; 5min signed-URL "Open file" button + "Get fresh link" refresh; delete via ConfirmDialog → nav back to `/documents`; `OnParametersSetAsync` reload on id change |
+| Client API | `DocumentApiClient.GetAsync(id)` + `DocumentApiClient.DeleteAsync(id)` (added) |
+| NavMenu | + "My documents" link before existing "Upload document" (auth-only) |
+| Reused | `Components/Admin/Shared/ConfirmDialog.razor` (pre-existing, supports type-to-confirm pattern) |
+| Error mapping | `DocumentApiException.StatusCode` 401 (clear session + /login), 403, 404, fallback `ex.Message`; network errors via `Snackbar.Severity.Error` |
+| Build/Test gate | 0 warning, 0 error; 38/38 tests pass (no regression) |
+| Commit | `50a8122 feat(documents): D4 list/detail/delete UI (SCRUM-15/25) — code-complete` |
+| Deferred | Folder picker → D6 (needs `FoldersController` + `IFolderService` + `FolderApiClient` + dropdown); manual browser smoke → Kiệt |
+| Origin note | Code came in as drift between session 12 close (07:20Z) and session 13 open (07:33Z) — reviewed, build/test green, accepted by Kiệt 09:33Z (D-2026-05-26-02). Lesson: extend session-open verify to include `git status --porcelain` mismatch check, not just tree-clean. |
+
+### 4.5 D5 Backend tests for DocumentService + DocumentsController (2026-05-26T09:54Z)
+
+| Item | Value |
+|---|---|
+| Service tests | `DocumentServiceTests.cs` — 30 NUnit tests (29 pass, 1 documented skip): Upload happy + filename sanitisation + 4 error branches (404 user_not_found, 403 user_inactive, 400 empty_file, 413 file_too_large) + 415 mime matrix x4 + allowed-mime regression matrix x5 + folder ownership 404/accept + storage upload throws → bubble + zero rows; List filter/order/isolation; GetById happy w/ signed URL + 404; Delete happy + 404 + storage 503 still removes row |
+| Controller tests | `DocumentsControllerTests.cs` — 20 NUnit tests: Upload (claim parsing NameId + sub fallback, missing_file 400 for null + empty file, missing_user_id 401 on non-GUID sub, DocumentException matrix x6 → status+code mapping, unexpected → 500); List/GetById/Delete (happy + DocumentException → status + unexpected → 500) |
+| Test harness | `Support/TestDb.cs` extended with `CreateInMemoryWithDocuments()` + `TestDocsDbContext` — keeps Document + Folder mapped (only DocumentChunk Ignored for pgvector); InMemory persists Document.Status enum as int |
+| Documented gap | `EF.Functions.ILike` Q-text branch in ListAsync has no InMemory translation → `[Ignore]`-d with reason; D2 live smoke covers it |
+| Build/Test gate | 0 warning, 0 error; **87/88 pass + 1 skipped, 0 failed** in 1.8s (was 38/38) |
+| Commit | `9dce4a0 test(documents): D5 backend tests for DocumentService + DocumentsController (SCRUM-28)` |
+
+### 4.6 D6 Folder picker + demo polish (2026-05-26T12:20Z, committed `2a0c5d5`)
+
+| Item | Value |
+|---|---|
+| Backend | `FoldersController` + `IFolderService`/`FolderService` for authorized folder list/create/update/delete; duplicate folder name returns 409; inactive user returns 403; owner isolation returns 404 |
+| Document move | `PUT /api/documents/{id}/folder` + `DocumentService.MoveToFolderAsync` moves document into owned folder or `null` loose document |
+| Blazor upload | `/documents/upload` loads folders, offers folder dropdown, inline folder creation, and keeps selected folder for batch uploads |
+| Blazor list | `/documents` adds folder filter, folder column, quick folder creation, and folder count refresh after delete |
+| Blazor detail | `/documents/{id}` displays folder name and supports move-to-folder / move-to-loose |
+| Tests | +18 D6 tests: `FolderServiceTests` 7, `FoldersControllerTests` 6, `DocumentServiceTests` +3 move tests, `DocumentsControllerTests` +2 move endpoint tests |
+| E2E smoke | PASS: admin login -> create folder -> upload PDF with FolderId -> list folder -> detail signed URL -> move to loose -> delete doc/folder -> final absent |
+| Build/Test gate | 0 warning, 0 error; combined workspace **110 passed + 1 skipped + 0 failed** |
+| Commit | `2a0c5d5 feat(documents): D6 folder picker and move-to-folder flow` |
 
 ---
 
@@ -359,7 +505,7 @@ curl.exe -sS -X POST -H "Authorization: Bearer $($r2.accessToken)" http://localh
 
 ## 9. Schema (Hiện Có Trong DB)
 
-Phase 1 chỉ có 2 bảng app trong `public.*` (profile mirror + role). Identity (password, refresh, session) sống trong `auth.*` do GoTrue quản lý — **app KHÔNG đụng trực tiếp**, mọi thao tác qua HTTP API. Schema 14-bảng đầy đủ là Phase 2+, **chưa add** vào model.
+Phase 1 mirror profile + Phase 2 D1 schema (folders / documents / document_chunks). Identity (password, refresh, session) sống trong `auth.*` do GoTrue quản lý — **app KHÔNG đụng trực tiếp**, mọi thao tác qua HTTP API. Schema 14-bảng đầy đủ là Phase 2+ Sprint 2+ (chunks done, citations / sessions / messages / quiz / token-budget chưa add).
 
 ```sql
 -- public.roles (RLS ON)
@@ -380,11 +526,49 @@ created_at          TIMESTAMPTZ NOT NULL
 updated_at          TIMESTAMPTZ NOT NULL
 -- index unique trên supabase_user_id
 
+-- public.folders (RLS ON) — Phase 2 D1
+id           UUID PRIMARY KEY DEFAULT gen_random_uuid()
+owner_id     UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+parent_id    UUID NULL REFERENCES public.folders(id) ON DELETE Restrict
+name         TEXT NOT NULL
+created_at   TIMESTAMPTZ NOT NULL
+-- unique (owner_id, parent_id, name)
+
+-- public.documents (RLS ON) — Phase 2 D1
+id              UUID PRIMARY KEY DEFAULT gen_random_uuid()
+owner_id        UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE
+folder_id       UUID NULL REFERENCES public.folders(id) ON DELETE SET NULL
+file_name       TEXT NOT NULL
+mime_type       TEXT NOT NULL
+size_bytes      BIGINT NOT NULL
+storage_path    TEXT NOT NULL  -- "users/{uid_n}/{yyyy}/{guid_n}-{slug}"
+status          INT NOT NULL  -- 0=Uploading, 1=Ready, 2=Failed
+subject_code    TEXT NOT NULL  -- e.g. SWP391
+semester        TEXT NOT NULL  -- e.g. SU26
+created_at      TIMESTAMPTZ NOT NULL
+updated_at      TIMESTAMPTZ NOT NULL
+-- composite ix_documents_subject_semester (subject_code, semester)
+
+-- public.document_chunks (RLS ON) — Phase 2 D1 (populated in Sprint 2)
+id            UUID PRIMARY KEY DEFAULT gen_random_uuid()
+document_id   UUID NOT NULL REFERENCES public.documents(id) ON DELETE CASCADE
+chunk_index   INT NOT NULL
+page          INT NULL
+content       TEXT NOT NULL
+embedding     vector(384) NULL  -- pgvector; ivfflat cosine index lists=100
+created_at    TIMESTAMPTZ NOT NULL
+-- unique (document_id, chunk_index)
+-- ix_document_chunks_embedding USING ivfflat (embedding vector_cosine_ops) WITH (lists=100)
+
 -- auth.* (GoTrue managed — đừng tạo migration đụng vào)
 auth.users          -- id, email, encrypted_password, email_confirmed_at, raw_app_meta_data, raw_user_meta_data, ...
 auth.identities     -- provider linkage
 auth.refresh_tokens -- rotation + reuse detection (10s grace window)
 auth.sessions       -- aal level, factor_id
+
+-- storage.* (Supabase Storage)
+-- bucket 'documents': private=true, file_size_limit=50MB,
+--   allowed_mime_types = pdf, doc, docx, txt, md
 ```
 
 ---
@@ -466,21 +650,33 @@ Nếu **app chưa chạy** (5240 not listening): chỉ là chưa start, không p
 
 ---
 
-## 12. Phase 2 — Backlog (chưa làm, để session sau lên plan chi tiết)
+## 12. Phase 2 — Backlog (Sprint 1 D1-D6 code-complete, Sprint 2 RAG next)
 
-Sprint 2 scope:
-- Document upload qua Blazor → **Supabase Storage** (bật `--profile phase2`)
-- Chunking strategy (size, overlap, page metadata cho citation)
-- Embeddings → lưu pgvector cột `chunks.embedding vector(N)`
-- Vector search endpoint
-- RAG pipeline cơ bản (retrieve → prompt → Groq Llama 3.1 free tier → response)
-- Add Schema bảng `Folders, Documents, DocumentChunks` qua EF migration mới (đặt tên `AddDocumentSchema`)
+### Sprint 1 — Document Management (6/6 ✅ code-complete)
 
-Trước khi bắt đầu Phase 2, cần Kiệt confirm:
-- Supabase Storage bucket: tên, public/private, size limit
+| Day | Scope | Status |
+|---|---|---|
+| D1 | EF schema (folders/documents/document_chunks) + ivfflat + RLS + Storage bucket `documents` | ✅ commit `c2d36cb` |
+| D2 | Backend `DocumentsController` + `DocumentService` + `SupabaseStorageClient` + smoke E2E live | ✅ commit `0245045` (smoke green) |
+| D3 | Blazor `DocumentApiClient` + `/documents/upload` page + nav link | ✅ commit `8454b0d` (manual UI smoke deferred) |
+| D4 | Blazor list/detail/delete UI (`/documents` + `/documents/{id}`) — `MudTable` + filters + `ConfirmDialog` delete + signed-URL "Open file" | ✅ commit `50a8122` (manual UI smoke deferred; folder picker split → D6) |
+| D5 | NUnit tests for `DocumentService` (unit, mock IStorageClient + EF InMemory) + `DocumentsController` (unit-level claim + exception mapping) — SCRUM-28 | ✅ commit `9dce4a0` (50 new tests, 87/88 pass + 1 documented skip) |
+| D6 | Demo polish + folder picker (`FoldersController`, `FolderService`, `FolderApiClient`, Upload/List/Detail dropdown/filter/move) | ✅ commit `2a0c5d5`; E2E smoke PASS 2026-05-26T12:20Z |
+
+### Sprint 2 — RAG pipeline (planned)
+
+- Chunking ingestion worker (size 500-1000 tokens, 10-20% overlap, page metadata for citation) — triggered by `documents.status=Ready`
+- Embeddings via local sentence-transformers `all-MiniLM-L6-v2` (384-dim, matches schema) — confirm with Kiệt before locking
+- Vector search endpoint (`POST /api/rag/search` — top-k cosine, return chunks + page citations)
+- Generation via Groq Llama 3.1 free tier — prompt template with retrieved chunks
+- Token-budget tracking → `public.users.total_tokens_used`
+- Add bảng `chat_sessions, chat_messages, citations` qua migration `AddChatSchema`
+
+Trước khi bắt đầu Sprint 2, cần Kiệt confirm:
+- Embedding model + dim — schema khoá `vector(384)`, đổi model phải migration
 - Groq API key đã có chưa, quota free tier
-- Embedding model + N của `vector(N)` (Groq embed, sentence-transformers, ...)
-- Chunking config (size 500/1000 tokens? overlap 10/20%?)
+- Chunking config (size, overlap) cuối cùng
+- Citation format (page-level? chunk-level? cả hai?)
 
 ---
 
@@ -491,11 +687,22 @@ Trước khi bắt đầu Phase 2, cần Kiệt confirm:
 | `previous_session/02_Resume_Pack.md` | **File này** — primary resume context, đọc mỗi session mới |
 | `previous_session/01_Architecture_Reference.md` | Target schema + phase roadmap (đã refresh sau migration) |
 | `previous_session/03_Prompt_Playbook.md` | Template prompt sẵn cho session mới |
-| `previous_session/05_Supabase_Local_Migration_Plan.md` | Plan v-final của migration session |
-| `previous_session/06_Session_2026-05-24_Build_Handoff.md` | **Build log session migration** — deviations, smoke test, known issues |
+| `previous_session/05_Supabase_Local_Migration_Plan.md` | Plan v-final của migration session (Phase 1) |
+| `previous_session/06_Session_2026-05-24_Build_Handoff.md` | Build log session migration |
+| `previous_session/07_Phase2_Document_RAG_Plan.md` | **Phase 2 plan v-final** — schema + chunking + embeddings + RAG roadmap |
+| `previous_session/08_Session_2026-05-24_Close_Phase1_Handoff.md` | Phase 1 closeout |
+| `previous_session/09_NUnit_Demo_Script.md` + `10_*` + `10b_*` | Demo speaker notes |
+| `previous_session/11_Session_2026-05-25_Sprint1_D1D2_Handoff.md` | Sprint 1 D1+D2 code-complete handoff (canonical) |
+| `previous_session/11a_Session_2026-05-25_Sprint1_D1_D2_Handoff_superseded.md` | Older near-dup of 11, marked SUPERSEDED |
+| `previous_session/12_Session_2026-05-26_Sprint1_D2smoke_D3_Handoff.md` | D2 smoke E2E green + D3 upload form code-complete |
+| `previous_session/13_Session_2026-05-26_Sprint1_D4_Handoff.md` | D4 list/detail/delete UI code-complete |
+| `previous_session/_CURRENT_SESSION.md` | **Current live** — session 15 D6 folder picker + E2E smoke; not closed/committed yet |
+| `previous_session/_CURRENT_SESSION_AI_CHATBOT_RAG.md` | Parallel live — AI/RAG backend work; not closed/committed yet |
+| `previous_session/14_Session_2026-05-26_Sprint1_D5_Handoff.md` | Latest closed handoff — D5 backend tests for DocumentService + DocumentsController (SCRUM-28) |
+| `previous_session/rule.md` | **Session-progress tracking rule** (mandatory for all agents) |
 | `previous_session/04_Next_Session_Handoff.md` | OBSOLETE — viết trước migration, giữ làm history |
-| `previous_session/archive/previous_session_raw_transcript.md` | Raw Q&A transcript session trước, debug step-by-step |
-| `infra/supabase/docker-compose.yml` | Supabase Local stack (Phase 1 default + Phase 2 profile) |
+| `previous_session/archive/previous_session_raw_transcript.md` | Raw Q&A transcript session đầu |
+| `infra/supabase/docker-compose.yml` | Supabase Local stack (Phase 1 default + `--profile phase2` for storage/realtime/imgproxy/vector/supavisor) |
 | `infra/supabase/.env` | Secrets Supabase Local (gitignored) |
 | `AI_Study_Hub_Project_Overview.md` | Overview cũ của nhóm, cần update v2 sau Sprint 2 |
 | `SWP391_team_4.docx` | Sprint backlog, working plan, research proposal |
@@ -506,26 +713,45 @@ Trước khi bắt đầu Phase 2, cần Kiệt confirm:
 
 ```
 URL backend:      http://localhost:5240
-URL Supabase API: http://localhost:8000  (Kong → GoTrue + PostgREST + Studio)
+URL Supabase API: http://localhost:8000  (Kong → GoTrue + PostgREST + Studio + Storage)
 URL Postgres:     localhost:5432  (direct, Supavisor pooler skip Phase 1)
 Stack name:       aistudyhub-supabase  (compose project)
 DB name:          postgres
 DB user/pass:     postgres / <từ infra/supabase/.env POSTGRES_PASSWORD>
-Containers:       supabase-db, supabase-kong, supabase-auth, supabase-rest,
-                  supabase-meta, supabase-studio, supabase-analytics
-Phase 2 profile:  --profile phase2  (storage, realtime, functions, imgproxy, vector, supavisor)
+Containers:       Phase 1: supabase-db, supabase-kong, supabase-auth, supabase-rest,
+                           supabase-meta, supabase-studio, supabase-analytics
+                  Phase 2 (--profile phase2): + supabase-storage, supabase-vector,
+                           supabase-realtime, supabase-imgproxy
+                  Total expected: 11/11 healthy
 Project root:     D:\FPT\summer2026\SWP391\AI_Study_Hub_v2
 Solution:         AI_Study_Hub_v2.sln
 Infra root:       D:\FPT\summer2026\SWP391\infra\supabase
 Default admin:    admin@aistudyhub.local  (pwd ở password manager + dotnet user-secrets Seed:DefaultAdmin:Password)
 Studio login:     supabase / <DASHBOARD_PASSWORD từ .env>
 Roles seeded:     Admin, Student
-Migration ID:     20260524090408_InitialSupabaseAuth
+Migrations:       20260524090408_InitialSupabaseAuth
+                  20260525143314_AddDocumentSchema
+Storage bucket:   documents (private, 50MB, 5 MIME: pdf/docx/pptx/doc/ppt — verified live 2026-05-26T09:43Z, matches DocumentService.AllowedMimeTypes 4-way)
 .NET SDK:         10.0.300 (project targets net8.0)
 EF tool:          9.0.9 (works against net8.0 project)
 Docker:           29.4.3
+Tests:            110/111 pass + 1 documented skip (combined workspace, final verified 2026-05-26T11:58Z)
+                  D6 adds 18 folder/move tests; parallel RAG adds 5 tests
+Build:            0 warning, 0 error (last verified 2026-05-26T11:58Z)
+E2E smoke:        D6 document+folder flow PASS 2026-05-26T12:20Z; backend stopped after smoke
+Worktree:         D6 code committed; remaining uncommitted = parallel AI/RAG + Home/Dashboard + live logs
+Git HEAD:         2a0c5d5  feat(documents): D6 folder picker and move-to-folder flow
+                  e03423e  docs(session): close 14 - D5 backend tests + Resume Pack refresh + F1 MIME drift fix
+                  9dce4a0  test(documents): D5 backend tests for DocumentService + DocumentsController (SCRUM-28)
+                  679b0d4  docs(session): close 13 - D4 list/detail UI code-complete
+                  50a8122  feat(documents): D4 list/detail/delete UI (SCRUM-15/25) — code-complete
+                  568177c  docs(session): close 12 - D2 smoke green + D3 upload form code-complete
+                  8454b0d  feat(documents): D3 Blazor upload form (SCRUM-12/26) — code-complete
+                  0245045  test(documents): D2 smoke E2E pass — upload/list/get/signed-download/delete
+                  0e4340c  feat(documents): D2 backend upload pipeline — code-complete
+                  c2d36cb  feat(documents): add Phase 2 schema (folders, documents, document_chunks)
 ```
 
 ---
 
-**End of Resume Pack.** Cập nhật file này sau mỗi phase hoàn tất (Section 4 + Section 3.3 nếu schema đổi).
+**End of Resume Pack.** Cập nhật file này sau mỗi phase / sprint hoàn tất (Section 4 + Section 3.3 nếu schema đổi + Section 14 git head).

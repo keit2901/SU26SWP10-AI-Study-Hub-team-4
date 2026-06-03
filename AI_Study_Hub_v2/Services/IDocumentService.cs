@@ -46,6 +46,15 @@ public interface IDocumentService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Move the document into a folder owned by the caller, or back to loose documents.
+    /// </summary>
+    Task<DocumentDto> MoveToFolderAsync(
+        Guid supabaseUserId,
+        Guid documentId,
+        Guid? folderId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Hard-delete: removes the row + cascades chunks + deletes the storage object.
     /// </summary>
     Task DeleteAsync(

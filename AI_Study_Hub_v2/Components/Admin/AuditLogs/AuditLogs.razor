@@ -1,6 +1,5 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.AuditLogs
 @page "/admin/audit-logs"
-@rendermode InteractiveServer
 @layout AdminLayout
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
@@ -16,7 +15,7 @@
             </MudText>
         </div>
         <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
-            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="ReloadAsync">Refresh</MudButton>
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="Reload">Refresh</MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportLogs">
                 Export visible logs
             </MudButton>
@@ -212,19 +211,18 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        await ReloadAsync();
+        Reload();
     }
 
-    private async Task ReloadAsync()
+    private void Reload()
     {
         _isLoading = true;
         _errorMessage = null;
 
         try
         {
-            await Task.Delay(300);
             _logs.Clear();
             _logs.AddRange(BuildSeedLogs());
         }
