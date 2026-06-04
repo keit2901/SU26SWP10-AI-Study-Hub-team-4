@@ -57,7 +57,8 @@ public sealed class SemanticKernelRagChatService : IAiChatService
             request.FolderId,
             NormalizeFilter(request.SubjectCode),
             NormalizeFilter(request.Semester),
-            NormalizeTopK(request.TopK));
+            NormalizeTopK(request.TopK),
+            request.DocumentIds);
 
         IReadOnlyList<RagSearchResultDto> searchResults;
         try

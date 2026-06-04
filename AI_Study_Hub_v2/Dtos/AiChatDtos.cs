@@ -6,7 +6,8 @@ public sealed record AiChatAskRequest(
     Guid? FolderId,
     string? SubjectCode,
     string? Semester,
-    int TopK = 5);
+    int TopK = 5,
+    IReadOnlyList<Guid>? DocumentIds = null);
 
 public sealed record AiChatAnswerResponse(
     string Answer,

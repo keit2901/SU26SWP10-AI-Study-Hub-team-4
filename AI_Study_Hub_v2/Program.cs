@@ -161,6 +161,7 @@ builder.Services.AddHttpClient<ITurnstileVerificationService, TurnstileVerificat
 });
 builder.Services.AddScoped<IRoleCatalogService, RoleCatalogService>();
 builder.Services.AddScoped<AuthSessionState>();
+builder.Services.AddScoped<AiChatSessionState>();
 
 // Authentication / Authorization ---------------------------------------------
 builder.Services
