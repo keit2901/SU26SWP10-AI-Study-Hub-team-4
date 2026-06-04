@@ -33,6 +33,14 @@ builder.Services
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
+builder.Services.Configure<TurnstileOptions>(builder.Configuration.GetSection(TurnstileOptions.SectionName));
+
+var turnstileBootstrap = builder.Configuration.GetSection(TurnstileOptions.SectionName).Get<TurnstileOptions>() ?? new();
+if (!builder.Environment.IsDevelopment() && (!turnstileBootstrap.Enabled || !turnstileBootstrap.IsConfigured))
+{
+    throw new InvalidOperationException(
+        "Turnstile must be enabled and configured outside Development. Set Turnstile:Enabled=true plus SiteKey and SecretKey via secure configuration.");
+}
 
 // Database --------------------------------------------------------------------
 var connectionString = builder.Configuration.GetConnectionString("Postgres")
@@ -146,6 +154,10 @@ builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
     http.Timeout = TimeSpan.FromMinutes(2);
+});
+builder.Services.AddHttpClient<ITurnstileVerificationService, TurnstileVerificationService>(http =>
+{
+    http.Timeout = TimeSpan.FromSeconds(10);
 });
 builder.Services.AddScoped<IRoleCatalogService, RoleCatalogService>();
 builder.Services.AddScoped<AuthSessionState>();

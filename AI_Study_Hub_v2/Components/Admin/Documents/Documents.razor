@@ -183,7 +183,7 @@
                 </MudSelect>
                 <MudTextField @bind-Value="_editingDocument.StoragePath" Label="Storage path" Variant="Variant.Outlined" Required="true" />
                 <MudTextField @bind-Value="_editingDocument.TagsCsv" Label="Tags" Variant="Variant.Outlined" Placeholder="rag, supabase, project" />
-                <HumanCheck @ref="_humanCheck" ValidChanged="OnHumanCheckChanged" />
+                <HumanCheck @ref="_humanCheck" Action="admin-document-edit" ValidChanged="OnHumanCheckChanged" />
                 <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
                     Use Document Moderation for approve/reject/remove decisions that require owner notification and audit log details.
                 </MudAlert>

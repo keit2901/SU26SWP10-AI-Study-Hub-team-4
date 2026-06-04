@@ -1,38 +1,89 @@
 @namespace AI_Study_Hub_v2.Components.Shared
+@implements IAsyncDisposable
+@inject ITurnstileVerificationService TurnstileVerifier
+@inject IOptions<TurnstileOptions> TurnstileOptionsAccessor
+@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
+@inject IJSRuntime Js
 
-<MudPaper Class="pa-3 human-check" Elevation="0" Outlined="true">
-    <MudStack Spacing="1">
+<MudPaper Class="pa-3 human-check turnstile-check" Elevation="0" Outlined="true">
+    <MudStack Spacing="2">
         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap: wrap;">
             <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Color="Color.Primary" Size="Size.Small" />
-            <MudText Typo="Typo.subtitle2">Human check</MudText>
-            <MudText Typo="Typo.caption" Color="Color.Secondary">Local app-level check only.</MudText>
+            <MudText Typo="Typo.subtitle2">Human verification</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">@ModeLabel</MudText>
         </MudStack>
-        <MudTextField T="string"
-                      Label="@ChallengeText"
-                      Value="_answer"
-                      ValueChanged="OnAnswerChangedAsync"
-                      Immediate="true"
-                      Required="true"
-                      RequiredError="Human check is required"
-                      Error="@(_touched && !IsValid)"
-                      ErrorText="@ErrorText"
-                      Variant="Variant.Outlined"
-                      Margin="Margin.Dense"
-                      InputType="InputType.Number"
-                      Disabled="Disabled" />
+
+        @if (UseTurnstile)
+        {
+            <div id="@_elementId" class="turnstile-widget" aria-label="Cloudflare Turnstile verification"></div>
+            @if (!string.IsNullOrWhiteSpace(_message))
+            {
+                <MudAlert Severity="@(IsValid ? Severity.Success : Severity.Warning)" Dense="true" Variant="Variant.Outlined">
+                    @_message
+                </MudAlert>
+            }
+        }
+        else if (UseDevelopmentFallback)
+        {
+            <MudTextField T="string"
+                          Label="@ChallengeText"
+                          Value="_answer"
+                          ValueChanged="OnAnswerChangedAsync"
+                          Immediate="true"
+                          Required="true"
+                          RequiredError="Human check is required"
+                          Error="@(_touched && !IsValid)"
+                          ErrorText="@ErrorText"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          InputType="InputType.Number"
+                          Disabled="Disabled" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Development fallback only. Configure Cloudflare Turnstile keys for production CAPTCHA.
+            </MudText>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Filled">
+                Cloudflare Turnstile is required but is not configured. Ask an administrator to set Turnstile keys.
+            </MudAlert>
+        }
     </MudStack>
 </MudPaper>
 
 @code {
     private const int Left = 7;
     private const int Right = 5;
+    private readonly string _elementId = $"turnstile-{Guid.NewGuid():N}";
     private string? _answer;
+    private string? _turnstileToken;
+    private string? _message;
     private bool _touched;
+    private bool _turnstilePassed;
+    private bool _rendered;
+    private DotNetObjectReference<HumanCheck>? _dotNetRef;
 
     [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string Action { get; set; } = "human-check";
     [Parameter] public EventCallback<bool> ValidChanged { get; set; }
 
-    public bool IsValid => int.TryParse(_answer, out var value) && value == Left + Right;
+    private TurnstileOptions TurnstileOptions => TurnstileOptionsAccessor.Value;
+
+    private bool UseTurnstile => TurnstileVerifier.IsEnabled && TurnstileVerifier.IsConfigured;
+
+    private bool UseDevelopmentFallback => HostEnvironment.IsDevelopment() && TurnstileOptions.AllowDevelopmentFallback;
+
+    public string? ResponseToken => _turnstileToken;
+
+    public bool IsValid => UseTurnstile
+        ? _turnstilePassed && !string.IsNullOrWhiteSpace(_turnstileToken)
+        : UseDevelopmentFallback && int.TryParse(_answer, out var value) && value == Left + Right;
+
+    private string ModeLabel => UseTurnstile
+        ? "Cloudflare Turnstile CAPTCHA."
+        : UseDevelopmentFallback
+            ? "Development fallback because Turnstile is not configured."
+            : "Cloudflare Turnstile configuration is required.";
 
     private string ChallengeText => $"What is {Left} + {Right}?";
 
@@ -40,9 +91,56 @@
         ? "Solve the human check before continuing."
         : "Human check answer is incorrect.";
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!UseTurnstile || _rendered)
+        {
+            return;
+        }
+
+        try
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            await Js.InvokeVoidAsync("aiStudyHubTurnstile.render", _elementId, _dotNetRef, new
+            {
+                siteKey = TurnstileOptions.SiteKey,
+                theme = TurnstileOptions.Theme,
+                size = TurnstileOptions.Size,
+                action = Action
+            });
+            _rendered = true;
+        }
+        catch (JSException)
+        {
+            _turnstileToken = null;
+            _turnstilePassed = false;
+            _message = "Cloudflare Turnstile could not load. Check your connection and retry.";
+            await ValidChanged.InvokeAsync(false);
+            StateHasChanged();
+        }
+    }
+
     public async Task<bool> ValidateAsync()
     {
         _touched = true;
+
+        if (!UseTurnstile)
+        {
+            await ValidChanged.InvokeAsync(IsValid);
+            StateHasChanged();
+            return IsValid;
+        }
+
+        if (string.IsNullOrWhiteSpace(_turnstileToken))
+        {
+            _turnstilePassed = false;
+            _message = "Complete the Cloudflare Turnstile challenge before continuing.";
+            await ValidChanged.InvokeAsync(false);
+            StateHasChanged();
+            return false;
+        }
+
+        _message = "Cloudflare Turnstile challenge completed. The server will verify it before processing.";
         await ValidChanged.InvokeAsync(IsValid);
         StateHasChanged();
         return IsValid;
@@ -59,16 +157,24 @@
     public async Task ResetAsync()
     {
         _answer = string.Empty;
+        _turnstileToken = null;
+        _turnstilePassed = false;
+        _message = null;
         _touched = false;
         await ValidChanged.InvokeAsync(false);
+        await ResetTurnstileWidgetAsync();
         StateHasChanged();
     }
 
     public void Reset()
     {
         _answer = string.Empty;
+        _turnstileToken = null;
+        _turnstilePassed = false;
+        _message = null;
         _touched = false;
         _ = ValidChanged.InvokeAsync(false);
+        _ = ResetTurnstileWidgetAsync();
         StateHasChanged();
     }
 
@@ -77,5 +183,62 @@
         _answer = value;
         _touched = true;
         await ValidChanged.InvokeAsync(IsValid);
+    }
+
+    [JSInvokable]
+    public async Task OnTurnstileSuccess(string token)
+    {
+        _turnstileToken = token;
+        _turnstilePassed = true;
+        _message = "Cloudflare Turnstile challenge completed.";
+        await ValidChanged.InvokeAsync(true);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnTurnstileError(string errorCode)
+    {
+        _turnstileToken = null;
+        _turnstilePassed = false;
+        _message = $"Turnstile challenge failed ({errorCode}). Please retry.";
+        await ValidChanged.InvokeAsync(false);
+        StateHasChanged();
+    }
+
+    [JSInvokable]
+    public async Task OnTurnstileExpired()
+    {
+        _turnstileToken = null;
+        _turnstilePassed = false;
+        _message = "Turnstile challenge expired. Please retry.";
+        await ValidChanged.InvokeAsync(false);
+        StateHasChanged();
+    }
+
+    private async Task ResetTurnstileWidgetAsync()
+    {
+        if (!UseTurnstile || !_rendered)
+        {
+            return;
+        }
+
+        await Js.InvokeVoidAsync("aiStudyHubTurnstile.reset", _elementId);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_rendered)
+        {
+            try
+            {
+                await Js.InvokeVoidAsync("aiStudyHubTurnstile.remove", _elementId);
+            }
+            catch (JSDisconnectedException)
+            {
+                // Circuit disconnected during navigation; widget cleanup is no longer needed.
+            }
+        }
+
+        _dotNetRef?.Dispose();
     }
 }

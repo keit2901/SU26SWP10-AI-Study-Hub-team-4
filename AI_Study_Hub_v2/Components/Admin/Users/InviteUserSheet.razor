@@ -33,7 +33,7 @@
                     }
                 </MudSelect>
                 <MudNumericField T="int" @bind-Value="_model.DailyTokenQuota" Label="Daily token quota" Variant="Variant.Outlined" Min="1000" Step="1000" />
-                <HumanCheck @ref="_humanCheck" Disabled="IsSubmitting" ValidChanged="OnHumanCheckChanged" />
+                <HumanCheck @ref="_humanCheck" Action="admin-invite-user" Disabled="IsSubmitting" ValidChanged="OnHumanCheckChanged" />
                 <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
                     The invitation action should call your Supabase auth flow, insert or update profiles, seed quota settings, and write audit_logs.
                 </MudAlert>

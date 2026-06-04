@@ -20,9 +20,15 @@ namespace AI_Study_Hub_v2.Tests.Controllers;
 [TestFixture]
 public class AuthControllerTests
 {
-    private static AuthController BuildSut(IAuthService service, ClaimsPrincipal? user = null, string? bearerHeader = null, string? savedAccessToken = null)
+    private static AuthController BuildSut(
+        IAuthService service,
+        ClaimsPrincipal? user = null,
+        string? bearerHeader = null,
+        string? savedAccessToken = null,
+        ITurnstileVerificationService? turnstile = null)
     {
-        var ctrl = new AuthController(service, NullLogger<AuthController>.Instance);
+        turnstile ??= PassingTurnstile();
+        var ctrl = new AuthController(service, turnstile, NullLogger<AuthController>.Instance);
         var http = new DefaultHttpContext();
 
         // HttpContext.GetTokenAsync() delegates to IAuthenticationService.AuthenticateAsync
@@ -72,6 +78,34 @@ public class AuthControllerTests
     private static ClaimsPrincipal Principal(params Claim[] claims) =>
         new(new ClaimsIdentity(claims, authenticationType: "Bearer"));
 
+    private static ITurnstileVerificationService PassingTurnstile()
+    {
+        var turnstile = new Mock<ITurnstileVerificationService>();
+        turnstile.SetupGet(t => t.IsEnabled).Returns(false);
+        turnstile.SetupGet(t => t.IsConfigured).Returns(false);
+        turnstile.Setup(t => t.VerifyAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TurnstileVerificationResult.Valid());
+        return turnstile.Object;
+    }
+
+    private static ITurnstileVerificationService FailingTurnstile()
+    {
+        var turnstile = new Mock<ITurnstileVerificationService>();
+        turnstile.SetupGet(t => t.IsEnabled).Returns(true);
+        turnstile.SetupGet(t => t.IsConfigured).Returns(true);
+        turnstile.Setup(t => t.VerifyAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(TurnstileVerificationResult.Invalid("Turnstile failed.", new[] { "missing-input-response" }));
+        return turnstile.Object;
+    }
+
     private static AuthResponse SampleAuthResponse(string username = "alice", string role = "Student") => new()
     {
         AccessToken = "access.jwt",
@@ -112,6 +146,20 @@ public class AuthControllerTests
     }
 
     [Test]
+    public async Task Login_WhenTurnstileFails_Returns400_AndDoesNotCallAuthService()
+    {
+        var svc = new Mock<IAuthService>(MockBehavior.Strict);
+        var sut = BuildSut(svc.Object, turnstile: FailingTurnstile());
+
+        var actionResult = await sut.Login(new LoginRequest { Email = "a@x.com", Password = "p" }, CancellationToken.None);
+
+        var badRequest = actionResult.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var error = badRequest.Value.Should().BeOfType<ApiErrorResponse>().Subject;
+        error.Code.Should().Be("turnstile_failed");
+        error.Errors.Should().ContainKey("turnstile");
+    }
+
+    [Test]
     public async Task Login_WhenServiceThrowsAuthException_ReturnsMappedStatusAndCode()
     {
         var svc = new Mock<IAuthService>();
@@ -127,6 +175,20 @@ public class AuthControllerTests
         var err = obj.Value.Should().BeOfType<ApiErrorResponse>().Subject;
         err.Code.Should().Be("invalid_credentials");
         err.Message.Should().Be("Email or password is incorrect.");
+    }
+
+    [Test]
+    public async Task Register_WhenTurnstileFails_Returns400_AndDoesNotCallAuthService()
+    {
+        var svc = new Mock<IAuthService>(MockBehavior.Strict);
+        var sut = BuildSut(svc.Object, turnstile: FailingTurnstile());
+
+        var actionResult = await sut.Register(
+            new RegisterRequest { Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
+            CancellationToken.None);
+
+        var badRequest = actionResult.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        badRequest.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("turnstile_failed");
     }
 
     [Test]
