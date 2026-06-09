@@ -34,6 +34,16 @@ public sealed class DocumentService : IDocumentService
         "application/vnd.ms-powerpoint", // .ppt (legacy)
     };
 
+    private static readonly IReadOnlyDictionary<string, string> MimeTypesByExtension =
+        new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            [".pdf"] = "application/pdf",
+            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            [".doc"] = "application/msword",
+            [".ppt"] = "application/vnd.ms-powerpoint",
+        };
+
     private readonly AppDbContext _db;
     private readonly ISupabaseStorageClient _storage;
     private readonly IDocumentIngestionService? _ingestion;
@@ -88,7 +98,9 @@ public sealed class DocumentService : IDocumentService
             throw new DocumentException(413, "file_too_large",
                 $"File exceeds the {MaxFileSizeBytes / (1024 * 1024)} MB upload limit.");
         }
-        if (!AllowedMimeTypes.Contains(contentType))
+
+        var canonicalContentType = ResolveCanonicalContentType(fileName, contentType);
+        if (!AllowedMimeTypes.Contains(canonicalContentType))
         {
             throw new DocumentException(415, "unsupported_media_type",
                 $"Content type '{contentType}' is not allowed. Accepted: PDF, DOC, DOCX, PPT, PPTX.");
@@ -116,7 +128,7 @@ public sealed class DocumentService : IDocumentService
 
         // 5. Upload bytes to Supabase Storage. If anything below fails, we attempt
         // a best-effort cleanup so we don't leak orphan objects.
-        await _storage.UploadAsync(BucketName, storagePath, content, contentType,
+        await _storage.UploadAsync(BucketName, storagePath, content, canonicalContentType,
             upsert: false, cancellationToken: cancellationToken);
 
         // 6. Insert metadata row. Status = Ready (file stored OK; chunking happens in D6).
@@ -129,7 +141,7 @@ public sealed class DocumentService : IDocumentService
             FileName = fileName.Trim(),
             StoragePath = storagePath,
             FileSizeBytes = fileSizeBytes,
-            MimeType = contentType,
+            MimeType = canonicalContentType,
             SubjectCode = request.SubjectCode.Trim().ToUpperInvariant(),
             Semester = request.Semester.Trim().ToUpperInvariant(),
             PageCount = null,
@@ -166,7 +178,7 @@ public sealed class DocumentService : IDocumentService
             "Document uploaded: id={Id} user={UserId} subject={Subject} semester={Semester} size={Size}B path={Path}",
             doc.Id, profile.Id, doc.SubjectCode, doc.Semester, doc.FileSizeBytes, doc.StoragePath);
 
-        if (_ingestion is not null && IsIngestionCandidate(contentType))
+        if (_ingestion is not null && IsIngestionCandidate(canonicalContentType))
         {
             var ingestion = await _ingestion.IngestAsync(doc.Id, supabaseUserId, cancellationToken);
             if (!ingestion.Success)
@@ -317,6 +329,27 @@ public sealed class DocumentService : IDocumentService
             _logger.LogWarning(ex,
                 "Storage delete failed for {Path} after row removal. Object may be leaked.", pathToDelete);
         }
+    }
+
+    private static string ResolveCanonicalContentType(string fileName, string? contentType)
+    {
+        var normalized = contentType?.Trim() ?? string.Empty;
+        if (AllowedMimeTypes.Contains(normalized))
+        {
+            return normalized;
+        }
+
+        if (string.IsNullOrWhiteSpace(normalized) ||
+            string.Equals(normalized, "application/octet-stream", StringComparison.OrdinalIgnoreCase))
+        {
+            var extension = Path.GetExtension(fileName);
+            if (MimeTypesByExtension.TryGetValue(extension, out var canonicalContentType))
+            {
+                return canonicalContentType;
+            }
+        }
+
+        return normalized;
     }
 
     private static bool IsIngestionCandidate(string contentType) =>
