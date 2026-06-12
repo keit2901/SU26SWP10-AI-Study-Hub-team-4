@@ -319,14 +319,18 @@
                                         <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
                                     </div>
                                 </button>
-                                <button type="button"
-                                        class="folder-rename-trigger"
-                                        title="Đổi tên thư mục"
-                                        disabled="@_busy"
-                                        @onclick:stopPropagation="true"
-                                        @onclick="() => StartRename(folder)">
-                                    <MudIcon Icon="@Icons.Material.Filled.DriveFileRenameOutline" Size="Size.Small" />
-                                </button>
+                                <div class="folder-actions-trigger" @onclick:stopPropagation="true">
+                                    <MudMenu Icon="@Icons.Material.Filled.MoreVert"
+                                             Size="Size.Small"
+                                             AnchorOrigin="Origin.BottomRight"
+                                             TransformOrigin="Origin.TopRight"
+                                             Dense="true"
+                                             Disabled="@_busy"
+                                             AriaLabel="Hành động thư mục">
+                                        <MudMenuItem Icon="@Icons.Material.Filled.DriveFileRenameOutline" OnClick="() => StartRename(folder)">Đổi tên</MudMenuItem>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.DeleteOutline" IconColor="Color.Error" OnClick="() => ConfirmDeleteFolderAsync(folder)">Xoá</MudMenuItem>
+                                    </MudMenu>
+                                </div>
                             }
                         </div>
                     }
@@ -704,6 +708,67 @@
         }
     }
 
+    // ── Folder delete ─────────────────────────────────────────
+    private async Task ConfirmDeleteFolderAsync(FolderDto folder)
+    {
+        CancelRename();
+        var docCount = folder.DocumentCount;
+        var warningLine = docCount > 0
+            ? $"⚠️ Thư mục này chứa {docCount} tài liệu. Tuỳ cấu hình backend, các tài liệu có thể bị xoá theo hoặc bị khoá lại (cascade-blocked)."
+            : "Thư mục trống — không có tài liệu nào bị ảnh hưởng.";
+
+        var parameters = new DialogParameters
+        {
+            ["Title"] = $"Xoá thư mục?",
+            ["Message"] = $"Bạn sắp xoá thư mục \"{folder.Name}\"\n\n{warningLine}\n\nThao tác này không thể hoàn tác.",
+            ["ConfirmText"] = "Xoá thư mục",
+            ["ConfirmColor"] = Color.Error,
+            ["Icon"] = Icons.Material.Filled.FolderDelete,
+            ["IconColor"] = Color.Error,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small };
+        var dialogRef = await Dialogs.ShowAsync<AI_Study_Hub_v2.Components.Admin.Shared.ConfirmDialog>(
+            "Xoá thư mục", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+
+        await DeleteFolderAsync(folder);
+    }
+
+    private async Task DeleteFolderAsync(FolderDto folder)
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken)) return;
+        _busy = true;
+        try
+        {
+            await FoldersApi.DeleteAsync(Session.AccessToken!, folder.Id);
+            _folders.RemoveAll(f => f.Id == folder.Id);
+            Snackbar.Add($"Đã xoá thư mục \"{folder.Name}\".", Severity.Success);
+            // Reload to sync document counts
+            await LoadFoldersAsync();
+            await LoadAsync();
+        }
+        catch (DocumentApiException ex)
+        {
+            var msg = MapError(ex);
+            Snackbar.Add(msg, Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Lỗi mạng khi xoá thư mục: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
     private async Task CreateFolderAsync()
     {
         if (string.IsNullOrWhiteSpace(Session.AccessToken) || string.IsNullOrWhiteSpace(_newFolderName)) return;
@@ -801,10 +866,18 @@
 
     private static string MapError(DocumentApiException ex) => ex.StatusCode switch
     {
+        400 => ex.Code == "folder_not_empty"
+            ? "Thư mục còn tài liệu bên trong. Hãy xoá hoặc chuyển tài liệu trước khi xoá thư mục."
+            : ex.Message,
         401 => "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.",
         403 => "Bạn không có quyền truy cập tài liệu này.",
         404 => ex.Code == "folder_not_found" ? "Không tìm thấy thư mục." : "Không tìm thấy tài liệu — có thể tài liệu đã bị xoá.",
-        409 => "Tên thư mục này đã tồn tại.",
+        409 => ex.Code switch
+        {
+            "folder_not_empty" or "folder_has_documents" =>
+                "Backend từ chối xoá: thư mục còn tài liệu. Hãy xoá hoặc chuyển tài liệu trước.",
+            _ => "Tên thư mục này đã tồn tại.",
+        },
         _ => ex.Message,
     };
 

@@ -454,8 +454,8 @@
 
 .folder-card-main {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
+    align-items: center;
+    justify-content: flex-start;
     gap: 0.75rem;
     min-width: 0;
 }
@@ -546,48 +546,33 @@
     background-color: rgba(100, 116, 139, 0.42);
 }
 
-/* ── Folder card wrap (positions the rename trigger button) ── */
+/* ── Folder card wrap (positions the actions menu) ── */
 .library-folder-card-wrap {
     position: relative;
     /* Fills the grid cell, becomes a positioning context for the trigger */
 }
 
-/* Rename trigger (pencil icon) — floats top-right of the card */
-.folder-rename-trigger {
+/* When rename is active, the wrap becomes a block container */
+.library-folder-card-wrap:has(.folder-rename-box) {
+    display: block;
+    border-radius: 1.5rem;
+    overflow: hidden;
+}
+
+/* Actions trigger (3 dots menu) — floats top-right of the card */
+.folder-actions-trigger {
     position: absolute;
-    top: 0.65rem;
-    right: 0.65rem;
+    top: 0.5rem;
+    right: 0.5rem;
     z-index: 2;
-    display: grid;
-    width: 2rem;
-    height: 2rem;
-    place-items: center;
-    border: 1px solid transparent;
-    border-radius: 0.65rem;
-    color: #94a3b8;
-    background: rgba(255, 255, 255, 0.85);
-    backdrop-filter: blur(6px);
-    cursor: pointer;
-    font: inherit;
     opacity: 0;
-    transition: opacity 180ms ease, color 160ms ease, border-color 160ms ease, background 160ms ease;
+    transition: opacity 180ms ease;
 }
 
-/* Show pencil on card hover */
-.library-folder-card-wrap:hover .folder-rename-trigger,
-.library-folder-card-wrap:focus-within .folder-rename-trigger {
+/* Show 3 dots menu on card hover or when menu is open/focused */
+.library-folder-card-wrap:hover .folder-actions-trigger,
+.library-folder-card-wrap:focus-within .folder-actions-trigger {
     opacity: 1;
-}
-
-.folder-rename-trigger:hover:not(:disabled) {
-    color: var(--folder-accent, #4f46e5);
-    border-color: color-mix(in srgb, var(--folder-accent, #4f46e5) 28%, transparent);
-    background: color-mix(in srgb, var(--folder-accent, #4f46e5) 8%, white);
-}
-
-.folder-rename-trigger:disabled {
-    cursor: default;
-    opacity: 0.35 !important;
 }
 
 /* The folder card inside the wrap must stretch to fill */
