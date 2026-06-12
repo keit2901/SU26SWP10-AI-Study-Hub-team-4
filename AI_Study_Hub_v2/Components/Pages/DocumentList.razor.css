@@ -546,6 +546,90 @@
     background-color: rgba(100, 116, 139, 0.42);
 }
 
+/* ── Folder card wrap (positions the rename trigger button) ── */
+.library-folder-card-wrap {
+    position: relative;
+    /* Fills the grid cell, becomes a positioning context for the trigger */
+}
+
+/* Rename trigger (pencil icon) — floats top-right of the card */
+.folder-rename-trigger {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.65rem;
+    z-index: 2;
+    display: grid;
+    width: 2rem;
+    height: 2rem;
+    place-items: center;
+    border: 1px solid transparent;
+    border-radius: 0.65rem;
+    color: #94a3b8;
+    background: rgba(255, 255, 255, 0.85);
+    backdrop-filter: blur(6px);
+    cursor: pointer;
+    font: inherit;
+    opacity: 0;
+    transition: opacity 180ms ease, color 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+/* Show pencil on card hover */
+.library-folder-card-wrap:hover .folder-rename-trigger,
+.library-folder-card-wrap:focus-within .folder-rename-trigger {
+    opacity: 1;
+}
+
+.folder-rename-trigger:hover:not(:disabled) {
+    color: var(--folder-accent, #4f46e5);
+    border-color: color-mix(in srgb, var(--folder-accent, #4f46e5) 28%, transparent);
+    background: color-mix(in srgb, var(--folder-accent, #4f46e5) 8%, white);
+}
+
+.folder-rename-trigger:disabled {
+    cursor: default;
+    opacity: 0.35 !important;
+}
+
+/* The folder card inside the wrap must stretch to fill */
+.library-folder-card-wrap .library-folder-card {
+    width: 100%;
+}
+
+/* ── Inline rename box ── */
+.folder-rename-box {
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem 1.25rem 1.25rem;
+    border: 2px solid var(--folder-accent, #4f46e5);
+    border-radius: 1.5rem;
+    background: color-mix(in srgb, var(--folder-accent, #4f46e5) 4%, white);
+    animation: renameBoxIn 180ms ease both;
+    min-height: 11.5rem;
+}
+
+@keyframes renameBoxIn {
+    from { opacity: 0; transform: scale(0.97) translateY(-4px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+.folder-rename-header {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    color: var(--folder-accent, #4f46e5);
+    font-size: 0.74rem;
+    font-weight: 900;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+}
+
+/* ── Responsive: keep wrap grid for cards on small screens ── */
+@media (max-width: 720px) {
+    .library-folder-card-wrap:has(.folder-rename-box) {
+        grid-column: 1 / -1;
+    }
+}
+
 @media (max-width: 1180px) {
     .library-metrics-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));

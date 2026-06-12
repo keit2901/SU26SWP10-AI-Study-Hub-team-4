@@ -266,22 +266,69 @@
                 <div class="library-folder-grid">
                     @foreach (var folder in _folders)
                     {
-                        <button type="button"
-                                class="library-folder-card @FolderAccentClass(folder)"
-                                @onclick="() => OpenFolderChat(folder.Id)"
-                                disabled="@_busy">
-                            <div class="folder-card-main">
-                                <div class="folder-icon"><MudIcon Icon="@Icons.Material.Filled.Folder" /></div>
-                                <div>
-                                    <strong>@folder.Name</strong>
-                                    <span>@folder.DocumentCount tài liệu</span>
+                        <div class="library-folder-card-wrap @FolderAccentClass(folder)">
+                            @if (_editingFolderId == folder.Id)
+                            {
+                                <!-- Inline rename box -->
+                                <div class="folder-rename-box">
+                                    <div class="folder-rename-header">
+                                        <MudIcon Icon="@Icons.Material.Filled.DriveFileRenameOutline" Size="Size.Small" />
+                                        <span>Đổi tên thư mục</span>
+                                    </div>
+                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap:wrap">
+                                        <MudTextField T="string"
+                                                      @bind-Value="_renameDraft"
+                                                      Variant="Variant.Outlined"
+                                                      Margin="Margin.Dense"
+                                                      Placeholder="Tên thư mục..."
+                                                      MaxLength="100"
+                                                      Error="@(!string.IsNullOrWhiteSpace(_renameError))"
+                                                      ErrorText="@_renameError"
+                                                      Style="min-width:180px;flex:1"
+                                                      @onkeydown="HandleRenameKeyDownAsync" />
+                                        <MudButton Variant="Variant.Filled"
+                                                   Color="Color.Primary"
+                                                   StartIcon="@Icons.Material.Filled.Check"
+                                                   OnClick="CommitRenameAsync"
+                                                   Disabled="@(_busy || string.IsNullOrWhiteSpace(_renameDraft))">
+                                            Lưu
+                                        </MudButton>
+                                        <MudButton Variant="Variant.Text"
+                                                   OnClick="CancelRename"
+                                                   Disabled="@_busy">
+                                            Huỷ
+                                        </MudButton>
+                                    </MudStack>
                                 </div>
-                            </div>
-                            <div class="folder-card-meta">
-                                <span>Mở AI Chat cho thư mục</span>
-                                <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-                            </div>
-                        </button>
+                            }
+                            else
+                            {
+                                <button type="button"
+                                        class="library-folder-card"
+                                        @onclick="() => OpenFolderChat(folder.Id)"
+                                        disabled="@_busy">
+                                    <div class="folder-card-main">
+                                        <div class="folder-icon"><MudIcon Icon="@Icons.Material.Filled.Folder" /></div>
+                                        <div>
+                                            <strong>@folder.Name</strong>
+                                            <span>@folder.DocumentCount tài liệu</span>
+                                        </div>
+                                    </div>
+                                    <div class="folder-card-meta">
+                                        <span>Mở AI Chat cho thư mục</span>
+                                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                                    </div>
+                                </button>
+                                <button type="button"
+                                        class="folder-rename-trigger"
+                                        title="Đổi tên thư mục"
+                                        disabled="@_busy"
+                                        @onclick:stopPropagation="true"
+                                        @onclick="() => StartRename(folder)">
+                                    <MudIcon Icon="@Icons.Material.Filled.DriveFileRenameOutline" Size="Size.Small" />
+                                </button>
+                            }
+                        </div>
                     }
 
                     <article class="library-folder-card loose-card loose-card-static" aria-label="Tóm tắt tài liệu chưa phân loại">
@@ -391,6 +438,11 @@
     private bool _showNewFolder;
     private List<DocumentDto> _rows = new();
     private List<FolderDto> _folders = new();
+
+    // ── Folder rename state ──────────────────────────────────
+    private Guid? _editingFolderId;
+    private string? _renameDraft;
+    private string? _renameError;
 
     private bool HasFilters =>
         !string.IsNullOrWhiteSpace(_subjectFilter) ||
@@ -571,12 +623,85 @@
     {
         _showNewFolder = true;
         _newFolderName = null;
+        CancelRename();
     }
 
     private void HideNewFolderBox()
     {
         _showNewFolder = false;
         _newFolderName = null;
+    }
+
+    // ── Folder rename ────────────────────────────────────────
+    private void StartRename(FolderDto folder)
+    {
+        _editingFolderId = folder.Id;
+        _renameDraft = folder.Name;
+        _renameError = null;
+        _showNewFolder = false;
+    }
+
+    private void CancelRename()
+    {
+        _editingFolderId = null;
+        _renameDraft = null;
+        _renameError = null;
+    }
+
+    private async Task HandleRenameKeyDownAsync(KeyboardEventArgs args)
+    {
+        if (args.Key == "Enter") await CommitRenameAsync();
+        if (args.Key == "Escape") CancelRename();
+    }
+
+    private async Task CommitRenameAsync()
+    {
+        _renameError = null;
+        var draft = _renameDraft?.Trim();
+        if (string.IsNullOrWhiteSpace(draft))
+        {
+            _renameError = "Tên thư mục không được để trống.";
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(Session.AccessToken) || _editingFolderId is not { } folderId)
+        {
+            return;
+        }
+
+        _busy = true;
+        try
+        {
+            var updated = await FoldersApi.UpdateAsync(
+                Session.AccessToken!,
+                folderId,
+                new UpdateFolderRequest { Name = draft });
+
+            // Update local list in-place so UI reflects immediately
+            var idx = _folders.FindIndex(f => f.Id == folderId);
+            if (idx >= 0) _folders[idx] = updated;
+
+            CancelRename();
+            Snackbar.Add($"Đã đổi tên thư mục thành \"{updated.Name}\".", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            _renameError = MapError(ex);
+            Snackbar.Add(_renameError, Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _renameError = $"Không thể đổi tên: {ex.Message}";
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
     }
 
     private async Task CreateFolderAsync()
