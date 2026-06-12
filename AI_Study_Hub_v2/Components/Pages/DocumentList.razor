@@ -351,7 +351,47 @@
                 </div>
             </section>
 
-            <MudTable Items="_rows"
+            @* ── Sort + Favorite bar ── *@
+            <div class="doc-sort-bar">
+                <div class="doc-sort-group">
+                    <span class="doc-sort-label">Sắp xếp:</span>
+                    <button type="button"
+                            class="doc-sort-btn @(_sortField == "name" ? "active" : "")"
+                            @onclick='() => SetSort("name")'>
+                        Tên
+                        @if (_sortField == "name")
+                        {
+                            <MudIcon Icon="@(_sortAsc ? Icons.Material.Filled.ArrowUpward : Icons.Material.Filled.ArrowDownward)" Size="Size.Small" />
+                        }
+                    </button>
+                    <button type="button"
+                            class="doc-sort-btn @(_sortField == "date" ? "active" : "")"
+                            @onclick='() => SetSort("date")'>
+                        Ngày tải
+                        @if (_sortField == "date")
+                        {
+                            <MudIcon Icon="@(_sortAsc ? Icons.Material.Filled.ArrowUpward : Icons.Material.Filled.ArrowDownward)" Size="Size.Small" />
+                        }
+                    </button>
+                    <button type="button"
+                            class="doc-sort-btn @(_sortField == "status" ? "active" : "")"
+                            @onclick='() => SetSort("status")'>
+                        Trạng thái
+                        @if (_sortField == "status")
+                        {
+                            <MudIcon Icon="@(_sortAsc ? Icons.Material.Filled.ArrowUpward : Icons.Material.Filled.ArrowDownward)" Size="Size.Small" />
+                        }
+                    </button>
+                </div>
+                <button type="button"
+                        class="doc-fav-filter-btn @(_showFavoritesOnly ? "active" : "")"
+                        @onclick="() => _showFavoritesOnly = !_showFavoritesOnly">
+                    <MudIcon Icon="@(_showFavoritesOnly ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarOutline)" Size="Size.Small" />
+                    Yêu thích @(_favorites.Count > 0 ? $"({_favorites.Count})" : "")
+                </button>
+            </div>
+
+            <MudTable Items="SortedRows"
                       Hover="true"
                       Bordered="false"
                       Striped="true"
@@ -360,6 +400,7 @@
                       LoadingProgressColor="Color.Primary"
                       Class="glass-card document-table">
                 <HeaderContent>
+                    <MudTh Style="width:2.5rem; padding: 0 0.25rem;"></MudTh>
                     <MudTh>Tệp</MudTh>
                     <MudTh>Môn</MudTh>
                     <MudTh>Học kỳ</MudTh>
@@ -370,6 +411,13 @@
                     <MudTh Style="width: 1%; white-space: nowrap;">Thao tác</MudTh>
                 </HeaderContent>
                 <RowTemplate>
+                    <MudTd Style="padding: 0 0.25rem; text-align:center;">
+                        <MudIconButton Icon="@(_favorites.Contains(context.Id) ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarOutline)"
+                                       Size="Size.Small"
+                                       Color="@(_favorites.Contains(context.Id) ? Color.Warning : Color.Default)"
+                                       title="@(_favorites.Contains(context.Id) ? "Bỏ yêu thích" : "Yêu thích")"
+                                       OnClick="() => ToggleFavorite(context.Id)" />
+                    </MudTd>
                     <MudTd DataLabel="Tệp">
                         <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                             <MudIcon Icon="@GetFileIcon(context.MimeType)" Color="Color.Primary" />
@@ -447,6 +495,42 @@
     private Guid? _editingFolderId;
     private string? _renameDraft;
     private string? _renameError;
+
+    // ── Favorite & Sort state ─────────────────────────────────
+    private readonly HashSet<Guid> _favorites = new();
+    private string _sortField = "date";
+    private bool _sortAsc = false;          // newest first by default
+    private bool _showFavoritesOnly = false;
+
+    private IEnumerable<DocumentDto> SortedRows
+    {
+        get
+        {
+            var source = _showFavoritesOnly
+                ? _rows.Where(r => _favorites.Contains(r.Id))
+                : _rows.AsEnumerable();
+
+            return _sortField switch
+            {
+                "name"   => _sortAsc ? source.OrderBy(r => r.FileName)        : source.OrderByDescending(r => r.FileName),
+                "status" => _sortAsc ? source.OrderBy(r => r.Status)          : source.OrderByDescending(r => r.Status),
+                _        => _sortAsc ? source.OrderBy(r => r.CreatedAt)        : source.OrderByDescending(r => r.CreatedAt),
+            };
+        }
+    }
+
+    private void ToggleFavorite(Guid id)
+    {
+        if (!_favorites.Add(id)) _favorites.Remove(id);
+        StateHasChanged();
+    }
+
+    private void SetSort(string field)
+    {
+        if (_sortField == field) _sortAsc = !_sortAsc; // toggle direction
+        else { _sortField = field; _sortAsc = true; }  // new field: asc
+        StateHasChanged();
+    }
 
     private bool HasFilters =>
         !string.IsNullOrWhiteSpace(_subjectFilter) ||

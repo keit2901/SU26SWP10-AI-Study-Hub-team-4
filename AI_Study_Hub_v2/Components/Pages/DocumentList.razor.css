@@ -366,6 +366,90 @@
     box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;
 }
 
+/* ── Sort & Favorite bar ────────────────────────────────── */
+.doc-sort-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 1rem;
+    background: #ffffff;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+
+.doc-sort-group {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.doc-sort-label {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #94a3b8;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding-right: 0.25rem;
+}
+
+.doc-sort-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    padding: 0.32rem 0.75rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.doc-sort-btn:hover {
+    background: #f1f5f9;
+    color: #1e293b;
+}
+
+.doc-sort-btn.active {
+    color: #4f46e5;
+    background: #eef2ff;
+    border-color: #c7d2fe;
+}
+
+.doc-fav-filter-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.32rem 0.85rem;
+    border: 1px solid transparent;
+    border-radius: 999px;
+    background: transparent;
+    color: #64748b;
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 150ms ease, border-color 150ms ease, color 150ms ease;
+}
+
+.doc-fav-filter-btn:hover {
+    background: #fefce8;
+    color: #92400e;
+}
+
+.doc-fav-filter-btn.active {
+    color: #d97706;
+    background: #fef3c7;
+    border-color: #fcd34d;
+}
+
 .library-filter-grid {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr)) auto auto;
