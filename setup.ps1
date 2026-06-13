@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 <#
 .SYNOPSIS
   Bootstrap script cho AI_Study_Hub_v2 --  generate Supabase secrets, up stack,
@@ -346,13 +346,15 @@ $secretMap = [ordered]@{
     'Supabase:AnonKey'           = $secrets['ANON_KEY']
     'Supabase:ServiceRoleKey'    = $secrets['SERVICE_ROLE_KEY']
     'Seed:DefaultAdmin:Password' = $adminPwd
+    'Recaptcha:SiteKey'          = '6LcglxotAAAAAJMIi0jZaLDtbPWuk9HUDeVTwH2x'
+    'Recaptcha:SecretKey'        = '6LcglxotAAAAAIVFsLCsvdVFBPANrW9jeiydiuhI'
 }
 
 foreach ($kv in $secretMap.GetEnumerator()) {
     & dotnet user-secrets set $kv.Key $kv.Value --project $csproj *> $null
     if ($LASTEXITCODE -ne 0) { Fail "Failed to set user-secret '$($kv.Key)'." }
 }
-Write-Ok 'user-secrets set (5 keys).'
+Write-Ok 'user-secrets set (7 keys).'
 
 # ---------------------------------------------------------------------------
 # 6. dotnet build

@@ -25,10 +25,10 @@ public class AuthControllerTests
         ClaimsPrincipal? user = null,
         string? bearerHeader = null,
         string? savedAccessToken = null,
-        ITurnstileVerificationService? turnstile = null)
+        IRecaptchaVerificationService? recaptcha = null)
     {
-        turnstile ??= PassingTurnstile();
-        var ctrl = new AuthController(service, turnstile, NullLogger<AuthController>.Instance);
+        recaptcha ??= PassingRecaptcha();
+        var ctrl = new AuthController(service, recaptcha, NullLogger<AuthController>.Instance);
         var http = new DefaultHttpContext();
 
         // HttpContext.GetTokenAsync() delegates to IAuthenticationService.AuthenticateAsync
@@ -78,32 +78,32 @@ public class AuthControllerTests
     private static ClaimsPrincipal Principal(params Claim[] claims) =>
         new(new ClaimsIdentity(claims, authenticationType: "Bearer"));
 
-    private static ITurnstileVerificationService PassingTurnstile()
+    private static IRecaptchaVerificationService PassingRecaptcha()
     {
-        var turnstile = new Mock<ITurnstileVerificationService>();
-        turnstile.SetupGet(t => t.IsEnabled).Returns(false);
-        turnstile.SetupGet(t => t.IsConfigured).Returns(false);
-        turnstile.Setup(t => t.VerifyAsync(
+        var recaptcha = new Mock<IRecaptchaVerificationService>();
+        recaptcha.SetupGet(t => t.IsEnabled).Returns(false);
+        recaptcha.SetupGet(t => t.IsConfigured).Returns(false);
+        recaptcha.Setup(t => t.VerifyAsync(
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TurnstileVerificationResult.Valid());
-        return turnstile.Object;
+            .ReturnsAsync(RecaptchaVerificationResult.Valid());
+        return recaptcha.Object;
     }
 
-    private static ITurnstileVerificationService FailingTurnstile()
+    private static IRecaptchaVerificationService FailingRecaptcha()
     {
-        var turnstile = new Mock<ITurnstileVerificationService>();
-        turnstile.SetupGet(t => t.IsEnabled).Returns(true);
-        turnstile.SetupGet(t => t.IsConfigured).Returns(true);
-        turnstile.Setup(t => t.VerifyAsync(
+        var recaptcha = new Mock<IRecaptchaVerificationService>();
+        recaptcha.SetupGet(t => t.IsEnabled).Returns(true);
+        recaptcha.SetupGet(t => t.IsConfigured).Returns(true);
+        recaptcha.Setup(t => t.VerifyAsync(
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
                 It.IsAny<CancellationToken>()))
-            .ReturnsAsync(TurnstileVerificationResult.Invalid("Turnstile failed.", new[] { "missing-input-response" }));
-        return turnstile.Object;
+            .ReturnsAsync(RecaptchaVerificationResult.Invalid("reCAPTCHA failed.", new[] { "missing-input-response" }));
+        return recaptcha.Object;
     }
 
     private static AuthResponse SampleAuthResponse(string username = "alice", string role = "Student") => new()
@@ -146,17 +146,17 @@ public class AuthControllerTests
     }
 
     [Test]
-    public async Task Login_WhenTurnstileFails_Returns400_AndDoesNotCallAuthService()
+    public async Task Login_WhenRecaptchaFails_Returns400_AndDoesNotCallAuthService()
     {
         var svc = new Mock<IAuthService>(MockBehavior.Strict);
-        var sut = BuildSut(svc.Object, turnstile: FailingTurnstile());
+        var sut = BuildSut(svc.Object, recaptcha: FailingRecaptcha());
 
         var actionResult = await sut.Login(new LoginRequest { Email = "a@x.com", Password = "p" }, CancellationToken.None);
 
         var badRequest = actionResult.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
         var error = badRequest.Value.Should().BeOfType<ApiErrorResponse>().Subject;
-        error.Code.Should().Be("turnstile_failed");
-        error.Errors.Should().ContainKey("turnstile");
+        error.Code.Should().Be("recaptcha_failed");
+        error.Errors.Should().ContainKey("recaptcha");
     }
 
     [Test]
@@ -178,17 +178,17 @@ public class AuthControllerTests
     }
 
     [Test]
-    public async Task Register_WhenTurnstileFails_Returns400_AndDoesNotCallAuthService()
+    public async Task Register_WhenRecaptchaFails_Returns400_AndDoesNotCallAuthService()
     {
         var svc = new Mock<IAuthService>(MockBehavior.Strict);
-        var sut = BuildSut(svc.Object, turnstile: FailingTurnstile());
+        var sut = BuildSut(svc.Object, recaptcha: FailingRecaptcha());
 
         var actionResult = await sut.Register(
             new RegisterRequest { Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
             CancellationToken.None);
 
         var badRequest = actionResult.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
-        badRequest.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("turnstile_failed");
+        badRequest.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("recaptcha_failed");
     }
 
     [Test]

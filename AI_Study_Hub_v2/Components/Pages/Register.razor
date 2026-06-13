@@ -172,7 +172,7 @@
         await _form.ValidateAsync();
         var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
         if (!_isValid || !humanOk) return;
-        _model.TurnstileToken = _humanCheck?.ResponseToken;
+        _model.RecaptchaToken = _humanCheck?.ResponseToken;
 
         _busy = true;
         StateHasChanged();
