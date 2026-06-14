@@ -902,7 +902,7 @@ h1:focus {
 }
 
 @media (max-width: 640px) {
-    .content {
+    .content:not(:has(.ai-chat-shell)) {
         padding-left: 1rem !important;
         padding-right: 1rem !important;
     }
@@ -932,3 +932,44 @@ h1:focus {
         grid-template-columns: 1fr;
     }
 }
+
+/* ════════════════════════════════════════════════════════════
+   AI CHAT — Full-bleed override (global fallback)
+   Class-based selectors — không phụ thuộc :has()
+   ════════════════════════════════════════════════════════════ */
+
+/* 1. Main stage: flex column cho AI Chat */
+.main-stage-fullbleed {
+    display: flex !important;
+    flex-direction: column !important;
+    min-height: 0 !important;
+    height: calc(100vh - 4rem) !important;
+    overflow: hidden !important;
+}
+
+/* 2. Article.content: bỏ max-width, margin auto, padding */
+.content-fullbleed {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    flex: 1 1 auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+}
+
+/* 3. workspace-shell: bỏ giới hạn 1280px và gap/padding */
+.workspace-shell.ai-chat-shell,
+.teammate-workspace-shell.ai-chat-shell {
+    width: 100% !important;
+    max-width: 100% !important;
+    flex: 1 1 auto !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    gap: 0 !important;
+}
+

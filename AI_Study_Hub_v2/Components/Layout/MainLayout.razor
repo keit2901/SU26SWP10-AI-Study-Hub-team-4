@@ -1,12 +1,13 @@
-﻿@inherits LayoutComponentBase
+@inherits LayoutComponentBase
+@inject NavigationManager Nav
 
 <MudThemeProvider Theme="@_theme" IsDarkMode="false" />
 
 <div class="page app-shell">
     <NavMenu />
 
-    <main class="main-stage">
-        <article class="content">
+    <main class="main-stage @(IsFullBleed ? "main-stage-fullbleed" : "")">
+        <article class="content @(IsFullBleed ? "content-fullbleed" : "")">
             @Body
         </article>
     </main>
@@ -19,6 +20,10 @@
 </div>
 
 @code {
+    private bool IsFullBleed =>
+        Nav.ToBaseRelativePath(Nav.Uri)
+           .StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
+
     private readonly MudTheme _theme = new()
     {
         PaletteLight = new PaletteLight

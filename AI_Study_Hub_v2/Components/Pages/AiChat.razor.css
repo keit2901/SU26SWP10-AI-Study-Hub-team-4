@@ -8,14 +8,16 @@
 .teammate-workspace-shell.ai-chat-shell {
     width: 100%;
     max-width: 100%;
-    /* .content:has() trong MainLayout đã reset width/padding/margin */
-    /* Shell chỉ cần fill hết diện tích còn lại */
-    min-height: calc(100vh - 4rem);
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
     margin: 0;
     padding: 0;
     overflow: hidden;
     background: #ffffff;
     color: #1e293b;
+    display: flex;
+    flex-direction: column;
 }
 
 /* ---------- Grid ---------- */
@@ -24,10 +26,13 @@
     grid-template-columns: 260px minmax(0, 1fr) 275px;
     gap: 0;
     width: 100%;
-    height: calc(100vh - 4rem);
+    flex: 1 1 auto;
+    height: 100%;
+    min-height: 0;
     margin: 0;
     padding: 0;
     box-sizing: border-box;
+    overflow: hidden;
 }
 
 /* ---------- Columns base ---------- */
@@ -35,23 +40,26 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
-    border-radius: 1rem;
+    border-radius: 0;
     transition: box-shadow 240ms ease;
 }
 
-/* Left / Right: light glass */
-.ai-chat-column-left,
-.ai-chat-column-right {
-    border: 1px solid rgba(203, 213, 225, 0.80);
+/* Left / Right: light glass — flush to edges, no border-radius */
+.ai-chat-column-left {
+    border-right: 1px solid rgba(203, 213, 225, 0.80);
     background: #ffffff;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
+}
+
+.ai-chat-column-right {
+    border-left: 1px solid rgba(203, 213, 225, 0.80);
+    background: #ffffff;
 }
 
 /* Center: bright white */
 .ai-chat-column-center {
-    border: 1px solid rgba(203, 213, 225, 0.70);
+    border-left: 1px solid rgba(203, 213, 225, 0.70);
+    border-right: 1px solid rgba(203, 213, 225, 0.70);
     background: #ffffff;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.07);
 }
 
 .ai-chat-column-left,
@@ -1332,9 +1340,9 @@
 /* ---------- Responsive ---------- */
 @media (max-width: 1300px) {
     .ai-chat-grid {
-        grid-template-columns: 240px minmax(0, 1fr) 255px;
-        gap: 0.65rem;
-        padding: 0.65rem;
+        grid-template-columns: 220px minmax(0, 1fr) 240px;
+        gap: 0;
+        padding: 0;
     }
 }
 
@@ -1348,10 +1356,12 @@
         padding: 1rem;
     }
 
+    /* Trên mobile: stack dọc → khôi phục border 4 cạnh + border-radius */
     .ai-chat-column {
         min-height: auto;
         overflow: visible;
         border-radius: 1.2rem;
+        border: 1px solid rgba(203, 213, 225, 0.80) !important;
     }
 
     .ai-chat-left-rail,

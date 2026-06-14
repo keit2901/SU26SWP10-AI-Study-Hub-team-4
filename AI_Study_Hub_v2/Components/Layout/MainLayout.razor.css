@@ -11,6 +11,15 @@
     overflow-y: visible;
 }
 
+/* AI Chat: main-stage full-bleed */
+.main-stage-fullbleed {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: calc(100vh - 4rem);
+    overflow: hidden;
+}
+
 .main-stage::before {
     content: "";
     position: fixed;
@@ -29,6 +38,19 @@
     min-height: calc(100vh - 72px);
     margin: 0 auto;
     padding: 1rem 0 2.5rem;
+}
+
+/* AI Chat: content full-bleed — bỏ mọi giới hạn width */
+.content-fullbleed {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    height: 100% !important;
+    flex: 1 1 auto !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
 }
 
 #blazor-error-ui {
@@ -66,13 +88,4 @@
         width: min(100% - 1rem, 1180px);
         padding-top: 0.75rem;
     }
-}
-
-/* ── AI Chat: bỏ mọi giới hạn width/padding của wrapper ── */
-.content:has(.ai-chat-shell) {
-    width: 100% !important;
-    max-width: 100% !important;
-    min-height: 0 !important;
-    margin: 0 !important;
-    padding: 0 !important;
 }
