@@ -26,7 +26,8 @@
     --ash-radius-sm: 12px;
 }
 
-html, body {
+html,
+body {
     min-height: 100%;
     font-family: "Plus Jakarta Sans", "Inter", "Segoe UI", sans-serif;
     background: var(--ash-bg);
@@ -47,7 +48,8 @@ body::after {
     box-sizing: border-box;
 }
 
-a, .btn-link {
+a,
+.btn-link {
     color: var(--ash-violet);
 }
 
@@ -61,7 +63,11 @@ a:hover {
     border-color: transparent;
 }
 
-.btn:focus, .btn:active:focus, .btn-link.nav-link:focus, .form-control:focus, .form-check-input:focus {
+.btn:focus,
+.btn:active:focus,
+.btn-link.nav-link:focus,
+.form-control:focus,
+.form-check-input:focus {
     box-shadow: 0 0 0 0.1rem #ffffff, 0 0 0 0.25rem rgba(79, 70, 229, 0.28);
 }
 
@@ -71,7 +77,12 @@ a:hover {
     padding-bottom: 0;
 }
 
-h1, h2, h3, h4, h5, h6,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
 .mud-typography-h1,
 .mud-typography-h2,
 .mud-typography-h3,
@@ -515,8 +526,15 @@ h1:focus {
 }
 
 @keyframes auth-float {
-    0%, 100% { transform: translateY(0); }
-    50% { transform: translateY(-10px); }
+
+    0%,
+    100% {
+        transform: translateY(0);
+    }
+
+    50% {
+        transform: translateY(-10px);
+    }
 }
 
 .workspace-shell .mud-table,

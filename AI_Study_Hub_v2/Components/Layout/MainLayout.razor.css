@@ -67,3 +67,12 @@
         padding-top: 0.75rem;
     }
 }
+
+/* ── AI Chat: bỏ mọi giới hạn width/padding của wrapper ── */
+.content:has(.ai-chat-shell) {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}

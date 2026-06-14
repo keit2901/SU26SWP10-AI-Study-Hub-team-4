@@ -9,6 +9,7 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject AiChatSessionState ChatSession
+@inject IJSRuntime JS
 
 <PageTitle>AI Chat - AI Study Hub v2</PageTitle>
 
@@ -108,21 +109,36 @@
             <section class="ai-chat-column ai-chat-column-center">
                 <main class="ai-chat-center-stage">
                     <section class="workspace-chat-header">
-                        <div>
-                            <p>AI Assistant</p>
-                            <h1>Chat with your documents</h1>
-                            <span>Ask questions directly from checked context with source-backed citations.</span>
+                        <div class="workspace-chat-header-info">
+                            <div class="workspace-chat-header-folder-badge">
+                                <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" />
+                                <span class="workspace-chat-folder-name">@FolderTitle</span>
+                            </div>
+                            <h1>Chat with <span class="workspace-chat-header-highlight">@FolderTitle</span></h1>
+                            <span class="workspace-chat-header-sub">Ask questions directly from checked context with source-backed citations.</span>
                         </div>
-                        <MudButton Variant="Variant.Text"
-                                   Class="workspace-refresh-button"
-                                   StartIcon="@Icons.Material.Filled.Refresh"
-                                   OnClick="LoadScopeAsync"
-                                   Disabled="_busy || _loadingScope">
-                            Refresh
-                        </MudButton>
+                        <div class="workspace-chat-header-actions">
+                            @if (ChatSession.History.Count > 0)
+                            {
+                                <MudButton Variant="Variant.Text"
+                                           Class="workspace-clear-button"
+                                           StartIcon="@Icons.Material.Filled.DeleteSweep"
+                                           OnClick="ClearHistory"
+                                           Disabled="_busy">
+                                    Clear
+                                </MudButton>
+                            }
+                            <MudButton Variant="Variant.Text"
+                                       Class="workspace-refresh-button"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       OnClick="LoadScopeAsync"
+                                       Disabled="_busy || _loadingScope">
+                                Refresh
+                            </MudButton>
+                        </div>
                     </section>
 
-                    <section class="workspace-message-scroll" aria-live="polite">
+                    <section class="workspace-message-scroll" id="chat-message-scroll" aria-live="polite">
                         <div class="ai-chat-message ai-chat-message-assistant">
                             <div class="ai-chat-message-avatar"><MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" /></div>
                             <div class="ai-chat-message-content">
@@ -160,9 +176,9 @@
                             </div>
                         }
 
-                        @foreach (var exchange in ChatSession.History)
+                        @foreach (var (exchange, idx) in ChatSession.History.Select((e, i) => (e, i)))
                         {
-                            @RenderExchange(exchange, false)
+                            @RenderExchange(exchange, idx)
                         }
 
                         @if (_busy)
@@ -174,10 +190,12 @@
                                 </div>
                             </div>
                         }
+
+                        <div id="chat-bottom-anchor"></div>
                     </section>
 
                     <section class="workspace-composer-panel">
-                        <div class="workspace-composer-box">
+                        <div class="workspace-composer-box @(_focused ? "is-focused" : "")">
                             <MudButton Variant="Variant.Text"
                                        Href="/documents/upload"
                                        Class="workspace-attach-button"
@@ -188,13 +206,16 @@
                             <MudTextField T="string"
                                           @bind-Value="_question"
                                           Variant="Variant.Text"
-                                          Placeholder="Ask AI assistant..."
+                                          Placeholder="Ask AI assistant… (Enter to send)"
                                           Lines="1"
                                           Clearable="true"
                                           Disabled="_busy"
                                           Error="@(!string.IsNullOrWhiteSpace(_composerError))"
                                           ErrorText="@_composerError"
-                                          Class="workspace-question-input" />
+                                          Class="workspace-question-input"
+                                          @onkeydown="HandleKeyDown"
+                                          @onfocus="() => _focused = true"
+                                          @onblur="() => _focused = false" />
                             <MudButton Variant="Variant.Filled"
                                        Class="workspace-send-button"
                                        StartIcon="@Icons.Material.Filled.Send"
@@ -210,7 +231,10 @@
                                 }
                             </MudButton>
                         </div>
-                        <p class="workspace-composer-note">Answers depend on extracted chunks and may be incomplete.</p>
+                        <div class="workspace-composer-footer">
+                            <p class="workspace-composer-note">Answers depend on extracted chunks and may be incomplete.</p>
+                            <span class="workspace-composer-hint">Enter ↵ to send</span>
+                        </div>
                     </section>
                 </main>
             </section>
@@ -260,6 +284,18 @@
                         <div class="ai-chat-context-row"><span>Folders</span><strong>@_folders.Count</strong></div>
                         <div class="ai-chat-context-row"><span>Retrieval depth</span><strong>@_topK sources</strong></div>
                     </section>
+
+                    @if (ChatSession.History.Count > 0)
+                    {
+                        <section class="workspace-session-stats">
+                            <div class="workspace-panel-heading">
+                                <span>Session</span>
+                                <small>@ChatSession.History.Count exchange@(ChatSession.History.Count == 1 ? "" : "s")</small>
+                            </div>
+                            <div class="ai-chat-context-row"><span>Messages</span><strong>@(ChatSession.History.Count * 2)</strong></div>
+                            <div class="ai-chat-context-row"><span>Last asked</span><strong>@(ChatSession.History.LastOrDefault()?.AskedAt.ToString("HH:mm") ?? "—")</strong></div>
+                        </section>
+                    }
                 </aside>
             </section>
         </div>
@@ -284,6 +320,7 @@
     private CancellationTokenSource? _askCts;
     private bool _busy;
     private bool _loadingScope;
+    private bool _focused;
     private string? _error;
     private string? _composerError;
     private string? _question;
@@ -292,6 +329,7 @@
     private List<DocumentDto> _documents = new();
     private List<FolderDto> _folders = new();
     private readonly HashSet<Guid> _selectedDocumentIds = new();
+    private readonly HashSet<int> _copiedIndexes = new();
 
     private List<DocumentDto> ReadyDocuments => _documents
         .Where(d => d.Status == DocumentStatus.Ready)
@@ -362,6 +400,20 @@
         await LoadScopeAsync();
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await ScrollToBottomAsync();
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("scrollChatToBottom", "chat-bottom-anchor");
+        }
+        catch { /* JS not ready or disposed */ }
+    }
+
     private async Task LoadScopeAsync()
     {
         if (string.IsNullOrEmpty(Session.AccessToken))
@@ -400,6 +452,14 @@
         {
             _loadingScope = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey && !_busy && !string.IsNullOrWhiteSpace(_question) && ScopeDocuments.Count > 0)
+        {
+            await AskAsync();
         }
     }
 
@@ -481,11 +541,36 @@
         }
     }
 
-    private RenderFragment RenderExchange(AiChatHistoryExchange exchange, bool featured) => @<div class="@(featured ? "workspace-exchange" : "workspace-exchange workspace-exchange-compact")">
+    private void ClearHistory()
+    {
+        ChatSession.Clear();
+        _copiedIndexes.Clear();
+        _error = null;
+        StateHasChanged();
+    }
+
+    private async Task CopyAnswerAsync(string text, int index)
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+            _copiedIndexes.Add(index);
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copiedIndexes.Remove(index);
+            StateHasChanged();
+        }
+        catch { /* clipboard not available */ }
+    }
+
+    private RenderFragment RenderExchange(AiChatHistoryExchange exchange, int index) => @<div class="workspace-exchange workspace-exchange-compact">
         <div class="ai-chat-message ai-chat-message-user">
             <div class="ai-chat-message-content">
                 <div class="ai-chat-message-bubble">@exchange.Question</div>
-                <div class="workspace-message-meta">@exchange.ScopeLabel · @exchange.AskedAt.ToString("HH:mm")</div>
+                <div class="workspace-message-meta">
+                    <span>@exchange.ScopeLabel</span>
+                    <span class="workspace-message-time">@exchange.AskedAt.ToString("HH:mm")</span>
+                </div>
             </div>
         </div>
 
@@ -499,58 +584,75 @@
                     </MudAlert>
                 }
 
-                <div class="ai-chat-message-bubble">
-                    @((MarkupString)FormatAnswerMarkup(exchange.Response.Answer))
+                <div class="ai-chat-message-bubble ai-response-bubble">
+                    <div class="ai-response-toolbar">
+                        <span class="ai-response-label">
+                            <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+                            AI Answer
+                        </span>
+                        <button type="button"
+                                class="ai-copy-button @(_copiedIndexes.Contains(index) ? "is-copied" : "")"
+                                title="Copy answer"
+                                @onclick="() => CopyAnswerAsync(exchange.Response.Answer ?? string.Empty, index)">
+                            @if (_copiedIndexes.Contains(index))
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />
+                                <span>Copied!</span>
+                            }
+                            else
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" />
+                                <span>Copy</span>
+                            }
+                        </button>
+                    </div>
+                    <div class="ai-response-body">
+                        @((MarkupString)FormatAnswerMarkup(exchange.Response.Answer))
+                    </div>
                 </div>
 
-                <div class="workspace-citation-pills">
-                    <span>@SourceCountText(exchange.Response.Sources)</span>
+                <div class="workspace-citation-row">
                     @if (exchange.Response.DurationMs is { } duration)
                     {
-                        <span>@duration ms</span>
+                        <span class="workspace-duration-pill">@duration ms</span>
                     }
-                    @if (exchange.Response.Sources is not null)
+                    @if (exchange.Response.Sources is not null && exchange.Response.Sources.Count > 0)
                     {
-                        @foreach (var source in exchange.Response.Sources.Take(3).Select((value, index) => new { value, index }))
+                        <span class="workspace-sources-label">@SourceCountText(exchange.Response.Sources):</span>
+                        @foreach (var source in exchange.Response.Sources.Select((value, i) => new { value, i }))
                         {
-                            <span>@SourceLabel(source.value, source.index)</span>
+                            <span class="citation-badge-wrapper">
+                                <span class="citation-badge" tabindex="0" aria-label="@($"Source {source.i + 1}: {source.value.FileName}")">@CitationBadgeChar(source.i)</span>
+                                <span class="citation-popup" role="tooltip">
+                                    <span class="citation-popup-header">
+                                        <span class="citation-popup-num">@CitationBadgeChar(source.i)</span>
+                                        <strong class="citation-popup-filename" title="@source.value.FileName">@ShortFileName(source.value.FileName, 32)</strong>
+                                    </span>
+                                    <span class="citation-popup-meta">
+                                        @if (source.value.PageNumber is { } page)
+                                        {
+                                            <span class="citation-meta-item"><span class="citation-meta-icon">📄</span> Page @(page)</span>
+                                        }
+                                        <span class="citation-meta-item"><span class="citation-meta-icon">🔢</span> Chunk @source.value.ChunkIndex</span>
+                                        @if (source.value.Score is { } sc)
+                                        {
+                                            <span class="citation-meta-item"><span class="citation-meta-icon">⭐</span> Score @sc.ToString("0.##")</span>
+                                        }
+                                    </span>
+                                    @if (!string.IsNullOrWhiteSpace(source.value.Excerpt))
+                                    {
+                                        <span class="citation-popup-excerpt">@source.value.Excerpt</span>
+                                    }
+                                    <a class="citation-popup-open" href="/documents/@source.value.DocumentId">Open document →</a>
+                                </span>
+                            </span>
                         }
+                    }
+                    else
+                    {
+                        <span class="workspace-no-citation-note">No citations returned.</span>
                     }
                 </div>
-
-                @if (exchange.Response.Sources is null || exchange.Response.Sources.Count == 0)
-                {
-                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true" Class="workspace-no-source-alert">
-                        No source citations were returned for this answer.
-                    </MudAlert>
-                }
-                else
-                {
-                    <div class="workspace-source-grid">
-                        @foreach (var source in exchange.Response.Sources.Select((value, index) => new { value, index }))
-                        {
-                            <article class="ai-chat-source-card">
-                                <header>
-                                    <span>@SourceLabel(source.value, source.index)</span>
-                                    <MudLink Href="@($"/documents/{source.value.DocumentId}")" Typo="Typo.caption">Open</MudLink>
-                                </header>
-                                <strong title="@source.value.FileName">@ShortFileName(source.value.FileName, 30)</strong>
-                                <div class="workspace-source-meta">
-                                    @if (source.value.PageNumber is { } pageNumber)
-                                    {
-                                        <span>Page @pageNumber</span>
-                                    }
-                                    <span>Chunk @source.value.ChunkIndex</span>
-                                    @if (source.value.Score is { } score)
-                                    {
-                                        <span>Score @score.ToString("0.###")</span>
-                                    }
-                                </div>
-                                <p>@source.value.Excerpt</p>
-                            </article>
-                        }
-                    </div>
-                }
             </div>
         </div>
     </div>;
@@ -663,9 +765,15 @@
             : scope;
     }
 
-
     private static string SourceLabel(AiChatSourceDto source, int index)
         => string.IsNullOrWhiteSpace(source.Label) ? $"S{index + 1}" : source.Label;
+
+    private static string CitationBadgeChar(int index)
+    {
+        // ① ② ③ ④ ⑤ ⑥ ⑦ ⑧ ⑨ ⑩
+        string[] badges = ["①", "②", "③", "④", "⑤", "⑥", "⑦", "⑧", "⑨", "⑩"];
+        return index < badges.Length ? badges[index] : $"[{index + 1}]";
+    }
 
     private static string SourceCountText(IReadOnlyList<AiChatSourceDto>? sources)
     {
@@ -676,12 +784,44 @@
     private static string FormatAnswerMarkup(string answer)
     {
         var encoded = System.Net.WebUtility.HtmlEncode(answer ?? string.Empty);
+
+        // Bold: **text**
         encoded = System.Text.RegularExpressions.Regex.Replace(
             encoded,
             @"\*\*(.+?)\*\*",
             "<strong>$1</strong>",
             System.Text.RegularExpressions.RegexOptions.Singleline);
-        return encoded.Replace("\r\n", "<br />").Replace("\n", "<br />");
+
+        // Italic: *text*
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"\*(.+?)\*",
+            "<em>$1</em>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        // Inline code: `code`
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"`(.+?)`",
+            "<code class=\"ai-inline-code\">$1</code>",
+            System.Text.RegularExpressions.RegexOptions.Singleline);
+
+        // Numbered list items: 1. text
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"(?m)^(\d+)\.\s+(.+)$",
+            "<div class=\"ai-list-item ai-numbered-item\"><span class=\"ai-list-num\">$1.</span><span>$2</span></div>");
+
+        // Bullet list items: - text or • text
+        encoded = System.Text.RegularExpressions.Regex.Replace(
+            encoded,
+            @"(?m)^[-•]\s+(.+)$",
+            "<div class=\"ai-list-item ai-bullet-item\"><span class=\"ai-list-bullet\">•</span><span>$1</span></div>");
+
+        // Newlines to br
+        encoded = encoded.Replace("\r\n", "<br />").Replace("\n", "<br />");
+
+        return encoded;
     }
 
     private static string MapDocumentError(DocumentApiException ex) => ex.StatusCode switch
