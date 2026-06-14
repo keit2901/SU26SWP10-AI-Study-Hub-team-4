@@ -19,6 +19,12 @@ public class AppDbContext : DbContext
 
     public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();
 
+    public DbSet<AiAnswerReport> AiAnswerReports => Set<AiAnswerReport>();
+
+    public DbSet<Quiz> Quizzes => Set<Quiz>();
+
+    public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

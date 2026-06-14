@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
@@ -15,11 +16,16 @@ namespace AI_Study_Hub_v2.Controllers;
 public sealed class RagController : ControllerBase
 {
     private readonly IRagSearchService _searchService;
+    private readonly RagOptions _ragOptions;
     private readonly ILogger<RagController> _logger;
 
-    public RagController(IRagSearchService searchService, ILogger<RagController> logger)
+    public RagController(
+        IRagSearchService searchService,
+        Microsoft.Extensions.Options.IOptions<RagOptions> ragOptions,
+        ILogger<RagController> logger)
     {
         _searchService = searchService;
+        _ragOptions = ragOptions.Value;
         _logger = logger;
     }
 
@@ -52,6 +58,20 @@ public sealed class RagController : ControllerBase
                 Message = "An unexpected error occurred while searching document chunks."
             });
         }
+    }
+
+    [HttpGet("scoring")]
+    [ProducesResponseType(typeof(RagScoringInfoResponse), StatusCodes.Status200OK)]
+    public ActionResult<RagScoringInfoResponse> Scoring()
+    {
+        return Ok(new RagScoringInfoResponse(
+            _ragOptions.ChunkSizeChars,
+            _ragOptions.ChunkOverlapChars,
+            _ragOptions.EmbeddingDimensions,
+            _ragOptions.DefaultTopK,
+            _ragOptions.MaxTopK,
+            "Lower score means closer semantic distance; results are ranked from most relevant to least relevant.",
+            "Cosine distance over pgvector embeddings, constrained by owner and any document/folder/subject/semester filters."));
     }
 
     private ObjectResult ToErrorResult(DocumentException exception) =>

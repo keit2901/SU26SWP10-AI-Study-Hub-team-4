@@ -116,6 +116,8 @@ builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>(
 builder.Services.AddScoped<IEmbeddingService, FakeEmbeddingService>();
 builder.Services.AddScoped<IRagSearchService, RagSearchService>();
 builder.Services.AddScoped<IAiChatService, SemanticKernelRagChatService>();
+builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
+builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddHttpClient<IAiChatCompletionClient, GroqChatCompletionClient>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
