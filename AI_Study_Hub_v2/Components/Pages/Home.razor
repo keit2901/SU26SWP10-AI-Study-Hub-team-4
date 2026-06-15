@@ -1,7 +1,26 @@
 ﻿@page "/"
 @inject AuthSessionState Session
+@inject NavigationManager Nav
 
 <PageTitle>AI Study Hub - Academic AI Workspace</PageTitle>
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (Session.IsAuthenticated)
+        {
+            // Redirect based on role
+            if (Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                Nav.NavigateTo("/admin", replace: true);
+            }
+            else
+            {
+                Nav.NavigateTo("/documents", replace: true);
+            }
+        }
+    }
+}
 
 <main class="landing-page teammate-landing-page">
     <section class="landing-hero" aria-labelledby="landing-title">

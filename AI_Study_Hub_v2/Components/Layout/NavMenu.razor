@@ -16,9 +16,19 @@
             <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
             @if (Session.IsAuthenticated)
             {
-                <NavLink class="nav-pill" href="documents">Library</NavLink>
-                <NavLink class="nav-pill" href="ai/chat">Workspace</NavLink>
-                <NavLink class="nav-pill" href="documents/upload">Upload</NavLink>
+                // Check if user is admin
+                var isAdmin = Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+                
+                if (isAdmin)
+                {
+                    <NavLink class="nav-pill" href="admin">Dashboard</NavLink>
+                }
+                else
+                {
+                    <NavLink class="nav-pill" href="documents">Library</NavLink>
+                    <NavLink class="nav-pill" href="ai/chat">Workspace</NavLink>
+                    <NavLink class="nav-pill" href="documents/upload">Upload</NavLink>
+                }
             }
             else
             {
