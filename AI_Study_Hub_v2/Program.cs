@@ -157,6 +157,11 @@ builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
     http.Timeout = TimeSpan.FromMinutes(2);
 });
+builder.Services.AddHttpClient<QuizApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+    http.Timeout = TimeSpan.FromMinutes(2);
+});
 builder.Services.AddHttpClient<IRecaptchaVerificationService, RecaptchaVerificationService>(http =>
 {
     http.Timeout = TimeSpan.FromSeconds(10);

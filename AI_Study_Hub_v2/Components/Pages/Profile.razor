@@ -30,6 +30,12 @@ else
         return;
     }
 
+    if (u.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        Nav.NavigateTo("/admin", replace: true);
+        return;
+    }
+
     <MudStack Class="workspace-shell pa-4" Spacing="3">
         <section class="workspace-hero">
             <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 1rem; flex-wrap: wrap;">

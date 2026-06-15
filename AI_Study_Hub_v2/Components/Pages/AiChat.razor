@@ -9,6 +9,7 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject AiChatSessionState ChatSession
+@inject QuizApiClient QuizApi
 
 <PageTitle>AI Chat - AI Study Hub v2</PageTitle>
 
@@ -31,6 +32,35 @@
     }
     else
     {
+        <header class="workspace-topbar" aria-label="AI Study Hub workspace navigation">
+            <div class="workspace-brand-group">
+                <MudButton Variant="Variant.Filled"
+                           Href="/documents"
+                           Class="workspace-brand-mark"
+                           aria-label="Back to document library">
+                    <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="Size.Small" />
+                </MudButton>
+                <span class="workspace-brand-name">AI Study Hub</span>
+            </div>
+
+            <nav class="workspace-nav-tabs" aria-label="Workspace sections">
+                <MudLink Href="/documents" Class="workspace-nav-tab is-active" Underline="Underline.None">My Documents</MudLink>
+                <span class="workspace-nav-tab workspace-nav-muted">Shared</span>
+                <MudLink Href="/documents" Class="workspace-nav-tab" Underline="Underline.None">Folders</MudLink>
+            </nav>
+
+            <div class="workspace-search-box" role="search" aria-label="Workspace search">
+                <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
+                <span>Search folders and documents…</span>
+            </div>
+
+            <div class="workspace-user-chip" aria-label="Signed in user">
+                <span class="workspace-user-avatar">@UserInitial</span>
+                <span class="workspace-user-name">@UserDisplayName</span>
+                <MudIcon Icon="@Icons.Material.Filled.KeyboardArrowDown" Size="Size.Small" />
+            </div>
+        </header>
+
         <div class="ai-chat-grid" role="region" aria-label="AI chat workspace">
             <section class="ai-chat-column ai-chat-column-left">
                 <aside class="ai-chat-left-rail">
@@ -41,6 +71,16 @@
                         </div>
                         <p>@ScopeDocuments.Count files · <span>@ActiveContextCount active context</span></p>
                     </section>
+
+                    <div class="workspace-add-file-wrap">
+                        <MudButton Variant="Variant.Text"
+                                   FullWidth="true"
+                                   Href="/documents/upload"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   Class="workspace-add-file-button">
+                            Add new file
+                        </MudButton>
+                    </div>
 
                     <div class="workspace-column-labels" aria-hidden="true">
                         <span>✓</span>
@@ -108,18 +148,26 @@
             <section class="ai-chat-column ai-chat-column-center">
                 <main class="ai-chat-center-stage">
                     <section class="workspace-chat-header">
-                        <div>
-                            <p>AI Assistant</p>
-                            <h1>Chat with your documents</h1>
-                            <span>Ask questions directly from checked context with source-backed citations.</span>
+                        <div class="workspace-assistant-title">
+                            <div class="workspace-assistant-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+                            </div>
+                            <div>
+                                <h1>AI Chat Assistant</h1>
+                                <span>@ActiveContextLine</span>
+                            </div>
                         </div>
-                        <MudButton Variant="Variant.Text"
-                                   Class="workspace-refresh-button"
-                                   StartIcon="@Icons.Material.Filled.Refresh"
-                                   OnClick="LoadScopeAsync"
-                                   Disabled="_busy || _loadingScope">
-                            Refresh
-                        </MudButton>
+                        <div class="workspace-chat-status">
+                            <span class="workspace-live-dot"></span>
+                            <strong>Active</strong>
+                            <MudButton Variant="Variant.Text"
+                                       Class="workspace-refresh-button"
+                                       StartIcon="@Icons.Material.Filled.Refresh"
+                                       OnClick="LoadScopeAsync"
+                                       Disabled="_busy || _loadingScope">
+                                Refresh
+                            </MudButton>
+                        </div>
                     </section>
 
                     <section class="workspace-message-scroll" aria-live="polite">
@@ -177,6 +225,12 @@
                     </section>
 
                     <section class="workspace-composer-panel">
+                        @if (ActiveContextDocuments.Count == 0)
+                        {
+                            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="workspace-scope-warning">
+                                Select at least one indexed document in the left panel to use as AI context.
+                            </MudAlert>
+                        }
                         <div class="workspace-composer-box">
                             <MudButton Variant="Variant.Text"
                                        Href="/documents/upload"
@@ -219,8 +273,8 @@
                 <aside class="ai-chat-right-rail">
                     <section class="workspace-smart-actions">
                         <div class="workspace-panel-heading">
-                            <span>Smart Actions</span>
-                            <small>Generate study assets</small>
+                            <span><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" /> Smart Actions</span>
+                            <small>@SmartActionHint</small>
                         </div>
 
                         <button type="button" class="workspace-tool-card tool-summary" @onclick="UseSummaryPrompt" disabled="@_busy">
@@ -228,9 +282,17 @@
                             <span><strong>Create Summary</strong><small>Auto-generate a structured summary from your checked documents.</small></span>
                         </button>
 
-                        <button type="button" class="workspace-tool-card tool-exam" @onclick="UseQuizPrompt" disabled="@_busy">
+                        <button type="button" class="workspace-tool-card tool-qa" @onclick="UseQAPrompt" disabled="@_busy">
+                            <span class="workspace-tool-icon"><MudIcon Icon="@Icons.Material.Filled.QuestionAnswer" /></span>
+                            <span><strong>Generate Q&amp;A</strong><small>Create practice question and answer pairs from your active context.</small></span>
+                        </button>
+
+                        <button type="button" class="workspace-tool-card tool-exam" @onclick="GenerateQuizAsync" disabled="@(_busy || _quizGenerating || ScopeDocuments.Count == 0)">
                             <span class="workspace-tool-icon"><MudIcon Icon="@Icons.Material.Filled.AssignmentTurnedIn" /></span>
-                            <span><strong>Generate Quiz</strong><small>Create multiple-choice questions with answer options and an answer key.</small></span>
+                            <span>
+                                <strong>Exam Practice</strong>
+                                <small>@(_quizGenerating ? "Generating quiz from your active context…" : "Build a real multiple-choice quiz from your active context.")</small>
+                            </span>
                         </button>
                     </section>
 
@@ -260,11 +322,143 @@
                         <div class="ai-chat-context-row"><span>Folders</span><strong>@_folders.Count</strong></div>
                         <div class="ai-chat-context-row"><span>Retrieval depth</span><strong>@_topK sources</strong></div>
                     </section>
+
+                    <section class="workspace-integrity-box">
+                        <div>
+                            <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" />
+                            <strong>Study quality</strong>
+                        </div>
+                        <p>Answers are grounded in retrieved chunks. Check citations before using notes for exams or submissions.</p>
+                    </section>
                 </aside>
             </section>
         </div>
     }
 </MudStack>
+
+@if (_quizOpen && _quiz is not null && CurrentQuizQuestion is not null)
+{
+    var question = CurrentQuizQuestion!;
+    var result = GetQuizResult(question.Id);
+    var submitted = _quizSubmit is not null;
+    var progressPercent = QuizProgressPercent;
+
+    <div class="quiz-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="quiz-modal-title">
+        <section class="quiz-modal-card">
+            <header class="quiz-modal-header">
+                <div class="quiz-modal-title-block">
+                    <h2 id="quiz-modal-title">@_quiz.Title</h2>
+                    <p><span>@ScopeSummary</span><span>&gt;</span><span>Exam Practice</span></p>
+                </div>
+
+                <div class="quiz-modal-header-actions">
+                    <div class="quiz-progress-chip" aria-label="Quiz progress">
+                        <div>
+                            <span>Progress</span>
+                            <strong>Question @(_quizQuestionIndex + 1)/@_quiz.Questions.Count</strong>
+                        </div>
+                        <div class="quiz-progress-ring" style="--quiz-progress:@progressPercent">
+                            <span>@progressPercent%</span>
+                        </div>
+                    </div>
+                    <button type="button" class="quiz-close-button" @onclick="CloseQuizPopup" aria-label="Close quiz">
+                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
+                    </button>
+                </div>
+            </header>
+
+            <div class="quiz-modal-body">
+                <div class="quiz-question-block">
+                    <h3>@question.Text</h3>
+                    <p>@QuizQuestionSubtitle(question)</p>
+                </div>
+
+                <div class="quiz-options-grid">
+                    @foreach (var option in question.Options)
+                    {
+                        var optionState = QuizOptionState(question.Id, option.Id);
+                        <button type="button"
+                                class="@($"quiz-option-card {optionState}")"
+                                disabled="@(submitted || _quizSubmitting)"
+                                @onclick="() => SelectQuizOption(option.Id)">
+                            <span class="quiz-option-letter">@OptionBadge(option.Id, result)</span>
+                            <span class="quiz-option-copy">
+                                <strong>@option.Text</strong>
+                                @if (submitted && result is not null && string.Equals(option.Id, result.SubmittedOptionId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <small class="@(result.IsCorrect ? "quiz-feedback-correct" : "quiz-feedback-wrong")">
+                                        <MudIcon Icon="@(result.IsCorrect ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" Size="Size.Small" />
+                                        @(result.IsCorrect ? "CÂU TRẢ LỜI CHÍNH XÁC" : "CHƯA ĐÚNG LẮM!")
+                                    </small>
+                                }
+                                else if (submitted && result is not null && string.Equals(option.Id, result.CorrectOptionId, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    <small class="quiz-feedback-correct">
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" />
+                                        CÂU TRẢ LỜI CHÍNH XÁC
+                                    </small>
+                                }
+                            </span>
+                        </button>
+                    }
+                </div>
+
+                @if (submitted && result is not null)
+                {
+                    <div class="quiz-result-panel @(result.IsCorrect ? "is-correct" : "is-wrong")">
+                        <strong>@(result.IsCorrect ? "Correct answer" : $"Correct answer: {result.CorrectOptionId}")</strong>
+                        <span>@result.Explanation</span>
+                    </div>
+                }
+
+                @if (_quizSubmit is not null)
+                {
+                    <div class="quiz-score-banner">
+                        <MudIcon Icon="@Icons.Material.Filled.EmojiEvents" Size="Size.Small" />
+                        <strong>Score @_quizSubmit.Score/@_quizSubmit.Total</strong>
+                        <span>Attempt saved at @_quizSubmit.CreatedAt.ToLocalTime().ToString("HH:mm")</span>
+                    </div>
+                }
+
+                <section class="quiz-integrity-box">
+                    <div><MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" /><strong>Academic Integrity</strong></div>
+                    <p>AI-generated quiz content is grounded in your selected documents and retrieved sources. Review citations and explanations before using answers for exam preparation.</p>
+                </section>
+            </div>
+
+            <footer class="quiz-modal-footer">
+                <button type="button" class="quiz-report-button" @onclick="ReportQuizIssue">
+                    <MudIcon Icon="@Icons.Material.Filled.Flag" Size="Size.Small" />
+                    Report Issue
+                </button>
+
+                <div class="quiz-nav-actions">
+                    <button type="button" class="quiz-secondary-button" disabled="@(_quizQuestionIndex == 0)" @onclick="PreviousQuizQuestion">Previous</button>
+                    @if (CanShowQuizSubmit)
+                    {
+                        <button type="button" class="quiz-primary-button" disabled="@(_quizSubmitting || !CanSubmitQuiz)" @onclick="SubmitQuizAsync">
+                            @if (_quizSubmitting)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" />
+                            }
+                            else
+                            {
+                                <span>Submit Quiz</span>
+                            }
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="quiz-primary-button" @onclick="NextQuizQuestion">
+                            Next Question
+                            <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                        </button>
+                    }
+                </div>
+            </footer>
+        </section>
+    </div>
+}
 
 @code {
     [SupplyParameterFromQuery(Name = "documentId")]
@@ -283,6 +477,9 @@
     private AiChatApiClient? _chatApi;
     private CancellationTokenSource? _askCts;
     private bool _busy;
+    private bool _quizGenerating;
+    private bool _quizSubmitting;
+    private bool _quizOpen;
     private bool _loadingScope;
     private string? _error;
     private string? _composerError;
@@ -292,6 +489,11 @@
     private List<DocumentDto> _documents = new();
     private List<FolderDto> _folders = new();
     private readonly HashSet<Guid> _selectedDocumentIds = new();
+    private QuizGenerateResponse? _quiz;
+    private QuizSubmitResponse? _quizSubmit;
+    private CancellationTokenSource? _quizCts;
+    private int _quizQuestionIndex;
+    private readonly Dictionary<string, string> _quizAnswers = new(StringComparer.OrdinalIgnoreCase);
 
     private List<DocumentDto> ReadyDocuments => _documents
         .Where(d => d.Status == DocumentStatus.Ready)
@@ -338,6 +540,42 @@
     private string ScopeSummary => _folderId.HasValue
         ? FolderTitle
         : "All indexed documents";
+
+    private string UserDisplayName
+    {
+        get
+        {
+            var user = Session.CurrentUser;
+            if (!string.IsNullOrWhiteSpace(user?.FullName))
+            {
+                return user.FullName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(user?.Username))
+            {
+                return user.Username;
+            }
+
+            if (!string.IsNullOrWhiteSpace(user?.Email))
+            {
+                return user.Email.Split('@')[0];
+            }
+
+            return "Student";
+        }
+    }
+
+    private string UserInitial => string.IsNullOrWhiteSpace(UserDisplayName)
+        ? "S"
+        : UserDisplayName.Trim()[0].ToString().ToUpperInvariant();
+
+    private string ActiveContextLine => ActiveContextCount > 0
+        ? $"Context: {string.Join(", ", ActiveContextDocuments.Take(3).Select(d => ShortFileName(d.FileName, 24)))}{(ActiveContextCount > 3 ? $" +{ActiveContextCount - 3} more" : string.Empty)}"
+        : "No documents selected — check files in the left panel";
+
+    private string SmartActionHint => ActiveContextCount > 0
+        ? $"Using {ActiveContextCount} document{(ActiveContextCount == 1 ? string.Empty : "s")}" 
+        : "Select documents to enable";
 
     private bool IsDocumentSelected(Guid documentId) => _selectedDocumentIds.Contains(documentId);
 
@@ -603,6 +841,219 @@
     private void UseSummaryPrompt()
         => UsePrompt("Create an auto summary for my selected context with key concepts, exam tips, and citations for the most important points.");
 
+    private void UseQAPrompt()
+        => UsePrompt("Generate concise practice Q&A pairs from my selected context. Include the source citation for each answer and prioritize concepts likely to appear in exams.");
+
+    private async Task GenerateQuizAsync()
+    {
+        _composerError = null;
+        _error = null;
+
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            Nav.NavigateTo("/login", replace: true);
+            return;
+        }
+
+        if (ScopeDocuments.Count == 0)
+        {
+            _error = _folderId.HasValue
+                ? "No indexed documents are available in this folder yet."
+                : "No indexed documents are available for quiz generation yet.";
+            return;
+        }
+
+        var prompt = "Generate an exam-practice multiple-choice quiz from my active study context. Prioritize testable concepts, concise answer choices, short explanations, and source-grounded wording.";
+        var request = new QuizGenerateRequest(
+            prompt,
+            DocumentId: null,
+            FolderId: _folderId,
+            DocumentIds: SelectedDocumentIdsForRequest,
+            SubjectCode: null,
+            Semester: null,
+            TopK: Math.Clamp(_topK, 1, 10),
+            QuestionCount: 5);
+
+        _quizCts?.Cancel();
+        _quizCts?.Dispose();
+        _quizCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+
+        _quizGenerating = true;
+        try
+        {
+            _quiz = await QuizApi.GenerateAsync(Session.AccessToken!, request, _quizCts.Token);
+            _quizSubmit = null;
+            _quizAnswers.Clear();
+            _quizQuestionIndex = 0;
+            _quizOpen = _quiz.Questions.Count > 0;
+
+            if (_quizOpen)
+            {
+                Snackbar.Add($"Quiz ready: {_quiz.Questions.Count} questions.", Severity.Success);
+            }
+            else
+            {
+                _error = "Quiz was generated without questions. Try a narrower document scope.";
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Quiz generation timed out. Try again with fewer sources or selected documents.";
+        }
+        catch (QuizApiException ex)
+        {
+            _error = MapQuizError(ex);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Network error while generating quiz: {ex.Message}";
+        }
+        finally
+        {
+            _quizGenerating = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SubmitQuizAsync()
+    {
+        if (_quiz is null || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            return;
+        }
+
+        var answers = _quizAnswers
+            .Select(pair => new QuizAnswerDto(pair.Key, pair.Value))
+            .ToArray();
+        var request = new QuizSubmitRequest(answers);
+
+        _quizCts?.Cancel();
+        _quizCts?.Dispose();
+        _quizCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+
+        _quizSubmitting = true;
+        try
+        {
+            _quizSubmit = await QuizApi.SubmitAsync(Session.AccessToken!, _quiz.QuizId, request, _quizCts.Token);
+            Snackbar.Add($"Quiz submitted: {_quizSubmit.Score}/{_quizSubmit.Total} correct.", Severity.Success);
+        }
+        catch (OperationCanceledException)
+        {
+            _error = "Quiz submission timed out. Try submitting again.";
+        }
+        catch (QuizApiException ex)
+        {
+            _error = MapQuizError(ex);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Network error while submitting quiz: {ex.Message}";
+        }
+        finally
+        {
+            _quizSubmitting = false;
+            StateHasChanged();
+        }
+    }
+
+    private QuizQuestionDto? CurrentQuizQuestion => _quiz is null || _quiz.Questions.Count == 0
+        ? null
+        : _quiz.Questions[Math.Clamp(_quizQuestionIndex, 0, _quiz.Questions.Count - 1)];
+
+    private int QuizProgressPercent => _quiz is null || _quiz.Questions.Count == 0
+        ? 0
+        : (int)Math.Round((double)(_quizQuestionIndex + 1) / _quiz.Questions.Count * 100);
+
+    private bool CanShowQuizSubmit => _quiz is not null && (_quizQuestionIndex >= _quiz.Questions.Count - 1 || _quizSubmit is not null);
+
+    private bool CanSubmitQuiz => _quiz is not null && _quizSubmit is null && _quizAnswers.Count > 0;
+
+    private void SelectQuizOption(string optionId)
+    {
+        if (_quizSubmit is not null || CurrentQuizQuestion is null)
+        {
+            return;
+        }
+
+        _quizAnswers[CurrentQuizQuestion.Id] = optionId;
+    }
+
+    private string? GetSelectedQuizOption(string questionId)
+        => _quizAnswers.TryGetValue(questionId, out var optionId) ? optionId : null;
+
+    private QuizQuestionResultDto? GetQuizResult(string questionId)
+        => _quizSubmit?.Results.FirstOrDefault(r => string.Equals(r.QuestionId, questionId, StringComparison.OrdinalIgnoreCase));
+
+    private string QuizOptionState(string questionId, string optionId)
+    {
+        var selected = string.Equals(GetSelectedQuizOption(questionId), optionId, StringComparison.OrdinalIgnoreCase);
+        var result = GetQuizResult(questionId);
+        if (result is null)
+        {
+            return selected ? "is-selected" : string.Empty;
+        }
+
+        if (string.Equals(result.CorrectOptionId, optionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "is-correct";
+        }
+
+        return selected ? "is-wrong" : string.Empty;
+    }
+
+    private static string OptionBadge(string optionId, QuizQuestionResultDto? result)
+    {
+        if (result is not null && string.Equals(result.CorrectOptionId, optionId, StringComparison.OrdinalIgnoreCase))
+        {
+            return "✓";
+        }
+
+        return optionId;
+    }
+
+    private static string QuizQuestionSubtitle(QuizQuestionDto question)
+    {
+        var source = string.IsNullOrWhiteSpace(question.SourceLabel) ? "Retrieved study source" : question.SourceLabel;
+        return $"Deep dive into your active context · {source}";
+    }
+
+    private void PreviousQuizQuestion()
+    {
+        if (_quizQuestionIndex > 0)
+        {
+            _quizQuestionIndex--;
+        }
+    }
+
+    private void NextQuizQuestion()
+    {
+        if (_quiz is not null && _quizQuestionIndex < _quiz.Questions.Count - 1)
+        {
+            _quizQuestionIndex++;
+        }
+    }
+
+    private void CloseQuizPopup() => _quizOpen = false;
+
+    private void ReportQuizIssue()
+    {
+        var question = CurrentQuizQuestion;
+        UsePrompt(question is null
+            ? "I want to report an issue with the generated quiz."
+            : $"I want to report an issue with quiz question '{question.Text}'. Please help me explain what looks wrong.");
+        Snackbar.Add("Report issue prompt added to chat composer.", Severity.Info);
+    }
+
     private static string DocumentExtension(DocumentDto document)
     {
         var extension = Path.GetExtension(document.FileName).TrimStart('.').ToLowerInvariant();
@@ -703,9 +1154,25 @@
         _ => ex.Message,
     };
 
+    private static string MapQuizError(QuizApiException ex) => ex.StatusCode switch
+    {
+        400 => ex.Message,
+        401 => "Your session has expired. Please sign in again.",
+        403 => "You do not have permission to generate quizzes.",
+        404 => ex.Code == "no_quiz_sources"
+            ? "No indexed sources were found for quiz generation. Select indexed documents and try again."
+            : "The quiz endpoint or quiz attempt was not found.",
+        408 => "The quiz request timed out. Try again with fewer sources or a narrower scope.",
+        429 => "Quiz generation is rate limited right now. Wait a moment and try again.",
+        500 or 502 or 503 => $"Quiz service error: {ex.Message}",
+        _ => ex.Message,
+    };
+
     public void Dispose()
     {
         _askCts?.Cancel();
         _askCts?.Dispose();
+        _quizCts?.Cancel();
+        _quizCts?.Dispose();
     }
 }

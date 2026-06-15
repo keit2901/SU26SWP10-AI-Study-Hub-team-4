@@ -13,13 +13,9 @@
         <label for="community-nav-toggle" class="navbar-toggler-label" aria-label="Toggle navigation"></label>
 
         <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
-            <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
             @if (Session.IsAuthenticated)
             {
-                // Check if user is admin
-                var isAdmin = Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
-                
-                if (isAdmin)
+                @if (IsAdmin)
                 {
                     <NavLink class="nav-pill" href="admin">Dashboard</NavLink>
                 }
@@ -32,6 +28,7 @@
             }
             else
             {
+                <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
                 <NavLink class="nav-pill" href="login">Sign In</NavLink>
                 <NavLink class="nav-pill" href="register">Get Started</NavLink>
             }
@@ -44,7 +41,7 @@
                     <span>@DisplayName</span>
                     <small>Pro Plan</small>
                 </div>
-                <a class="user-chip teammate-user-chip" href="profile">
+                <a class="user-chip teammate-user-chip" href="@(IsAdmin ? "admin" : "profile")">
                     <span class="user-avatar"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
                 </a>
                 <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
@@ -61,6 +58,9 @@
 </header>
 
 @code {
+    private bool IsAdmin =>
+        Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+
     private string DisplayName =>
         Session.CurrentUser?.FullName
         ?? Session.CurrentUser?.Username

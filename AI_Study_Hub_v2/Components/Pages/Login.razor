@@ -131,15 +131,7 @@
     {
         if (Session.IsAuthenticated)
         {
-            // Redirect based on role
-            if (Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Nav.NavigateTo("/admin", replace: true);
-            }
-            else
-            {
-                Nav.NavigateTo("/profile", replace: true);
-            }
+            RedirectAuthenticatedUser(Session.CurrentUser?.Role);
         }
     }
 
@@ -165,16 +157,7 @@
             var resp = await AuthApi.LoginAsync(_model);
             Session.Set(resp);
             Snackbar.Add($"Welcome back, {resp.User.FullName}!", Severity.Success);
-            
-            // Redirect based on role
-            if (resp.User.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
-            {
-                Nav.NavigateTo("/admin", replace: true);
-            }
-            else
-            {
-                Nav.NavigateTo("/profile", replace: true);
-            }
+            RedirectAuthenticatedUser(resp.User.Role);
         }
         catch (AuthApiException ex)
         {
@@ -191,5 +174,13 @@
             _busy = false;
             StateHasChanged();
         }
+    }
+
+    private void RedirectAuthenticatedUser(string? role)
+    {
+        var target = role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true
+            ? "/admin"
+            : "/profile";
+        Nav.NavigateTo(target, replace: true);
     }
 }
