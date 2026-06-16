@@ -1,5 +1,4 @@
 @page "/documents"
-@using Microsoft.AspNetCore.Components.Web
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
@@ -13,33 +12,6 @@
 <PageTitle>Thư viện học tập - AI Study Hub v2</PageTitle>
 
 <MudStack Spacing="0" Class="workspace-shell document-shell library-dashboard teammate-library-shell">
-    <header class="library-workspace-header">
-        <div class="library-brand-cluster">
-            <div class="library-brand-mark"><MudIcon Icon="@Icons.Material.Filled.AutoStories" Size="Size.Small" /></div>
-            <div>
-                <strong>AI Study Hub</strong>
-                <span>Library Dashboard</span>
-            </div>
-        </div>
-        <nav class="library-tab-strip" aria-label="Library navigation tabs">
-            <span class="active">Dashboard</span>
-            <span>Library</span>
-            <span>Workspace</span>
-            <span>Upload</span>
-        </nav>
-        <div class="library-search-bar" id="dashboard-search-bar">
-            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
-            <input value="@_textFilter"
-                   @oninput="e => _textFilter = e.Value?.ToString()"
-                   @onkeydown="HandleSearchKeyDownAsync"
-                   placeholder="Tìm kiếm nhanh chủ đề, tài liệu học tập..." />
-        </div>
-        <div class="library-header-actions">
-            <span class="library-pro-badge">PRO TIER</span>
-            <span class="library-avatar"><MudIcon Icon="@Icons.Material.Filled.PersonOutline" Size="Size.Small" /></span>
-        </div>
-    </header>
-
     <div class="library-app-frame">
         <aside class="library-side-panel" aria-label="Document library navigation">
             <section class="library-ai-panel">
@@ -120,14 +92,6 @@
                         <MudText Typo="Typo.body2">@TodayLabel — hôm nay bạn muốn chinh phục kiến thức nào?</MudText>
                     </div>
                     <div class="library-action-row">
-                        <MudButton Variant="Variant.Filled"
-                                   Color="Color.Success"
-                                   Class="library-action-button library-explore-button"
-                                   StartIcon="@Icons.Material.Filled.Explore"
-                                   OnClick="ShowNewFolderBox"
-                                   Disabled="_busy">
-                            Khám phá chuyên đề mới
-                        </MudButton>
                         <MudButton Variant="Variant.Outlined"
                                    Color="Color.Primary"
                                    Class="library-action-button"
@@ -444,11 +408,6 @@
                             }
                         }
                     </div>
-                    <div class="recent-storage-card">
-                        <span>Dung lượng hiển thị</span>
-                        <strong>@FormatBytes(TotalVisibleBytes)</strong>
-                        <small>Mới nhất: @LatestUploadText</small>
-                    </div>
                 </aside>
             </div>
         </main>
@@ -512,8 +471,6 @@
 
     private int LooseDocumentsCount => _rows.Count(d => !d.FolderId.HasValue);
 
-    private long TotalVisibleBytes => _rows.Sum(d => d.FileSizeBytes);
-
     private string FolderSummary => _folders.Count == 0
         ? "Tạo thư mục để quản lý theo môn"
         : $"{_folders.Sum(f => f.DocumentCount)} tài liệu đã phân thư mục";
@@ -521,10 +478,6 @@
     private string ProcessingSummary => ProcessingDocuments == 0
         ? "Nguồn sẵn sàng dùng cho AI Chat"
         : $"{ProcessingDocuments} tài liệu đang xử lý";
-
-    private string LatestUploadText => _rows.FirstOrDefault() is { } latest
-        ? latest.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
-        : "Chưa có tài liệu";
 
     private string ResultSummary => _busy
         ? "Đang tải tài liệu..."
@@ -539,14 +492,6 @@
         }
         await LoadFoldersAsync();
         await LoadAsync();
-    }
-
-    private async Task HandleSearchKeyDownAsync(KeyboardEventArgs args)
-    {
-        if (args.Key == "Enter")
-        {
-            await ApplyFiltersAsync();
-        }
     }
 
     private async Task LoadFoldersAsync()

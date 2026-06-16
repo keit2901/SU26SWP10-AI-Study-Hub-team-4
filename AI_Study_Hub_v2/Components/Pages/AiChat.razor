@@ -32,34 +32,45 @@
     }
     else
     {
-        <header class="workspace-topbar" aria-label="AI Study Hub workspace navigation">
-            <div class="workspace-brand-group">
+        <section class="workspace-detail-hero" aria-label="AI Study workspace overview">
+            <div class="workspace-detail-copy">
+                <div class="workspace-detail-breadcrumb">
+                    <MudLink Href="/documents" Underline="Underline.None">Library</MudLink>
+                    <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
+                    <span>@FolderTitle</span>
+                </div>
+                <h1>AI Study Workspace</h1>
+                <p>@ActiveContextLine</p>
+            </div>
+
+            <div class="workspace-detail-side">
+                <div class="workspace-page-summary">
+                    <span class="workspace-live-dot"></span>
+                    <strong>@ScopeDocuments.Count files</strong>
+                    <small>@ActiveContextCount active context · @_topK sources</small>
+                </div>
                 <MudButton Variant="Variant.Filled"
-                           Href="/documents"
-                           Class="workspace-brand-mark"
-                           aria-label="Back to document library">
-                    <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="Size.Small" />
+                           Href="/documents/upload"
+                           Class="workspace-new-source-button"
+                           StartIcon="@Icons.Material.Filled.Add">
+                    New source
                 </MudButton>
-                <span class="workspace-brand-name">AI Study Hub</span>
             </div>
 
-            <nav class="workspace-nav-tabs" aria-label="Workspace sections">
-                <MudLink Href="/documents" Class="workspace-nav-tab is-active" Underline="Underline.None">My Documents</MudLink>
-                <span class="workspace-nav-tab workspace-nav-muted">Shared</span>
-                <MudLink Href="/documents" Class="workspace-nav-tab" Underline="Underline.None">Folders</MudLink>
-            </nav>
-
-            <div class="workspace-search-box" role="search" aria-label="Workspace search">
-                <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
-                <span>Search folders and documents…</span>
+            <div class="workspace-tool-row" aria-label="Workspace tools">
+                <button type="button" class="is-active" disabled="@_busy"><MudIcon Icon="@Icons.Material.Filled.CheckBox" Size="Size.Small" />SELECT</button>
+                <button type="button" @onclick="UseQAPrompt" disabled="@_busy"><MudIcon Icon="@Icons.Material.Filled.EditNote" Size="Size.Small" />ASK</button>
+                <button type="button" @onclick="UseSummaryPrompt" disabled="@_busy"><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />NOTE</button>
+                <button type="button" @onclick="GenerateQuizAsync" disabled="@(_busy || _quizGenerating || ScopeDocuments.Count == 0)"><MudIcon Icon="@Icons.Material.Filled.AssignmentTurnedIn" Size="Size.Small" />QUIZ</button>
+                <MudButton Variant="Variant.Text"
+                           Class="workspace-refresh-button"
+                           StartIcon="@Icons.Material.Filled.Refresh"
+                           OnClick="LoadScopeAsync"
+                           Disabled="_busy || _loadingScope">
+                    Refresh
+                </MudButton>
             </div>
-
-            <div class="workspace-user-chip" aria-label="Signed in user">
-                <span class="workspace-user-avatar">@UserInitial</span>
-                <span class="workspace-user-name">@UserDisplayName</span>
-                <MudIcon Icon="@Icons.Material.Filled.KeyboardArrowDown" Size="Size.Small" />
-            </div>
-        </header>
+        </section>
 
         <div class="ai-chat-grid" role="region" aria-label="AI chat workspace">
             <section class="ai-chat-column ai-chat-column-left">

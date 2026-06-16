@@ -397,7 +397,29 @@ public class DocumentServiceTests
     }
 
     [Test]
-    public async Task UploadAsync_StorageUploadThrows_Bubbles_AndDoesNotInsertRow()
+    public async Task UploadAsync_SupabaseStorageException_Throws503StorageUnavailable_AndDoesNotInsertRow()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(),
+                It.IsAny<string>(), false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new SupabaseStorageException("storage service unavailable"));
+        var sut = BuildSut(db, storage.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
+            fileName: "x.pdf", contentType: "application/pdf",
+            fileSizeBytes: 100, content: Stream(100));
+
+        var ex = await act.Should().ThrowAsync<DocumentException>();
+        ex.Which.StatusCode.Should().Be(503);
+        ex.Which.Code.Should().Be("storage_unavailable");
+        ex.Which.Message.Should().Contain("Document storage is unavailable");
+        (await db.Documents.CountAsync()).Should().Be(0);
+    }
+
+    [Test]
+    public async Task UploadAsync_UnexpectedStorageException_Bubbles_AndDoesNotInsertRow()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
         var profile = SeedActiveStudent(db);

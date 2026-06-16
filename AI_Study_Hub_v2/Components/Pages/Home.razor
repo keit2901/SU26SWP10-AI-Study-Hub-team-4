@@ -2,7 +2,7 @@
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
-<PageTitle>AI Study Hub - Notebook Community</PageTitle>
+<PageTitle>AI Study Workspace - AI Study Hub</PageTitle>
 
 <main class="home-hub teammate-community-home">
     <aside class="home-source-sidebar" aria-label="AI Study Hub navigation">
@@ -16,7 +16,7 @@
                 <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />
                 <span>AI Study</span>
             </div>
-            <p>Sử dụng AI để đặt câu hỏi về tài liệu, tóm tắt nội dung, tạo đề cương, tìm kiếm và luyện quiz từ nguồn đã upload.</p>
+            <p>Build study series from your sources, open a focused workspace, ask grounded questions, and practice with citations.</p>
             <a class="home-ai-button" href="@(Session.IsAuthenticated ? "/ai/chat" : "/login")">
                 Mở AI Chat
                 <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
@@ -34,7 +34,7 @@
                 <MudIcon Icon="@Icons.Material.Filled.ArrowForwardIos" Size="Size.Small" />
             </a>
             <a href="#public-community">
-                <span><MudIcon Icon="@Icons.Material.Filled.Public" Size="Size.Small" /> Public Community</span>
+                <span><MudIcon Icon="@Icons.Material.Filled.Public" Size="Size.Small" /> Community Hub</span>
                 <MudIcon Icon="@Icons.Material.Filled.ArrowForwardIos" Size="Size.Small" />
             </a>
         </nav>
@@ -49,35 +49,35 @@
         <header class="home-hub-header">
             <div class="home-search-box">
                 <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
-                <span>Search notebooks, folders, and shared resources…</span>
+                <span>Search study series, sources, and shared notebooks…</span>
             </div>
             <div class="home-header-actions">
                 <a class="home-header-link" href="/documents">Library</a>
                 <a class="home-header-link" href="/ai/chat">Workspace</a>
-                <a class="home-header-primary" href="@(Session.IsAuthenticated ? "/documents/upload" : "/register")">Upload</a>
+                <a class="home-header-primary" href="@(Session.IsAuthenticated ? "/documents/upload" : "/register")">New Series</a>
             </div>
         </header>
 
         <section class="home-hero-panel" aria-labelledby="home-title">
             <div>
-                <span class="home-kicker">Notebook Workspace</span>
-                <h2 id="home-title">Build notebooks, chat with sources, and share study paths.</h2>
+                <span class="home-kicker">Current Study Series</span>
+                <h2 id="home-title">AI Study Workspace</h2>
                 <p>
-                    Turn uploaded documents into notebook-style study hubs. Move from your private library to
-                    AI workspace, source-grounded quiz practice, and community-ready study collections.
+                    Turn your files into focused study series. Open a source sidebar, work in a wide AI canvas,
+                    and keep summaries, quizzes, and citations close to the material.
                 </p>
             </div>
             <div class="home-hero-actions">
-                <a class="home-primary-button" href="@(Session.IsAuthenticated ? "/documents" : "/register")">Create new notebook</a>
-                <a class="home-secondary-button" href="#public-community">Browse community</a>
+                <a class="home-primary-button" href="@(Session.IsAuthenticated ? "/documents/upload" : "/register")">New Notebook</a>
+                <a class="home-secondary-button" href="#public-community">Community Hub</a>
             </div>
         </section>
 
         <section class="home-notebook-section" aria-labelledby="notebooks-title">
             <div class="home-section-toolbar">
                 <div>
-                    <span class="home-kicker">Private library</span>
-                    <h2 id="notebooks-title">My Notebooks</h2>
+                    <span class="home-kicker">Library board</span>
+                    <h2 id="notebooks-title">Current Study Series</h2>
                 </div>
                 <div class="home-filter-tabs" aria-label="Notebook filters">
                     <span class="active">All</span>
@@ -89,7 +89,7 @@
             <div class="home-card-grid">
                 <a class="home-create-card" href="@(Session.IsAuthenticated ? "/documents/upload" : "/register")">
                     <span><MudIcon Icon="@Icons.Material.Filled.Add" /></span>
-                    <strong>Create new notebook</strong>
+                    <strong>New Notebook</strong>
                 </a>
 
                 @foreach (var card in MyNotebooks)
@@ -102,8 +102,8 @@
         <section id="public-community" class="home-notebook-section community" aria-labelledby="community-title">
             <div class="home-section-toolbar">
                 <div>
-                    <span class="home-kicker">Public Community</span>
-                    <h2 id="community-title">Shared study notebooks</h2>
+                    <span class="home-kicker">Community Hub</span>
+                    <h2 id="community-title">Shared study series</h2>
                 </div>
                 <a class="home-view-all" href="@(Session.IsAuthenticated ? "/documents" : "/login")">Connect to Library</a>
             </div>
@@ -117,10 +117,10 @@
         </section>
 
         <section id="features" class="home-workflow-strip" aria-label="Integrated teammate UI sources">
-            <article><strong>Library</strong><span>folder-first dashboard</span></article>
-            <article><strong>Workspace</strong><span>document-aware AI chat</span></article>
-            <article><strong>Quiz</strong><span>exam modal with feedback</span></article>
-            <article><strong>Community</strong><span>shared notebook discovery</span></article>
+            <article><strong>Series</strong><span>source cards and folders</span></article>
+            <article><strong>Workspace</strong><span>wide AI canvas</span></article>
+            <article><strong>Tools</strong><span>summary, Q&amp;A, quiz</span></article>
+            <article><strong>Community</strong><span>shared study paths</span></article>
         </section>
     </section>
 </main>
