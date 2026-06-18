@@ -1,21 +1,21 @@
 @namespace AI_Study_Hub_v2.Components.Shared
 @implements IAsyncDisposable
-@inject ITurnstileVerificationService TurnstileVerifier
-@inject IOptions<TurnstileOptions> TurnstileOptionsAccessor
+@inject IRecaptchaVerificationService RecaptchaVerifier
+@inject IOptions<RecaptchaOptions> RecaptchaOptionsAccessor
 @inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @inject IJSRuntime Js
 
-<MudPaper Class="pa-3 human-check turnstile-check" Elevation="0" Outlined="true">
-    <MudStack Spacing="2">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Style="flex-wrap: wrap;">
+<MudPaper Class="human-check recaptcha-check" Elevation="0" Outlined="true" Style="padding: 12px 0;">
+    <MudStack Spacing="2" AlignItems="AlignItems.Center">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.Center" Spacing="1" Style="flex-wrap: wrap;">
             <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Color="Color.Primary" Size="Size.Small" />
             <MudText Typo="Typo.subtitle2">Human verification</MudText>
             <MudText Typo="Typo.caption" Color="Color.Secondary">@ModeLabel</MudText>
         </MudStack>
 
-        @if (UseTurnstile)
+        @if (UseRecaptcha)
         {
-            <div id="@_elementId" class="turnstile-widget" aria-label="Cloudflare Turnstile verification"></div>
+            <div id="@_elementId" class="recaptcha-widget" aria-label="Google reCAPTCHA verification"></div>
             @if (!string.IsNullOrWhiteSpace(_message))
             {
                 <MudAlert Severity="@(IsValid ? Severity.Success : Severity.Warning)" Dense="true" Variant="Variant.Outlined">
@@ -39,13 +39,13 @@
                           InputType="InputType.Number"
                           Disabled="Disabled" />
             <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Development fallback only. Configure Cloudflare Turnstile keys for production CAPTCHA.
+                Development fallback only. Configure reCAPTCHA keys for production CAPTCHA.
             </MudText>
         }
         else
         {
             <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Filled">
-                Cloudflare Turnstile is required but is not configured. Ask an administrator to set Turnstile keys.
+                Google reCAPTCHA is required but is not configured. Ask an administrator to set reCAPTCHA keys.
             </MudAlert>
         }
     </MudStack>
@@ -54,12 +54,12 @@
 @code {
     private const int Left = 7;
     private const int Right = 5;
-    private readonly string _elementId = $"turnstile-{Guid.NewGuid():N}";
+    private readonly string _elementId = $"recaptcha-{Guid.NewGuid():N}";
     private string? _answer;
-    private string? _turnstileToken;
+    private string? _recaptchaToken;
     private string? _message;
     private bool _touched;
-    private bool _turnstilePassed;
+    private bool _recaptchaPassed;
     private bool _rendered;
     private DotNetObjectReference<HumanCheck>? _dotNetRef;
 
@@ -67,23 +67,23 @@
     [Parameter] public string Action { get; set; } = "human-check";
     [Parameter] public EventCallback<bool> ValidChanged { get; set; }
 
-    private TurnstileOptions TurnstileOptions => TurnstileOptionsAccessor.Value;
+    private RecaptchaOptions RecaptchaOptions => RecaptchaOptionsAccessor.Value;
 
-    private bool UseTurnstile => TurnstileVerifier.IsEnabled && TurnstileVerifier.IsConfigured;
+    private bool UseRecaptcha => RecaptchaVerifier.IsEnabled && RecaptchaVerifier.IsConfigured;
 
-    private bool UseDevelopmentFallback => HostEnvironment.IsDevelopment() && TurnstileOptions.AllowDevelopmentFallback;
+    private bool UseDevelopmentFallback => HostEnvironment.IsDevelopment() && RecaptchaOptions.AllowDevelopmentFallback;
 
-    public string? ResponseToken => _turnstileToken;
+    public string? GetResponseToken() => _recaptchaToken;
 
-    public bool IsValid => UseTurnstile
-        ? _turnstilePassed && !string.IsNullOrWhiteSpace(_turnstileToken)
+    public bool IsValid => UseRecaptcha
+        ? _recaptchaPassed && !string.IsNullOrWhiteSpace(_recaptchaToken)
         : UseDevelopmentFallback && int.TryParse(_answer, out var value) && value == Left + Right;
 
-    private string ModeLabel => UseTurnstile
-        ? "Cloudflare Turnstile CAPTCHA."
+    private string ModeLabel => UseRecaptcha
+        ? "Google reCAPTCHA."
         : UseDevelopmentFallback
-            ? "Development fallback because Turnstile is not configured."
-            : "Cloudflare Turnstile configuration is required.";
+            ? "Development fallback because reCAPTCHA is not configured."
+            : "Google reCAPTCHA configuration is required.";
 
     private string ChallengeText => $"What is {Left} + {Right}?";
 
@@ -93,7 +93,7 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!UseTurnstile || _rendered)
+        if (!UseRecaptcha || _rendered)
         {
             return;
         }
@@ -101,20 +101,14 @@
         try
         {
             _dotNetRef ??= DotNetObjectReference.Create(this);
-            await Js.InvokeVoidAsync("aiStudyHubTurnstile.render", _elementId, _dotNetRef, new
-            {
-                siteKey = TurnstileOptions.SiteKey,
-                theme = TurnstileOptions.Theme,
-                size = TurnstileOptions.Size,
-                action = Action
-            });
+            await Js.InvokeVoidAsync("aiStudyHubRecaptcha.render", _elementId, _dotNetRef);
             _rendered = true;
         }
         catch (JSException)
         {
-            _turnstileToken = null;
-            _turnstilePassed = false;
-            _message = "Cloudflare Turnstile could not load. Check your connection and retry.";
+            _recaptchaToken = null;
+            _recaptchaPassed = false;
+            _message = "Google reCAPTCHA could not load. Check your connection and retry.";
             await ValidChanged.InvokeAsync(false);
             StateHasChanged();
         }
@@ -124,23 +118,33 @@
     {
         _touched = true;
 
-        if (!UseTurnstile)
+        if (!UseRecaptcha)
         {
             await ValidChanged.InvokeAsync(IsValid);
             StateHasChanged();
             return IsValid;
         }
 
-        if (string.IsNullOrWhiteSpace(_turnstileToken))
+        if (string.IsNullOrWhiteSpace(_recaptchaToken))
         {
-            _turnstilePassed = false;
-            _message = "Complete the Cloudflare Turnstile challenge before continuing.";
+            var token = await Js.InvokeAsync<string>("aiStudyHubRecaptcha.getResponse", _elementId);
+            if (!string.IsNullOrWhiteSpace(token))
+            {
+                _recaptchaToken = token;
+                _recaptchaPassed = true;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(_recaptchaToken))
+        {
+            _recaptchaPassed = false;
+            _message = "Complete the Google reCAPTCHA challenge before continuing.";
             await ValidChanged.InvokeAsync(false);
             StateHasChanged();
             return false;
         }
 
-        _message = "Cloudflare Turnstile challenge completed. The server will verify it before processing.";
+        _message = "Google reCAPTCHA challenge completed. The server will verify it before processing.";
         await ValidChanged.InvokeAsync(IsValid);
         StateHasChanged();
         return IsValid;
@@ -157,24 +161,24 @@
     public async Task ResetAsync()
     {
         _answer = string.Empty;
-        _turnstileToken = null;
-        _turnstilePassed = false;
+        _recaptchaToken = null;
+        _recaptchaPassed = false;
         _message = null;
         _touched = false;
         await ValidChanged.InvokeAsync(false);
-        await ResetTurnstileWidgetAsync();
+        await ResetRecaptchaWidgetAsync();
         StateHasChanged();
     }
 
     public void Reset()
     {
         _answer = string.Empty;
-        _turnstileToken = null;
-        _turnstilePassed = false;
+        _recaptchaToken = null;
+        _recaptchaPassed = false;
         _message = null;
         _touched = false;
         _ = ValidChanged.InvokeAsync(false);
-        _ = ResetTurnstileWidgetAsync();
+        _ = ResetRecaptchaWidgetAsync();
         StateHasChanged();
     }
 
@@ -186,43 +190,43 @@
     }
 
     [JSInvokable]
-    public async Task OnTurnstileSuccess(string token)
+    public async Task OnRecaptchaSuccess(string token)
     {
-        _turnstileToken = token;
-        _turnstilePassed = true;
-        _message = "Cloudflare Turnstile challenge completed.";
+        _recaptchaToken = token;
+        _recaptchaPassed = true;
+        _message = "Google reCAPTCHA challenge completed.";
         await ValidChanged.InvokeAsync(true);
         StateHasChanged();
     }
 
     [JSInvokable]
-    public async Task OnTurnstileError(string errorCode)
+    public async Task OnRecaptchaError(string errorCode)
     {
-        _turnstileToken = null;
-        _turnstilePassed = false;
-        _message = $"Turnstile challenge failed ({errorCode}). Please retry.";
+        _recaptchaToken = null;
+        _recaptchaPassed = false;
+        _message = $"reCAPTCHA challenge failed ({errorCode}). Please retry.";
         await ValidChanged.InvokeAsync(false);
         StateHasChanged();
     }
 
     [JSInvokable]
-    public async Task OnTurnstileExpired()
+    public async Task OnRecaptchaExpired()
     {
-        _turnstileToken = null;
-        _turnstilePassed = false;
-        _message = "Turnstile challenge expired. Please retry.";
+        _recaptchaToken = null;
+        _recaptchaPassed = false;
+        _message = "reCAPTCHA challenge expired. Please retry.";
         await ValidChanged.InvokeAsync(false);
         StateHasChanged();
     }
 
-    private async Task ResetTurnstileWidgetAsync()
+    private async Task ResetRecaptchaWidgetAsync()
     {
-        if (!UseTurnstile || !_rendered)
+        if (!UseRecaptcha || !_rendered)
         {
             return;
         }
 
-        await Js.InvokeVoidAsync("aiStudyHubTurnstile.reset", _elementId);
+        await Js.InvokeVoidAsync("aiStudyHubRecaptcha.reset", _elementId);
     }
 
     public async ValueTask DisposeAsync()
@@ -231,7 +235,7 @@
         {
             try
             {
-                await Js.InvokeVoidAsync("aiStudyHubTurnstile.remove", _elementId);
+                await Js.InvokeVoidAsync("aiStudyHubRecaptcha.remove", _elementId);
             }
             catch (JSDisconnectedException)
             {

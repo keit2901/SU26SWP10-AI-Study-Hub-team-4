@@ -4,7 +4,10 @@
 <MudThemeProvider Theme="@_theme" IsDarkMode="false" />
 
 <div class="page app-shell">
-    <NavMenu />
+    @if (!IsFullBleed)
+    {
+        <NavMenu />
+    }
 
     <main class="main-stage @(IsFullBleed ? "main-stage-fullbleed" : "")">
         <article class="content @(IsFullBleed ? "content-fullbleed" : "")">

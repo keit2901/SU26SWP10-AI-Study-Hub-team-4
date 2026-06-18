@@ -92,9 +92,27 @@ public sealed class FolderDto
 
     public int DocumentCount { get; set; }
 
+    public bool IsFavorite { get; set; }
+
+    public bool IsShared { get; set; }
+
+    public DateTimeOffset? SharedAt { get; set; }
+
+    public string? Icon { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>Display name of the folder owner (populated only by shared-list endpoint).</summary>
+    public string? OwnerName { get; set; }
+
+    // UI-only computed properties (not from API)
+    public string? Subject { get; set; }
+    public string? Semester { get; set; }
+    public string? Color { get; set; }
+    public string? BorderColor { get; set; }
+    public string? LastAccessText { get; set; }
 }
 
 public sealed class CreateFolderRequest
@@ -109,10 +127,15 @@ public sealed class CreateFolderRequest
 
 public sealed class UpdateFolderRequest
 {
-    [Required]
     [StringLength(100, MinimumLength = 1)]
-    public string Name { get; set; } = string.Empty;
+    public string? Name { get; set; }
 
     [StringLength(500)]
     public string? Description { get; set; }
+
+    public string? Icon { get; set; }
+
+    public bool? IsFavorite { get; set; }
+
+    public bool? IsShared { get; set; }
 }

@@ -2,9 +2,16 @@
     position: sticky;
     top: 0;
     z-index: 50;
-    border-bottom: 1px solid #f1f5f9;
-    background: rgba(255, 255, 255, 0.86);
-    backdrop-filter: blur(14px);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.5);
+    background: rgba(255, 255, 255, 0.72);
+    backdrop-filter: blur(24px) saturate(1.9);
+    -webkit-backdrop-filter: blur(24px) saturate(1.9);
+    transition: background 300ms ease, box-shadow 300ms ease, border-color 300ms ease;
+}
+
+.community-topbar:hover {
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 4px 24px rgba(15, 23, 42, 0.06);
 }
 
 .community-topbar-inner {
@@ -24,6 +31,7 @@
     gap: 0.55rem;
     color: #312e81;
     text-decoration: none;
+    transition: color 200ms ease;
 }
 
 .brand-link:hover {
@@ -38,13 +46,14 @@
     height: 2.25rem;
     border-radius: 0.9rem;
     color: #ffffff;
-    background: #4f46e5;
-    box-shadow: 0 8px 18px rgba(79, 70, 229, 0.16);
-    transition: transform 180ms ease;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    box-shadow: 0 6px 18px rgba(79, 70, 229, 0.22);
+    transition: transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 280ms ease;
 }
 
 .brand-link:hover .brand-orb {
-    transform: scale(1.05);
+    transform: scale(1.08) rotate(-3deg);
+    box-shadow: 0 8px 24px rgba(79, 70, 229, 0.30);
 }
 
 .brand-name,
@@ -68,29 +77,56 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 0.35rem;
+    gap: 0.75rem;
     min-width: 0;
 }
 
 .nav-pill {
     display: inline-flex;
     align-items: center;
-    min-height: 2.35rem;
-    padding: 0.45rem 0.85rem;
+    min-height: 2.5rem;
+    padding: 0.5rem 1.1rem;
     border: 1px solid transparent;
     border-radius: 999px;
     color: #64748b;
-    font-size: 0.88rem;
+    font-size: 0.9rem;
     font-weight: 800;
     text-decoration: none;
     white-space: nowrap;
-    transition: color 160ms ease, background 160ms ease;
+    position: relative;
+    overflow: hidden;
+    transition: color 200ms ease, background 200ms ease, border-color 200ms ease, transform 200ms ease;
 }
 
-.nav-pill:hover,
+.nav-pill::after {
+    content: "";
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    width: 0;
+    height: 5px;
+    border-radius: 5px 5px 0 0;
+    background: linear-gradient(90deg, #4f46e5, #7c3aed);
+    transition: width 280ms cubic-bezier(0.34, 1.56, 0.64, 1), left 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+.nav-pill:hover {
+    color: #4f46e5;
+    background: rgba(238, 242, 255, 0.8);
+    transform: translateY(-1px);
+}
+
 .nav-pill.active {
     color: #4f46e5;
-    background: #eef2ff;
+    background: rgba(238, 242, 255, 0.8);
+    transform: translateY(-1px);
+}
+}
+
+.nav-pill:hover::after,
+.nav-pill.active::after {
+    width: 100%;
+    left: 0%;
 }
 
 .community-actions {
@@ -106,6 +142,13 @@
     height: 0.5rem;
     border-radius: 999px;
     background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    animation: breathe 2s ease-in-out infinite;
+}
+
+@keyframes breathe {
+    0%, 100% { opacity: 0.6; }
+    50%      { opacity: 1; }
 }
 
 .user-chip,
@@ -127,6 +170,12 @@
     padding: 0;
     border: 1px solid #e0e7ff;
     background: #eef2ff;
+    transition: border-color 240ms ease, box-shadow 240ms ease;
+}
+
+.user-chip:hover {
+    border-color: #a5b4fc;
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
 }
 
 .user-avatar {
@@ -138,11 +187,13 @@
     border-radius: 999px;
     color: #4f46e5;
     background: transparent;
+    transition: color 200ms ease;
 }
 
 .login-link {
     padding: 0.4rem 0.7rem;
     color: #475569;
+    transition: color 200ms ease;
 }
 
 .login-link:hover {
@@ -152,13 +203,16 @@
 .join-button {
     padding: 0.58rem 1.15rem;
     color: #ffffff !important;
-    background: #312e81;
-    box-shadow: 0 10px 20px rgba(49, 46, 129, 0.12);
+    background: linear-gradient(135deg, #312e81, #4f46e5);
+    box-shadow: 0 8px 20px rgba(49, 46, 129, 0.16);
+    transition: transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 240ms ease, background 240ms ease;
 }
 
 .join-button:hover {
     color: #ffffff !important;
-    background: #1e1b4b;
+    background: linear-gradient(135deg, #1e1b4b, #4338ca);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 28px rgba(49, 46, 129, 0.24);
 }
 
 .signout-button {
@@ -169,11 +223,14 @@
     color: #94a3b8;
     background: transparent;
     cursor: pointer;
+    border-radius: 999px;
+    transition: color 200ms ease, background 200ms ease, transform 200ms ease;
 }
 
 .signout-button:hover {
     color: #e11d48;
     background: #fff1f2;
+    transform: scale(1.08);
 }
 
 .navbar-toggler,
@@ -202,6 +259,12 @@
         border: 1px solid #e2e8f0;
         border-radius: 999px;
         background: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 30 30'%3e%3cpath stroke='rgba%2849, 46, 129, 0.82%29' stroke-linecap='round' stroke-miterlimit='10' stroke-width='2' d='M4 8h22M4 15h22M4 22h22'/%3e%3c/svg%3e") no-repeat center/1.35rem #ffffff;
+        transition: border-color 200ms ease, box-shadow 200ms ease;
+    }
+
+    .navbar-toggler-label:hover {
+        border-color: #a5b4fc;
+        box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08);
     }
 
     .community-nav,
@@ -216,7 +279,13 @@
     .navbar-toggler:checked ~ .community-nav,
     .navbar-toggler:checked ~ .community-actions {
         display: flex;
+        animation: fadeInUp 0.3s ease both;
     }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
 }
 
 @media (max-width: 560px) {

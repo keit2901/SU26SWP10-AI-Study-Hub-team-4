@@ -28,6 +28,21 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.Property(f => f.Description)
             .HasColumnName("description");
 
+        builder.Property(f => f.IsFavorite)
+            .HasColumnName("is_favorite")
+            .HasDefaultValue(false);
+
+        builder.Property(f => f.IsShared)
+            .HasColumnName("is_shared")
+            .HasDefaultValue(false);
+
+        builder.Property(f => f.SharedAt)
+            .HasColumnName("shared_at");
+
+        builder.Property(f => f.Icon)
+            .HasColumnName("icon")
+            .HasMaxLength(50);
+
         builder.Property(f => f.CreatedAt)
             .HasColumnName("created_at")
             .HasDefaultValueSql("CURRENT_TIMESTAMP");

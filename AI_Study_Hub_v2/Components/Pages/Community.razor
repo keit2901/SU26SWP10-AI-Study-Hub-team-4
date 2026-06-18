@@ -1,0 +1,220 @@
+@page "/community"
+@inject FolderApiClient FoldersApi
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+<PageTitle>Community - AI Study Hub v2</PageTitle>
+
+<div class="community-page">
+    <div class="community-container">
+        <div class="community-search-header">
+            <div class="community-title-area">
+                <h2 class="community-heading">Public Community</h2>
+            </div>
+            <div class="community-search-row">
+                <div class="community-search-wrapper">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="community-search-icon" />
+                    <MudTextField T="string"
+                                  @bind-Value="_searchQuery"
+                                  Placeholder="Search folders..."
+                                  Variant="Variant.Outlined"
+                                  Margin="Margin.Dense"
+                                  Immediate="true"
+                                  Class="community-search-input" />
+                </div>
+            </div>
+        </div>
+
+        @if (_loading)
+        {
+            <div class="community-grid">
+                @for (var i = 0; i < 6; i++)
+                {
+                    <MudPaper Class="community-card-skeleton" Elevation="0" Outlined="true">
+                        <MudStack Spacing="2">
+                            <MudSkeleton Height="56px" Width="56px" Animation="Animation.Wave" />
+                            <MudSkeleton Height="20px" Animation="Animation.Wave" />
+                            <MudSkeleton Height="14px" Width="60%" Animation="Animation.Wave" />
+                        </MudStack>
+                    </MudPaper>
+                }
+            </div>
+        }
+        else if (_filteredFolders.Count == 0)
+        {
+            <div class="community-empty">
+                <MudIcon Icon="@Icons.Material.Filled.FolderShared" Size="Size.Large" Color="Color.Secondary" />
+                <MudText Typo="Typo.h6" Color="Color.Secondary">No shared folders yet</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">Folders shared by the community will appear here.</MudText>
+            </div>
+        }
+        else
+        {
+            <div class="community-grid">
+                @foreach (var folder in _pagedFolders)
+                {
+                    var colors = new[] { "#4648d4", "#a62626", "#6d28d9", "#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed" };
+                    var cidx = _allFolders.IndexOf(folder);
+                    var cardColor = colors[Math.Abs(cidx % colors.Length)];
+                    var iconName = string.IsNullOrWhiteSpace(folder.Icon) ? "folder" : folder.Icon;
+
+                    <MudPaper Class="community-card" Elevation="0" Outlined="false"
+                              onclick="this.querySelector('.community-card-inner')?.click()">
+                        <div class="community-card-inner" @onclick="() => GoToFolder(folder.Id)" style="cursor:pointer;">
+                            <div class="community-card-top">
+                                <div class="community-card-icon" style="@("background:" + cardColor + "18;")">
+                                    <MudIcon Icon="@GetFolderIcon(iconName)" Size="Size.Large" Style="@("color:" + cardColor + ";")" />
+                                </div>
+                                <div class="community-card-menu">
+                                    <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Variant="Variant.Text" />
+                                </div>
+                            </div>
+                            <div class="community-card-body">
+                                <MudText Class="community-card-title">@folder.Name</MudText>
+                                <div class="community-card-meta">
+                                    <div class="community-card-author">
+                                        <span class="community-card-avatar" style="background:@cardColor;">
+                                            @(string.IsNullOrWhiteSpace(folder.OwnerName) ? "?" : folder.OwnerName[..1].ToUpper())
+                                        </span>
+                                        <span class="community-card-owner">@(folder.OwnerName ?? "Unknown")</span>
+                                    </div>
+                                    <span class="community-card-sources">@folder.DocumentCount sources</span>
+                                </div>
+                            </div>
+                        </div>
+                    </MudPaper>
+                }
+            </div>
+        }
+
+        @if (_totalPages > 1)
+        {
+            <div class="community-pagination">
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Disabled="@(_currentPage <= 1)" OnClick="() => GoToPage(_currentPage - 1)" Variant="Variant.Outlined" Size="Size.Small" />
+                @foreach (var p in _pageNumbers)
+                {
+                    if (p == -1)
+                    {
+                        <span class="community-page-ellipsis">...</span>
+                    }
+                    else
+                    {
+                        <MudIconButton Variant="@(p == _currentPage ? Variant.Filled : Variant.Outlined)" Color="@(p == _currentPage ? Color.Primary : Color.Default)" OnClick="() => GoToPage(p)" Size="Size.Small">@p</MudIconButton>
+                    }
+                }
+                <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(_currentPage >= _totalPages)" OnClick="() => GoToPage(_currentPage + 1)" Variant="Variant.Outlined" Size="Size.Small" />
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    private List<FolderDto> _allFolders = new();
+    private bool _loading = true;
+    private int _currentPage = 1;
+    private int _totalPages = 1;
+    private const int PageSize = 9;
+    private string _searchQuery = "";
+
+    private List<FolderDto> _filteredFolders
+    {
+        get
+        {
+            if (string.IsNullOrWhiteSpace(_searchQuery))
+                return _allFolders;
+            var q = _searchQuery.Trim().ToLowerInvariant();
+            return _allFolders.Where(f =>
+                f.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                (f.OwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+        }
+    }
+
+    private List<FolderDto> _pagedFolders
+    {
+        get
+        {
+            var filtered = _filteredFolders;
+            _totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)PageSize));
+            if (_currentPage > _totalPages) _currentPage = _totalPages;
+            return filtered.Skip((_currentPage - 1) * PageSize).Take(PageSize).ToList();
+        }
+    }
+
+    private int[] _pageNumbers
+    {
+        get
+        {
+            if (_totalPages <= 7)
+                return Enumerable.Range(1, _totalPages).ToArray();
+
+            var pages = new List<int> { 1 };
+            var start = Math.Max(2, _currentPage - 1);
+            var end = Math.Min(_totalPages - 1, _currentPage + 1);
+            if (start > 2) pages.Add(-1);
+            for (var i = start; i <= end; i++) pages.Add(i);
+            if (end < _totalPages - 1) pages.Add(-1);
+            pages.Add(_totalPages);
+            return pages.ToArray();
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        try
+        {
+            var folders = await FoldersApi.ListSharedAsync();
+            _allFolders = folders.ToList();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to load shared folders: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private void GoToPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, _totalPages);
+    }
+
+    private void GoToFolder(Guid folderId)
+    {
+        Nav.NavigateTo($"/ai/chat?folderId={folderId}");
+    }
+
+    private static string GetFolderIcon(string icon)
+    {
+        return icon switch
+        {
+            "star" => Icons.Material.Filled.Star,
+            "favorite" => Icons.Material.Filled.Favorite,
+            "book" => Icons.Material.Filled.Book,
+            "school" => Icons.Material.Filled.School,
+            "auto_stories" => Icons.Material.Filled.AutoStories,
+            "science" => Icons.Material.Filled.Science,
+            "code" => Icons.Material.Filled.Code,
+            "palette" => Icons.Material.Filled.Palette,
+            "music_note" => Icons.Material.Filled.MusicNote,
+            "sports_esports" => Icons.Material.Filled.SportsEsports,
+            "article" => Icons.Material.Filled.Article,
+            "collections_bookmark" => Icons.Material.Filled.CollectionsBookmark,
+            "lightbulb" => Icons.Material.Filled.Lightbulb,
+            "computer" => Icons.Material.Filled.Computer,
+            "language" => Icons.Material.Filled.Language,
+            "menu_book" => Icons.Material.Filled.MenuBook,
+            "psychology" => Icons.Material.Filled.Psychology,
+            "dashboard" => Icons.Material.Filled.Dashboard,
+            "folder_special" => Icons.Material.Filled.FolderSpecial,
+            _ => Icons.Material.Filled.Folder,
+        };
+    }
+}

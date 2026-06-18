@@ -37,8 +37,29 @@
                 <aside class="ai-chat-left-rail">
                     <section class="workspace-folder-head">
                         <div class="workspace-folder-title-row">
-                            <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" />
-                            <h2>@FolderTitle</h2>
+                            <MudIconButton Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" Variant="Variant.Text" Href="/documents" title="Back to Library" />
+                            @if (_isFolderLocked)
+                            {
+                                <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Class="workspace-folder-lock-icon" />
+                                <h2 class="workspace-folder-static-title">@FolderTitle</h2>
+                            }
+                            else
+                            {
+                                <MudSelect T="string"
+                                           Value="@_workspaceFolderIdStr"
+                                           ValueChanged="@(s => { _workspaceFolderIdStr = s; OnWorkspaceFolderChanged(); })"
+                                           Variant="Variant.Text"
+                                           Class="workspace-folder-select"
+                                           AnchorOrigin="Origin.BottomCenter"
+                                           Disabled="_loadingScope"
+                                           Dense="true">
+                                    <MudSelectItem T="string" Value="@string.Empty">All Study Documents</MudSelectItem>
+                                    @foreach (var f in _folders)
+                                    {
+                                        <MudSelectItem T="string" Value="@f.Id.ToString()">@f.Name</MudSelectItem>
+                                    }
+                                </MudSelect>
+                            }
                         </div>
                         <p>@ScopeDocuments.Count files · <span>@ActiveContextCount active context</span></p>
                     </section>
@@ -57,7 +78,7 @@
                                     disabled="@_busy"
                                     title="@document.FileName"
                                     @onclick="() => ToggleDocumentSelection(document.Id)">
-                                <span class="workspace-doc-check">@if (active) { <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" /> }</span>
+                                <span class="workspace-doc-check">@if (active) { <span class="workspace-doc-check-mark"></span> }</span>
                                 <span class="@($"workspace-doc-ext ext-{DocumentExtension(document)}")">@DocumentExtension(document)</span>
                                 <span class="workspace-doc-meta">
                                     <strong>@ShortFileName(document.FileName, 28)</strong>
@@ -72,7 +93,7 @@
                                 <MudIcon Icon="@Icons.Material.Filled.LibraryBooks" />
                                 <strong>No indexed files yet</strong>
                                 <span>Upload a document or wait for ingestion before asking AI.</span>
-                                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" Href="/documents/upload">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.UploadFile" Href="@UploadUrl">
                                     Upload document
                                 </MudButton>
                             </div>
@@ -197,7 +218,7 @@
                     <section class="workspace-composer-panel">
                         <div class="workspace-composer-box @(_focused ? "is-focused" : "")">
                             <MudButton Variant="Variant.Text"
-                                       Href="/documents/upload"
+                                        Href="@UploadUrl"
                                        Class="workspace-attach-button"
                                        Disabled="_busy"
                                        aria-label="Upload file">
@@ -325,6 +346,7 @@
     private string? _composerError;
     private string? _question;
     private Guid? _folderId;
+    private string _workspaceFolderIdStr = "";
     private int _topK = 5;
     private List<DocumentDto> _documents = new();
     private List<FolderDto> _folders = new();
@@ -376,6 +398,12 @@
     private string ScopeSummary => _folderId.HasValue
         ? FolderTitle
         : "All indexed documents";
+
+    private string UploadUrl => _isFolderLocked && _folderId.HasValue
+        ? $"/documents/upload?returnUrl=/ai/chat?folderId={_folderId}&folderId={_folderId}"
+        : "/documents/upload?returnUrl=/ai/chat";
+
+    private bool _isFolderLocked => QueryFolderId.HasValue;
 
     private bool IsDocumentSelected(Guid documentId) => _selectedDocumentIds.Contains(documentId);
 
@@ -670,16 +698,24 @@
         return new AiChatApiClient(http);
     }
 
+    private void SelectAllScopeDocuments()
+    {
+        _selectedDocumentIds.Clear();
+        foreach (var doc in ScopeDocuments)
+        {
+            _selectedDocumentIds.Add(doc.Id);
+        }
+    }
+
     private void ApplyQueryScope()
     {
-        _selectedDocumentIds.RemoveWhere(id => ReadyDocuments.All(d => d.Id != id));
-
         if (QueryDocumentId is { } documentId)
         {
             var document = ReadyDocuments.FirstOrDefault(d => d.Id == documentId);
             if (document is not null)
             {
                 _folderId = document.FolderId;
+                _workspaceFolderIdStr = _folderId?.ToString() ?? "";
                 _selectedDocumentIds.Clear();
                 _selectedDocumentIds.Add(document.Id);
                 return;
@@ -689,8 +725,24 @@
         if (QueryFolderId is { } folderId && _folders.Any(f => f.Id == folderId))
         {
             _folderId = folderId;
-            _selectedDocumentIds.RemoveWhere(id => ScopeDocuments.All(d => d.Id != id));
+            _workspaceFolderIdStr = folderId.ToString();
         }
+
+        SelectAllScopeDocuments();
+    }
+
+    private void OnWorkspaceFolderChanged()
+    {
+        if (string.IsNullOrEmpty(_workspaceFolderIdStr))
+        {
+            _folderId = null;
+        }
+        else if (Guid.TryParse(_workspaceFolderIdStr, out var parsed))
+        {
+            _folderId = parsed;
+        }
+
+        SelectAllScopeDocuments();
     }
 
     private void UsePrompt(string prompt)

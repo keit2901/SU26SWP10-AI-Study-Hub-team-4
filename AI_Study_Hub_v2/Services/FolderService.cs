@@ -25,13 +25,18 @@ public sealed class FolderService : IFolderService
         var rows = await _db.Folders
             .AsNoTracking()
             .Where(f => f.UserId == profile.Id)
-            .OrderBy(f => f.Name)
+            .OrderByDescending(f => f.IsFavorite)
+            .ThenByDescending(f => f.UpdatedAt)
             .Select(f => new FolderDto
             {
                 Id = f.Id,
                 Name = f.Name,
                 Description = f.Description,
                 DocumentCount = f.Documents.Count,
+                IsFavorite = f.IsFavorite,
+                IsShared = f.IsShared,
+                SharedAt = f.SharedAt,
+                Icon = f.Icon,
                 CreatedAt = f.CreatedAt,
                 UpdatedAt = f.UpdatedAt,
             })
@@ -83,12 +88,29 @@ public sealed class FolderService : IFolderService
             ?? throw new DocumentException(404, "folder_not_found",
                 "Folder does not exist or does not belong to the caller.");
 
-        var name = NormalizeName(request.Name);
-        var description = NormalizeDescription(request.Description);
-        await EnsureUniqueNameAsync(profile.Id, name, excludeFolderId: folder.Id, cancellationToken);
-
-        folder.Name = name;
-        folder.Description = description;
+        if (request.Name is not null)
+        {
+            var name = NormalizeName(request.Name);
+            await EnsureUniqueNameAsync(profile.Id, name, excludeFolderId: folder.Id, cancellationToken);
+            folder.Name = name;
+        }
+        if (request.Description is not null)
+        {
+            folder.Description = NormalizeDescription(request.Description);
+        }
+        if (request.Icon is not null)
+        {
+            folder.Icon = string.IsNullOrWhiteSpace(request.Icon) ? null : request.Icon.Trim();
+        }
+        if (request.IsFavorite.HasValue)
+        {
+            folder.IsFavorite = request.IsFavorite.Value;
+        }
+        if (request.IsShared.HasValue)
+        {
+            folder.IsShared = request.IsShared.Value;
+            folder.SharedAt = request.IsShared.Value ? DateTimeOffset.UtcNow : null;
+        }
         await _db.SaveChangesAsync(cancellationToken);
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
@@ -106,9 +128,90 @@ public sealed class FolderService : IFolderService
             ?? throw new DocumentException(404, "folder_not_found",
                 "Folder does not exist or does not belong to the caller.");
 
+        var docIds = await _db.Documents
+            .Where(d => d.FolderId == folder.Id)
+            .Select(d => d.Id)
+            .ToListAsync(cancellationToken);
+
+        if (docIds.Count > 0)
+        {
+            var chunks = await _db.DocumentChunks
+                .Where(c => docIds.Contains(c.DocumentId))
+                .ExecuteDeleteAsync(cancellationToken);
+
+            await _db.Documents
+                .Where(d => d.FolderId == folder.Id)
+                .ExecuteDeleteAsync(cancellationToken);
+        }
+
         _db.Folders.Remove(folder);
         await _db.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Folder deleted: id={Id} user={UserId}", folder.Id, profile.Id);
+        _logger.LogInformation("Folder deleted: id={Id} user={UserId} documents={DocCount}",
+            folder.Id, profile.Id, docIds.Count);
+    }
+
+    public async Task<FolderDto> ToggleFavoriteAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var folder = await _db.Folders
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
+            ?? throw new DocumentException(404, "folder_not_found",
+                "Folder does not exist or does not belong to the caller.");
+
+        folder.IsFavorite = !folder.IsFavorite;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
+        return ToDto(folder, count);
+    }
+
+    public async Task<IReadOnlyList<FolderDto>> ListSharedAsync(
+        CancellationToken cancellationToken = default)
+    {
+        var rows = await _db.Folders
+            .AsNoTracking()
+            .Where(f => f.IsShared)
+            .OrderByDescending(f => f.SharedAt)
+            .ThenBy(f => f.Name)
+            .Select(f => new FolderDto
+            {
+                Id = f.Id,
+                Name = f.Name,
+                Description = f.Description,
+                DocumentCount = f.Documents.Count,
+                IsFavorite = f.IsFavorite,
+                IsShared = f.IsShared,
+                SharedAt = f.SharedAt,
+                Icon = f.Icon,
+                OwnerName = f.User.FullName ?? f.User.Username,
+                CreatedAt = f.CreatedAt,
+                UpdatedAt = f.UpdatedAt,
+            })
+            .ToListAsync(cancellationToken);
+
+        return rows;
+    }
+
+    public async Task<FolderDto> ToggleShareAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var folder = await _db.Folders
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
+            ?? throw new DocumentException(404, "folder_not_found",
+                "Folder does not exist or does not belong to the caller.");
+
+        folder.IsShared = !folder.IsShared;
+        folder.SharedAt = folder.IsShared ? DateTimeOffset.UtcNow : null;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
+        return ToDto(folder, count);
     }
 
     private async Task<User> ResolveProfileAsync(Guid supabaseUserId, CancellationToken cancellationToken)
@@ -174,6 +277,10 @@ public sealed class FolderService : IFolderService
         Name = folder.Name,
         Description = folder.Description,
         DocumentCount = documentCount,
+        IsFavorite = folder.IsFavorite,
+        IsShared = folder.IsShared,
+        SharedAt = folder.SharedAt,
+        Icon = folder.Icon,
         CreatedAt = folder.CreatedAt,
         UpdatedAt = folder.UpdatedAt,
     };

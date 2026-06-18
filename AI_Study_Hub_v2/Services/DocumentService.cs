@@ -151,6 +151,15 @@ public sealed class DocumentService : IDocumentService
             UpdatedAt = now,
         };
 
+        if (request.FolderId.HasValue)
+        {
+            var folder = await _db.Folders.FindAsync(new object[] { request.FolderId.Value }, cancellationToken);
+            if (folder is not null)
+            {
+                folder.UpdatedAt = now;
+            }
+        }
+
         try
         {
             _db.Documents.Add(doc);

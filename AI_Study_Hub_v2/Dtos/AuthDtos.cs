@@ -22,8 +22,8 @@ public sealed class RegisterRequest
     [StringLength(128)]
     public string Password { get; set; } = string.Empty;
 
-    [StringLength(2048)]
-    public string? TurnstileToken { get; set; }
+    [StringLength(10000)]
+    public string? RecaptchaToken { get; set; }
 }
 
 public sealed class LoginRequest
@@ -37,8 +37,8 @@ public sealed class LoginRequest
     [StringLength(128, MinimumLength = 1)]
     public string Password { get; set; } = string.Empty;
 
-    [StringLength(2048)]
-    public string? TurnstileToken { get; set; }
+    [StringLength(10000)]
+    public string? RecaptchaToken { get; set; }
 }
 
 public sealed class RefreshTokenRequest

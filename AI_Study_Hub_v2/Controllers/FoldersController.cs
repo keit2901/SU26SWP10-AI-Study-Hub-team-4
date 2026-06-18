@@ -28,6 +28,12 @@ public sealed class FoldersController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<FolderDto>>> List(CancellationToken cancellationToken)
         => await ExecuteAsync(() => _service.ListAsync(GetSupabaseUserIdFromClaims(), cancellationToken));
 
+    [HttpGet("shared")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(IReadOnlyList<FolderDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<FolderDto>>> ListShared(CancellationToken cancellationToken)
+        => Ok(await _service.ListSharedAsync(cancellationToken));
+
     [HttpPost]
     [ProducesResponseType(typeof(FolderDto), StatusCodes.Status201Created)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
@@ -68,6 +74,20 @@ public sealed class FoldersController : ControllerBase
         [FromBody] UpdateFolderRequest request,
         CancellationToken cancellationToken)
         => await ExecuteAsync(() => _service.UpdateAsync(GetSupabaseUserIdFromClaims(), id, request, cancellationToken));
+
+    [HttpPatch("{id:guid}/favorite")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> ToggleFavorite(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.ToggleFavoriteAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
+
+    [HttpPatch("{id:guid}/share")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> ToggleShare(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.ToggleShareAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

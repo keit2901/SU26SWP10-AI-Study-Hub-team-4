@@ -14,6 +14,14 @@ public sealed class Folder
 
     public string? Description { get; set; }
 
+    public bool IsFavorite { get; set; }
+
+    public bool IsShared { get; set; }
+
+    public DateTimeOffset? SharedAt { get; set; }
+
+    public string? Icon { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }

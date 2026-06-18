@@ -14,16 +14,16 @@ namespace AI_Study_Hub_v2.Controllers;
 public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
-    private readonly ITurnstileVerificationService _turnstile;
+    private readonly IRecaptchaVerificationService _recaptcha;
     private readonly ILogger<AuthController> _logger;
 
     public AuthController(
         IAuthService authService,
-        ITurnstileVerificationService turnstile,
+        IRecaptchaVerificationService recaptcha,
         ILogger<AuthController> logger)
     {
         _authService = authService;
-        _turnstile = turnstile;
+        _recaptcha = recaptcha;
         _logger = logger;
     }
 
@@ -34,7 +34,28 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
-        var verification = await VerifyTurnstileAsync(request.TurnstileToken, "register", cancellationToken);
+        if (!ModelState.IsValid)
+        {
+            var errorMap = new Dictionary<string, string[]>();
+            foreach (var (key, entry) in ModelState)
+            {
+                var messages = entry.Errors?.Select(e => e.ErrorMessage).Where(m => m is not null).Cast<string>().ToArray() ?? [];
+                if (messages.Length > 0)
+                {
+                    errorMap[key] = messages;
+                }
+            }
+            _logger.LogWarning("Register model invalid: {Errors}",
+                string.Join("; ", errorMap.SelectMany(kv => kv.Value.Select(v => $"{kv.Key}: {v}"))));
+            return BadRequest(new ApiErrorResponse
+            {
+                Code = "validation_failed",
+                Message = "One or more fields are invalid.",
+                Errors = errorMap
+            });
+        }
+
+        var verification = await VerifyRecaptchaAsync(request.RecaptchaToken, "register", cancellationToken);
         if (verification is not null)
         {
             return verification;
@@ -49,7 +70,7 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
-        var verification = await VerifyTurnstileAsync(request.TurnstileToken, "login", cancellationToken);
+        var verification = await VerifyRecaptchaAsync(request.RecaptchaToken, "login", cancellationToken);
         if (verification is not null)
         {
             return verification;
@@ -109,12 +130,17 @@ public sealed class AuthController : ControllerBase
         });
     }
 
-    private async Task<ActionResult<AuthResponse>?> VerifyTurnstileAsync(
+    private async Task<ActionResult<AuthResponse>?> VerifyRecaptchaAsync(
         string? token,
         string action,
         CancellationToken cancellationToken)
     {
-        var result = await _turnstile.VerifyAsync(token, GetIpAddress(), action, cancellationToken);
+        if (!_recaptcha.ShouldVerify)
+        {
+            return null;
+        }
+
+        var result = await _recaptcha.VerifyAsync(token, GetIpAddress(), action, cancellationToken);
         if (result.Success)
         {
             return null;
@@ -122,11 +148,11 @@ public sealed class AuthController : ControllerBase
 
         return BadRequest(new ApiErrorResponse
         {
-            Code = "turnstile_failed",
+            Code = "recaptcha_failed",
             Message = result.Message,
             Errors = result.ErrorCodes.Count == 0
                 ? null
-                : new Dictionary<string, string[]> { ["turnstile"] = result.ErrorCodes.ToArray() }
+                : new Dictionary<string, string[]> { ["recaptcha"] = result.ErrorCodes.ToArray() }
         });
     }
 

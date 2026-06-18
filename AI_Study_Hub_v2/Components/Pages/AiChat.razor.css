@@ -44,15 +44,15 @@
     transition: box-shadow 240ms ease;
 }
 
-/* Left / Right: light glass — flush to edges, no border-radius */
+/* Left / Right: subtle gradient glass — flush to edges, no border-radius */
 .ai-chat-column-left {
     border-right: 1px solid rgba(203, 213, 225, 0.80);
-    background: #ffffff;
+    background: linear-gradient(180deg, #ffffff 0%, #fafbfe 50%, #f8f9fc 100%);
 }
 
 .ai-chat-column-right {
     border-left: 1px solid rgba(203, 213, 225, 0.80);
-    background: #ffffff;
+    background: linear-gradient(180deg, #ffffff 0%, #fafbfe 50%, #f8f9fc 100%);
 }
 
 /* Center: bright white */
@@ -111,16 +111,62 @@
     color: #7c3aed;
 }
 
-.workspace-folder-title-row h2 {
+.workspace-folder-title-row h2,
+.workspace-folder-select,
+.workspace-folder-static-title {
     min-width: 0;
     margin: 0;
-    overflow: hidden;
     color: #1e293b;
     font-size: 0.83rem;
     font-weight: 800;
     line-height: 1.25;
+}
+
+.workspace-folder-static-title {
+    overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+}
+
+.workspace-folder-lock-icon {
+    font-size: 0.85rem;
+    color: #94a3b8;
+    flex-shrink: 0;
+}
+
+.workspace-folder-select {
+    flex: 1;
+}
+
+.workspace-folder-select .mud-input-control-input-container {
+    padding: 0;
+}
+
+.workspace-folder-select .mud-input {
+    color: #1e293b;
+    font-size: 0.83rem;
+    font-weight: 800;
+    line-height: 1.25;
+}
+
+.workspace-folder-select .mud-input-slot {
+    padding: 0;
+    min-height: unset;
+}
+
+.workspace-folder-select .mud-input-adornment {
+    display: none;
+}
+
+.workspace-folder-select .mud-select-input {
+    border: none;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+}
+
+.workspace-folder-icon {
+    order: -1;
 }
 
 .workspace-folder-head p {
@@ -167,7 +213,7 @@
 
 .workspace-document-card {
     display: grid;
-    grid-template-columns: 1.1rem auto minmax(0, 1fr);
+    grid-template-columns: 1.25rem auto minmax(0, 1fr);
     width: 100%;
     align-items: center;
     gap: 0.62rem;
@@ -199,14 +245,28 @@
 }
 
 .workspace-doc-check {
-    display: grid;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     width: 1.05rem;
     height: 1.05rem;
-    place-items: center;
     border: 2px solid rgba(148, 163, 184, 0.3);
     border-radius: 0.25rem;
     color: #ffffff;
     transition: border-color 150ms ease, background 150ms ease;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.workspace-doc-check-mark {
+    display: block;
+    width: 0.3rem;
+    height: 0.5rem;
+    border: solid #ffffff;
+    border-width: 0 0.1rem 0.1rem 0;
+    transform: rotate(45deg) translateY(-0.04rem);
+    flex-shrink: 0;
 }
 
 .workspace-document-card.is-active .workspace-doc-check {
@@ -1185,6 +1245,10 @@
     color: #1e293b;
     font-size: 0.92rem;
     font-weight: 850;
+    background: linear-gradient(135deg, #1e293b, #4f46e5);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
 }
 
 .workspace-panel-heading small {
@@ -1202,17 +1266,35 @@
     padding: 0.95rem;
     border: 1px solid rgba(203, 213, 225, 0.7);
     border-radius: 1rem;
-    background: #f8f9fc;
+    background: linear-gradient(135deg, #f8f9fc, #fafbfe);
     cursor: pointer;
     text-align: left;
-    transition: border-color 180ms ease, box-shadow 180ms ease, transform 180ms ease, background 180ms ease;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 240ms cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 240ms ease, transform 240ms cubic-bezier(0.34, 1.56, 0.64, 1), background 240ms ease;
+}
+
+/* Gradient border glow on hover */
+.workspace-tool-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: linear-gradient(135deg, rgba(139,92,246,0.04), rgba(6,182,212,0.03));
+    opacity: 0;
+    transition: opacity 280ms ease;
+    pointer-events: none;
+}
+
+.workspace-tool-card:hover:not(:disabled)::before {
+    opacity: 1;
 }
 
 .workspace-tool-card:hover:not(:disabled) {
-    transform: translateY(-2px);
+    transform: translateY(-3px) scale(1.01);
     border-color: rgba(139, 92, 246, 0.35);
     background: #ffffff;
-    box-shadow: 0 6px 20px rgba(139, 92, 246, 0.10);
+    box-shadow: 0 8px 24px rgba(139, 92, 246, 0.12), 0 0 0 1px rgba(139,92,246,0.06);
 }
 
 .workspace-tool-card:disabled { cursor: default; opacity: 0.45; }

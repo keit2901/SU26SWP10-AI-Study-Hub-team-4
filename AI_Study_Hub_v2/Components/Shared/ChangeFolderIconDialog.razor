@@ -1,0 +1,76 @@
+@namespace AI_Study_Hub_v2.Components.Shared
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.h5" Class="mb-4">Choose an Icon</MudText>
+        <MudGrid Spacing="1">
+            @foreach (var entry in _icons)
+            {
+                var iconName = entry.Key;
+                var iconValue = entry.Value;
+                <MudItem xs="3">
+                    <MudPaper Class="@(_selectedIcon == iconName ? "icon-option icon-option-selected" : "icon-option")"
+                              Elevation="0"
+                              Outlined="false"
+                              @onclick="@(() => _selectedIcon = iconName)">
+                        <MudIcon Icon="@iconValue" Size="Size.Large" Style="color:#6366f1;" />
+                        <MudText Typo="Typo.caption" Align="Align.Center" Class="mt-1">@iconName</MudText>
+                    </MudPaper>
+                </MudItem>
+            }
+        </MudGrid>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm">
+            Apply
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string? FolderIcon { get; set; }
+
+    private string _selectedIcon = "folder";
+
+    private static readonly Dictionary<string, string> _icons = new()
+    {
+        ["folder"] = Icons.Material.Filled.Folder,
+        ["star"] = Icons.Material.Filled.Star,
+        ["favorite"] = Icons.Material.Filled.Favorite,
+        ["book"] = Icons.Material.Filled.Book,
+        ["school"] = Icons.Material.Filled.School,
+        ["auto_stories"] = Icons.Material.Filled.AutoStories,
+        ["science"] = Icons.Material.Filled.Science,
+        ["code"] = Icons.Material.Filled.Code,
+        ["palette"] = Icons.Material.Filled.Palette,
+        ["music_note"] = Icons.Material.Filled.MusicNote,
+        ["sports_esports"] = Icons.Material.Filled.SportsEsports,
+        ["article"] = Icons.Material.Filled.Article,
+        ["collections_bookmark"] = Icons.Material.Filled.CollectionsBookmark,
+        ["lightbulb"] = Icons.Material.Filled.Lightbulb,
+        ["computer"] = Icons.Material.Filled.Computer,
+        ["language"] = Icons.Material.Filled.Language,
+        ["menu_book"] = Icons.Material.Filled.MenuBook,
+        ["psychology"] = Icons.Material.Filled.Psychology,
+        ["dashboard"] = Icons.Material.Filled.Dashboard,
+        ["folder_special"] = Icons.Material.Filled.FolderSpecial,
+    };
+
+    protected override void OnInitialized()
+    {
+        if (!string.IsNullOrWhiteSpace(FolderIcon) && _icons.ContainsKey(FolderIcon))
+        {
+            _selectedIcon = FolderIcon;
+        }
+    }
+
+    private void Confirm()
+    {
+        MudDialog.Close(DialogResult.Ok(_selectedIcon));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+}
