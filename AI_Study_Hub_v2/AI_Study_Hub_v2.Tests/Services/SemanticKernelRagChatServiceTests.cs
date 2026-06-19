@@ -260,4 +260,190 @@ public class SemanticKernelRagChatServiceTests
         rag.VerifyAll();
         completion.VerifyAll();
     }
+
+    [Test]
+    public async Task AskAsync_GeneralKnowledgeMode_SkipsRag_CallsProvider_ReturnsNoSources()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        AiChatCompletionRequest? capturedRequest = null;
+
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        // RAG should NOT be called — Strict mock with no setup; VerifyNoOtherCalls confirms.
+
+        var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        completion.Setup(c => c.CompleteAsync(
+                It.IsAny<AiChatCompletionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<AiChatCompletionRequest, CancellationToken>((request, _) => capturedRequest = request)
+            .ReturnsAsync("General knowledge answers are based on the model's training data.");
+
+        var sut = BuildSut(rag.Object, completion.Object);
+
+        var response = await sut.AskAsync(supabaseUserId, new AiChatAskRequest(
+            "What is photosynthesis?",
+            DocumentId: null,
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null,
+            Mode: AiChatMode.GeneralKnowledge));
+
+        response.Answer.Should().Be("General knowledge answers are based on the model's training data.");
+        response.Sources.Should().BeEmpty();
+        response.RefusalReason.Should().BeNull();
+        response.DurationMs.Should().NotBeNull();
+        capturedRequest.Should().NotBeNull();
+        capturedRequest!.SystemPrompt.Should().Contain("You are AI Study Hub, a helpful study assistant");
+        rag.VerifyNoOtherCalls();
+        completion.VerifyAll();
+    }
+
+    [Test]
+    public async Task AskAsync_GeneralKnowledgeMode_EmptyQuestion_Throws400()
+    {
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        var sut = BuildSut(rag.Object, completion.Object);
+
+        var act = () => sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest(
+            "   ",
+            DocumentId: null,
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null,
+            Mode: AiChatMode.GeneralKnowledge));
+
+        var ex = await act.Should().ThrowAsync<AiChatException>();
+        ex.Which.StatusCode.Should().Be(400);
+        ex.Which.Code.Should().Be("question_required");
+        rag.VerifyNoOtherCalls();
+        completion.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task AskAsync_GeneralKnowledgeMode_ProviderFailure_WithDemoFallback()
+    {
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+
+        var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        completion.Setup(c => c.CompleteAsync(
+                It.IsAny<AiChatCompletionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiChatProviderException("groq_http_error", "unavailable"));
+
+        var sut = BuildSut(
+            rag.Object,
+            completion.Object,
+            groqOptions: new GroqOptions { UseLocalDemoFallback = true });
+
+        var response = await sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest(
+            "What is the capital of France?",
+            DocumentId: null,
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null,
+            Mode: AiChatMode.GeneralKnowledge));
+
+        response.Answer.Should().Contain("Local demo fallback answer");
+        response.Sources.Should().BeEmpty();
+        response.RefusalReason.Should().BeNull();
+        rag.VerifyNoOtherCalls();
+        completion.VerifyAll();
+    }
+
+    [Test]
+    public async Task AskAsync_RagWithFallback_NoSources_FallsBackToGeneralKnowledge()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        AiChatCompletionRequest? capturedCompletionRequest = null;
+
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        rag.Setup(s => s.SearchAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<RagSearchRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<RagSearchResultDto>());
+
+        var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        completion.Setup(c => c.CompleteAsync(
+                It.IsAny<AiChatCompletionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<AiChatCompletionRequest, CancellationToken>((request, _) => capturedCompletionRequest = request)
+            .ReturnsAsync("Paris is the capital of France.");
+
+        var sut = BuildSut(rag.Object, completion.Object);
+
+        var response = await sut.AskAsync(supabaseUserId, new AiChatAskRequest(
+            "What is the capital of France?",
+            DocumentId: null,
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null,
+            Mode: AiChatMode.RagWithFallback));
+
+        response.Answer.Should().Contain("Paris is the capital of France.");
+        response.Answer.Should().Contain("\n\n---\n*Note: No relevant documents");
+        response.Sources.Should().BeEmpty();
+        response.RefusalReason.Should().BeNull();
+        response.DurationMs.Should().NotBeNull();
+        capturedCompletionRequest.Should().NotBeNull();
+        capturedCompletionRequest!.SystemPrompt.Should().Contain("You are AI Study Hub, a helpful study assistant");
+        rag.VerifyAll();
+        completion.VerifyAll();
+    }
+
+    [Test]
+    public async Task AskAsync_RagWithFallback_WithSources_BehavesLikeRagOnly()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        var documentId = Guid.NewGuid();
+        var sources = new List<RagSearchResultDto>
+        {
+            new("", documentId, "rag-notes.pdf", 3, 2, "RAG retrieves relevant chunks before generation.", 0.91),
+        };
+
+        AiChatCompletionRequest? capturedCompletionRequest = null;
+
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        rag.Setup(s => s.SearchAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<RagSearchRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(sources);
+
+        var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        completion.Setup(c => c.CompleteAsync(
+                It.IsAny<AiChatCompletionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<AiChatCompletionRequest, CancellationToken>((request, _) => capturedCompletionRequest = request)
+            .ReturnsAsync("RAG retrieves chunks before generation. [S1]");
+
+        var sut = BuildSut(rag.Object, completion.Object);
+
+        var response = await sut.AskAsync(supabaseUserId, new AiChatAskRequest(
+            "How does RAG work?",
+            DocumentId: null,
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null,
+            Mode: AiChatMode.RagWithFallback));
+
+        response.Answer.Should().Be("RAG retrieves chunks before generation. [S1]");
+        response.RefusalReason.Should().BeNull();
+        response.Sources.Should().ContainSingle();
+        response.Sources[0].Label.Should().Be("S1");
+        response.Sources[0].DocumentId.Should().Be(documentId);
+        response.Sources[0].FileName.Should().Be("rag-notes.pdf");
+        response.Sources[0].PageNumber.Should().Be(2);
+        response.Sources[0].ChunkIndex.Should().Be(3);
+        response.Sources[0].Score.Should().Be(0.91);
+        capturedCompletionRequest.Should().NotBeNull();
+        capturedCompletionRequest!.SystemPrompt.Should().Contain("Answer only using the provided source excerpts");
+        capturedCompletionRequest.SystemPrompt.Should().Contain("Do not invent citations");
+        capturedCompletionRequest.UserPrompt.Should().Contain("[S1]");
+        capturedCompletionRequest.UserPrompt.Should().Contain("rag-notes.pdf");
+        capturedCompletionRequest.UserPrompt.Should().Contain("Answer only from the source excerpts above");
+        capturedCompletionRequest.UserPrompt.Should().Contain("Do not use outside knowledge");
+        rag.VerifyAll();
+        completion.VerifyAll();
+    }
 }

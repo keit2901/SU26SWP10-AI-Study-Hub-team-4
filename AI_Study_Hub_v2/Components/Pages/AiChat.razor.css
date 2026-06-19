@@ -1344,6 +1344,72 @@
     line-height: 1.42;
 }
 
+/* ---------- Chat Mode toggle ---------- */
+.workspace-chat-mode {
+    display: grid;
+    gap: 0.75rem;
+    padding: 0.2rem 0;
+}
+
+.chat-mode-toggle {
+    display: grid;
+    gap: 0.3rem;
+}
+
+.chat-mode-option {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.4rem;
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid rgba(203, 213, 225, 0.65);
+    border-radius: 0.8rem;
+    background: #f8f9fc;
+    cursor: pointer;
+    text-align: left;
+    transition: border-color 180ms ease, background 180ms ease, box-shadow 180ms ease, transform 120ms ease;
+    font-family: inherit;
+}
+
+.chat-mode-option:hover:not(:disabled) {
+    background: #ffffff;
+    border-color: rgba(139, 92, 246, 0.25);
+    transform: translateX(2px);
+}
+
+.chat-mode-option.is-active {
+    border-color: rgba(139, 92, 246, 0.35);
+    background: rgba(139, 92, 246, 0.07);
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.12) inset;
+}
+
+.chat-mode-option:disabled {
+    cursor: default;
+    opacity: 0.45;
+}
+
+.chat-mode-label {
+    color: #1e293b;
+    font-size: 0.78rem;
+    font-weight: 760;
+}
+
+.chat-mode-option.is-active .chat-mode-label {
+    color: #7c3aed;
+    font-weight: 850;
+}
+
+.chat-mode-desc {
+    color: #94a3b8;
+    font-size: 0.64rem;
+    font-weight: 650;
+}
+
+.chat-mode-option.is-active .chat-mode-desc {
+    color: #a78bfa;
+}
+
 /* ---------- Active context ---------- */
 .workspace-active-context {
     padding-top: 0.25rem;

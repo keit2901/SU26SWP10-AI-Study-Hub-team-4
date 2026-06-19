@@ -17,6 +17,11 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         "Cite every factual claim with source markers like [S1]. Do not invent citations, page numbers, or facts. " +
         "Keep the answer concise and study-friendly.";
 
+    private const string GeneralKnowledgeSystemPrompt =
+        "You are AI Study Hub, a helpful study assistant. Answer the student's question using your general knowledge. " +
+        "Be concise, accurate, and study-friendly. You do not have access to the student's documents, " +
+        "so do not claim to be referencing their materials.";
+
     private readonly IRagSearchService _ragSearchService;
     private readonly IAiChatCompletionClient _completionClient;
     private readonly RagOptions _ragOptions;
@@ -51,6 +56,13 @@ public sealed class SemanticKernelRagChatService : IAiChatService
             throw new AiChatException(400, "question_required", "Question is required.");
         }
 
+        // Mode: GeneralKnowledge — skip RAG entirely
+        if (request.Mode == AiChatMode.GeneralKnowledge)
+        {
+            return await AnswerGeneralKnowledgeAsync(question, stopwatch, cancellationToken);
+        }
+
+        // RagOnly or RagWithFallback — start with RAG search
         var ragRequest = new RagSearchRequest(
             question,
             request.DocumentId,
@@ -71,8 +83,21 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         }
 
         var sources = MapSources(searchResults);
+
+        // No relevant sources found
         if (sources.Count == 0)
         {
+            // Mode: RagWithFallback — fall back to general knowledge
+            if (request.Mode == AiChatMode.RagWithFallback)
+            {
+                var fallback = await AnswerGeneralKnowledgeAsync(question, stopwatch, cancellationToken);
+                return fallback with
+                {
+                    Answer = $"{fallback.Answer}\n\n---\n*Note: No relevant documents were found for this question. The answer above is based on general knowledge.*"
+                };
+            }
+
+            // Mode: RagOnly — refuse
             return new AiChatAnswerResponse(
                 NoSourcesAnswer,
                 Array.Empty<AiChatSourceDto>(),
@@ -80,6 +105,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
                 DurationMs: stopwatch.ElapsedMilliseconds);
         }
 
+        // Sources found — proceed with grounded answer
         var completionRequest = new AiChatCompletionRequest(
             SystemPrompt,
             BuildUserPrompt(question, sources));
@@ -122,6 +148,60 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         return new AiChatAnswerResponse(
             answer.Trim(),
             sources,
+            RefusalReason: null,
+            DurationMs: stopwatch.ElapsedMilliseconds);
+    }
+
+    /// <summary>
+    /// Answers a question using only the model's general knowledge, skipping document retrieval.
+    /// </summary>
+    private async Task<AiChatAnswerResponse> AnswerGeneralKnowledgeAsync(
+        string question,
+        Stopwatch stopwatch,
+        CancellationToken cancellationToken)
+    {
+        var completionRequest = new AiChatCompletionRequest(
+            GeneralKnowledgeSystemPrompt,
+            question);
+
+        string answer;
+        try
+        {
+            answer = await _completionClient.CompleteAsync(completionRequest, cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            if (_groqOptions.UseLocalDemoFallback)
+            {
+                _logger.LogWarning(ex,
+                    "AI chat provider failed in general knowledge mode; using local demo fallback.");
+                answer = "Local demo fallback answer: This is a general knowledge response to your question.";
+            }
+            else
+            {
+                _logger.LogError(ex, "AI chat provider failed while answering a general knowledge question.");
+                throw new AiChatException(
+                    StatusCodes.Status503ServiceUnavailable,
+                    "ai_provider_unavailable",
+                    "The AI provider is currently unavailable. Please try again later.");
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(answer))
+        {
+            throw new AiChatException(
+                StatusCodes.Status503ServiceUnavailable,
+                "ai_provider_unavailable",
+                "The AI provider returned an empty answer. Please try again later.");
+        }
+
+        return new AiChatAnswerResponse(
+            answer.Trim(),
+            Array.Empty<AiChatSourceDto>(),
             RefusalReason: null,
             DurationMs: stopwatch.ElapsedMilliseconds);
     }

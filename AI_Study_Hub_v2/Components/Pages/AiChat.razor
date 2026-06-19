@@ -241,7 +241,7 @@
                                        Class="workspace-send-button"
                                        StartIcon="@Icons.Material.Filled.Send"
                                        OnClick="AskAsync"
-                                       Disabled="_busy || ScopeDocuments.Count == 0 || string.IsNullOrWhiteSpace(_question)">
+                                       Disabled="_busy || (ScopeDocuments.Count == 0 && _chatMode != AiChatMode.GeneralKnowledge) || string.IsNullOrWhiteSpace(_question)">
                                 @if (_busy)
                                 {
                                     <MudProgressCircular Size="Size.Small" Indeterminate="true" />
@@ -277,6 +277,39 @@
                             <span class="workspace-tool-icon"><MudIcon Icon="@Icons.Material.Filled.AssignmentTurnedIn" /></span>
                             <span><strong>Generate Quiz</strong><small>Create multiple-choice questions with answer options and an answer key.</small></span>
                         </button>
+                    </section>
+
+                    <section class="workspace-chat-mode">
+                        <div class="workspace-panel-heading">
+                            <span>Chat Mode</span>
+                            <small>How answers are generated</small>
+                        </div>
+                        <div class="chat-mode-toggle">
+                            <button type="button"
+                                    class="@($"chat-mode-option {(_chatMode == AiChatMode.RagOnly ? "is-active" : "")}")"
+                                    @onclick="() => { _chatMode = AiChatMode.RagOnly; _error = null; }"
+                                    disabled="@_busy"
+                                    title="Answer only from your indexed documents">
+                                <span class="chat-mode-label">RAG Only</span>
+                                <span class="chat-mode-desc">Use documents only</span>
+                            </button>
+                            <button type="button"
+                                    class="@($"chat-mode-option {(_chatMode == AiChatMode.GeneralKnowledge ? "is-active" : "")}")"
+                                    @onclick="() => { _chatMode = AiChatMode.GeneralKnowledge; _error = null; }"
+                                    disabled="@_busy"
+                                    title="Answer using the AI's general knowledge, no documents needed">
+                                <span class="chat-mode-label">General</span>
+                                <span class="chat-mode-desc">General knowledge</span>
+                            </button>
+                            <button type="button"
+                                    class="@($"chat-mode-option {(_chatMode == AiChatMode.RagWithFallback ? "is-active" : "")}")"
+                                    @onclick="() => { _chatMode = AiChatMode.RagWithFallback; _error = null; }"
+                                    disabled="@_busy"
+                                    title="Search documents first, fall back to general knowledge if nothing matches">
+                                <span class="chat-mode-label">RAG + Fallback</span>
+                                <span class="chat-mode-desc">Docs then fallback</span>
+                            </button>
+                        </div>
                     </section>
 
                     <section class="workspace-active-context">
@@ -348,6 +381,7 @@
     private Guid? _folderId;
     private string _workspaceFolderIdStr = "";
     private int _topK = 5;
+    private AiChatMode _chatMode = AiChatMode.RagOnly;
     private List<DocumentDto> _documents = new();
     private List<FolderDto> _folders = new();
     private readonly HashSet<Guid> _selectedDocumentIds = new();
@@ -485,7 +519,7 @@
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
     {
-        if (e.Key == "Enter" && !e.ShiftKey && !_busy && !string.IsNullOrWhiteSpace(_question) && ScopeDocuments.Count > 0)
+        if (e.Key == "Enter" && !e.ShiftKey && !_busy && !string.IsNullOrWhiteSpace(_question) && (ScopeDocuments.Count > 0 || _chatMode == AiChatMode.GeneralKnowledge))
         {
             await AskAsync();
         }
@@ -515,11 +549,11 @@
             return;
         }
 
-        if (ScopeDocuments.Count == 0)
+        if (ScopeDocuments.Count == 0 && _chatMode != AiChatMode.GeneralKnowledge)
         {
             _error = _folderId.HasValue
-                ? "No indexed documents are available in this folder yet."
-                : "No indexed documents are available for chat yet.";
+                ? "No indexed documents are available in this folder yet. Switch to General Knowledge mode to chat without documents."
+                : "No indexed documents are available for chat yet. Switch to General Knowledge mode to chat without documents.";
             return;
         }
 
@@ -530,7 +564,8 @@
             SubjectCode: null,
             Semester: null,
             TopK: Math.Clamp(_topK, 1, 10),
-            DocumentIds: SelectedDocumentIdsForRequest);
+            DocumentIds: SelectedDocumentIdsForRequest,
+            Mode: _chatMode);
 
         _askCts?.Cancel();
         _askCts?.Dispose();
