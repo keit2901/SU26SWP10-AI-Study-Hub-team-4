@@ -1,0 +1,113 @@
+@using AI_Study_Hub_v2.Data.Entities
+@namespace AI_Study_Hub_v2.Components.Shared.Quiz
+
+<div class="workspace-quiz-card @GetStatusClass()">
+    <div class="workspace-quiz-card-header">
+        <MudIcon Icon="@Icons.Material.Filled.AssignmentTurnedIn" Size="Size.Small" Class="workspace-quiz-card-icon" />
+        <span class="workspace-quiz-card-title">@(Quiz?.Title ?? "Quiz")</span>
+        <span class="workspace-quiz-card-status-badge">@GetStatusLabel()</span>
+    </div>
+
+    <div class="workspace-quiz-card-body">
+        @switch (Quiz?.Status)
+        {
+            case QuizStatus.InProgress:
+                <span class="workspace-quiz-card-meta">
+                    Question @(Quiz.CurrentQuestionIndex + 1) of @Quiz.TotalQuestions
+                </span>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           OnClick="OpenQuiz" Class="workspace-quiz-card-action">
+                    Resume Quiz
+                </MudButton>
+                break;
+
+            case QuizStatus.Completed:
+                <span class="workspace-quiz-card-meta">
+                    Score: <strong class="workspace-quiz-score">@(Quiz.Score?.ToString() ?? "—") / @Quiz.TotalQuestions</strong>
+                </span>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                           OnClick="OpenQuiz" Class="workspace-quiz-card-action">
+                    View Results
+                </MudButton>
+                break;
+
+            case QuizStatus.GeneratingFailed:
+                @if (!string.IsNullOrWhiteSpace(Quiz?.ErrorMessage))
+                {
+                    <span class="workspace-quiz-card-meta workspace-quiz-card-error">
+                        @Quiz.ErrorMessage
+                    </span>
+                }
+                else
+                {
+                    <span class="workspace-quiz-card-meta workspace-quiz-card-error">
+                        Quiz generation failed
+                    </span>
+                }
+                <div class="workspace-quiz-card-actions">
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                               OnClick="OpenQuiz" Class="workspace-quiz-card-action">
+                        Try Again
+                    </MudButton>
+                    <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                               OnClick="DismissQuiz" Class="workspace-quiz-card-action">
+                        Dismiss
+                    </MudButton>
+                </div>
+                break;
+
+            default:
+                <span class="workspace-quiz-card-meta">
+                    @Quiz?.TotalQuestions questions
+                </span>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                           OnClick="OpenQuiz" Class="workspace-quiz-card-action">
+                    Start Quiz
+                </MudButton>
+                break;
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public QuizDto? Quiz { get; set; }
+
+    [Parameter]
+    public EventCallback<QuizDto> OnOpenQuiz { get; set; }
+
+    [Parameter]
+    public EventCallback<QuizDto> OnDismissQuiz { get; set; }
+
+    private string GetStatusClass() => Quiz?.Status switch
+    {
+        QuizStatus.InProgress => "workspace-quiz-card-progress",
+        QuizStatus.Completed => "workspace-quiz-card-done",
+        QuizStatus.GeneratingFailed => "workspace-quiz-card-failed",
+        _ => "workspace-quiz-card-new",
+    };
+
+    private string GetStatusLabel() => Quiz?.Status switch
+    {
+        QuizStatus.InProgress => "In Progress",
+        QuizStatus.Completed => "Completed",
+        QuizStatus.GeneratingFailed => "Failed",
+        _ => "New",
+    };
+
+    private async Task OpenQuiz()
+    {
+        if (Quiz is not null)
+        {
+            await OnOpenQuiz.InvokeAsync(Quiz);
+        }
+    }
+
+    private async Task DismissQuiz()
+    {
+        if (Quiz is not null)
+        {
+            await OnDismissQuiz.InvokeAsync(Quiz);
+        }
+    }
+}

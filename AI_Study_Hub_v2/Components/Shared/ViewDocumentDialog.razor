@@ -1,0 +1,94 @@
+@namespace AI_Study_Hub_v2.Components.Shared
+@using AI_Study_Hub_v2.Dtos
+
+<MudDialog Class="view-document-dialog">
+    <DialogContent>
+        <div class="view-doc-header">
+            <div class="view-doc-header-left">
+                <div class="view-doc-icon-box">
+                    <MudIcon Icon="@GetIcon(MimeType)" />
+                </div>
+                <div>
+                    <div class="view-doc-kicker">
+                        <MudIcon Icon="@Icons.Material.Filled.ChromeReaderMode" Size="Size.Small" />
+                        EXTRACTED TEXT
+                    </div>
+                    <h2 class="view-doc-filename">@FileName</h2>
+                    <p class="view-doc-stats">
+                        @DocumentContent.TotalChunks chunk(s) —
+                        @(PageCount?.ToString() ?? "—") page(s)
+                    </p>
+                </div>
+            </div>
+        </div>
+
+        <div class="view-doc-body">
+            @if (DocumentContent.Chunks.Count == 0)
+            {
+                <div class="view-doc-empty">
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Large" />
+                    <MudText Typo="Typo.body1">No extracted content available for this document.</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        The ingestion pipeline may not support this file format yet.
+                    </MudText>
+                </div>
+            }
+            else
+            {
+                var currentPage = -1;
+                @foreach (var chunk in DocumentContent.Chunks)
+                {
+                    @if (chunk.PageNumber.HasValue && chunk.PageNumber.Value != currentPage)
+                    {
+                        currentPage = chunk.PageNumber.Value;
+                        <div class="view-doc-page-marker">
+                            <span class="page-marker-line"></span>
+                            <span class="page-marker-label">Page @currentPage</span>
+                            <span class="page-marker-line"></span>
+                        </div>
+                    }
+                    <div class="view-doc-chunk">
+                        <div class="chunk-index">@(chunk.ChunkIndex + 1)</div>
+                        <div class="chunk-content">@chunk.Content</div>
+                    </div>
+                }
+            }
+        </div>
+    </DialogContent>
+    <DialogActions>
+        <div class="view-doc-actions-inner">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                @DocumentContent.TotalChunks chunks —
+                @if (DocumentContent.Chunks.Count > 0)
+                {
+                    var totalChars = DocumentContent.Chunks.Sum(c => c.Content.Length);
+                    <span>@totalChars.ToString("N0") characters</span>
+                }
+            </MudText>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Close">
+                Close
+            </MudButton>
+        </div>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public DocumentContentDto DocumentContent { get; set; } = null!;
+    [Parameter] public string FileName { get; set; } = string.Empty;
+    [Parameter] public string MimeType { get; set; } = string.Empty;
+    [Parameter] public int? PageCount { get; set; }
+
+    private void Close() => MudDialog.Close();
+
+    private static string GetIcon(string mime) => mime switch
+    {
+        "application/pdf" => Icons.Material.Filled.PictureAsPdf,
+        "application/msword" => Icons.Material.Filled.Description,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Icons.Material.Filled.Description,
+        "application/vnd.ms-powerpoint" => Icons.Material.Filled.Slideshow,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Icons.Material.Filled.Slideshow,
+        _ => Icons.Material.Filled.InsertDriveFile,
+    };
+}

@@ -76,11 +76,41 @@ public sealed class DocumentListQuery
     public string? Q { get; set; }
 }
 
+public sealed class FileViewUrlResponse
+{
+    /// <summary>Microsoft Office Online Viewer URL (iframe src).</summary>
+    public string Url { get; set; } = string.Empty;
+
+    /// <summary>Direct proxy URL for downloading the file (fallback when the embedded viewer is unavailable).</summary>
+    public string? DownloadUrl { get; set; }
+}
+
+public sealed class RenameDocumentRequest
+{
+    [Required]
+    [StringLength(255, MinimumLength = 1)]
+    public string FileName { get; set; } = string.Empty;
+}
+
 public sealed class MoveDocumentFolderRequest
 {
     /// <summary>Target folder id. Null moves the document back to loose documents.</summary>
     public Guid? FolderId { get; set; }
 }
+
+public sealed record DocumentContentChunkDto(
+    int ChunkIndex,
+    int? PageNumber,
+    string Content,
+    int? TokenCount);
+
+public sealed record DocumentContentDto(
+    Guid DocumentId,
+    string FileName,
+    string MimeType,
+    int TotalChunks,
+    int? PageCount,
+    IReadOnlyList<DocumentContentChunkDto> Chunks);
 
 public sealed class FolderDto
 {

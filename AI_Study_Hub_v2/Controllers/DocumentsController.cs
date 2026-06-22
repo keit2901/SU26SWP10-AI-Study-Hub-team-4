@@ -218,6 +218,106 @@ public sealed class DocumentsController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Returns a URL pointing to the Microsoft Office Online Viewer with the document
+    /// embedded. The backend downloads the file from Supabase Storage and caches it
+    /// locally so the viewer can fetch it without authentication.
+    /// </summary>
+    [HttpGet("{id:guid}/file")]
+    [ProducesResponseType(typeof(FileViewUrlResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FileViewUrlResponse>> GetFileViewUrl(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var signedUrl = await _service.GetFileViewUrlAsync(supabaseUserId, id, cancellationToken);
+
+            var officeViewerUrl = $"https://view.officeapps.live.com/op/embed.aspx?src={Uri.EscapeDataString(signedUrl)}";
+
+            return Ok(new FileViewUrlResponse
+            {
+                Url = officeViewerUrl,
+                DownloadUrl = signedUrl,
+            });
+        }
+        catch (DocumentException ex)
+        {
+            return ToErrorResult(ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected document file URL generation failure.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while generating the document view URL."
+            });
+        }
+    }
+
+    /// <summary>Rename a document. Only the display FileName is updated; storage path stays unchanged.</summary>
+    [HttpPut("{id:guid}/rename")]
+    [ProducesResponseType(typeof(DocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DocumentDto>> Rename(
+        Guid id,
+        [FromBody] RenameDocumentRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var dto = await _service.RenameAsync(supabaseUserId, id, request.FileName, cancellationToken);
+            return Ok(dto);
+        }
+        catch (DocumentException ex)
+        {
+            return ToErrorResult(ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected document rename failure.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while renaming the document."
+            });
+        }
+    }
+
+    /// <summary>Returns the extracted text content (chunks) for a document.</summary>
+    [HttpGet("{id:guid}/content")]
+    [ProducesResponseType(typeof(DocumentContentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<DocumentContentDto>> GetContent(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var content = await _service.GetContentAsync(supabaseUserId, id, cancellationToken);
+            return Ok(content);
+        }
+        catch (DocumentException ex)
+        {
+            return ToErrorResult(ex);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected document content fetch failure.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while fetching document content."
+            });
+        }
+    }
+
     /// <summary>Hard delete — removes row, cascades chunks, deletes storage object.</summary>
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

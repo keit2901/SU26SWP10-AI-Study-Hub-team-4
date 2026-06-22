@@ -12,9 +12,16 @@ namespace AI_Study_Hub_v2.Tests.Controllers;
 [TestFixture]
 public class AiChatControllerTests
 {
-    private static AiChatController BuildSut(IAiChatService service, ClaimsPrincipal? user = null)
+    private static AiChatController BuildSut(IAiChatService service, ClaimsPrincipal? user = null, IChatPersistenceService? persistence = null)
     {
-        var ctrl = new AiChatController(service, NullLogger<AiChatController>.Instance);
+        if (persistence is null)
+        {
+            var mock = new Mock<IChatPersistenceService>(MockBehavior.Loose);
+            mock.Setup(p => p.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<CreateChatSessionRequest>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(new ChatSessionDto { Id = Guid.NewGuid() });
+            persistence = mock.Object;
+        }
+        var ctrl = new AiChatController(service, persistence, NullLogger<AiChatController>.Instance);
         var http = new DefaultHttpContext();
         if (user is not null)
         {
@@ -61,7 +68,10 @@ public class AiChatControllerTests
         var result = await sut.Ask(new AiChatAskRequest("How does RAG work?", null, null, null, null), CancellationToken.None);
 
         var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        ok.Value.Should().BeSameAs(response);
+        var actual = ok.Value.Should().BeOfType<AiChatAnswerResponse>().Subject;
+        actual.Answer.Should().Be(response.Answer);
+        actual.Sources.Should().BeEquivalentTo(response.Sources);
+        actual.SessionId.Should().NotBeNull();
         capturedUserId.Should().Be(supabaseUserId);
         service.VerifyAll();
     }

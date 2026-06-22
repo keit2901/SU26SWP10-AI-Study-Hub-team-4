@@ -27,10 +27,11 @@ public sealed class RagContractTests
         var options = new GroqOptions();
 
         options.ApiKey.Should().BeEmpty();
-        options.Model.Should().Be("llama-3.1-8b-instant");
+        options.Model.Should().Be("llama-3.3-70b-versatile");
+        options.VisionModel.Should().Be("meta-llama/llama-4-scout-17b-16e-instruct");
         options.Endpoint.Should().Be("https://api.groq.com/openai/v1");
         options.Temperature.Should().Be(0.2);
-        options.MaxTokens.Should().Be(1024);
+        options.MaxTokens.Should().Be(4096);
     }
 
     [Test]

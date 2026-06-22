@@ -2,3 +2,23 @@
 Community UI/
 Improve Document Upload UI_UX Figma Design/
 Library_UI_UX_v2/
+
+# IDE & project files
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstats
+*.log
+
+# .NET build artifacts
+**/bin/
+**/obj/
+**/Debug/
+**/Release/
+*.csproj.user
+
+# System files
+Thumbs.db
+.DS_Store
+UI popup/

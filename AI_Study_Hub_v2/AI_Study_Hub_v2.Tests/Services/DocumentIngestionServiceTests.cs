@@ -5,6 +5,7 @@ using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AI_Study_Hub_v2.Tests.Services;
@@ -150,7 +151,9 @@ public class DocumentIngestionServiceTests
         ITextExtractionService extraction,
         IDocumentStorageReadService? storage = null,
         IEmbeddingService? embedding = null,
-        RagOptions? options = null)
+        RagOptions? options = null,
+        IImageDescriptionService? imageDescription = null,
+        GroqOptions? groqOptions = null)
     {
         var ragOptions = options ?? new RagOptions
         {
@@ -165,7 +168,9 @@ public class DocumentIngestionServiceTests
             extraction,
             new ChunkingService(Microsoft.Extensions.Options.Options.Create(ragOptions)),
             embedding ?? new FakeEmbeddingService(ragOptions.EmbeddingDimensions),
+            imageDescription ?? new FakeImageDescriptionService(),
             Microsoft.Extensions.Options.Options.Create(ragOptions),
+            Microsoft.Extensions.Options.Options.Create(groqOptions ?? new GroqOptions()),
             NullLogger<DocumentIngestionService>.Instance);
     }
 
@@ -283,6 +288,12 @@ public class DocumentIngestionServiceTests
             string mimeType,
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException(_message);
+    }
+
+    private sealed class FakeImageDescriptionService : IImageDescriptionService
+    {
+        public Task<string> DescribeAsync(IReadOnlyList<ExtractedImage> pageImages, CancellationToken cancellationToken = default) =>
+            Task.FromResult(string.Empty);
     }
 
     private sealed class FakeEmbeddingService : IEmbeddingService

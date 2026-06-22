@@ -13,14 +13,14 @@
     <link rel="stylesheet" href="app.css" />
     <link rel="stylesheet" href="AI_Study_Hub_v2.styles.css" />
     <link rel="icon" type="image/png" href="favicon.png" />
-    <HeadOutlet @rendermode="InteractiveServer" />
+    <HeadOutlet @rendermode="new InteractiveServerRenderMode(prerender: false)" />
 </head>
 
 <body>
-    <MudPopoverProvider @rendermode="InteractiveServer" />
-    <MudDialogProvider @rendermode="InteractiveServer" />
-    <MudSnackbarProvider @rendermode="InteractiveServer" />
-    <Routes @rendermode="InteractiveServer" />
+    <MudPopoverProvider @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <MudDialogProvider @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <MudSnackbarProvider @rendermode="new InteractiveServerRenderMode(prerender: false)" />
+    <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>
     <script src="recaptcha.js"></script>
     <script src="aichat.js"></script>

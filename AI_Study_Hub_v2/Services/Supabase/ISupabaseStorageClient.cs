@@ -34,6 +34,15 @@ public interface ISupabaseStorageClient
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Download a file's raw bytes from <c>{bucket}/{objectPath}</c>.
+    /// Uses the service-role key so RLS is bypassed. Returns the stream and content type.
+    /// </summary>
+    Task<(Stream Content, string ContentType)> DownloadFileAsync(
+        string bucket,
+        string objectPath,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Hard-delete a single object. Idempotent: missing keys do not throw.
     /// </summary>
     Task DeleteAsync(

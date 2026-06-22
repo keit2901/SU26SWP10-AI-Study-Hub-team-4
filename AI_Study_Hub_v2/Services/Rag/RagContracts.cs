@@ -10,7 +10,35 @@ public interface ITextExtractionService
         CancellationToken cancellationToken = default);
 }
 
-public sealed record ExtractedPage(int? PageNumber, string Text);
+public sealed record ExtractedPage
+{
+    public int? PageNumber { get; init; }
+    public string Text { get; set; }
+    public IReadOnlyList<ExtractedImage>? Images { get; init; }
+
+    public ExtractedPage(int? pageNumber, string text, IReadOnlyList<ExtractedImage>? images = null)
+    {
+        PageNumber = pageNumber;
+        Text = text;
+        Images = images;
+    }
+
+    public void Deconstruct(out int? pageNumber, out string text, out IReadOnlyList<ExtractedImage>? images)
+    {
+        pageNumber = PageNumber;
+        text = Text;
+        images = Images;
+    }
+}
+
+public sealed record ExtractedImage(byte[] Data, string MimeType);
+
+public interface IImageDescriptionService
+{
+    Task<string> DescribeAsync(
+        IReadOnlyList<ExtractedImage> pageImages,
+        CancellationToken cancellationToken = default);
+}
 
 public interface IChunkingService
 {

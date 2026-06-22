@@ -19,6 +19,9 @@ public sealed class DocumentService : IDocumentService
     /// <summary>50 MB cap (plan L5 + bucket config).</summary>
     public const long MaxFileSizeBytes = 50L * 1024 * 1024;
 
+    /// <summary>Maximum documents allowed in a single folder.</summary>
+    public const int MaxDocumentsPerFolder = 30;
+
     /// <summary>Signed download URL TTL — 5 minutes per plan L8.</summary>
     public const int SignedUrlTtlSeconds = 300;
 
@@ -106,7 +109,7 @@ public sealed class DocumentService : IDocumentService
                 $"Content type '{contentType}' is not allowed. Accepted: PDF, DOC, DOCX, PPT, PPTX.");
         }
 
-        // 3. If folder specified, verify it belongs to the caller.
+        // 3. If folder specified, verify it belongs to the caller, check capacity and duplicates.
         if (request.FolderId.HasValue)
         {
             var folderOwned = await _db.Folders
@@ -116,6 +119,24 @@ public sealed class DocumentService : IDocumentService
             {
                 throw new DocumentException(404, "folder_not_found",
                     "Folder does not exist or does not belong to the caller.");
+            }
+
+            var docCount = await _db.Documents
+                .CountAsync(d => d.FolderId == request.FolderId.Value, cancellationToken);
+            if (docCount >= MaxDocumentsPerFolder)
+            {
+                throw new DocumentException(409, "folder_full",
+                    $"This folder already has {docCount} document(s), which is the maximum ({MaxDocumentsPerFolder}).");
+            }
+
+            var fileNameNormalized = fileName.Trim();
+            var duplicate = await _db.Documents
+                .AnyAsync(d => d.FolderId == request.FolderId.Value
+                    && d.FileName.ToLower() == fileNameNormalized.ToLower(), cancellationToken);
+            if (duplicate)
+            {
+                throw new DocumentException(409, "duplicate_file",
+                    $"A file named \"{fileNameNormalized}\" already exists in this folder.");
             }
         }
 
@@ -306,6 +327,40 @@ public sealed class DocumentService : IDocumentService
         return ToDto(doc, signedUrl: null);
     }
 
+    public async Task<DocumentDto> RenameAsync(
+        Guid supabaseUserId,
+        Guid documentId,
+        string newFileName,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, cancellationToken)
+            ?? throw new DocumentException(404, "user_not_found",
+                "Authenticated user has no profile in public.users.");
+
+        var doc = await _db.Documents
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            ?? throw new DocumentException(404, "document_not_found",
+                "Document does not exist or does not belong to the caller.");
+
+        var trimmed = newFileName.Trim();
+        if (trimmed.Length == 0)
+        {
+            throw new DocumentException(400, "invalid_name", "File name cannot be empty.");
+        }
+        if (trimmed.Length > 255)
+        {
+            throw new DocumentException(400, "invalid_name", "File name cannot exceed 255 characters.");
+        }
+
+        doc.FileName = trimmed;
+        doc.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return ToDto(doc, signedUrl: null);
+    }
+
     public async Task DeleteAsync(
         Guid supabaseUserId,
         Guid documentId,
@@ -324,20 +379,89 @@ public sealed class DocumentService : IDocumentService
 
         var pathToDelete = doc.StoragePath;
 
+        // Delete from storage before the DB row so we never orphan a storage object.
+        await _storage.DeleteAsync(BucketName, pathToDelete, cancellationToken);
+
         _db.Documents.Remove(doc);
         await _db.SaveChangesAsync(cancellationToken);
+    }
 
-        // Storage delete is best-effort: a leaked object is recoverable, but a row
-        // pointing at a missing object is worse for UX.
-        try
+    public async Task<DocumentContentDto> GetContentAsync(
+        Guid supabaseUserId,
+        Guid documentId,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, cancellationToken)
+            ?? throw new DocumentException(404, "user_not_found",
+                "Authenticated user has no profile in public.users.");
+
+        var doc = await _db.Documents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            ?? throw new DocumentException(404, "document_not_found",
+                "Document does not exist or does not belong to the caller.");
+
+        var chunks = await _db.DocumentChunks
+            .AsNoTracking()
+            .Where(c => c.DocumentId == documentId)
+            .OrderBy(c => c.ChunkIndex)
+            .Select(c => new DocumentContentChunkDto(
+                c.ChunkIndex,
+                c.PageNumber,
+                c.Content,
+                c.TokenCount))
+            .ToListAsync(cancellationToken);
+
+        return new DocumentContentDto(
+            doc.Id,
+            doc.FileName,
+            doc.MimeType,
+            chunks.Count,
+            doc.PageCount,
+            chunks);
+    }
+
+    public async Task<string> GetFileViewUrlAsync(
+        Guid supabaseUserId,
+        Guid documentId,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, cancellationToken)
+            ?? throw new DocumentException(404, "user_not_found",
+                "Authenticated user has no profile in public.users.");
+
+        var doc = await _db.Documents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            ?? throw new DocumentException(404, "document_not_found",
+                "Document does not exist or does not belong to the caller.");
+
+        if (!string.Equals(doc.MimeType,
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(doc.MimeType,
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(doc.MimeType,
+                "application/msword",
+                StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(doc.MimeType,
+                "application/vnd.ms-powerpoint",
+                StringComparison.OrdinalIgnoreCase))
         {
-            await _storage.DeleteAsync(BucketName, pathToDelete, CancellationToken.None);
+            throw new DocumentException(400, "unsupported_format",
+                "Microsoft Office Viewer only supports the document formats DOCX, DOC, PPTX, PPT.");
         }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex,
-                "Storage delete failed for {Path} after row removal. Object may be leaked.", pathToDelete);
-        }
+
+        // Generate a signed URL (same mechanism as GetByIdAsync — proven to work).
+        var signedUrl = await _storage.CreateSignedUrlAsync(
+            BucketName, doc.StoragePath, 300, cancellationToken);
+
+        return signedUrl;
     }
 
     private static string ResolveCanonicalContentType(string fileName, string? contentType)
@@ -361,8 +485,13 @@ public sealed class DocumentService : IDocumentService
         return normalized;
     }
 
-    private static bool IsIngestionCandidate(string contentType) =>
-        string.Equals(contentType, "application/pdf", StringComparison.OrdinalIgnoreCase);
+    private static bool IsIngestionCandidate(string contentType) => contentType switch
+    {
+        "application/pdf" => true,
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => true,
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation" => true,
+        _ => false,
+    };
 
     private static DocumentDto ToDto(Document doc, string? signedUrl) => new()
     {

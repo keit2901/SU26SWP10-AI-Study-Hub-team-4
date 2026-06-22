@@ -6,6 +6,7 @@
 @inject DocumentApiClient DocumentsApi
 @inject FolderApiClient FoldersApi
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -36,7 +37,7 @@
             </p>
             <div class="upload-tags">
                 <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" /> PDF / DOCX / PPTX</span>
-                <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" /> 50 MB max</span>
+                <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" /> 5 files / 50 MB max</span>
                 <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" /> Private library</span>
             </div>
         </section>
@@ -91,7 +92,16 @@
                     <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
                 </div>
                 <span class="stat-value">@(_files.Count > 0 ? _files.Count.ToString() : "None")</span>
-                <span class="stat-label">@(_files.Count > 0 ? "file(s) selected" : "Awaiting source")</span>
+                <span class="stat-label">@(_files.Count > 0 ? $"of {MaxUploadFiles} file(s)" : "Awaiting source")</span>
+            </div>
+        </MudPaper>
+        <MudPaper Class="stat-card" Elevation="0" Outlined="false">
+            <div class="stat-card-body">
+                <div class="stat-icon-box @(_files.Count > 0 ? "active" : "")">
+                    <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Small" />
+                </div>
+                <span class="stat-value">@FormatBytes(_files.Sum(f => f.Size))</span>
+                <span class="stat-label">of @FormatBytes(MaxTotalUploadBytes) session total</span>
             </div>
         </MudPaper>
     </div>
@@ -152,7 +162,7 @@
             </MudButton>
 
             <p class="source-footnote">
-                Choose a <strong>PDF, Word, and PowerPoint</strong> files up to 50 MB. Your file stays in the private cabinet.
+                Choose up to <strong>5 files</strong> (max <strong>50 MB</strong> total per session) in PDF, Word, or PowerPoint format. Your files stay in the private cabinet.
             </p>
         </section>
 
@@ -312,7 +322,13 @@
                     <div class="checklist-bullet @(_files.Count > 0 ? "done" : "")">
                         @if (_files.Count > 0) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
                     </div>
-                    <span>@_files.Count supported source file(s) selected</span>
+                    <span>@_files.Count / @MaxUploadFiles file(s) selected</span>
+                </div>
+                <div class="checklist-item @(_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0 ? "done" : "")">
+                    <div class="checklist-bullet @(_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0 ? "done" : "")">
+                        @if (_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
+                    </div>
+                    <span>Total @FormatBytes(_files.Sum(f => f.Size)) / @FormatBytes(MaxTotalUploadBytes)</span>
                 </div>
                 <div class="checklist-item @(_model.FolderId is not null ? "done" : "")">
                     <div class="checklist-bullet @(_model.FolderId is not null ? "done" : "")">
@@ -324,15 +340,16 @@
 
             <div class="checklist-footer">
                 @{
-                    var passed = new[] { IsSubjectValid, IsSemesterValid, _files.Count > 0, _model.FolderId is not null }.Count(x => x);
+                    var passed = new[] { IsSubjectValid, IsSemesterValid, _files.Count > 0, _files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0, _model.FolderId is not null }.Count(x => x);
+                    var totalChecks = 5;
                 }
-                @if (passed == 4)
+                @if (passed == totalChecks)
                 {
                     <span>All checks passed \u2014 ready to upload.</span>
                 }
                 else
                 {
-                    <span>@passed/4 checks passed.</span>
+                    <span>@passed/@totalChecks checks passed.</span>
                 }
             </div>
 
@@ -364,6 +381,8 @@
     public Guid? QueryFolderId { get; set; }
 
     private const long MaxFileSizeBytes = DocumentApiClient.MaxFileSizeBytes;
+    private const int MaxUploadFiles = 5;
+    private const long MaxTotalUploadBytes = 50L * 1024 * 1024;
     private const string AcceptAttr = ".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
     private MudForm? _form;
@@ -398,8 +417,14 @@
     {
         if (!Session.IsAuthenticated)
         {
-            Nav.NavigateTo("/login", replace: true);
-            return;
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+                Session.Set(restored);
+            if (!Session.IsAuthenticated)
+            {
+                Nav.NavigateTo("/login", replace: true);
+                return;
+            }
         }
 
         await LoadFoldersAsync();
@@ -496,12 +521,26 @@
     {
         _error = null;
         var selected = e.GetMultipleFiles(50);
+
+        if (_files.Count + selected.Count > MaxUploadFiles)
+        {
+            _error = $"You can upload at most {MaxUploadFiles} files per session. Remove some files first.";
+            return Task.CompletedTask;
+        }
+
+        var totalBytes = _files.Sum(f => f.Size);
         var valid = new List<IBrowserFile>();
         foreach (var file in selected)
         {
             if (file.Size > MaxFileSizeBytes)
             {
-                _error = $"\"{file.Name}\" is {FormatBytes(file.Size)}; the 50 MB limit applies.";
+                _error = $"\"{file.Name}\" is {FormatBytes(file.Size)}; the 50 MB per-file limit applies.";
+                continue;
+            }
+
+            if (totalBytes + file.Size > MaxTotalUploadBytes)
+            {
+                _error = $"Adding \"{file.Name}\" ({FormatBytes(file.Size)}) would exceed the {FormatBytes(MaxTotalUploadBytes)} total session limit. Upload in smaller batches.";
                 continue;
             }
 
@@ -512,9 +551,10 @@
             }
 
             valid.Add(file);
+            totalBytes += file.Size;
         }
 
-        _files = valid;
+        _files.AddRange(valid);
         return Task.CompletedTask;
     }
 
@@ -562,22 +602,41 @@
 
         var selectedFolderId = _model.FolderId;
         List<string> uploaded = new();
+
+        // Read all file data into memory before any upload StateHasChanged()
+        // to avoid Blazor Server invalidating browser-side file IDs on re-render.
+        var fileData = new List<(string Name, string ContentType, long Size, MemoryStream Content)>();
         try
         {
-            foreach (var file in _files)
+            foreach (var file in _files.ToList())
+            {
+                try
+                {
+                    var mem = new MemoryStream((int)file.Size);
+                    await file.OpenReadStream(MaxFileSizeBytes).CopyToAsync(mem);
+                    mem.Position = 0;
+                    fileData.Add((file.Name, file.ContentType, file.Size, mem));
+                }
+                catch (Exception ex)
+                {
+                    _errorCount++;
+                    _error = $"\"{file.Name}\": Could not read file data - {ex.Message}";
+                }
+            }
+
+            foreach (var (name, contentType, size, content) in fileData)
             {
                 _uploadProgress++;
                 StateHasChanged();
 
                 try
                 {
-                    await using var stream = file.OpenReadStream(MaxFileSizeBytes);
                     var dto = await DocumentsApi.UploadAsync(
                         Session.AccessToken!,
-                        stream,
-                        file.Name,
-                        file.ContentType,
-                        file.Size,
+                        content,
+                        name,
+                        contentType,
+                        size,
                         _model);
 
                     _successCount++;
@@ -593,12 +652,12 @@
                         415 => "That file type isn't supported.",
                         _ => MapError(ex),
                     };
-                    _error = $"\"{file.Name}\": {msg}";
+                    _error = $"\"{name}\": {msg}";
                 }
                 catch (Exception ex)
                 {
                     _errorCount++;
-                    _error = $"\"{file.Name}\": Network error - {ex.Message}";
+                    _error = $"\"{name}\": Network error - {ex.Message}";
                 }
             }
 
@@ -623,6 +682,10 @@
         }
         finally
         {
+            foreach (var (_, _, _, content) in fileData)
+            {
+                await content.DisposeAsync();
+            }
             _busy = false;
             StateHasChanged();
         }
@@ -643,11 +706,15 @@
         StateHasChanged();
     }
 
-    private static string MapError(DocumentApiException ex) => ex.StatusCode switch
+    private static string MapError(DocumentApiException ex) => (ex.StatusCode, ex.Code) switch
     {
-        401 => "Your session has expired. Please sign in again.",
-        409 => "A folder with that name already exists.",
-        400 => ex.Code == "folder_name_required" ? "Folder name is required." : ex.Message,
+        (401, _) => "Your session has expired. Please sign in again.",
+        (409, "folder_full") => ex.Message,
+        (409, "duplicate_file") => ex.Message,
+        (409, _) => "A folder with that name already exists.",
+        (400, "folder_name_required") => "Folder name is required.",
+        (400, "empty_file") => ex.Message,
+        (400, _) => $"The server rejected the request. Check that the subject code (e.g. SWP391) and semester (e.g. SU26) are correct.",
         _ => ex.Message,
     };
 

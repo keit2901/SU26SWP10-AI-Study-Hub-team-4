@@ -9,29 +9,44 @@ namespace AI_Study_Hub_v2.Services;
 
 public sealed class SemanticKernelRagChatService : IAiChatService
 {
-    public const string NoSourcesAnswer = "I could not find relevant information in your indexed documents.";
+    private static string BuildSystemPrompt() =>
+        "You are AI Study Hub, a tutoring study assistant. " +
+        $"Current date: {DateTimeOffset.UtcNow:yyyy-MM-dd}. " +
+        "Your training data covers events and facts up to December 2023. You can confidently answer questions about people, events, and facts from 2023 and earlier. " +
+        "If the question asks about events after December 2023 that you have no source context for, clearly say your training data does not cover that period. " +
+        "Below you will find a student question and optionally some source excerpts from their documents. " +
+        "If source excerpts are provided, answer using ONLY those excerpts and cite every factual claim " +
+        "with source markers like [S1]. Do not invent citations — only cite what's in the provided excerpts. " +
+        "If the excerpts do not contain enough information, say the indexed documents do not contain enough information. " +
+        "If no source excerpts are provided, answer using your general knowledge (which covers up to December 2023). " +
+        "Adopt a tutorial tone: explain concepts clearly, use examples when helpful, and guide the student toward understanding. " +
+        "Format answers with bold key terms, bullet points for lists, and clear structure. " +
+        "Keep the answer concise, accurate, and study-friendly.";
 
-    private const string SystemPrompt =
-        "You are AI Study Hub, a study assistant. Answer only using the provided source excerpts. " +
-        "If the answer is not supported by the excerpts, say that the indexed documents do not contain enough information. " +
-        "Cite every factual claim with source markers like [S1]. Do not invent citations, page numbers, or facts. " +
-        "Keep the answer concise and study-friendly.";
+    private static string BuildGeneralSystemPrompt() =>
+        "You are AI Study Hub, a tutoring study assistant. " +
+        $"Current date: {DateTimeOffset.UtcNow:yyyy-MM-dd}. " +
+        "Your training data covers events and facts up to December 2023. You can confidently answer questions about people, events, and facts from 2023 and earlier. " +
+        "If the question asks about events after December 2023, clearly say your training data does not cover that period. " +
+        "Answer using your general knowledge. Adopt a tutorial tone: explain concepts clearly, use examples when helpful, and guide the student toward understanding. " +
+        "Format answers with bold key terms, bullet points for lists, and clear structure. " +
+        "Keep the answer concise, accurate, and study-friendly.";
 
     private readonly IRagSearchService _ragSearchService;
-    private readonly IAiChatCompletionClient _completionClient;
+    private readonly IAiChatCompletionClientFactory _clientFactory;
     private readonly RagOptions _ragOptions;
     private readonly GroqOptions _groqOptions;
     private readonly ILogger<SemanticKernelRagChatService> _logger;
 
     public SemanticKernelRagChatService(
         IRagSearchService ragSearchService,
-        IAiChatCompletionClient completionClient,
+        IAiChatCompletionClientFactory clientFactory,
         IOptions<RagOptions> ragOptions,
         IOptions<GroqOptions> groqOptions,
         ILogger<SemanticKernelRagChatService> logger)
     {
         _ragSearchService = ragSearchService;
-        _completionClient = completionClient;
+        _clientFactory = clientFactory;
         _ragOptions = ragOptions.Value;
         _groqOptions = groqOptions.Value;
         _logger = logger;
@@ -51,43 +66,46 @@ public sealed class SemanticKernelRagChatService : IAiChatService
             throw new AiChatException(400, "question_required", "Question is required.");
         }
 
-        var ragRequest = new RagSearchRequest(
-            question,
-            request.DocumentId,
-            request.FolderId,
-            NormalizeFilter(request.SubjectCode),
-            NormalizeFilter(request.Semester),
-            NormalizeTopK(request.TopK),
-            request.DocumentIds);
+        var hasDocumentScope = request.DocumentId is not null
+            || request.DocumentIds is { Count: > 0 };
 
         IReadOnlyList<RagSearchResultDto> searchResults;
-        try
+        if (hasDocumentScope)
         {
-            searchResults = await _ragSearchService.SearchAsync(supabaseUserId, ragRequest, cancellationToken);
+            var ragRequest = new RagSearchRequest(
+                question,
+                request.DocumentId,
+                request.FolderId,
+                NormalizeFilter(request.SubjectCode),
+                NormalizeFilter(request.Semester),
+                NormalizeTopK(request.TopK),
+                request.DocumentIds);
+
+            try
+            {
+                searchResults = await _ragSearchService.SearchAsync(supabaseUserId, ragRequest, cancellationToken);
+            }
+            catch (DocumentException ex)
+            {
+                throw new AiChatException(ex.StatusCode, ex.Code, ex.Message);
+            }
         }
-        catch (DocumentException ex)
+        else
         {
-            throw new AiChatException(ex.StatusCode, ex.Code, ex.Message);
+            searchResults = Array.Empty<RagSearchResultDto>();
         }
 
         var sources = MapSources(searchResults);
-        if (sources.Count == 0)
-        {
-            return new AiChatAnswerResponse(
-                NoSourcesAnswer,
-                Array.Empty<AiChatSourceDto>(),
-                RefusalReason: "no_sources",
-                DurationMs: stopwatch.ElapsedMilliseconds);
-        }
-
-        var completionRequest = new AiChatCompletionRequest(
-            SystemPrompt,
-            BuildUserPrompt(question, sources));
+        var hadDocumentSelection = hasDocumentScope;
+        var userPrompt = BuildUserPrompt(question, sources, hadDocumentSelection);
+        var systemPrompt = hasDocumentScope ? BuildSystemPrompt() : BuildGeneralSystemPrompt();
+        var completionRequest = new AiChatCompletionRequest(systemPrompt, userPrompt, request.Model);
+        var client = _clientFactory.GetClient(request.Model);
 
         string answer;
         try
         {
-            answer = await _completionClient.CompleteAsync(completionRequest, cancellationToken);
+            answer = await client.CompleteAsync(completionRequest, cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -95,7 +113,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         }
         catch (Exception ex)
         {
-            if (_groqOptions.UseLocalDemoFallback)
+            if (_groqOptions.UseLocalDemoFallback && sources.Count > 0)
             {
                 _logger.LogWarning(ex,
                     "AI chat provider failed; using local demo fallback answer because Groq:UseLocalDemoFallback is enabled.");
@@ -103,7 +121,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
             }
             else
             {
-                _logger.LogError(ex, "AI chat provider failed while answering a grounded RAG question.");
+                _logger.LogError(ex, "AI chat provider failed while answering question.");
                 throw new AiChatException(
                     StatusCodes.Status503ServiceUnavailable,
                     "ai_provider_unavailable",
@@ -119,9 +137,10 @@ public sealed class SemanticKernelRagChatService : IAiChatService
                 "The AI provider returned an empty answer. Please try again later.");
         }
 
+        var hasSources = sources.Count > 0;
         return new AiChatAnswerResponse(
             answer.Trim(),
-            sources,
+            hasSources ? sources : Array.Empty<AiChatSourceDto>(),
             RefusalReason: null,
             DurationMs: stopwatch.ElapsedMilliseconds);
     }
@@ -165,13 +184,28 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         return sources;
     }
 
-    private string BuildUserPrompt(string question, IReadOnlyList<AiChatSourceDto> sources)
+    private static string BuildUserPrompt(string question, IReadOnlyList<AiChatSourceDto> sources, bool hadDocumentSelection = false)
     {
         var sb = new StringBuilder();
-        sb.AppendLine("Student question:");
+        sb.AppendLine("## Student question");
         sb.AppendLine(question);
         sb.AppendLine();
-        sb.AppendLine("Source excerpts:");
+
+        if (sources.Count == 0)
+        {
+            sb.AppendLine("## Source excerpts");
+            if (hadDocumentSelection)
+            {
+                sb.AppendLine("A document scope was specified but no relevant excerpts were found. Answer using your general knowledge without citations.");
+            }
+            else
+            {
+                sb.AppendLine("No source excerpts are available for this question. Answer using your general knowledge without citations.");
+            }
+            return sb.ToString();
+        }
+
+        sb.AppendLine("## Source excerpts");
 
         foreach (var source in sources)
         {
@@ -186,7 +220,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
             sb.AppendLine();
         }
 
-        sb.AppendLine("Instructions:");
+        sb.AppendLine("## Instructions");
         sb.AppendLine("- Answer only from the source excerpts above.");
         sb.AppendLine("- Cite each factual claim with source markers such as [S1] or [S2].");
         sb.AppendLine("- If the excerpts do not contain enough information, say the indexed documents do not contain enough information.");

@@ -1,0 +1,25 @@
+@namespace AI_Study_Hub_v2.Components.Shared.Quiz
+
+<div class="quiz-progress-circle" title="@Answered of @Total answered">
+    <svg viewBox="0 0 36 36" width="44" height="44">
+        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none" stroke="rgba(139, 92, 246, 0.15)" stroke-width="3" />
+        <path d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"
+              fill="none" stroke="#4648D4" stroke-width="3"
+              stroke-dasharray="100, 100"
+              stroke-dashoffset="@(100 - Pct)" />
+        <text x="18" y="21" text-anchor="middle" fill="#c4b5fd" font-size="8" font-weight="700">
+            @Answered/@Total
+        </text>
+    </svg>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public int Answered { get; set; }
+
+    [Parameter, EditorRequired]
+    public int Total { get; set; }
+
+    private double Pct => Total > 0 ? Math.Round((double)Answered / Total * 100) : 0;
+}

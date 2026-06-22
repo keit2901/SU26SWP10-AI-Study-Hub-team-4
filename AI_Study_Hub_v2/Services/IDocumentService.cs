@@ -55,9 +55,36 @@ public interface IDocumentService
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// Generate a long-lived signed URL (30 min) for the Microsoft Office Online Viewer iframe.
+    /// Only callers who own the document receive a URL.
+    /// </summary>
+    Task<string> GetFileViewUrlAsync(
+        Guid supabaseUserId,
+        Guid documentId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Rename a document. Only <c>FileName</c> is updated — the storage object keeps its path.
+    /// </summary>
+    Task<DocumentDto> RenameAsync(
+        Guid supabaseUserId,
+        Guid documentId,
+        string newFileName,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// Hard-delete: removes the row + cascades chunks + deletes the storage object.
     /// </summary>
     Task DeleteAsync(
+        Guid supabaseUserId,
+        Guid documentId,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// Returns the extracted text chunks for a document, ordered by chunk index.
+    /// Only available after ingestion completes (Status == Ready).
+    /// </summary>
+    Task<DocumentContentDto> GetContentAsync(
         Guid supabaseUserId,
         Guid documentId,
         CancellationToken cancellationToken = default);

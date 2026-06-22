@@ -1,0 +1,101 @@
+.workspace-quiz-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 1rem;
+    border-radius: 10px;
+    border: 1px solid rgba(139, 92, 246, 0.15);
+    background: rgba(13, 14, 26, 0.7);
+    backdrop-filter: blur(12px);
+    min-width: 0;
+}
+
+.workspace-quiz-card-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.workspace-quiz-card-icon {
+    color: var(--mud-palette-primary, #7c4dff);
+    flex-shrink: 0;
+}
+
+.workspace-quiz-card-title {
+    font-weight: 600;
+    font-size: 0.95rem;
+    color: #e2e8f0;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.workspace-quiz-card-status-badge {
+    font-size: 0.7rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0.15rem 0.55rem;
+    border-radius: 20px;
+    flex-shrink: 0;
+}
+
+.workspace-quiz-card-progress .workspace-quiz-card-status-badge {
+    background: rgba(70, 72, 212, 0.2);
+    color: #7c82f0;
+}
+
+.workspace-quiz-card-done .workspace-quiz-card-status-badge {
+    background: rgba(76, 175, 80, 0.18);
+    color: #66bb6a;
+}
+
+.workspace-quiz-card-failed .workspace-quiz-card-status-badge {
+    background: rgba(244, 67, 54, 0.18);
+    color: #ef5350;
+}
+
+.workspace-quiz-card-new .workspace-quiz-card-status-badge {
+    background: rgba(139, 92, 246, 0.15);
+    color: #b388ff;
+}
+
+.workspace-quiz-card-body {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+}
+
+.workspace-quiz-card-meta {
+    font-size: 0.82rem;
+    color: #94a3b8;
+}
+
+.workspace-quiz-score {
+    color: #66bb6a;
+    font-weight: 700;
+}
+
+.workspace-quiz-card-error {
+    color: #ef5350;
+}
+
+.workspace-quiz-card-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.25rem;
+}
+
+.workspace-quiz-card-action.mud-button {
+    font-size: 0.75rem;
+    text-transform: none;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    padding: 0.25rem 1rem;
+    min-height: 0;
+    flex-shrink: 0;
+}

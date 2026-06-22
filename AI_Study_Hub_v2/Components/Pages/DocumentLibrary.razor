@@ -3,6 +3,7 @@
 @inject DocumentApiClient DocumentsApi
 @inject FolderApiClient FoldersApi
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
@@ -737,8 +738,14 @@ else
     {
         if (!Session.IsAuthenticated)
         {
-            Nav.NavigateTo("/login", replace: true);
-            return;
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+                Session.Set(restored);
+            if (!Session.IsAuthenticated)
+            {
+                Nav.NavigateTo("/login", replace: true);
+                return;
+            }
         }
         await LoadDataAsync();
     }
@@ -914,7 +921,17 @@ else
         try
         {
             await DocumentsApi.DeleteAsync(Session.AccessToken!, doc.Id);
-            _documents.Remove(doc);
+            _documents = _documents.Where(d => d.Id != doc.Id).ToList();
+            if (_filteredDocuments.Count == 0 && _currentPage > 1)
+            {
+                _currentPage--;
+            }
+            if (doc.FolderId.HasValue)
+            {
+                var folder = _folders.FirstOrDefault(f => f.Id == doc.FolderId.Value);
+                if (folder is not null && folder.DocumentCount > 0)
+                    folder.DocumentCount--;
+            }
             Snackbar.Add($"Deleted \"{doc.FileName}\".", Severity.Success);
             StateHasChanged();
         }

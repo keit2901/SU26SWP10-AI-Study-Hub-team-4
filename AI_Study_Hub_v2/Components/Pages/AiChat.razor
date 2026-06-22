@@ -1,5 +1,7 @@
 @page "/ai/chat"
+@using System.Text.Json
 @using AI_Study_Hub_v2.Data.Entities
+@using AI_Study_Hub_v2.Components.Shared.Quiz
 @implements IDisposable
 @inject AuthSessionState Session
 @inject DocumentApiClient DocumentsApi
@@ -10,6 +12,7 @@
 @inject ISnackbar Snackbar
 @inject AiChatSessionState ChatSession
 @inject IJSRuntime JS
+@inject IDialogService DialogService
 
 <PageTitle>AI Chat - AI Study Hub v2</PageTitle>
 
@@ -67,6 +70,17 @@
                     <div class="workspace-column-labels" aria-hidden="true">
                         <span>✓</span>
                         <span>Document</span>
+                    </div>
+
+                    <div class="workspace-add-file-wrap">
+                        <MudButton Variant="Variant.Outlined"
+                                   Class="workspace-add-file-button"
+                                   StartIcon="@Icons.Material.Filled.Add"
+                                   Href="@UploadUrl"
+                                   FullWidth="true"
+                                   Disabled="_busy">
+                            Upload document
+                        </MudButton>
                     </div>
 
                     <div class="workspace-document-list">
@@ -197,6 +211,20 @@
                             </div>
                         }
 
+                        @if (_resumeQuiz is not null)
+                        {
+                            <div class="workspace-quiz-resume-banner">
+                                <div class="workspace-quiz-resume-info">
+                                    <MudIcon Icon="@Icons.Material.Filled.AssignmentTurnedIn" Size="Size.Small" />
+                                    <span>You have an active quiz: <strong>@_resumeQuiz.Title</strong></span>
+                                </div>
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                           OnClick="() => OpenQuizDialogAsync(_resumeQuiz)" Class="workspace-quiz-resume-btn">
+                                    Resume Quiz
+                                </MudButton>
+                            </div>
+                        }
+
                         @foreach (var (exchange, idx) in ChatSession.History.Select((e, i) => (e, i)))
                         {
                             @RenderExchange(exchange, idx)
@@ -273,16 +301,40 @@
                             <span><strong>Create Summary</strong><small>Auto-generate a structured summary from your checked documents.</small></span>
                         </button>
 
-                        <button type="button" class="workspace-tool-card tool-exam" @onclick="UseQuizPrompt" disabled="@_busy">
+                        <button type="button" class="workspace-tool-card tool-exam"
+                                disabled="@_busy"
+                                @onclick="@(_generatingQuiz ? CancelQuizAsync : GenerateQuizAsync)">
                             <span class="workspace-tool-icon"><MudIcon Icon="@Icons.Material.Filled.AssignmentTurnedIn" /></span>
-                            <span><strong>Generate Quiz</strong><small>Create multiple-choice questions with answer options and an answer key.</small></span>
+                            <span>
+                                @if (_generatingQuiz)
+                                {
+                                    <strong>Cancel</strong>
+                                    <small>Click to cancel in-progress quiz generation.</small>
+                                }
+                                else
+                                {
+                                    <strong>Generate Quiz</strong>
+                                    <small>Create multiple-choice questions with answer options and an answer key.</small>
+                                }
+                            </span>
                         </button>
+                    </section>
+
+                    <section class="workspace-model-selector">
+                        <div class="workspace-panel-heading">
+                            <span>AI Model</span>
+                            <small>Choose which model answers questions</small>
+                        </div>
+                        <MudSelect T="string" Value="@_selectedModel" ValueChanged="@OnModelChanged" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@(_busy || _generatingQuiz)">
+                            <MudSelectItem T="string" Value="@("llama-3.3-70b-versatile")">Llama 3.3 70B (Groq, free)</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("gemini-2.5-flash")">Gemini 2.5 Flash (Google, free)</MudSelectItem>
+                        </MudSelect>
                     </section>
 
                     <section class="workspace-active-context">
                         <div class="workspace-panel-heading">
                             <span>Active Context</span>
-                            <small>@ActiveContextCount selected · @_topK source depth</small>
+                            <small>@(ActiveContextCount > 0 ? $"{ActiveContextCount} selected" : "None selected") · @_topK source depth</small>
                         </div>
 
                         <div class="workspace-context-preview">
@@ -339,19 +391,206 @@
 
     private AiChatApiClient? _chatApi;
     private CancellationTokenSource? _askCts;
+    private CancellationTokenSource? _quizCts;
     private bool _busy;
+    private bool _generatingQuiz;
     private bool _loadingScope;
     private bool _focused;
+    private QuizDto? _resumeQuiz;
+    private readonly Dictionary<Guid, QuizDto> _quizCache = new();
     private string? _error;
     private string? _composerError;
     private string? _question;
     private Guid? _folderId;
     private string _workspaceFolderIdStr = "";
     private int _topK = 5;
+    private string _selectedModel = "llama-3.3-70b-versatile";
+
+    private void OnModelChanged(string value)
+    {
+        _selectedModel = value;
+        StateHasChanged();
+    }
+
     private List<DocumentDto> _documents = new();
     private List<FolderDto> _folders = new();
     private readonly HashSet<Guid> _selectedDocumentIds = new();
     private readonly HashSet<int> _copiedIndexes = new();
+
+    private Guid? _currentSessionId;
+    private List<ChatSessionDto> _sessions = new();
+    private int _sessionLoadVersion;
+    private Guid? _expectedFolderId;
+
+    private async Task LoadSessionsAsync()
+    {
+        var version = ++_sessionLoadVersion;
+        var folderId = _folderId;
+        _expectedFolderId = folderId;
+        try
+        {
+            var sessions = await _chatApi!.ListSessionsAsync(Session.AccessToken!, folderId);
+            if (version != _sessionLoadVersion) return;
+
+            _sessions = sessions
+                .Where(s => !folderId.HasValue || s.FolderId == folderId.Value)
+                .ToList();
+
+            if (_sessions.Count > 0)
+            {
+                var latest = _sessions[0];
+                _currentSessionId = latest.Id;
+                await LoadSessionMessagesAsync(latest.Id);
+            }
+            else
+            {
+                _sessions.Clear();
+                _currentSessionId = null;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            if (version != _sessionLoadVersion) return;
+            _currentSessionId = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadSessionMessagesAsync(Guid sessionId)
+    {
+        var version = _sessionLoadVersion;
+        try
+        {
+            var messages = await _chatApi!.GetSessionMessagesAsync(Session.AccessToken!, sessionId);
+            if (version != _sessionLoadVersion) return;
+            // Only render if the folder is still the one that triggered this load
+            if (_expectedFolderId != _folderId) return;
+            var exchanges = ConvertMessagesToExchanges(messages);
+
+            // Refresh quiz statuses from the DB (metadata may be stale)
+            await RefreshQuizStatusesAsync(exchanges);
+
+            ChatSession.Replace(exchanges);
+        }
+        catch
+        {
+            if (version != _sessionLoadVersion) return;
+            ChatSession.Clear();
+        }
+        StateHasChanged();
+        _ = CheckResumeQuizAsync();
+    }
+
+    private static List<AiChatHistoryExchange> ConvertMessagesToExchanges(IReadOnlyList<ChatMessageDto> messages)
+    {
+        var exchanges = new List<AiChatHistoryExchange>();
+        for (var i = 0; i < messages.Count - 1; i += 2)
+        {
+            var userMsg = messages[i];
+            if (userMsg.Role != "user")
+            {
+                continue;
+            }
+
+            var assistantMsg = i + 1 < messages.Count ? messages[i + 1] : null;
+
+            AiChatAnswerResponse response;
+            var meta = DeserializeMetadata(assistantMsg?.MetadataJson);
+            if (assistantMsg is not null && assistantMsg.Role == "assistant")
+            {
+                response = new AiChatAnswerResponse(
+                    assistantMsg.Content,
+                    meta?.Sources ?? Array.Empty<AiChatSourceDto>(),
+                    meta?.RefusalReason,
+                    meta?.DurationMs);
+            }
+            else
+            {
+                response = new AiChatAnswerResponse(
+                    string.Empty,
+                    Array.Empty<AiChatSourceDto>());
+            }
+
+            QuizDto? quiz = null;
+            if (meta?.QuizId is not null)
+            {
+                var status = Enum.TryParse<QuizStatus>(meta.QuizStatus, ignoreCase: true, out var s) ? s : QuizStatus.InProgress;
+                quiz = new QuizDto(
+                    Guid.Parse(meta.QuizId),
+                    meta.QuizTitle ?? "Quiz",
+                    status,
+                    0,
+                    meta.QuizTotalQuestions ?? 0,
+                    Array.Empty<QuizQuestionDto>(),
+                    new Dictionary<int, string?>(),
+                    new Dictionary<int, bool>(),
+                    meta.QuizScore,
+                    default);
+            }
+
+            exchanges.Add(new AiChatHistoryExchange(
+                userMsg.Content,
+                meta?.ScopeLabel ?? string.Empty,
+                response,
+                assistantMsg?.CreatedAt ?? userMsg.CreatedAt,
+                Quiz: quiz));
+        }
+
+        return exchanges;
+    }
+
+    private async Task RefreshQuizStatusesAsync(List<AiChatHistoryExchange> exchanges)
+    {
+        for (var i = 0; i < exchanges.Count; i++)
+        {
+            var quiz = exchanges[i].Quiz;
+            if (quiz is null) continue;
+
+            // Check local cache first
+            if (_quizCache.TryGetValue(quiz.Id, out var cached) && cached.Status != quiz.Status)
+            {
+                exchanges[i] = exchanges[i] with { Quiz = cached };
+                continue;
+            }
+
+            // Only fetch from API if status is not Completed in metadata
+            if (quiz.Status == QuizStatus.Completed) continue;
+
+            try
+            {
+                var fresh = await _chatApi!.GetQuizAsync(Session.AccessToken!, quiz.Id);
+                if (fresh is not null && fresh.Status != quiz.Status)
+                {
+                    _quizCache[fresh.Id] = fresh;
+                    exchanges[i] = exchanges[i] with { Quiz = fresh };
+                }
+            }
+            catch
+            {
+                // Best-effort — keep the metadata version
+            }
+        }
+    }
+
+    private sealed record MetadataJsonShape(string? ScopeLabel, string? RefusalReason, long? DurationMs, IReadOnlyList<AiChatSourceDto>? Sources, string? QuizId = null, string? QuizTitle = null, string? QuizStatus = null, int? QuizTotalQuestions = null, int? QuizScore = null);
+
+    private static MetadataJsonShape? DeserializeMetadata(string? json)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            return null;
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<MetadataJsonShape>(json);
+        }
+        catch
+        {
+            return null;
+        }
+    }
 
     private List<DocumentDto> ReadyDocuments => _documents
         .Where(d => d.Status == DocumentStatus.Ready)
@@ -368,7 +607,7 @@
         {
             var scopedDocuments = ScopeDocuments;
             var selected = scopedDocuments.Where(d => _selectedDocumentIds.Contains(d.Id)).ToList();
-            return selected.Count > 0 ? selected : scopedDocuments;
+            return selected;
         }
     }
 
@@ -388,7 +627,7 @@
     }
 
     private string SelectedContextLabel => _selectedDocumentIds.Count == 0
-        ? $"All files in {FolderTitle}"
+        ? "No file selected"
         : $"{ActiveContextCount} selected file{(ActiveContextCount == 1 ? string.Empty : "s")}";
 
     private string FolderTitle => _folderId is { } folderId
@@ -481,6 +720,8 @@
             _loadingScope = false;
             StateHasChanged();
         }
+
+        _ = LoadSessionsAsync();
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -523,6 +764,19 @@
             return;
         }
 
+        // Ensure a session exists for this folder
+        if (_currentSessionId is null)
+        {
+            var session = await _chatApi.CreateSessionAsync(Session.AccessToken!, new CreateChatSessionRequest
+            {
+                FolderId = _folderId,
+                Model = _selectedModel,
+                TopK = Math.Clamp(_topK, 1, 10),
+            });
+            _currentSessionId = session.Id;
+            _sessions.Insert(0, session);
+        }
+
         var request = new AiChatAskRequest(
             question,
             DocumentId: null,
@@ -530,7 +784,9 @@
             SubjectCode: null,
             Semester: null,
             TopK: Math.Clamp(_topK, 1, 10),
-            DocumentIds: SelectedDocumentIdsForRequest);
+            DocumentIds: SelectedDocumentIdsForRequest,
+            Model: _selectedModel,
+            SessionId: _currentSessionId);
 
         _askCts?.Cancel();
         _askCts?.Dispose();
@@ -574,6 +830,9 @@
         ChatSession.Clear();
         _copiedIndexes.Clear();
         _error = null;
+        _currentSessionId = null;
+        _resumeQuiz = null;
+        _sessions.Clear();
         StateHasChanged();
     }
 
@@ -605,82 +864,89 @@
         <div class="ai-chat-message ai-chat-message-assistant">
             <div class="ai-chat-message-avatar"><MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" /></div>
             <div class="ai-chat-message-content">
-                @if (!string.IsNullOrWhiteSpace(exchange.Response.RefusalReason))
+                @if (exchange.Quiz is not null)
                 {
-                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
-                        @exchange.Response.RefusalReason
-                    </MudAlert>
+                    <QuizCard Quiz="exchange.Quiz" OnOpenQuiz="OnQuizCardOpenAsync" OnDismissQuiz="OnDismissQuizAsync" />
                 }
-
-                <div class="ai-chat-message-bubble ai-response-bubble">
-                    <div class="ai-response-toolbar">
-                        <span class="ai-response-label">
-                            <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
-                            AI Answer
-                        </span>
-                        <button type="button"
-                                class="ai-copy-button @(_copiedIndexes.Contains(index) ? "is-copied" : "")"
-                                title="Copy answer"
-                                @onclick="() => CopyAnswerAsync(exchange.Response.Answer ?? string.Empty, index)">
-                            @if (_copiedIndexes.Contains(index))
-                            {
-                                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />
-                                <span>Copied!</span>
-                            }
-                            else
-                            {
-                                <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" />
-                                <span>Copy</span>
-                            }
-                        </button>
-                    </div>
-                    <div class="ai-response-body">
-                        @((MarkupString)FormatAnswerMarkup(exchange.Response.Answer))
-                    </div>
-                </div>
-
-                <div class="workspace-citation-row">
-                    @if (exchange.Response.DurationMs is { } duration)
+                else
+                {
+                    @if (!string.IsNullOrWhiteSpace(exchange.Response.RefusalReason))
                     {
-                        <span class="workspace-duration-pill">@duration ms</span>
+                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
+                            @exchange.Response.RefusalReason
+                        </MudAlert>
                     }
-                    @if (exchange.Response.Sources is not null && exchange.Response.Sources.Count > 0)
-                    {
-                        <span class="workspace-sources-label">@SourceCountText(exchange.Response.Sources):</span>
-                        @foreach (var source in exchange.Response.Sources.Select((value, i) => new { value, i }))
-                        {
-                            <span class="citation-badge-wrapper">
-                                <span class="citation-badge" tabindex="0" aria-label="@($"Source {source.i + 1}: {source.value.FileName}")">@CitationBadgeChar(source.i)</span>
-                                <span class="citation-popup" role="tooltip">
-                                    <span class="citation-popup-header">
-                                        <span class="citation-popup-num">@CitationBadgeChar(source.i)</span>
-                                        <strong class="citation-popup-filename" title="@source.value.FileName">@ShortFileName(source.value.FileName, 32)</strong>
-                                    </span>
-                                    <span class="citation-popup-meta">
-                                        @if (source.value.PageNumber is { } page)
-                                        {
-                                            <span class="citation-meta-item"><span class="citation-meta-icon">📄</span> Page @(page)</span>
-                                        }
-                                        <span class="citation-meta-item"><span class="citation-meta-icon">🔢</span> Chunk @source.value.ChunkIndex</span>
-                                        @if (source.value.Score is { } sc)
-                                        {
-                                            <span class="citation-meta-item"><span class="citation-meta-icon">⭐</span> Score @sc.ToString("0.##")</span>
-                                        }
-                                    </span>
-                                    @if (!string.IsNullOrWhiteSpace(source.value.Excerpt))
-                                    {
-                                        <span class="citation-popup-excerpt">@source.value.Excerpt</span>
-                                    }
-                                    <a class="citation-popup-open" href="/documents/@source.value.DocumentId">Open document →</a>
-                                </span>
+
+                    <div class="ai-chat-message-bubble ai-response-bubble">
+                        <div class="ai-response-toolbar">
+                            <span class="ai-response-label">
+                                <MudIcon Icon="@Icons.Material.Filled.SmartToy" Size="Size.Small" />
+                                AI Answer
                             </span>
+                            <button type="button"
+                                    class="ai-copy-button @(_copiedIndexes.Contains(index) ? "is-copied" : "")"
+                                    title="Copy answer"
+                                    @onclick="() => CopyAnswerAsync(exchange.Response.Answer ?? string.Empty, index)">
+                                @if (_copiedIndexes.Contains(index))
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />
+                                    <span>Copied!</span>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.ContentCopy" Size="Size.Small" />
+                                    <span>Copy</span>
+                                }
+                            </button>
+                        </div>
+                        <div class="ai-response-body">
+                            @((MarkupString)FormatAnswerMarkup(exchange.Response.Answer))
+                        </div>
+                    </div>
+
+                    <div class="workspace-citation-row">
+                        @if (exchange.Response.DurationMs is { } duration)
+                        {
+                            <span class="workspace-duration-pill">@duration ms</span>
                         }
-                    }
-                    else
-                    {
-                        <span class="workspace-no-citation-note">No citations returned.</span>
-                    }
-                </div>
+                        @if (exchange.Response.Sources is not null && exchange.Response.Sources.Count > 0)
+                        {
+                            <span class="workspace-sources-label">@SourceCountText(exchange.Response.Sources):</span>
+                            @foreach (var source in exchange.Response.Sources.Select((value, i) => new { value, i }))
+                            {
+                                <span class="citation-badge-wrapper">
+                                    <span class="citation-badge" tabindex="0" aria-label="@($"Source {source.i + 1}: {source.value.FileName}")">@CitationBadgeChar(source.i)</span>
+                                    <span class="citation-popup" role="tooltip">
+                                        <span class="citation-popup-header">
+                                            <span class="citation-popup-num">@CitationBadgeChar(source.i)</span>
+                                            <strong class="citation-popup-filename" title="@source.value.FileName">@ShortFileName(source.value.FileName, 32)</strong>
+                                        </span>
+                                        <span class="citation-popup-meta">
+                                            @if (source.value.PageNumber is { } page)
+                                            {
+                                                <span class="citation-meta-item"><span class="citation-meta-icon">📄</span> Page @(page)</span>
+                                            }
+                                            <span class="citation-meta-item"><span class="citation-meta-icon">🔢</span> Chunk @source.value.ChunkIndex</span>
+                                            @if (source.value.Score is { } sc)
+                                            {
+                                                <span class="citation-meta-item"><span class="citation-meta-icon">⭐</span> Score @sc.ToString("0.##")</span>
+                                            }
+                                        </span>
+                                        @if (!string.IsNullOrWhiteSpace(source.value.Excerpt))
+                                        {
+                                            <span class="citation-popup-excerpt">@source.value.Excerpt</span>
+                                        }
+                                        <a class="citation-popup-open" href="/documents/@source.value.DocumentId">Open document →</a>
+                                    </span>
+                                </span>
+                            }
+                        }
+                        else
+                        {
+                            <span class="workspace-no-citation-note">No citations returned.</span>
+                        }
+                    </div>
+                }
             </div>
         </div>
     </div>;
@@ -742,7 +1008,15 @@
             _folderId = parsed;
         }
 
+        _currentSessionId = null;
+        _expectedFolderId = _folderId;
+        _sessions.Clear();
+        ChatSession.Clear();
+        _resumeQuiz = null;
+        StateHasChanged();
+
         SelectAllScopeDocuments();
+        _ = LoadSessionsAsync();
     }
 
     private void UsePrompt(string prompt)
@@ -751,8 +1025,224 @@
         _composerError = null;
     }
 
-    private void UseQuizPrompt()
-        => UsePrompt("Generate 8 multiple-choice quiz questions from my selected context. Each question must have A-D answer choices, mark the correct option, include a short explanation, and cite the source for each answer.");
+    private async Task GenerateQuizAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken) || _chatApi is null)
+        {
+            return;
+        }
+
+        _generatingQuiz = true;
+        _error = null;
+        _quizCts?.Dispose();
+        _quizCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
+        try
+        {
+            var documentIds = SelectedDocumentIdsForRequest;
+            if ((documentIds is null || documentIds.Count == 0) && !_folderId.HasValue)
+            {
+                Snackbar.Add("Select at least one document or folder to generate a quiz.", Severity.Warning);
+                return;
+            }
+
+            if (_currentSessionId is null)
+            {
+                var createRequest = new CreateChatSessionRequest
+                {
+                    FolderId = _folderId,
+                    Model = _selectedModel,
+                    TopK = _topK,
+                };
+                var session = await _chatApi.CreateSessionAsync(Session.AccessToken!, createRequest);
+                _currentSessionId = session.Id;
+                _sessions.Insert(0, session);
+            }
+
+            var quizRequest = new GenerateQuizRequest(
+                SessionId: _currentSessionId!.Value,
+                DocumentIds: documentIds,
+                FolderId: _folderId,
+                Title: $"Quiz: {FolderTitle}",
+                Count: 8,
+                Difficulty: "medium",
+                Model: _selectedModel,
+                ScopeLabel: BuildScopeLabel());
+
+            var quiz = await _chatApi.GenerateQuizAsync(Session.AccessToken!, quizRequest, _quizCts.Token);
+
+            var exchange = new AiChatHistoryExchange(
+                $"Generate quiz: {quiz.Title}",
+                BuildScopeLabel(),
+                new AiChatAnswerResponse(string.Empty, Array.Empty<AiChatSourceDto>()),
+                DateTimeOffset.Now,
+                Quiz: quiz);
+
+            ChatSession.Add(exchange);
+
+            await OpenQuizDialogAsync(quiz);
+            Snackbar.Add($"Quiz \"{quiz.Title}\" generated with {quiz.TotalQuestions} questions.", Severity.Success);
+        }
+        catch (OperationCanceledException)
+        {
+            Snackbar.Add("Quiz generation cancelled.", Severity.Info);
+        }
+        catch (AiChatApiException ex)
+        {
+            var errorQuiz = new QuizDto(
+                Guid.NewGuid(),
+                $"Quiz: {FolderTitle}",
+                QuizStatus.GeneratingFailed,
+                0, 0,
+                Array.Empty<QuizQuestionDto>(),
+                new Dictionary<int, string?>(),
+                new Dictionary<int, bool>(),
+                null,
+                default,
+                ErrorMessage: MapChatError(ex));
+
+            var exchange = new AiChatHistoryExchange(
+                "Generate quiz",
+                BuildScopeLabel(),
+                new AiChatAnswerResponse(string.Empty, Array.Empty<AiChatSourceDto>()),
+                DateTimeOffset.Now,
+                Quiz: errorQuiz);
+
+            ChatSession.Add(exchange);
+            _error = MapChatError(ex);
+        }
+        catch (Exception ex)
+        {
+            var errorQuiz = new QuizDto(
+                Guid.NewGuid(),
+                $"Quiz: {FolderTitle}",
+                QuizStatus.GeneratingFailed,
+                0, 0,
+                Array.Empty<QuizQuestionDto>(),
+                new Dictionary<int, string?>(),
+                new Dictionary<int, bool>(),
+                null,
+                default,
+                ErrorMessage: $"Failed to generate quiz: {ex.Message}");
+
+            var exchange = new AiChatHistoryExchange(
+                "Generate quiz",
+                BuildScopeLabel(),
+                new AiChatAnswerResponse(string.Empty, Array.Empty<AiChatSourceDto>()),
+                DateTimeOffset.Now,
+                Quiz: errorQuiz);
+
+            ChatSession.Add(exchange);
+            _error = $"Failed to generate quiz: {ex.Message}";
+        }
+        finally
+        {
+            _generatingQuiz = false;
+            _quizCts?.Dispose();
+            _quizCts = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task OpenQuizDialogAsync(QuizDto quiz)
+    {
+        if (_quizCache.TryGetValue(quiz.Id, out var cached))
+        {
+            quiz = cached;
+        }
+
+        // Always fetch the full quiz from the API for the current DB status
+        if (!string.IsNullOrWhiteSpace(Session.AccessToken) && _chatApi is not null)
+        {
+            try
+            {
+                var full = await _chatApi.GetQuizAsync(Session.AccessToken, quiz.Id);
+                if (full is not null)
+                {
+                    quiz = full;
+                    _quizCache[quiz.Id] = full;
+                    ChatSession.UpdateExchangeQuiz(quiz.Id, full);
+                    StateHasChanged();
+                }
+            }
+            catch
+            {
+                // Best-effort — fall back to cached QuizDto
+            }
+        }
+
+        var parameters = new DialogParameters<QuizDialog>
+        {
+            { d => d.Quiz, quiz },
+            { d => d.OnQuizUpdated, EventCallback.Factory.Create<QuizDto>(this, OnQuizUpdatedAsync) },
+            { d => d.OnQuizCompleted, EventCallback.Factory.Create<QuizDto>(this, OnQuizCompletedAsync) },
+        };
+
+        var dialog = await DialogService.ShowAsync<QuizDialog>("", parameters);
+        await dialog.Result;
+    }
+
+    private async Task OnQuizUpdatedAsync(QuizDto updated)
+    {
+        _quizCache[updated.Id] = updated;
+        ChatSession.UpdateExchangeQuiz(updated.Id, updated);
+        StateHasChanged();
+    }
+
+    private async Task OnQuizCompletedAsync(QuizDto completed)
+    {
+        _quizCache[completed.Id] = completed;
+        ChatSession.UpdateExchangeQuiz(completed.Id, completed);
+        _resumeQuiz = null;
+        StateHasChanged();
+    }
+
+    private async Task CancelQuizAsync()
+    {
+        _quizCts?.Cancel();
+        _generatingQuiz = false;
+        StateHasChanged();
+    }
+
+    private async Task OnQuizCardOpenAsync(QuizDto quiz)
+    {
+        if (quiz.Status == QuizStatus.GeneratingFailed)
+        {
+            await GenerateQuizAsync();
+        }
+        else
+        {
+            await OpenQuizDialogAsync(quiz);
+        }
+    }
+
+    private async Task OnDismissQuizAsync(QuizDto quiz)
+    {
+        ChatSession.RemoveExchangeByQuizId(quiz.Id);
+        _quizCache.Remove(quiz.Id);
+        StateHasChanged();
+    }
+
+    private async Task CheckResumeQuizAsync()
+    {
+        if (_currentSessionId is null || _chatApi is null || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            return;
+        }
+
+        try
+        {
+            var quiz = await _chatApi.ResumeQuizAsync(Session.AccessToken!, _currentSessionId.Value);
+            if (quiz is not null && quiz.Status == QuizStatus.InProgress)
+            {
+                _resumeQuiz = quiz;
+                StateHasChanged();
+            }
+        }
+        catch
+        {
+            // Resume is best-effort
+        }
+    }
 
     private void UseSummaryPrompt()
         => UsePrompt("Create an auto summary for my selected context with key concepts, exam tips, and citations for the most important points.");
@@ -883,21 +1373,36 @@
         _ => ex.Message,
     };
 
-    private static string MapChatError(AiChatApiException ex) => ex.StatusCode switch
+    private static string MapChatError(AiChatApiException ex) => ex.Code switch
     {
-        400 => ex.Message,
-        401 => "Your session has expired. Please sign in again.",
-        403 => "You do not have permission to use AI chat.",
-        404 => "The AI chat endpoint is not available yet. Merge the Sprint 2 chat API before browser smoke.",
-        408 => "The AI request timed out. Try again with fewer sources or a narrower scope.",
-        429 => "The AI provider is rate limited right now. Wait a moment and try again.",
-        500 or 502 or 503 => $"AI service error: {ex.Message}",
-        _ => ex.Message,
+        "insufficient_content" => ex.Message,
+        "invalid_quiz_json" => ex.Message,
+        "quiz_too_large" => ex.Message,
+        "documents_not_found" => ex.Message,
+        "session_not_found" => ex.Message,
+        "no_active_quiz" => ex.Message,
+        "quiz_save_failed" => ex.Message,
+        "quiz_load_failed" => ex.Message,
+        "empty_ai_response" => "The AI returned an empty response. Please try again.",
+        "rate_limited" => "You've made too many requests. Please wait a moment and try again.",
+        _ => ex.StatusCode switch
+        {
+            400 => ex.Message,
+            401 => "Your session has expired. Please sign in again.",
+            403 => "You do not have permission to use AI chat.",
+            404 => "The AI chat endpoint is not available yet. Merge the Sprint 2 chat API before browser smoke.",
+            408 => "The AI request timed out. Try again with fewer sources or a narrower scope.",
+            429 => "The AI provider is rate limited right now. Wait a moment and try again.",
+            500 or 502 or 503 => $"AI service error: {ex.Message}",
+            _ => ex.Message,
+        },
     };
 
     public void Dispose()
     {
         _askCts?.Cancel();
         _askCts?.Dispose();
+        _quizCts?.Cancel();
+        _quizCts?.Dispose();
     }
 }

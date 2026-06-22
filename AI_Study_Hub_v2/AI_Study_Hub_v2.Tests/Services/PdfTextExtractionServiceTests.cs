@@ -32,7 +32,7 @@ public class PdfTextExtractionServiceTests
         var sut = new PdfTextExtractionService();
         using var stream = new MemoryStream(new byte[] { 1, 2, 3 });
 
-        var act = () => sut.ExtractPagesAsync(stream, "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        var act = () => sut.ExtractPagesAsync(stream, "image/jpeg");
 
         await act.Should().ThrowAsync<NotSupportedException>();
     }
