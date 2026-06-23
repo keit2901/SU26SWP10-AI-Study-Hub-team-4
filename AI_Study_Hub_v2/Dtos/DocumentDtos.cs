@@ -137,6 +137,13 @@ public sealed class FolderDto
     /// <summary>Display name of the folder owner (populated only by shared-list endpoint).</summary>
     public string? OwnerName { get; set; }
 
+    public int LikeCount { get; set; }
+
+    public int DislikeCount { get; set; }
+
+    /// <summary>Reaction of the current authenticated user (null = no vote, true = like, false = dislike).</summary>
+    public bool? CurrentUserVote { get; set; }
+
     // UI-only computed properties (not from API)
     public string? Subject { get; set; }
     public string? Semester { get; set; }
@@ -168,4 +175,10 @@ public sealed class UpdateFolderRequest
     public bool? IsFavorite { get; set; }
 
     public bool? IsShared { get; set; }
+}
+
+public sealed class VoteRequest
+{
+    [Required]
+    public bool IsLike { get; set; }
 }

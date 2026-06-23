@@ -1,4 +1,6 @@
 @page "/community"
+@implements IDisposable
+@inject AuthSessionState Session
 @inject FolderApiClient FoldersApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -6,157 +8,320 @@
 <PageTitle>Community - AI Study Hub v2</PageTitle>
 
 <div class="community-page">
-    <div class="community-container">
-        <div class="community-search-header">
-            <div class="community-title-area">
-                <h2 class="community-heading">Public Community</h2>
-            </div>
-            <div class="community-search-row">
-                <div class="community-search-wrapper">
-                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="community-search-icon" />
-                    <MudTextField T="string"
-                                  @bind-Value="_searchQuery"
-                                  Placeholder="Search folders..."
-                                  Variant="Variant.Outlined"
-                                  Margin="Margin.Dense"
-                                  Immediate="true"
-                                  Class="community-search-input" />
+    <div class="community-layout">
+        <aside class="community-sidebar">
+            <div class="sidebar-toggle">
+                <div class="sidebar-toggle-inner">
+                    <button class="sidebar-toggle-btn @(_activeTab == "community" ? "active" : "")"
+                            @onclick="SwitchToCommunity">
+                        <MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" />
+                        <span>Community</span>
+                    </button>
+                    <button class="sidebar-toggle-btn @(_activeTab == "personal" ? "active" : "")"
+                            @onclick="SwitchToPersonal">
+                        <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" />
+                        <span>Personal Shared</span>
+                    </button>
                 </div>
             </div>
-        </div>
 
-        @if (_loading)
-        {
-            <div class="community-grid">
-                @for (var i = 0; i < 6; i++)
+            <div class="sidebar-list">
+                <div class="sidebar-list-label">
+                    @(_activeTab == "community" ? "Public Folders" : "My Shared Folders")
+                </div>
+                @if (_currentFolders.Count == 0)
                 {
-                    <MudPaper Class="community-card-skeleton" Elevation="0" Outlined="true">
-                        <MudStack Spacing="2">
-                            <MudSkeleton Height="56px" Width="56px" Animation="Animation.Wave" />
-                            <MudSkeleton Height="20px" Animation="Animation.Wave" />
-                            <MudSkeleton Height="14px" Width="60%" Animation="Animation.Wave" />
-                        </MudStack>
-                    </MudPaper>
+                    <div class="sidebar-empty">
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">No folders yet</MudText>
+                    </div>
+                }
+                else
+                {
+                    <div class="sidebar-items">
+                        @foreach (var folder in _currentFolders)
+                        {
+                            var isSelected = _selectedFolderId == folder.Id;
+                            var cidx = _currentFolders.IndexOf(folder);
+                            var colors = new[] { "#7c6fcd", "#c0392b", "#2980b9", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#d35400" };
+                            var color = colors[Math.Abs(cidx % colors.Length)];
+                            var bgColor = color + "18";
+
+                            <button class="sidebar-item @(isSelected ? "selected" : "")"
+                                    @onclick="() => SelectFolder(folder.Id)">
+                                <div class="sidebar-item-icon" style="background:@bgColor; color:@color">
+                                    <MudIcon Icon="@GetFolderIcon(folder.Icon)" Size="Size.Small" />
+                                </div>
+                                <div class="sidebar-item-info">
+                                    <span class="sidebar-item-name">@folder.Name</span>
+                                    @if (_activeTab == "personal")
+                                    {
+                                        <span class="sidebar-item-meta">
+                                            <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small" />
+                                            @folder.LikeCount
+                                            <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Size="Size.Small" />
+                                            @folder.DislikeCount
+                                        </span>
+                                    }
+                                    else
+                                    {
+                                        <span class="sidebar-item-meta">@folder.DocumentCount sources</span>
+                                    }
+                                </div>
+                                <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" Class="sidebar-item-chevron" />
+                            </button>
+                        }
+                    </div>
                 }
             </div>
-        }
-        else if (_filteredFolders.Count == 0)
-        {
-            <div class="community-empty">
-                <MudIcon Icon="@Icons.Material.Filled.FolderShared" Size="Size.Large" Color="Color.Secondary" />
-                <MudText Typo="Typo.h6" Color="Color.Secondary">No shared folders yet</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Folders shared by the community will appear here.</MudText>
-            </div>
-        }
-        else
-        {
-            <div class="community-grid">
-                @foreach (var folder in _pagedFolders)
-                {
-                    var colors = new[] { "#4648d4", "#a62626", "#6d28d9", "#1d4ed8", "#059669", "#d97706", "#dc2626", "#7c3aed" };
-                    var cidx = _allFolders.IndexOf(folder);
-                    var cardColor = colors[Math.Abs(cidx % colors.Length)];
-                    var iconName = string.IsNullOrWhiteSpace(folder.Icon) ? "folder" : folder.Icon;
 
-                    <MudPaper Class="community-card" Elevation="0" Outlined="false"
-                              onclick="this.querySelector('.community-card-inner')?.click()">
-                        <div class="community-card-inner" @onclick="() => GoToFolder(folder.Id)" style="cursor:pointer;">
-                            <div class="community-card-top">
-                                <div class="community-card-icon" style="@("background:" + cardColor + "18;")">
-                                    <MudIcon Icon="@GetFolderIcon(iconName)" Size="Size.Large" Style="@("color:" + cardColor + ";")" />
-                                </div>
-                                <div class="community-card-menu">
-                                    <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Variant="Variant.Text" />
-                                </div>
-                            </div>
-                            <div class="community-card-body">
-                                <MudText Class="community-card-title">@folder.Name</MudText>
-                                <div class="community-card-meta">
-                                    <div class="community-card-author">
-                                        <span class="community-card-avatar" style="background:@cardColor;">
-                                            @(string.IsNullOrWhiteSpace(folder.OwnerName) ? "?" : folder.OwnerName[..1].ToUpper())
-                                        </span>
-                                        <span class="community-card-owner">@(folder.OwnerName ?? "Unknown")</span>
-                                    </div>
-                                    <span class="community-card-sources">@folder.DocumentCount sources</span>
-                                </div>
+            <div class="sidebar-footer">
+                <button class="sidebar-footer-btn">
+                    <MudIcon Icon="@Icons.Material.Filled.Star" Size="Size.Small" />
+                    <span>Starred</span>
+                </button>
+                <button class="sidebar-footer-btn">
+                    <MudIcon Icon="@Icons.Material.Filled.AccessTime" Size="Size.Small" />
+                    <span>Recent</span>
+                </button>
+                <button class="sidebar-footer-btn">
+                    <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" />
+                    <span>All Folders</span>
+                </button>
+            </div>
+        </aside>
+
+        <main class="community-main">
+            @if (_loading)
+            {
+                <div class="community-loading">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Medium" />
+                </div>
+            }
+            else
+            {
+                <div class="community-main-header">
+                    <h1 class="community-title">
+                        @(_activeTab == "community" ? "Public Community" : "Personal Shared")
+                    </h1>
+                    <p class="community-subtitle">
+                        @(_activeTab == "community"
+                            ? "Browse and rate folders shared by the community"
+                            : "Engagement dashboard for your shared folders")
+                    </p>
+                </div>
+
+                @if (_activeTab == "personal" && _personalFolders.Count > 0)
+                {
+                    <div class="personal-summary">
+                        <div class="summary-card summary-likes">
+                            <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.ThumbUp" /></div>
+                            <div class="summary-info">
+                                <span class="summary-value">@FormatCount(_totalLikes)</span>
+                                <span class="summary-label">Total Likes</span>
                             </div>
                         </div>
-                    </MudPaper>
+                        <div class="summary-card summary-dislikes">
+                            <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.ThumbDown" /></div>
+                            <div class="summary-info">
+                                <span class="summary-value">@FormatCount(_totalDislikes)</span>
+                                <span class="summary-label">Total Dislikes</span>
+                            </div>
+                        </div>
+                        <div class="summary-card summary-approval">
+                            <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.TrendingUp" /></div>
+                            <div class="summary-info">
+                                <span class="summary-value">@(_overallApproval)%</span>
+                                <span class="summary-label">Overall Approval</span>
+                            </div>
+                        </div>
+                        @if (_bestFolder is not null)
+                        {
+                            <div class="summary-banner">
+                                <MudIcon Icon="@Icons.Material.Filled.BarChart" Size="Size.Small" />
+                                <span>Top performing folder: <strong>@_bestFolder.Name</strong> with <strong class="highlight">@FormatCount(_bestFolder.LikeCount) likes</strong></span>
+                            </div>
+                        }
+                    </div>
                 }
-            </div>
-        }
 
-        @if (_totalPages > 1)
-        {
-            <div class="community-pagination">
-                <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft" Disabled="@(_currentPage <= 1)" OnClick="() => GoToPage(_currentPage - 1)" Variant="Variant.Outlined" Size="Size.Small" />
-                @foreach (var p in _pageNumbers)
+                <div class="community-search">
+                    <div class="search-wrapper">
+                        <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
+                        <input type="text"
+                               class="search-input"
+                               placeholder="Search folders..."
+                               @bind-value="@_searchQuery"
+                               @bind-value:event="oninput" />
+                    </div>
+                </div>
+
+                @if (_filteredFolders.Count > 0)
                 {
-                    if (p == -1)
-                    {
-                        <span class="community-page-ellipsis">...</span>
-                    }
-                    else
-                    {
-                        <MudIconButton Variant="@(p == _currentPage ? Variant.Filled : Variant.Outlined)" Color="@(p == _currentPage ? Color.Primary : Color.Default)" OnClick="() => GoToPage(p)" Size="Size.Small">@p</MudIconButton>
-                    }
+                    <div class="community-grid">
+                        @if (_activeTab == "community")
+                        {
+                            @foreach (var folder in _filteredFolders)
+                            {
+                                var cidx = _allCommunityFolders.IndexOf(folder);
+                                var colors = new[] { "#7c6fcd", "#c0392b", "#2980b9", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#d35400" };
+                                var color = colors[Math.Abs(cidx % colors.Length)];
+                                var bgColor = color + "18";
+                                var vote = _votes.GetValueOrDefault(folder.Id);
+
+                                <div class="community-card" @onclick="() => GoToFolder(folder.Id)">
+                                    <div class="card-header">
+                                        <div class="card-icon" style="background:@bgColor; color:@color">
+                                            <MudIcon Icon="@GetFolderIcon(folder.Icon)" Size="Size.Medium" />
+                                        </div>
+                                        <div class="card-menu-area" @onclick:stopPropagation>
+                                            <div class="card-menu-trigger" @onclick="() => ToggleMenu(folder.Id)">
+                                                <MudIcon Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" />
+                                            </div>
+                                            @if (_openMenuFolderId == folder.Id)
+                                            {
+                                                <div class="card-menu-dropdown">
+                                                    <button class="menu-item" @onclick="() => { var id = folder.Id; _openMenuFolderId = null; CopyToLibrary(id); }">Copy to Library</button>
+                                                    <button class="menu-item" @onclick="() => { _openMenuFolderId = null; ShowComingSoon(); }">Report</button>
+                                                </div>
+                                            }
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <h3 class="card-title">@folder.Name</h3>
+                                        <div class="card-author">
+                                            <span class="card-avatar" style="background:@color">@GetInitials(folder.OwnerName)</span>
+                                            <span class="card-owner">@(folder.OwnerName ?? "Unknown")</span>
+                                            <span class="card-sources">@folder.DocumentCount sources</span>
+                                        </div>
+                                    </div>
+                                    <div class="card-actions" @onclick:stopPropagation>
+                                        <button class="action-btn like-btn @(vote == true ? "voted" : "")"
+                                                @onclick="() => Vote(folder.Id, true)">
+                                            <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small" />
+                                            @FormatCount(GetDisplayLikes(folder))
+                                        </button>
+                                        <button class="action-btn dislike-btn @(vote == false ? "voted" : "")"
+                                                @onclick="() => Vote(folder.Id, false)">
+                                            <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Size="Size.Small" />
+                                            @FormatCount(GetDisplayDislikes(folder))
+                                        </button>
+                                        <div class="approval-bar">
+                                            <div class="approval-track">
+                                                <div class="approval-fill" style="width: @ApprovalPercent(folder)%"></div>
+                                            </div>
+                                            <span class="approval-pct">@ApprovalPercent(folder)%</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                        else
+                        {
+                            @foreach (var folder in _filteredFolders)
+                            {
+                                var cidx = _personalFolders.IndexOf(folder);
+                                var colors = new[] { "#7c6fcd", "#c0392b", "#2980b9", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#d35400" };
+                                var color = colors[Math.Abs(cidx % colors.Length)];
+                                var rate = ApprovalPercent(folder);
+
+                                <div class="personal-card" @onclick="() => GoToFolder(folder.Id)">
+                                    <div class="personal-card-strip" style="background:@color"></div>
+                                    <div class="personal-card-body">
+                                        <div class="personal-card-header">
+                                            <div class="personal-card-icon" style="background:@(color + "18"); color:@color">
+                                                <MudIcon Icon="@GetFolderIcon(folder.Icon)" Size="Size.Small" />
+                                            </div>
+                                            <div class="personal-card-info">
+                                                <h3 class="personal-card-title">@folder.Name</h3>
+                                                <span class="personal-card-sources">@folder.DocumentCount sources</span>
+                                            </div>
+                                            <span class="personal-card-badge" style="background:@(color + "18"); color:@color">@rate%</span>
+                                        </div>
+                                        <div class="personal-card-approval">
+                                            <div class="approval-header">
+                                                <span>Approval rate</span>
+                                                <span>@(folder.LikeCount + folder.DislikeCount) votes</span>
+                                            </div>
+                                            <div class="approval-bar-split">
+                                                <div class="approval-fill-color" style="width:@rate%; background:@color"></div>
+                                                <div class="approval-empty"></div>
+                                            </div>
+                                        </div>
+                                        <div class="personal-card-stats">
+                                            <div class="stat-pill stat-likes">
+                                                <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small" />
+                                                <div>
+                                                    <strong>@FormatCount(folder.LikeCount)</strong>
+                                                    <span>Likes</span>
+                                                </div>
+                                            </div>
+                                            <div class="stat-pill stat-dislikes">
+                                                <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Size="Size.Small" />
+                                                <div>
+                                                    <strong>@FormatCount(folder.DislikeCount)</strong>
+                                                    <span>Dislikes</span>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                    </div>
                 }
-                <MudIconButton Icon="@Icons.Material.Filled.ChevronRight" Disabled="@(_currentPage >= _totalPages)" OnClick="() => GoToPage(_currentPage + 1)" Variant="Variant.Outlined" Size="Size.Small" />
-            </div>
-        }
+                else
+                {
+                    <div class="community-empty">
+                        <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Large" Color="Color.Secondary" />
+                        <p class="empty-title">No folders found</p>
+                        <p class="empty-subtitle">Try a different search term</p>
+                    </div>
+                }
+            }
+        </main>
     </div>
 </div>
 
 @code {
-    private List<FolderDto> _allFolders = new();
-    private bool _loading = true;
-    private int _currentPage = 1;
-    private int _totalPages = 1;
-    private const int PageSize = 9;
+    private string _activeTab = "community";
     private string _searchQuery = "";
+    private bool _loading = true;
+
+    private List<FolderDto> _allCommunityFolders = new();
+    private List<FolderDto> _personalFolders = new();
+
+    private Dictionary<Guid, bool?> _votes = new();
+    private Guid? _openMenuFolderId = null;
+    private Guid? _selectedFolderId = null;
+
+    private List<FolderDto> _currentFolders =>
+        _activeTab == "community" ? _allCommunityFolders : _personalFolders;
 
     private List<FolderDto> _filteredFolders
     {
         get
         {
+            var source = _activeTab == "community" ? _allCommunityFolders : _personalFolders;
             if (string.IsNullOrWhiteSpace(_searchQuery))
-                return _allFolders;
+                return source;
             var q = _searchQuery.Trim().ToLowerInvariant();
-            return _allFolders.Where(f =>
+            return source.Where(f =>
                 f.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
                 (f.OwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
         }
     }
 
-    private List<FolderDto> _pagedFolders
+    private int _totalLikes => _personalFolders.Sum(f => f.LikeCount);
+    private int _totalDislikes => _personalFolders.Sum(f => f.DislikeCount);
+    private int _overallApproval
     {
         get
         {
-            var filtered = _filteredFolders;
-            _totalPages = Math.Max(1, (int)Math.Ceiling(filtered.Count / (double)PageSize));
-            if (_currentPage > _totalPages) _currentPage = _totalPages;
-            return filtered.Skip((_currentPage - 1) * PageSize).Take(PageSize).ToList();
+            var total = _totalLikes + _totalDislikes;
+            return total == 0 ? 0 : (int)Math.Round((double)_totalLikes / total * 100);
         }
     }
-
-    private int[] _pageNumbers
-    {
-        get
-        {
-            if (_totalPages <= 7)
-                return Enumerable.Range(1, _totalPages).ToArray();
-
-            var pages = new List<int> { 1 };
-            var start = Math.Max(2, _currentPage - 1);
-            var end = Math.Min(_totalPages - 1, _currentPage + 1);
-            if (start > 2) pages.Add(-1);
-            for (var i = start; i <= end; i++) pages.Add(i);
-            if (end < _totalPages - 1) pages.Add(-1);
-            pages.Add(_totalPages);
-            return pages.ToArray();
-        }
-    }
+    private FolderDto? _bestFolder => _personalFolders.OrderByDescending(f => f.LikeCount).FirstOrDefault();
 
     protected override async Task OnInitializedAsync()
     {
@@ -168,12 +333,29 @@
         _loading = true;
         try
         {
-            var folders = await FoldersApi.ListSharedAsync();
-            _allFolders = folders.ToList();
+            var shared = await FoldersApi.ListSharedAsync();
+            _allCommunityFolders = shared.ToList();
+
+            if (Session.IsAuthenticated && Session.AccessToken is not null)
+            {
+                var personal = await FoldersApi.ListPersonalSharedAsync(Session.AccessToken);
+                _personalFolders = personal.ToList();
+
+                foreach (var f in _allCommunityFolders)
+                {
+                    if (f.CurrentUserVote.HasValue)
+                        _votes[f.Id] = f.CurrentUserVote.Value;
+                }
+                foreach (var f in _personalFolders)
+                {
+                    if (f.CurrentUserVote.HasValue)
+                        _votes[f.Id] = f.CurrentUserVote.Value;
+                }
+            }
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to load shared folders: {ex.Message}", Severity.Error);
+            Snackbar.Add("Failed to load: " + ex.Message, Severity.Error);
         }
         finally
         {
@@ -181,17 +363,132 @@
         }
     }
 
-    private void GoToPage(int page)
+    private void SwitchToCommunity()
     {
-        _currentPage = Math.Clamp(page, 1, _totalPages);
+        _activeTab = "community";
+        _searchQuery = "";
+        _openMenuFolderId = null;
+    }
+
+    private void SwitchToPersonal()
+    {
+        _activeTab = "personal";
+        _searchQuery = "";
+        _openMenuFolderId = null;
+    }
+
+    private void SelectFolder(Guid folderId)
+    {
+        _selectedFolderId = folderId;
+        GoToFolder(folderId);
     }
 
     private void GoToFolder(Guid folderId)
     {
-        Nav.NavigateTo($"/ai/chat?folderId={folderId}");
+        Nav.NavigateTo("/ai/chat?folderId=" + folderId);
     }
 
-    private static string GetFolderIcon(string icon)
+    private void ToggleMenu(Guid folderId)
+    {
+        _openMenuFolderId = _openMenuFolderId == folderId ? null : folderId;
+    }
+
+    private void ShowComingSoon()
+    {
+        Snackbar.Add("Coming soon", Severity.Info);
+    }
+
+    private async Task CopyToLibrary(Guid folderId)
+    {
+        if (!Session.IsAuthenticated || Session.AccessToken is null)
+        {
+            Snackbar.Add("Please sign in to copy folders", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var result = await FoldersApi.CopySharedFolderAsync(Session.AccessToken, folderId);
+            Snackbar.Add($"Folder \"{result.Name}\" copied to your library with {result.DocumentCount} documents", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Failed to copy folder: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task Vote(Guid folderId, bool isLike)
+    {
+        if (!Session.IsAuthenticated || Session.AccessToken is null)
+        {
+            Snackbar.Add("Please sign in to vote", Severity.Warning);
+            return;
+        }
+
+        try
+        {
+            var result = await FoldersApi.VoteAsync(Session.AccessToken, folderId, isLike);
+
+            var existing = _votes.GetValueOrDefault(folderId);
+            if (existing == isLike)
+                _votes.Remove(folderId);
+            else
+                _votes[folderId] = isLike;
+
+            var folder = _allCommunityFolders.FirstOrDefault(f => f.Id == folderId);
+            if (folder is not null)
+            {
+                folder.LikeCount = result.LikeCount;
+                folder.DislikeCount = result.DislikeCount;
+                folder.CurrentUserVote = _votes.GetValueOrDefault(folderId);
+            }
+
+            var personalFolder = _personalFolders.FirstOrDefault(f => f.Id == folderId);
+            if (personalFolder is not null)
+            {
+                personalFolder.LikeCount = result.LikeCount;
+                personalFolder.DislikeCount = result.DislikeCount;
+                personalFolder.CurrentUserVote = _votes.GetValueOrDefault(folderId);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add("Vote failed: " + ex.Message, Severity.Error);
+        }
+    }
+
+    private int GetDisplayLikes(FolderDto folder)
+    {
+        return folder.LikeCount;
+    }
+
+    private int GetDisplayDislikes(FolderDto folder)
+    {
+        return folder.DislikeCount;
+    }
+
+    private int ApprovalPercent(FolderDto folder)
+    {
+        var likes = GetDisplayLikes(folder);
+        var dislikes = GetDisplayDislikes(folder);
+        var total = likes + dislikes;
+        return total == 0 ? 0 : (int)Math.Round((double)likes / total * 100);
+    }
+
+    private static string FormatCount(int n) => n >= 1000 ? (n / 1000.0).ToString("F1") + "k" : n.ToString();
+
+    private static string GetInitials(string? name)
+    {
+        if (string.IsNullOrWhiteSpace(name)) return "?";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return string.Concat(parts.Take(2).Select(p => p[0])).ToUpperInvariant();
+    }
+
+    private static string GetFolderIcon(string? icon)
     {
         return icon switch
         {
@@ -216,5 +513,9 @@
             "folder_special" => Icons.Material.Filled.FolderSpecial,
             _ => Icons.Material.Filled.Folder,
         };
+    }
+
+    public void Dispose()
+    {
     }
 }

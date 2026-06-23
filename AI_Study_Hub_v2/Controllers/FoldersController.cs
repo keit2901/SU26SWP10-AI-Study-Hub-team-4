@@ -82,6 +82,29 @@ public sealed class FoldersController : ControllerBase
     public async Task<ActionResult<FolderDto>> ToggleFavorite(Guid id, CancellationToken cancellationToken)
         => await ExecuteAsync(() => _service.ToggleFavoriteAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
 
+    [HttpGet("personal-shared")]
+    [ProducesResponseType(typeof(IReadOnlyList<FolderDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    public async Task<ActionResult<IReadOnlyList<FolderDto>>> ListPersonalShared(CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.ListPersonalSharedAsync(GetSupabaseUserIdFromClaims(), cancellationToken));
+
+    [HttpPost("{id:guid}/copy")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> CopyShared(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.CopySharedFolderAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
+
+    [HttpPost("{id:guid}/vote")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> Vote(
+        Guid id,
+        [FromBody] VoteRequest request,
+        CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.VoteAsync(GetSupabaseUserIdFromClaims(), id, request.IsLike, cancellationToken));
+
     [HttpPatch("{id:guid}/share")]
     [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]

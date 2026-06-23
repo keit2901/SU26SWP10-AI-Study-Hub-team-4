@@ -2,9 +2,11 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Supabase;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 
 namespace AI_Study_Hub_v2.Tests.Services;
 
@@ -12,7 +14,7 @@ namespace AI_Study_Hub_v2.Tests.Services;
 public class FolderServiceTests
 {
     private static FolderService BuildSut(AppDbContext db) =>
-        new(db, NullLogger<FolderService>.Instance);
+        new(db, NullLogger<FolderService>.Instance, Mock.Of<ISupabaseStorageClient>());
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
     {

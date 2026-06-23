@@ -25,6 +25,8 @@ public class AppDbContext : DbContext
 
     public DbSet<Quiz> Quizzes => Set<Quiz>();
 
+    public DbSet<FolderReaction> FolderReactions => Set<FolderReaction>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

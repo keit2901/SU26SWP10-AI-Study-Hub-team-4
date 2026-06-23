@@ -1365,179 +1365,19 @@ h1:focus {
     background: #eef2ff !important;
 }
 
-/* ════════════════════════════════════════════
-   Community page
-   ════════════════════════════════════════════ */
-.community-page {
-    min-height: 100vh;
-    background: #f7f9fb;
-    padding: 32px 48px;
-}
-.community-container {
-    max-width: 1200px;
-    margin: 0 auto;
-}
-.community-search-header {
-    margin-bottom: 32px;
-}
-.community-heading {
-    font-size: 32px;
-    font-weight: 800;
-    color: #191c1e;
-    margin: 0 0 24px 0;
-    letter-spacing: -0.025em;
-}
-.community-search-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding-bottom: 20px;
-    border-bottom: 1px solid #c7c4d7;
-}
-.community-search-wrapper {
-    position: relative;
-    flex: 1;
-    max-width: 320px;
-}
-.community-search-icon {
-    position: absolute;
-    left: 12px;
-    top: 50%;
-    transform: translateY(-50%);
-    z-index: 1;
-    color: #767586;
-}
-.community-search-input {
-    margin: 0;
-}
-.community-search-input .mud-input-outlined-border {
-    border-radius: 8px !important;
-    border-color: #c7c4d7 !important;
-}
-.community-search-input .mud-input {
-    padding-left: 36px;
-    font-size: .875rem;
-}
-.community-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 24px;
-}
-.community-card {
-    border: 1px solid #c7c4d7 !important;
-    border-radius: 24px !important;
-    padding: 24px;
-    min-height: 260px;
-    display: flex;
-    flex-direction: column;
-    background: #fff !important;
-    transition: box-shadow 0.2s;
-    cursor: pointer;
-}
-.community-card:hover {
-    box-shadow: 0 4px 16px rgba(0,0,0,0.08);
-}
-.community-card-inner {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-}
-.community-card-top {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 40px;
-}
-.community-card-icon {
-    width: 64px;
-    height: 64px;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-}
-.community-card-body {
-    margin-top: auto;
-}
-.community-card-title {
-    font-size: 1.25rem !important;
-    font-weight: 700 !important;
-    color: #191c1e !important;
-    margin-bottom: 8px !important;
-    line-height: 1.3 !important;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-.community-card:hover .community-card-title {
-    color: #4648d4 !important;
-}
-.community-card-meta {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    color: #767586;
-    font-size: .875rem;
-}
-.community-card-author {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-.community-card-avatar {
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: .75rem;
-    font-weight: 700;
-    flex-shrink: 0;
-}
-.community-card-owner {
-    font-size: .875rem;
-    color: #767586;
-}
-.community-card-sources {
-    font-size: .875rem;
-    color: #767586;
-    white-space: nowrap;
-}
-.community-card-skeleton {
-    border-radius: 24px !important;
-    padding: 24px;
-}
-.community-empty {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 80px 0;
-}
-.community-pagination {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    margin-top: 48px;
-}
-.community-page-ellipsis {
-    width: 32px;
-    text-align: center;
-    color: #767586;
-}
 
-@media (max-width: 900px) {
-    .community-grid { grid-template-columns: repeat(2, 1fr); }
-    .community-page { padding: 24px 16px; }
-}
-@media (max-width: 600px) {
-    .community-grid { grid-template-columns: 1fr; }
+
+/* ════════════════════════════════════════════
+   Community page — full-width override
+   NavMenu is rendered above, so .content can
+   safely be full-width for community layout.
+   ════════════════════════════════════════════ */
+
+.content:has(.community-layout) {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
 }
 
 /* ── Quiz Dialog (global — scoped CSS doesn't reach MudBlazor portal) ── */
