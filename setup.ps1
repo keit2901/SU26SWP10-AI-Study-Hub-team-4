@@ -296,11 +296,40 @@ CERTBOT_EMAIL=admin@example.com
 }
 
 # ---------------------------------------------------------------------------
-# 4. docker compose up
+# 4. Pre-pull Docker images
+# ---------------------------------------------------------------------------
+if (-not $SkipUp) {
+    $composeFile = Join-Path $infraDir 'docker-compose.yml'
+    $imagePattern = [regex]'^\s+image:\s+(.+)$'
+
+    Write-Step 'Pre-pulling all Docker images from docker-compose.yml...'
+    $images = Select-String -Path $composeFile -Pattern $imagePattern |
+        ForEach-Object { $_.Matches.Groups[1].Value.Trim() } |
+        Sort-Object -Unique
+
+    Write-Hint "Found $($images.Count) unique images:"
+    $images | ForEach-Object { Write-Hint "  $($_)" }
+
+    $pullFailed = $false
+    foreach ($img in $images) {
+        Write-Hint "docker pull $img ..."
+        & docker pull $img *>$null
+        if ($LASTEXITCODE -ne 0) {
+            Write-Warn2 "Failed to pull $img — continuing anyway."
+            $pullFailed = $true
+        }
+    }
+    if (-not $pullFailed) { Write-Ok 'All images pulled successfully.' }
+} else {
+    $composeFile = Join-Path $infraDir 'docker-compose.yml'
+}
+
+# ---------------------------------------------------------------------------
+# 5. docker compose up
 # ---------------------------------------------------------------------------
 if (-not $SkipUp) {
     Write-Step 'Starting Supabase Local stack (docker compose up -d)...'
-    & docker compose -f (Join-Path $infraDir 'docker-compose.yml') --project-directory $infraDir up -d
+    & docker compose -f $composeFile --project-directory $infraDir up -d
     if ($LASTEXITCODE -ne 0) { Fail 'docker compose up failed.' }
 
     Write-Step 'Waiting for supabase-db to become healthy (max 120s)...'
@@ -323,7 +352,7 @@ if (-not $SkipUp) {
 }
 
 # ---------------------------------------------------------------------------
-# 5. dotnet user-secrets
+# 6. dotnet user-secrets
 # ---------------------------------------------------------------------------
 Write-Step 'Configuring dotnet user-secrets...'
 
@@ -346,16 +375,20 @@ $secretMap = [ordered]@{
     'Supabase:AnonKey'           = $secrets['ANON_KEY']
     'Supabase:ServiceRoleKey'    = $secrets['SERVICE_ROLE_KEY']
     'Seed:DefaultAdmin:Password' = $adminPwd
+
+    # Dev/test reCAPTCHA keys (Google test keys, safe to hard-code for dev)
+    'Recaptcha:SiteKey'          = '6LcglxotAAAAAJMIi0jZaLDtbPWuk9HUDeVTwH2x'
+    'Recaptcha:SecretKey'        = '6LcglxotAAAAAIVFsLCsvdVFBPANrW9jeiydiuhI'
 }
 
 foreach ($kv in $secretMap.GetEnumerator()) {
     & dotnet user-secrets set $kv.Key $kv.Value --project $csproj *> $null
     if ($LASTEXITCODE -ne 0) { Fail "Failed to set user-secret '$($kv.Key)'." }
 }
-Write-Ok 'user-secrets set (5 keys).'
+Write-Ok "user-secrets set ($($secretMap.Count) keys)."
 
 # ---------------------------------------------------------------------------
-# 6. dotnet build
+# 7. dotnet build
 # ---------------------------------------------------------------------------
 if (-not $SkipBuild) {
     Write-Step 'Running dotnet build...'
@@ -365,7 +398,7 @@ if (-not $SkipBuild) {
 }
 
 # ---------------------------------------------------------------------------
-# 7. Summary
+# 8. Summary
 # ---------------------------------------------------------------------------
 Write-Host ''
 Write-Host '=========================================================' -ForegroundColor Green
@@ -381,8 +414,9 @@ Write-Host "  Default admin email: admin@aistudyhub.local" -ForegroundColor Yell
 Write-Host "  Default admin pwd  : $adminPwd  ($adminPwdSource)" -ForegroundColor Yellow
 Write-Host '  ^ Copy now --  pwd is also kept in dotnet user-secrets for re-seed.' -ForegroundColor DarkYellow
 Write-Host ''
-Write-Host 'AI provider key (per machine, not committed):' -ForegroundColor Cyan
-Write-Host '  dotnet user-secrets set "Groq:ApiKey" "<your-groq-api-key>" --project AI_Study_Hub_v2\AI_Study_Hub_v2.csproj'
+Write-Host 'AI provider keys (per machine, not committed in git):' -ForegroundColor Cyan
+Write-Host '  dotnet user-secrets set "Groq:ApiKey"   "<your-groq-api-key>"   --project AI_Study_Hub_v2\AI_Study_Hub_v2.csproj'
+Write-Host '  dotnet user-secrets set "Gemini:ApiKey" "<your-gemini-api-key>" --project AI_Study_Hub_v2\AI_Study_Hub_v2.csproj'
 Write-Host ''
 Write-Host 'Next steps:' -ForegroundColor Cyan
 Write-Host '  cd AI_Study_Hub_v2'
