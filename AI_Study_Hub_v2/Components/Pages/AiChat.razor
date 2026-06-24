@@ -719,19 +719,8 @@
 
             _documents = documentsTask.Result.ToList();
             _folders = foldersTask.Result.OrderBy(f => f.Name).ToList();
-            _availableSubjectCodes = _documents
-                .Select(d => d.SubjectCode)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Distinct()
-                .OrderBy(s => s)
-                .ToList();
-            _availableSemesters = _documents
-                .Select(d => d.Semester)
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Distinct()
-                .OrderBy(s => s)
-                .ToList();
             ApplyQueryScope();
+            RefreshSubjectFilters();
         }
         catch (DocumentApiException ex)
         {
@@ -1006,6 +995,30 @@
         }
     }
 
+    private void RefreshSubjectFilters()
+    {
+        var scoped = ScopeDocuments;
+
+        _availableSubjectCodes = scoped
+            .Select(d => d.SubjectCode)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+
+        _availableSemesters = scoped
+            .Select(d => d.Semester)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+
+        if (_quizSubjectCode is not null && !_availableSubjectCodes.Contains(_quizSubjectCode))
+            _quizSubjectCode = null;
+        if (_quizSemester is not null && !_availableSemesters.Contains(_quizSemester))
+            _quizSemester = null;
+    }
+
     private void ApplyQueryScope()
     {
         if (QueryDocumentId is { } documentId)
@@ -1049,6 +1062,7 @@
         StateHasChanged();
 
         SelectAllScopeDocuments();
+        RefreshSubjectFilters();
         _ = LoadSessionsAsync();
     }
 
