@@ -13,7 +13,8 @@ public sealed record GenerateQuizRequest(
     string? Model = null,
     string? ScopeLabel = null,
     string? SubjectCode = null,
-    string? Semester = null);
+    string? Semester = null,
+    string? TopicKeyword = null);
 
 public sealed record QuizDto(
     Guid Id,

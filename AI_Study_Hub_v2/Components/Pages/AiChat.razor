@@ -334,6 +334,40 @@
             }
         </MudSelect>
     </div>
+
+    @if (_documents.Count > 0)
+    {
+        <div style="margin-top: 0.5rem;">
+            <div class="workspace-panel-heading" style="margin-bottom: 0.25rem;">
+                <small>Topic filter (optional) — narrow quiz focus</small>
+            </div>
+
+            @if (_topicSuggestions.Count > 0)
+            {
+                <div style="display: flex; flex-wrap: wrap; gap: 0.25rem; margin-bottom: 0.5rem;">
+                    @foreach (var topic in _topicSuggestions)
+                    {
+                        var isActive = string.Equals(_quizTopicKeyword, topic, StringComparison.OrdinalIgnoreCase);
+                        <MudChip T="string" Size="Size.Small"
+                                 Variant="@(isActive ? Variant.Filled : Variant.Outlined)"
+                                 Color="@(isActive ? Color.Primary : Color.Default)"
+                                 OnClick="@(() => { _quizTopicKeyword = isActive ? null : topic; })">
+                            @topic
+                        </MudChip>
+                    }
+                </div>
+            }
+
+            <MudTextField T="string"
+                          @bind-Value="_quizTopicKeyword"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Label="Or type a keyword"
+                          Placeholder="e.g. authentication, database, chapter 3"
+                          Clearable="true"
+                          Immediate="true" />
+        </div>
+    }
 }
                     </section>
 
@@ -424,8 +458,10 @@
     private string _selectedModel = "llama-3.3-70b-versatile";
     private string? _quizSubjectCode;
     private string? _quizSemester;
+    private string? _quizTopicKeyword;
     private List<string> _availableSubjectCodes = new();
     private List<string> _availableSemesters = new();
+    private List<string> _topicSuggestions = new();
 
     private void OnModelChanged(string value)
     {
@@ -1017,6 +1053,35 @@
             _quizSubjectCode = null;
         if (_quizSemester is not null && !_availableSemesters.Contains(_quizSemester))
             _quizSemester = null;
+
+        ExtractTopicSuggestions();
+    }
+
+    private void ExtractTopicSuggestions()
+    {
+        _topicSuggestions.Clear();
+
+        var scoped = ScopeDocuments;
+        if (scoped.Count == 0) return;
+
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var doc in scoped)
+        {
+            var name = Path.GetFileNameWithoutExtension(doc.FileName ?? "");
+            foreach (var part in name.Split(new[] { '_', '-', ' ', '.' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (part.Length >= 3 && part.Length <= 40 && seen.Add(part))
+                    _topicSuggestions.Add(part);
+            }
+
+            if (!string.IsNullOrWhiteSpace(doc.SubjectCode) && seen.Add(doc.SubjectCode))
+                _topicSuggestions.Add(doc.SubjectCode);
+
+            if (_topicSuggestions.Count >= 12) break;
+        }
+
+        _topicSuggestions = _topicSuggestions.OrderBy(t => t).ToList();
     }
 
     private void ApplyQueryScope()
@@ -1063,6 +1128,7 @@
 
         SelectAllScopeDocuments();
         RefreshSubjectFilters();
+        ExtractTopicSuggestions();
         _ = LoadSessionsAsync();
     }
 
@@ -1115,7 +1181,8 @@
                 Model: _selectedModel,
                 ScopeLabel: BuildScopeLabel(),
                 SubjectCode: _quizSubjectCode,
-                Semester: _quizSemester);
+                Semester: _quizSemester,
+                TopicKeyword: _quizTopicKeyword);
 
             var quiz = await _chatApi.GenerateQuizAsync(Session.AccessToken!, quizRequest, _quizCts.Token);
 

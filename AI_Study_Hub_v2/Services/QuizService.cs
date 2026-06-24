@@ -87,7 +87,8 @@ public sealed class QuizService : IQuizService
             SubjectCode: request.SubjectCode,
             Semester: request.Semester,
             TopK: topK,
-            DocumentIds: request.DocumentIds);
+            DocumentIds: request.DocumentIds,
+            TopicKeyword: request.TopicKeyword);
 
         IReadOnlyList<RagSearchResultDto> searchResults;
         try

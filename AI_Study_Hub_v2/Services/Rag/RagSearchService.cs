@@ -153,6 +153,12 @@ public sealed class RagSearchService : IRagSearchService
             query = query.Where(c => c.Document.Semester == semester);
         }
 
+        var keyword = request.TopicKeyword?.Trim();
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            query = query.Where(c => EF.Functions.ILike(c.Content, "%" + keyword + "%"));
+        }
+
         return query;
     }
 
