@@ -39,7 +39,7 @@ public sealed class CommunityController : ControllerBase
                 request.FolderId,
                 request.Reason,
                 cancellationToken);
-            return CreatedAtAction(nameof(ReportFolder), new { id }, id);
+            return Ok(id);
         }
         catch (CommunityException ex)
         {

@@ -35,6 +35,12 @@ public sealed class CommunityService : ICommunityService
                 "Only shared folders can be reported.");
         }
 
+        if (folder.UserId == profile.Id)
+        {
+            throw new CommunityException(400, "cannot_report_own_folder",
+                "You cannot report your own folder.");
+        }
+
         var alreadyReported = await _db.Set<CommunityReport>()
             .AnyAsync(r => r.FolderId == folderId
                 && r.ReportedByUserId == profile.Id
@@ -44,6 +50,12 @@ public sealed class CommunityService : ICommunityService
         {
             throw new CommunityException(409, "duplicate_report",
                 "You have already submitted a pending report for this folder.");
+        }
+
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            throw new CommunityException(400, "invalid_reason",
+                "Reason cannot be empty.");
         }
 
         var report = new CommunityReport
