@@ -11,7 +11,9 @@ public sealed record GenerateQuizRequest(
     int Count = 8,
     string Difficulty = "medium",
     string? Model = null,
-    string? ScopeLabel = null);
+    string? ScopeLabel = null,
+    string? SubjectCode = null,
+    string? Semester = null);
 
 public sealed record QuizDto(
     Guid Id,

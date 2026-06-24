@@ -9,7 +9,15 @@ public sealed record AiChatAskRequest(
     int TopK = 5,
     IReadOnlyList<Guid>? DocumentIds = null,
     string? Model = null,
-    Guid? SessionId = null);
+    Guid? SessionId = null)
+{
+    /// <summary>
+    /// Recent chat history from the current session (loaded by controller).
+    /// When set, the service includes it in the user prompt so the AI
+    /// has conversation context for multi-turn reasoning.
+    /// </summary>
+    public IReadOnlyList<ChatMessageDto>? ChatHistory { get; init; }
+}
 
 public sealed record AiChatAnswerResponse(
     string Answer,

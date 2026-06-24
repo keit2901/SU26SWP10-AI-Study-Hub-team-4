@@ -97,7 +97,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
 
         var sources = MapSources(searchResults);
         var hadDocumentSelection = hasDocumentScope;
-        var userPrompt = BuildUserPrompt(question, sources, hadDocumentSelection);
+        var userPrompt = BuildUserPrompt(question, sources, request.ChatHistory, hadDocumentSelection);
         var systemPrompt = hasDocumentScope ? BuildSystemPrompt() : BuildGeneralSystemPrompt();
         var completionRequest = new AiChatCompletionRequest(systemPrompt, userPrompt, request.Model);
         var client = _clientFactory.GetClient(request.Model);
@@ -184,9 +184,55 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         return sources;
     }
 
-    private static string BuildUserPrompt(string question, IReadOnlyList<AiChatSourceDto> sources, bool hadDocumentSelection = false)
+    private const int MaxHistoryExchanges = 5;
+    private const int MaxAssistantAnswerChars = 300;
+
+    private static string BuildChatHistorySection(IReadOnlyList<ChatMessageDto>? history)
+    {
+        if (history is null or { Count: 0 })
+        {
+            return string.Empty;
+        }
+
+        // Take only the most recent exchanges (last MaxHistoryExchanges * 2 messages)
+        var recentMessages = history
+            .OrderBy(m => m.SequenceNumber)
+            .TakeLast(MaxHistoryExchanges * 2)
+            .ToList();
+
+        if (recentMessages.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder();
+        sb.AppendLine("## Previous conversation");
+        foreach (var msg in recentMessages)
+        {
+            var role = msg.Role == "user" ? "User" : "Assistant";
+            var content = msg.Role == "assistant" && msg.Content.Length > MaxAssistantAnswerChars
+                ? Truncate(msg.Content, MaxAssistantAnswerChars)
+                : msg.Content;
+            sb.Append(role).Append(": ").AppendLine(content);
+        }
+        sb.AppendLine();
+        return sb.ToString();
+    }
+
+    private static string BuildUserPrompt(
+        string question,
+        IReadOnlyList<AiChatSourceDto> sources,
+        IReadOnlyList<ChatMessageDto>? chatHistory = null,
+        bool hadDocumentSelection = false)
     {
         var sb = new StringBuilder();
+
+        // Prepend chat history so AI has multi-turn conversation context
+        if (chatHistory is { Count: > 0 })
+        {
+            sb.Append(BuildChatHistorySection(chatHistory));
+        }
+
         sb.AppendLine("## Student question");
         sb.AppendLine(question);
         sb.AppendLine();

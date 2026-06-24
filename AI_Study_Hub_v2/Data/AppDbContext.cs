@@ -27,6 +27,8 @@ public class AppDbContext : DbContext
 
     public DbSet<FolderReaction> FolderReactions => Set<FolderReaction>();
 
+    public DbSet<CommunityReport> CommunityReports => Set<CommunityReport>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

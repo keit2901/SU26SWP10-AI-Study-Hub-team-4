@@ -61,6 +61,10 @@ public sealed class AiChatController : ControllerBase
                 sessionId = newSession.Id;
             }
 
+            // Load recent chat history so the AI has conversation context
+            var chatHistory = await _persistence.GetMessagesAsync(supabaseUserId, sessionId.Value, cancellationToken);
+            request = request with { ChatHistory = chatHistory };
+
             var response = await _service.AskAsync(supabaseUserId, request, cancellationToken);
 
             // Persist the exchange

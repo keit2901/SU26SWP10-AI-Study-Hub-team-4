@@ -84,8 +84,8 @@ public sealed class QuizService : IQuizService
             Query: request.Title ?? "quiz generation context",
             DocumentId: request.DocumentId,
             FolderId: request.FolderId,
-            SubjectCode: null,
-            Semester: null,
+            SubjectCode: request.SubjectCode,
+            Semester: request.Semester,
             TopK: topK,
             DocumentIds: request.DocumentIds);
 
