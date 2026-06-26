@@ -1,16 +1,17 @@
 @inherits LayoutComponentBase
+@implements IDisposable
 @inject NavigationManager Nav
 
 <MudThemeProvider Theme="@_theme" IsDarkMode="false" />
 
-<div class="page app-shell">
+<div class="page app-shell @(IsDashboard ? "dashboard-shell" : "")">
     @if (!IsFullBleed)
     {
         <NavMenu />
     }
 
-    <main class="main-stage @(IsFullBleed ? "main-stage-fullbleed" : "")">
-        <article class="content @(IsFullBleed ? "content-fullbleed" : "")">
+    <main class="main-stage @(IsFullBleed || IsDashboard ? "main-stage-fullbleed" : "")">
+        <article class="content @(IsFullBleed || IsDashboard ? "content-fullbleed" : "")">
             @Body
         </article>
     </main>
@@ -23,9 +24,26 @@
 </div>
 
 @code {
+    protected override void OnInitialized()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public void Dispose()
+    {
+        Nav.LocationChanged -= OnLocationChanged;
+    }
+
     private bool IsFullBleed =>
-        Nav.ToBaseRelativePath(Nav.Uri)
-           .StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
+        Nav.ToBaseRelativePath(Nav.Uri).StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsDashboard =>
+        Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
 
     private readonly MudTheme _theme = new()
     {

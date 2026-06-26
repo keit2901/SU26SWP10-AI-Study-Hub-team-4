@@ -1417,3 +1417,12 @@ h1:focus {
         linear-gradient(170deg, #0d0e1a 0%, #0f1023 100%);
     color: #e2e8f0;
 }
+
+/* ════════════════════════════════════════════
+   DASHBOARD TOPBAR — Full-width override
+   ════════════════════════════════════════════ */
+.dashboard-shell .teammate-topbar-inner,
+.dashboard-shell .community-topbar-inner {
+    width: 100% !important;
+    max-width: 100% !important;
+}

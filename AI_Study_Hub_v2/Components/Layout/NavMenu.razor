@@ -1,9 +1,9 @@
-﻿@implements IDisposable
+@implements IDisposable
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
 <header class="community-topbar teammate-topbar">
-    <div class="community-topbar-inner teammate-topbar-inner">
+    <div class="community-topbar-inner teammate-topbar-inner" style="@(IsDashboard ? "width: 100%; max-width: none;" : "")">
         <a class="brand-link teammate-brand" href="">
             <span class="brand-orb teammate-brand-mark"><MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Small" /></span>
             <span class="brand-name">AI Study Hub</span>
@@ -12,21 +12,25 @@
         <input id="community-nav-toggle" type="checkbox" title="Navigation menu" class="navbar-toggler" />
         <label for="community-nav-toggle" class="navbar-toggler-label" aria-label="Toggle navigation"></label>
 
-        <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
-            @if (Session.IsAuthenticated)
-            {
-                <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
-                <a class="nav-pill @NavClass("community")" href="community">Community</a>
-                <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
-                <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
-            }
-            else
-            {
-                <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
-                <NavLink class="nav-pill" href="login">Sign In</NavLink>
-                <NavLink class="nav-pill" href="register">Get Started</NavLink>
-            }
-        </nav>
+        @if (!IsDashboard)
+        {
+            <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
+                @if (Session.IsAuthenticated)
+                {
+                    <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                    <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
+                    <a class="nav-pill @NavClass("community")" href="community">Community</a>
+                    <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
+                    <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
+                }
+                else
+                {
+                    <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
+                    <NavLink class="nav-pill" href="login">Sign In</NavLink>
+                    <NavLink class="nav-pill" href="register">Get Started</NavLink>
+                }
+            </nav>
+        }
 
         <div class="community-actions teammate-actions">
             @if (Session.IsAuthenticated)
@@ -71,6 +75,12 @@
     protected override void OnInitialized()
     {
         Session.OnChange += OnSessionChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
     }
 
     private void OnSessionChanged()
@@ -87,5 +97,8 @@
     public void Dispose()
     {
         Session.OnChange -= OnSessionChanged;
+        Nav.LocationChanged -= OnLocationChanged;
     }
+
+    private bool IsDashboard => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
 }
