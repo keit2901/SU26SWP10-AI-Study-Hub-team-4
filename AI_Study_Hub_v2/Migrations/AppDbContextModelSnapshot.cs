@@ -27,7 +27,7 @@ namespace AI_Study_Hub_v2.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.AiAnswerReport", b =>
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -35,17 +35,14 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<string>("Answer")
+                    b.Property<Guid>("ChatSessionId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("chat_session_id");
+
+                    b.Property<string>("Content")
                         .IsRequired()
                         .HasColumnType("text")
-                        .HasColumnName("answer");
-
-                    b.Property<string>("ContextJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("context_json")
-                        .HasDefaultValueSql("'{}'::jsonb");
+                        .HasColumnName("content");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -53,35 +50,69 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<string>("Details")
-                        .HasColumnType("text")
-                        .HasColumnName("details");
-
-                    b.Property<string>("Question")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("question");
-
-                    b.Property<string>("Reason")
-                        .IsRequired()
-                        .HasMaxLength(80)
-                        .HasColumnType("character varying(80)")
-                        .HasColumnName("reason");
-
-                    b.Property<string>("SourcesJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
+                    b.Property<string>("MetadataJson")
                         .HasColumnType("jsonb")
-                        .HasColumnName("sources_json")
-                        .HasDefaultValueSql("'[]'::jsonb");
+                        .HasColumnName("metadata_json");
 
-                    b.Property<string>("Status")
+                    b.Property<string>("Role")
                         .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasColumnName("role");
+
+                    b.Property<int>("SequenceNumber")
+                        .HasColumnType("integer")
+                        .HasColumnName("sequence_number");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatSessionId");
+
+                    b.HasIndex("ChatSessionId", "SequenceNumber")
+                        .IsUnique();
+
+                    b.ToTable("chat_messages", (string)null);
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.ChatSession", b =>
+                {
+                    b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
-                        .HasMaxLength(30)
-                        .HasColumnType("character varying(30)")
-                        .HasDefaultValue("open")
-                        .HasColumnName("status");
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid?>("FolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("folder_id");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("Title")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("title");
+
+                    b.Property<int>("TopK")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(5)
+                        .HasColumnName("top_k");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uuid")
@@ -89,13 +120,72 @@ namespace AI_Study_Hub_v2.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("Status");
+                    b.HasIndex("FolderId");
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("ai_answer_reports", (string)null);
+                    b.HasIndex("UserId", "UpdatedAt")
+                        .IsDescending(false, true);
+
+                    b.ToTable("chat_sessions", (string)null);
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.CommunityReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid>("FolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("folder_id");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("reason");
+
+                    b.Property<Guid>("ReportedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("reported_by_user_id");
+
+                    b.Property<string>("Resolution")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("resolution");
+
+                    b.Property<DateTimeOffset?>("ResolvedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("resolved_at");
+
+                    b.Property<Guid?>("ResolvedByUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("resolved_by_user_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("FolderId");
+
+                    b.HasIndex("ReportedByUserId");
+
+                    b.HasIndex("ResolvedByUserId");
+
+                    b.ToTable("community_reports", (string)null);
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Document", b =>
@@ -259,11 +349,32 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("text")
                         .HasColumnName("description");
 
+                    b.Property<string>("Icon")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("icon");
+
+                    b.Property<bool>("IsFavorite")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_favorite");
+
+                    b.Property<bool>("IsShared")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("is_shared");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
+
+                    b.Property<DateTimeOffset?>("SharedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("shared_at");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -285,13 +396,15 @@ namespace AI_Study_Hub_v2.Migrations
                     b.ToTable("folders", (string)null);
                 });
 
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.FolderReaction", b =>
                 {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
+                    b.Property<Guid>("FolderId")
                         .HasColumnType("uuid")
-                        .HasColumnName("id")
-                        .HasDefaultValueSql("gen_random_uuid()");
+                        .HasColumnName("folder_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -299,40 +412,18 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<string>("QuestionsJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("questions_json")
-                        .HasDefaultValueSql("'[]'::jsonb");
+                    b.Property<bool>("IsLike")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_like");
 
-                    b.Property<string>("ScopeJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("scope_json")
-                        .HasDefaultValueSql("'{}'::jsonb");
-
-                    b.Property<string>("Title")
-                        .IsRequired()
-                        .HasMaxLength(160)
-                        .HasColumnType("character varying(160)")
-                        .HasColumnName("title");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt");
+                    b.HasKey("FolderId", "UserId");
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("quizzes", (string)null);
+                    b.ToTable("folder_reactions", (string)null);
                 });
 
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.QuizAttempt", b =>
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
                 {
                     b.Property<Guid>("Id")
                         .ValueGeneratedOnAdd()
@@ -345,7 +436,7 @@ namespace AI_Study_Hub_v2.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("jsonb")
                         .HasColumnName("answers_json")
-                        .HasDefaultValueSql("'[]'::jsonb");
+                        .HasDefaultValueSql("'{}'::jsonb");
 
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
@@ -353,31 +444,79 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<Guid>("QuizId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("quiz_id");
+                    b.Property<int>("CurrentQuestionIndex")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("current_question_index");
 
-                    b.Property<int>("Score")
+                    b.Property<string>("ErrorCode")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("error_code");
+
+                    b.Property<string>("QuestionsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("questions_json");
+
+                    b.Property<int?>("Score")
                         .HasColumnType("integer")
                         .HasColumnName("score");
 
-                    b.Property<int>("Total")
-                        .HasColumnType("integer")
-                        .HasColumnName("total");
-
-                    b.Property<Guid>("UserId")
+                    b.Property<Guid>("SessionId")
                         .HasColumnType("uuid")
+                        .HasColumnName("session_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("InProgress")
+                        .HasColumnName("status");
+
+                    b.Property<string>("SubmittedJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("submitted_json")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasDefaultValue("Quiz")
+                        .HasColumnName("title");
+
+                    b.Property<int>("TotalQuestions")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(8)
+                        .HasColumnName("total_questions");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text")
                         .HasColumnName("user_id");
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CreatedAt");
+                    b.HasIndex("SessionId");
 
-                    b.HasIndex("QuizId");
+                    b.HasIndex("Status");
 
                     b.HasIndex("UserId");
 
-                    b.ToTable("quiz_attempts", (string)null);
+                    b.ToTable("quizzes", (string)null);
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Role", b =>
@@ -494,15 +633,59 @@ namespace AI_Study_Hub_v2.Migrations
                     b.ToTable("users", (string)null);
                 });
 
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.AiAnswerReport", b =>
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.ChatMessage", b =>
                 {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.ChatSession", "ChatSession")
+                        .WithMany("Messages")
+                        .HasForeignKey("ChatSessionId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChatSession");
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.ChatSession", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Folder", "Folder")
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
+                    b.Navigation("Folder");
+
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.CommunityReport", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Folder", "Folder")
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "ReportedBy")
+                        .WithMany()
+                        .HasForeignKey("ReportedByUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "ResolvedBy")
+                        .WithMany()
+                        .HasForeignKey("ResolvedByUserId")
+                        .OnDelete(DeleteBehavior.NoAction);
+
+                    b.Navigation("Folder");
+
+                    b.Navigation("ReportedBy");
+
+                    b.Navigation("ResolvedBy");
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Document", b =>
@@ -545,34 +728,34 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.FolderReaction", b =>
                 {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Folder", "Folder")
+                        .WithMany("Reactions")
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
                         .WithMany()
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Folder");
 
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.QuizAttempt", b =>
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
                 {
-                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Quiz", "Quiz")
-                        .WithMany("Attempts")
-                        .HasForeignKey("QuizId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.ChatSession", "Session")
                         .WithMany()
-                        .HasForeignKey("UserId")
+                        .HasForeignKey("SessionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
-                    b.Navigation("Quiz");
-
-                    b.Navigation("User");
+                    b.Navigation("Session");
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.User", b =>
@@ -586,6 +769,11 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Navigation("Role");
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.ChatSession", b =>
+                {
+                    b.Navigation("Messages");
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Document", b =>
                 {
                     b.Navigation("Chunks");
@@ -594,11 +782,8 @@ namespace AI_Study_Hub_v2.Migrations
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Folder", b =>
                 {
                     b.Navigation("Documents");
-                });
 
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
-                {
-                    b.Navigation("Attempts");
+                    b.Navigation("Reactions");
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Role", b =>

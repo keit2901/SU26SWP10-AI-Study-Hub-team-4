@@ -7,6 +7,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Rag;
+using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
@@ -33,13 +34,14 @@ builder.Services
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
+builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
 
 var recaptchaBootstrap = builder.Configuration.GetSection(RecaptchaOptions.SectionName).Get<RecaptchaOptions>() ?? new();
 if (!builder.Environment.IsDevelopment() && (!recaptchaBootstrap.Enabled || !recaptchaBootstrap.IsConfigured))
 {
     throw new InvalidOperationException(
-        "Recaptcha must be enabled and configured outside Development. Set Recaptcha:Enabled=true plus SiteKey and SecretKey via secure configuration.");
+        "reCAPTCHA must be enabled and configured outside Development. Set Recaptcha:Enabled=true plus SiteKey and SecretKey via secure configuration.");
 }
 
 // Database --------------------------------------------------------------------
@@ -106,6 +108,7 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
+builder.Services.AddScoped<ICommunityService, CommunityService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -116,9 +119,18 @@ builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>(
 builder.Services.AddScoped<IEmbeddingService, FakeEmbeddingService>();
 builder.Services.AddScoped<IRagSearchService, RagSearchService>();
 builder.Services.AddScoped<IAiChatService, SemanticKernelRagChatService>();
+builder.Services.AddScoped<IAiChatCompletionClientFactory, AiChatCompletionClientFactory>();
+builder.Services.AddHttpClient<GroqChatCompletionClient>();
+builder.Services.AddHttpClient<GeminiChatCompletionClient>();
+builder.Services.AddHttpClient<IImageDescriptionService, GroqVisionDescriptionService>();
+
+// Sprint 3 services ----------------------------------------------------------
 builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
-builder.Services.AddHttpClient<IAiChatCompletionClient, GroqChatCompletionClient>();
+
+// Benchmarking services ------------------------------------------------------
+builder.Services.AddSingleton<BenchmarkEvaluator>();
+builder.Services.AddScoped<BenchmarkRunner>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
@@ -152,6 +164,10 @@ builder.Services.AddHttpClient<FolderApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
+builder.Services.AddHttpClient<CommunityApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
 builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
@@ -168,7 +184,9 @@ builder.Services.AddHttpClient<IRecaptchaVerificationService, RecaptchaVerificat
 });
 builder.Services.AddScoped<IRoleCatalogService, RoleCatalogService>();
 builder.Services.AddScoped<AuthSessionState>();
+builder.Services.AddScoped<AuthPersistenceService>();
 builder.Services.AddScoped<AiChatSessionState>();
+builder.Services.AddScoped<IChatPersistenceService, ChatPersistenceService>();
 
 // Authentication / Authorization ---------------------------------------------
 builder.Services

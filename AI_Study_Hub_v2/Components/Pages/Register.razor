@@ -155,8 +155,14 @@
     {
         if (Session.IsAuthenticated)
         {
-            Nav.NavigateTo("/profile", replace: true);
+            RedirectByRole();
         }
+    }
+
+    private void RedirectByRole()
+    {
+        var target = Session.CurrentUser?.Role == "Admin" ? "/admin/dashboard" : "/profile";
+        Nav.NavigateTo(target, replace: true);
     }
 
     private Task OnHumanCheckChanged(bool valid)
@@ -172,7 +178,7 @@
         await _form.ValidateAsync();
         var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
         if (!_isValid || !humanOk) return;
-        _model.RecaptchaToken = _humanCheck?.ResponseToken;
+        _model.RecaptchaToken = _humanCheck?.GetResponseToken();
 
         _busy = true;
         StateHasChanged();
@@ -181,11 +187,20 @@
             var resp = await AuthApi.RegisterAsync(_model);
             Session.Set(resp);
             Snackbar.Add($"Account created. Welcome, {resp.User.FullName}!", Severity.Success);
-            Nav.NavigateTo("/profile");
+            var target = resp.User.Role == "Admin" ? "/admin/dashboard" : "/profile";
+            Nav.NavigateTo(target);
         }
         catch (AuthApiException ex)
         {
-            _error = ex.Message;
+            if (ex.Errors is { Count: > 0 })
+            {
+                var details = string.Join("; ", ex.Errors.SelectMany(kv => kv.Value.Select(v => $"{kv.Key}: {v}")));
+                _error = $"{ex.Message} — {details}";
+            }
+            else
+            {
+                _error = ex.Message;
+            }
         }
         catch (Exception ex)
         {

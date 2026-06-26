@@ -1,236 +1,439 @@
 @page "/documents/upload"
 @using System.ComponentModel.DataAnnotations
+@using System.Text.RegularExpressions
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
 @inject DocumentApiClient DocumentsApi
 @inject FolderApiClient FoldersApi
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
-<PageTitle>Upload document - AI Study Hub v2</PageTitle>
+<PageTitle>Upload document — AI Study Hub</PageTitle>
 
-<MudStack Class="workspace-shell document-upload-shell pa-4" Spacing="3">
-    <section class="upload-hero" aria-labelledby="upload-title">
-        <div class="upload-hero-copy">
-            <span class="section-kicker">Add study material</span>
-            <MudText id="upload-title" Typo="Typo.h3" Class="upload-title mt-3">Choose a source for your study cabinet</MudText>
-            <MudText Typo="Typo.body1" Class="upload-copy">
-                Add lecture PDFs, Word notes, and slide decks, then classify them by subject and semester so the AI workspace can find citations later.
-            </MudText>
-            <div class="upload-hero-actions" aria-label="Upload requirements">
-                <span><MudIcon Icon="@Icons.Material.Filled.Verified" Size="Size.Small" /> PDF / DOCX / PPTX</span>
-                <span><MudIcon Icon="@Icons.Material.Filled.Memory" Size="Size.Small" /> 50 MB max</span>
-                <span><MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" /> Private library</span>
+<div class="document-upload-shell">
+    @* ── Back button (only when returning from workspace) ── *@
+    @if (!string.IsNullOrEmpty(ReturnUrl))
+    {
+        <a href="@ReturnUrl" class="upload-back-link">
+            <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Size="Size.Small" />
+            Back to workspace
+        </a>
+    }
+
+    @* ── Hero + Steps ── *@
+    <div class="hero-steps-grid">
+        <section class="upload-hero">
+            <div class="upload-kicker">
+                <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" />
+                ADD STUDY MATERIAL
             </div>
-        </div>
-        <div class="upload-pipeline-card" aria-label="Ingestion pipeline steps">
-            <div class="pipeline-node active"><span>01</span><strong>Select</strong><small>Choose source</small></div>
-            <div class="pipeline-line"></div>
-            <div class="pipeline-node"><span>02</span><strong>Classify</strong><small>Subject + term</small></div>
-            <div class="pipeline-line"></div>
-            <div class="pipeline-node"><span>03</span><strong>Index</strong><small>Ready for AI</small></div>
-        </div>
-    </section>
+            <h1 class="upload-title">Choose a source for<br />your study cabinet</h1>
+            <p class="upload-description">
+                Add lecture PDFs, Word notes, and slide decks, then classify them by subject and
+                semester so the AI workspace can find citations later.
+            </p>
+            <div class="upload-tags">
+                <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" /> PDF / DOCX / PPTX</span>
+                <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" /> 5 files / 50 MB max</span>
+                <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" /> Private library</span>
+            </div>
+        </section>
 
-    <section class="upload-metrics-grid" aria-label="Upload studio metrics">
-        <MudPaper Class="upload-metric-card accent-violet" Elevation="0" Outlined="false">
-            <span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.FolderSpecial" /></span>
-            <div><small>Folders loaded</small><strong>@_folders.Count</strong><em>Available destinations</em></div>
-        </MudPaper>
-        <MudPaper Class="upload-metric-card accent-cyan" Elevation="0" Outlined="false">
-            <span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.Inventory2" /></span>
-            <div><small>Indexed library</small><strong>@_folders.Sum(f => f.DocumentCount)</strong><em>Known documents</em></div>
-        </MudPaper>
-        <MudPaper Class="upload-metric-card accent-green" Elevation="0" Outlined="false">
-            <span class="metric-icon"><MudIcon Icon="@Icons.Material.Filled.TaskAlt" /></span>
-            <div><small>Selected file</small><strong>@(_file is null ? "None" : "1")</strong><em>@(_file is null ? "Awaiting source" : FormatBytes(_file.Size))</em></div>
-        </MudPaper>
-    </section>
-
-    <section class="upload-studio-grid" aria-label="Document upload studio">
-        <MudPaper Class="upload-console glass-card" Elevation="0" Outlined="false">
-            <MudStack Spacing="3">
-                <div class="upload-card-header">
-                    <span class="upload-icon-badge"><MudIcon Icon="@Icons.Material.Filled.CloudUpload" /></span>
-                    <div>
-                        <MudText Typo="Typo.h5">Choose source</MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">Pick one study file, then save it into your academic library.</MudText>
+        <section class="steps-panel">
+            <div class="steps-header">Progress</div>
+            @{
+                var stepIndex = _uploaded ? 2 : _files.Count > 0 ? 1 : 0;
+            }
+            @for (int i = 0; i < _steps.Length; i++)
+            {
+                var s = _steps[i];
+                var cls = i < stepIndex ? "step-done" : i == stepIndex ? "step-active" : "step-pending";
+                <div class="step-item @cls">
+                    <div class="step-circle">@if (i < stepIndex) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />} else {@(i + 1)}</div>
+                    <div class="step-info">
+                        <div class="step-label">@s.Label</div>
+                        <div class="step-sub">@s.Sub</div>
                     </div>
+                    @if (i == stepIndex)
+                    {
+                        <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" Class="step-chevron" />
+                    }
+                </div>
+            }
+        </section>
+    </div>
+
+    @* ── Stats bar ── *@
+    <div class="stats-grid">
+        <MudPaper Class="stat-card" Elevation="0" Outlined="false">
+            <div class="stat-card-body">
+                <div class="stat-icon-box">
+                    <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" />
+                </div>
+                <span class="stat-value">@_folders.Count</span>
+                <span class="stat-label">Folders loaded</span>
+            </div>
+        </MudPaper>
+        <MudPaper Class="stat-card" Elevation="0" Outlined="false">
+            <div class="stat-card-body">
+                <div class="stat-icon-box">
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" />
+                </div>
+                <span class="stat-value">@_folders.Sum(f => f.DocumentCount)</span>
+                <span class="stat-label">Indexed library</span>
+            </div>
+        </MudPaper>
+        <MudPaper Class="stat-card" Elevation="0" Outlined="false">
+            <div class="stat-card-body">
+                <div class="stat-icon-box @(_files.Count > 0 ? "active" : "")">
+                    <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                </div>
+                <span class="stat-value">@(_files.Count > 0 ? _files.Count.ToString() : "None")</span>
+                <span class="stat-label">@(_files.Count > 0 ? $"of {MaxUploadFiles} file(s)" : "Awaiting source")</span>
+            </div>
+        </MudPaper>
+        <MudPaper Class="stat-card" Elevation="0" Outlined="false">
+            <div class="stat-card-body">
+                <div class="stat-icon-box @(_files.Count > 0 ? "active" : "")">
+                    <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Small" />
+                </div>
+                <span class="stat-value">@FormatBytes(_files.Sum(f => f.Size))</span>
+                <span class="stat-label">of @FormatBytes(MaxTotalUploadBytes) session total</span>
+            </div>
+        </MudPaper>
+    </div>
+
+    @* ── Main 3-column grid ── *@
+    <div class="main-grid">
+        @* ── Source panel ── *@
+        <section class="source-panel">
+            <h3 class="panel-title">Choose source</h3>
+            <p class="panel-desc">Pick one or more study files, then save it into your academic library.</p>
+
+            <InputFile id="document-file-input"
+                       OnChange="OnInputFileChangedAsync"
+                       accept="@AcceptAttr"
+                       multiple
+                       style="display:none" />
+
+            <div class="drop-zone @(_files.Count > 0 ? "has-file" : "")"
+                 @onclick="OpenFilePickerAsync">
+                @if (_files.Count > 0)
+                {
+                    <div class="drop-zone-icon-box success">
+                        <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                    </div>
+                    <p class="drop-zone-filename">@_files.Count file(s) selected</p>
+                    <ul class="drop-zone-file-list">
+                        @foreach (var f in _files)
+                        {
+                            <li class="drop-zone-file-item">
+                                <span class="drop-zone-file-name">@f.Name</span>
+                                <button class="drop-zone-file-remove" @onclick="() => RemoveFileAsync(f)" @onclick:stopPropagation>
+                                    <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" />
+                                </button>
+                            </li>
+                        }
+                    </ul>
+                    <button class="drop-zone-remove" @onclick="ClearFilesAsync" @onclick:stopPropagation>
+                        <MudIcon Icon="@Icons.Material.Filled.Close" Size="Size.Small" /> Remove all
+                    </button>
+                }
+                else
+                {
+                    <div class="drop-zone-icon-box">
+                        <MudIcon Icon="@Icons.Material.Filled.FileUpload" Size="Size.Small" />
+                    </div>
+                    <p class="drop-zone-text">Drop files here or click to browse</p>
+                }
+            </div>
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Class="browse-btn"
+                       OnClick="OpenFilePickerAsync"
+                       Disabled="_busy">
+                <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" Class="me-1" />
+                Browse Files
+            </MudButton>
+
+            <p class="source-footnote">
+                Choose up to <strong>5 files</strong> (max <strong>50 MB</strong> total per session) in PDF, Word, or PowerPoint format. Your files stay in the private cabinet.
+            </p>
+        </section>
+
+        @* ── Metadata form ── *@
+        <section class="metadata-panel">
+            <h3 class="panel-title">Metadata &amp; folder</h3>
+            <p class="panel-desc">Required labels keep retrieval scoped and searchable.</p>
+
+            <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid" Class="metadata-form">
+                <div class="field-group">
+                    <label class="field-label">
+                        Subject code <span class="field-hint">(e.g. SWP391)</span>
+                        @if (!string.IsNullOrEmpty(_model.SubjectCode))
+                        {
+                            <span class="field-validity @(Regex.IsMatch(_model.SubjectCode, @"^[A-Z]{2,4}\d{3,4}$") ? "valid" : "invalid")">
+                                @(Regex.IsMatch(_model.SubjectCode, @"^[A-Z]{2,4}\d{3,4}$") ? "✓" : "·")
+                            </span>
+                        }
+                    </label>
+                    <input class="field-input mono @(!string.IsNullOrEmpty(_model.SubjectCode) && !Regex.IsMatch(_model.SubjectCode, @"^[A-Z]{2,4}\d{3,4}$") ? "field-error" : "")"
+                           @bind="_model.SubjectCode"
+                           @bind:event="oninput"
+                           placeholder="SWP391"
+                           disabled="@_busy" />
+                    @if (!string.IsNullOrEmpty(_model.SubjectCode) && !Regex.IsMatch(_model.SubjectCode, @"^[A-Z]{2,4}\d{3,4}$"))
+                    {
+                        <p class="field-error-text">
+                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" /> Use format like SWP391 or SDN302
+                        </p>
+                    }
                 </div>
 
-                <MudFileUpload T="IBrowserFile"
-                               @ref="_uploader"
-                               OnFilesChanged="OnInputFileChangedAsync"
-                               Accept="@AcceptAttr"
-                               MaximumFileCount="1"
-                               MaxFileSize="MaxFileSizeBytes"
-                               Hidden="true"
-                               Disabled="_busy" />
-
-                <MudButton Variant="Variant.Text"
-                           Class="upload-dropzone"
-                           FullWidth="true"
-                           OnClick="OpenFilePickerAsync"
-                           Disabled="_busy">
-                    <MudIcon Icon="@Icons.Material.Filled.AttachFile" Class="dropzone-icon" />
-                    <span class="dropzone-title">@(_file is null ? "Choose a study file" : "Replace selected file")</span>
-                    <span class="dropzone-copy">PDF, Word, and PowerPoint files up to 50 MB. Your file stays in the private study library.</span>
-                </MudButton>
-
-                @if (_file is not null)
-                {
-                    <MudPaper Class="selected-file-card" Outlined="false" Elevation="0" aria-label="Selected file">
-                        <MudIcon Icon="@Icons.Material.Filled.InsertDriveFile" />
-                        <div>
-                            <MudText Typo="Typo.subtitle2">@_file.Name</MudText>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                @FormatBytes(_file.Size) — @_file.ContentType
-                            </MudText>
-                        </div>
-                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">Validated client-side</MudChip>
-                    </MudPaper>
-                }
-
-                @if (!string.IsNullOrEmpty(_error))
-                {
-                    <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Filled">@_error</MudAlert>
-                }
-
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           Class="premium-button upload-submit"
-                           FullWidth="true"
-                           OnClick="SubmitAsync"
-                           Disabled="_busy || !_isValid || !_humanCheckValid || _file is null">
-                    @if (_busy)
+                <div class="field-group">
+                    <label class="field-label">
+                        Semester <span class="field-hint">(e.g. SU26)</span>
+                        @if (!string.IsNullOrEmpty(_model.Semester))
+                        {
+                            <span class="field-validity @(Regex.IsMatch(_model.Semester, @"^(SPR|SU|FA|M1)\d{2}$") ? "valid" : "invalid")">
+                                @(Regex.IsMatch(_model.Semester, @"^(SPR|SU|FA|M1)\d{2}$") ? "✓" : "·")
+                            </span>
+                        }
+                    </label>
+                    <input class="field-input mono @(!string.IsNullOrEmpty(_model.Semester) && !Regex.IsMatch(_model.Semester, @"^(SPR|SU|FA|M1)\d{2}$") ? "field-error" : "")"
+                           @bind="_model.Semester"
+                           @bind:event="oninput"
+                           placeholder="SU26"
+                           disabled="@_busy" />
+                    @if (!string.IsNullOrEmpty(_model.Semester) && !Regex.IsMatch(_model.Semester, @"^(SPR|SU|FA|M1)\d{2}$"))
                     {
-                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
-                        <MudText Class="ms-2">Uploading...</MudText>
+                        <p class="field-error-text">
+                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" /> Use SPR/SU/FA/M1 + 2-digit year
+                        </p>
                     }
-                    else
-                    {
-                        <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Class="me-2" />
-                        <MudText>Upload &amp; start indexing</MudText>
-                    }
-                </MudButton>
-            </MudStack>
-        </MudPaper>
-
-        <MudPaper Class="upload-metadata-card glass-card" Elevation="0" Outlined="false">
-            <MudStack Spacing="3">
-                <div class="upload-card-header compact">
-                    <span class="upload-icon-badge cyan"><MudIcon Icon="@Icons.Material.Filled.Tune" /></span>
-                    <div>
-                        <MudText Typo="Typo.h6">Metadata &amp; folder</MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">Required labels keep retrieval scoped and searchable.</MudText>
-                    </div>
                 </div>
 
-                <MudForm @ref="_form" Model="_model" @bind-IsValid="_isValid">
-                    <MudTextField T="string"
-                                  Label="Subject code (e.g. SWP391)"
-                                  @bind-Value="_model.SubjectCode"
-                                  Required="true"
-                                  RequiredError="Subject code is required"
-                                  Validation="@(new RegularExpressionAttribute(@"^[A-Z]{3}[0-9]{3}$") { ErrorMessage = "3 uppercase letters + 3 digits, e.g. SWP391" })"
-                                  Variant="Variant.Outlined"
-                                  Disabled="_busy" />
-
-                    <MudTextField T="string"
-                                  Label="Semester (e.g. SU26)"
-                                  @bind-Value="_model.Semester"
-                                  Required="true"
-                                  RequiredError="Semester is required"
-                                  Validation="@(new RegularExpressionAttribute(@"^(SP|SU|FA|WI)[0-9]{2}$") { ErrorMessage = "SP/SU/FA/WI + 2 digits, e.g. SU26" })"
-                                  Variant="Variant.Outlined"
-                                  Class="mt-3"
-                                  Disabled="_busy" />
-
-                    <MudSelect T="Guid?"
-                               Label="Folder"
-                               @bind-Value="_model.FolderId"
-                               Variant="Variant.Outlined"
-                               Margin="Margin.Dense"
-                               Class="mt-3"
-                               Clearable="true"
-                               Disabled="_busy || _foldersBusy"
-                               Placeholder="Loose document">
-                        <MudSelectItem T="Guid?" Value="@(null)">Loose document</MudSelectItem>
+                <div class="field-group">
+                    <label class="field-label">Folder</label>
+                    <select class="field-input field-select"
+                            value="@_selectedFolderIdStr"
+                            @onchange="OnFolderChanged"
+                            disabled="@(_busy || _foldersBusy)">
+                        <option value="">Loose document</option>
                         @foreach (var folder in _folders)
                         {
-                            <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name (@folder.DocumentCount)</MudSelectItem>
+                            <option value="@folder.Id.ToString()">@folder.Name (@folder.DocumentCount)</option>
                         }
-                    </MudSelect>
+                    </select>
+                </div>
 
-                    <div class="folder-create-row mt-3">
-                        <MudTextField T="string"
-                                      Label="New folder name"
-                                      @bind-Value="_newFolderName"
-                                      Variant="Variant.Outlined"
-                                      Margin="Margin.Dense"
-                                      Disabled="_busy || _foldersBusy" />
-                        <MudButton Variant="Variant.Outlined"
-                                   Color="Color.Secondary"
-                                   StartIcon="@Icons.Material.Filled.CreateNewFolder"
-                                   OnClick="CreateFolderAsync"
-                                   Disabled="_busy || _foldersBusy || string.IsNullOrWhiteSpace(_newFolderName)">
-                            Create folder
+                <div class="field-group folder-create-row">
+                    <input class="field-input flex-1"
+                           placeholder="e.g. SWP391 \u2013 Spring 2026"
+                           @bind="_newFolderName"
+                           disabled="@(_busy || _foldersBusy)" />
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Secondary"
+                               OnClick="CreateFolderAsync"
+                               Disabled="@(_busy || _foldersBusy || string.IsNullOrWhiteSpace(_newFolderName))"
+                               Class="create-folder-btn">
+                        + Create
+                    </MudButton>
+                </div>
+            </MudForm>
+
+            @* ── Human check ── *@
+            <div class="human-check-wrapper">
+                <HumanCheck @ref="_humanCheck" Action="document-upload" Disabled="_busy" ValidChanged="OnHumanCheckChanged" />
+            </div>
+
+            @* ── Upload button ── *@
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Class="upload-btn"
+                       OnClick="SubmitAsync"
+                       Disabled="@(_busy || !_isValid || !_humanCheckValid || _files.Count == 0)">
+                @if (_busy)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-1" />
+                    <span>Uploading @_uploadProgress/@_uploadTotal...</span>
+                }
+                else if (_uploaded)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Class="me-1" />
+                    <span>Indexed \u2014 re-upload</span>
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.FileUpload" Size="Size.Small" Class="me-1" />
+                    <span>Upload &amp; Start Indexing</span>
+                }
+            </MudButton>
+
+            @if (_uploaded)
+            {
+                <div class="success-banner">
+                    <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />
+                    <div>
+                        <p class="success-banner-title">Upload complete</p>
+                        <p class="success-banner-text">
+                            @_successCount file(s) uploaded successfully@(_errorCount > 0 ? $", {_errorCount} failed." : ".") Open the document detail page from the library, then check its indexing status \u2014 then ask AI with citations.
+                        </p>
+                        <MudButton Variant="Variant.Text" Href="@(ReturnUrl ?? "/documents")" EndIcon="@Icons.Material.Filled.ArrowForward" Class="success-banner-link">
+                            Back to library
                         </MudButton>
                     </div>
-                </MudForm>
+                </div>
+            }
 
-                <HumanCheck @ref="_humanCheck" Action="document-upload" Disabled="_busy" ValidChanged="OnHumanCheckChanged" />
-            </MudStack>
-        </MudPaper>
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Filled" Class="mt-3">@_error</MudAlert>
+            }
+        </section>
 
-        <aside class="upload-help-rail" aria-label="Upload checklist and tips">
-            <MudPaper Class="upload-rail-card glass-card-soft" Elevation="0" Outlined="false">
-                <span class="section-kicker">Checklist</span>
-                <ul class="upload-checklist">
-                    <li class="@(!string.IsNullOrWhiteSpace(_model.SubjectCode) ? "done" : null)"><MudIcon Icon="@Icons.Material.Filled.CheckCircle" /> Subject code matches SWP391 style</li>
-                    <li class="@(!string.IsNullOrWhiteSpace(_model.Semester) ? "done" : null)"><MudIcon Icon="@Icons.Material.Filled.CheckCircle" /> Semester uses SP/SU/FA/WI + year</li>
-                    <li class="@(_file is not null ? "done" : null)"><MudIcon Icon="@Icons.Material.Filled.CheckCircle" /> One supported source file selected</li>
-                    <li class="@(_model.FolderId is not null ? "done" : null)"><MudIcon Icon="@Icons.Material.Filled.CheckCircle" /> Folder selected, or leave loose</li>
-                </ul>
-            </MudPaper>
+        @* ── Checklist ── *@
+        <aside class="checklist-panel">
+            <div class="checklist-header">
+                <MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />
+                <h3 class="panel-title">Checklist</h3>
+            </div>
 
-            <MudPaper Class="upload-rail-card cta glass-card-soft" Elevation="0" Outlined="false">
-                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" />
-                <MudText Typo="Typo.subtitle2">After upload</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Open the document detail page from the library, wait for Ready status, then ask AI with citations.</MudText>
-                <MudButton Variant="Variant.Text" Href="/documents" EndIcon="@Icons.Material.Filled.ArrowForward">Back to library</MudButton>
-            </MudPaper>
+            <div class="checklist-items">
+                <div class="checklist-item @(IsSubjectValid ? "done" : "")">
+                    <div class="checklist-bullet @(IsSubjectValid ? "done" : "")">
+                        @if (IsSubjectValid) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
+                    </div>
+                    <span>Subject code matches SWP391 style</span>
+                </div>
+                <div class="checklist-item @(IsSemesterValid ? "done" : "")">
+                    <div class="checklist-bullet @(IsSemesterValid ? "done" : "")">
+                        @if (IsSemesterValid) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
+                    </div>
+                    <span>Semester uses SPR/SU/FA/M1 + year</span>
+                </div>
+                <div class="checklist-item @(_files.Count > 0 ? "done" : "")">
+                    <div class="checklist-bullet @(_files.Count > 0 ? "done" : "")">
+                        @if (_files.Count > 0) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
+                    </div>
+                    <span>@_files.Count / @MaxUploadFiles file(s) selected</span>
+                </div>
+                <div class="checklist-item @(_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0 ? "done" : "")">
+                    <div class="checklist-bullet @(_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0 ? "done" : "")">
+                        @if (_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
+                    </div>
+                    <span>Total @FormatBytes(_files.Sum(f => f.Size)) / @FormatBytes(MaxTotalUploadBytes)</span>
+                </div>
+                <div class="checklist-item @(_model.FolderId is not null ? "done" : "")">
+                    <div class="checklist-bullet @(_model.FolderId is not null ? "done" : "")">
+                        @if (_model.FolderId is not null) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
+                    </div>
+                    <span>Folder selected, or leave loose</span>
+                </div>
+            </div>
+
+            <div class="checklist-footer">
+                @{
+                    var passed = new[] { IsSubjectValid, IsSemesterValid, _files.Count > 0, _files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0, _model.FolderId is not null }.Count(x => x);
+                    var totalChecks = 5;
+                }
+                @if (passed == totalChecks)
+                {
+                    <span>All checks passed \u2014 ready to upload.</span>
+                }
+                else
+                {
+                    <span>@passed/@totalChecks checks passed.</span>
+                }
+            </div>
+
+            @if (_uploaded)
+            {
+                <div class="checklist-after-upload">
+                    <p class="checklist-after-title">After upload</p>
+                    <p class="checklist-after-text">
+                        Open the document detail page from the library, verify its indexing status, then ask AI with citations.
+                    </p>
+                    <MudButton Variant="Variant.Outlined"
+                               FullWidth="true"
+                               Class="checklist-reset-btn"
+                               OnClick="ResetForm">
+                        <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" Class="me-1" />
+                        Back to library
+                    </MudButton>
+                </div>
+            }
         </aside>
-    </section>
-</MudStack>
+    </div>
+</div>
 
 @code {
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery(Name = "folderId")]
+    public Guid? QueryFolderId { get; set; }
+
     private const long MaxFileSizeBytes = DocumentApiClient.MaxFileSizeBytes;
+    private const int MaxUploadFiles = 5;
+    private const long MaxTotalUploadBytes = 50L * 1024 * 1024;
     private const string AcceptAttr = ".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
     private MudForm? _form;
     private HumanCheck? _humanCheck;
-    private MudFileUpload<IBrowserFile>? _uploader;
     private bool _isValid;
     private bool _humanCheckValid;
     private bool _busy;
     private bool _foldersBusy;
+    private bool _uploaded;
     private string? _error;
     private string? _newFolderName;
-    private IBrowserFile? _file;
+    private string _selectedFolderIdStr = "";
+    private List<IBrowserFile> _files = new();
     private List<FolderDto> _folders = new();
     private readonly UploadDocumentRequest _model = new();
+    private int _uploadProgress;
+    private int _uploadTotal;
+    private int _successCount;
+    private int _errorCount;
+
+    private static readonly (string Label, string Sub)[] _steps =
+    [
+        ("Select", "Choose your source"),
+        ("Classify", "Subject + term"),
+        ("Index", "Ready for AI"),
+    ];
+
+    private bool IsSubjectValid => Regex.IsMatch(_model.SubjectCode ?? "", @"^[A-Z]{2,4}\d{3,4}$");
+    private bool IsSemesterValid => Regex.IsMatch(_model.Semester ?? "", @"^(SPR|SU|FA|M1)\d{2}$");
 
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsAuthenticated)
         {
-            Nav.NavigateTo("/login", replace: true);
-            return;
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+                Session.Set(restored);
+            if (!Session.IsAuthenticated)
+            {
+                Nav.NavigateTo("/login", replace: true);
+                return;
+            }
         }
 
         await LoadFoldersAsync();
+
+        if (QueryFolderId.HasValue && _folders.Any(f => f.Id == QueryFolderId.Value))
+        {
+            _model.FolderId = QueryFolderId.Value;
+            _selectedFolderIdStr = QueryFolderId.Value.ToString();
+        }
     }
 
     private Task OnHumanCheckChanged(bool valid)
@@ -239,8 +442,15 @@
         return Task.CompletedTask;
     }
 
-    private Task OpenFilePickerAsync()
-        => _uploader?.OpenFilePickerAsync() ?? Task.CompletedTask;
+    private void OnFolderChanged(ChangeEventArgs e)
+    {
+        var val = e.Value?.ToString() ?? "";
+        _selectedFolderIdStr = val;
+        _model.FolderId = string.IsNullOrEmpty(val) ? null : Guid.Parse(val);
+    }
+
+    private async Task OpenFilePickerAsync()
+        => await JS.InvokeVoidAsync("openFilePicker", "document-file-input");
 
     private async Task LoadFoldersAsync()
     {
@@ -283,6 +493,7 @@
             _folders.Add(folder);
             _folders = _folders.OrderBy(f => f.Name).ToList();
             _model.FolderId = folder.Id;
+            _selectedFolderIdStr = folder.Id.ToString();
             _newFolderName = null;
             Snackbar.Add($"Created folder \"{folder.Name}\".", Severity.Success);
         }
@@ -309,29 +520,52 @@
     private Task OnInputFileChangedAsync(InputFileChangeEventArgs e)
     {
         _error = null;
-        var file = e.FileCount > 0 ? e.File : null;
-        if (file is null)
+        var selected = e.GetMultipleFiles(50);
+
+        if (_files.Count + selected.Count > MaxUploadFiles)
         {
-            _file = null;
+            _error = $"You can upload at most {MaxUploadFiles} files per session. Remove some files first.";
             return Task.CompletedTask;
         }
 
-        if (file.Size > MaxFileSizeBytes)
+        var totalBytes = _files.Sum(f => f.Size);
+        var valid = new List<IBrowserFile>();
+        foreach (var file in selected)
         {
-            _file = null;
-            _error = $"File is {FormatBytes(file.Size)}; the 50 MB limit applies.";
-            return Task.CompletedTask;
+            if (file.Size > MaxFileSizeBytes)
+            {
+                _error = $"\"{file.Name}\" is {FormatBytes(file.Size)}; the 50 MB per-file limit applies.";
+                continue;
+            }
+
+            if (totalBytes + file.Size > MaxTotalUploadBytes)
+            {
+                _error = $"Adding \"{file.Name}\" ({FormatBytes(file.Size)}) would exceed the {FormatBytes(MaxTotalUploadBytes)} total session limit. Upload in smaller batches.";
+                continue;
+            }
+
+            if (!IsAllowedMime(file.ContentType, file.Name))
+            {
+                _error = $"\"{file.Name}\" is not a supported type. Only PDF, DOC, DOCX, PPT, PPTX files are accepted.";
+                continue;
+            }
+
+            valid.Add(file);
+            totalBytes += file.Size;
         }
 
-        if (!IsAllowedMime(file.ContentType, file.Name))
-        {
-            _file = null;
-            _error = "Only PDF, DOC, DOCX, PPT, PPTX files are accepted.";
-            return Task.CompletedTask;
-        }
-
-        _file = file;
+        _files.AddRange(valid);
         return Task.CompletedTask;
+    }
+
+    private void RemoveFileAsync(IBrowserFile file)
+    {
+        _files.Remove(file);
+    }
+
+    private void ClearFilesAsync()
+    {
+        _files.Clear();
     }
 
     private static bool IsAllowedMime(string? contentType, string fileName)
@@ -340,7 +574,6 @@
         {
             return true;
         }
-        // Browsers occasionally drop the MIME for less common Office types — fall back to extension.
         var ext = Path.GetExtension(fileName).ToLowerInvariant();
         return ext is ".pdf" or ".doc" or ".docx" or ".ppt" or ".pptx";
     }
@@ -348,7 +581,7 @@
     private async Task SubmitAsync()
     {
         _error = null;
-        if (_form is null || _file is null) return;
+        if (_form is null || _files.Count == 0) return;
         await _form.ValidateAsync();
         var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
         if (!_isValid || !humanOk) return;
@@ -360,64 +593,128 @@
         }
 
         _busy = true;
+        _uploadTotal = _files.Count;
+        _uploadProgress = 0;
+        _successCount = 0;
+        _errorCount = 0;
+        _uploaded = false;
         StateHasChanged();
+
+        var selectedFolderId = _model.FolderId;
+        List<string> uploaded = new();
+
+        // Read all file data into memory before any upload StateHasChanged()
+        // to avoid Blazor Server invalidating browser-side file IDs on re-render.
+        var fileData = new List<(string Name, string ContentType, long Size, MemoryStream Content)>();
         try
         {
-            // IBrowserFile streams must be opened with the size limit explicitly.
-            await using var stream = _file.OpenReadStream(MaxFileSizeBytes);
-            var dto = await DocumentsApi.UploadAsync(
-                Session.AccessToken!,
-                stream,
-                _file.Name,
-                _file.ContentType,
-                _file.Size,
-                _model);
+            foreach (var file in _files.ToList())
+            {
+                try
+                {
+                    var mem = new MemoryStream((int)file.Size);
+                    await file.OpenReadStream(MaxFileSizeBytes).CopyToAsync(mem);
+                    mem.Position = 0;
+                    fileData.Add((file.Name, file.ContentType, file.Size, mem));
+                }
+                catch (Exception ex)
+                {
+                    _errorCount++;
+                    _error = $"\"{file.Name}\": Could not read file data - {ex.Message}";
+                }
+            }
 
-            Snackbar.Add($"Uploaded \"{dto.FileName}\" ({FormatBytes(dto.FileSizeBytes)}).", Severity.Success);
-            var selectedFolderId = _model.FolderId;
-            await LoadFoldersAsync();
-            // Reset for another upload, but keep the selected folder for batch uploads.
-            _file = null;
-            _model.SubjectCode = string.Empty;
-            _model.Semester = string.Empty;
-            _model.FolderId = selectedFolderId;
-            await _form.ResetAsync();
-            if (_humanCheck is not null)
+            foreach (var (name, contentType, size, content) in fileData)
             {
-                await _humanCheck.ResetAsync();
+                _uploadProgress++;
+                StateHasChanged();
+
+                try
+                {
+                    var dto = await DocumentsApi.UploadAsync(
+                        Session.AccessToken!,
+                        content,
+                        name,
+                        contentType,
+                        size,
+                        _model);
+
+                    _successCount++;
+                    uploaded.Add($"\"{dto.FileName}\" ({FormatBytes(dto.FileSizeBytes)})");
+                }
+                catch (DocumentApiException ex)
+                {
+                    _errorCount++;
+                    var msg = ex.StatusCode switch
+                    {
+                        401 => "Your session has expired. Please sign in again.",
+                        413 => "File is larger than the 50 MB server limit.",
+                        415 => "That file type isn't supported.",
+                        _ => MapError(ex),
+                    };
+                    _error = $"\"{name}\": {msg}";
+                }
+                catch (Exception ex)
+                {
+                    _errorCount++;
+                    _error = $"\"{name}\": Network error - {ex.Message}";
+                }
             }
-            _model.FolderId = selectedFolderId;
-            if (_uploader is not null)
+
+            _uploaded = _successCount > 0;
+            if (_successCount > 0)
             {
-                await _uploader.ClearAsync();
+                Snackbar.Add($"Uploaded {_successCount} file(s).", Severity.Success);
+                await LoadFoldersAsync();
+                _files.Clear();
+                _model.SubjectCode = string.Empty;
+                _model.Semester = string.Empty;
+                _model.FolderId = selectedFolderId;
+                _selectedFolderIdStr = selectedFolderId?.ToString() ?? "";
+                await _form.ResetAsync();
+                if (_humanCheck is not null)
+                {
+                    await _humanCheck.ResetAsync();
+                }
+                _model.FolderId = selectedFolderId;
+                _selectedFolderIdStr = selectedFolderId?.ToString() ?? "";
             }
-        }
-        catch (DocumentApiException ex)
-        {
-            _error = ex.StatusCode switch
-            {
-                401 => "Your session has expired. Please sign in again.",
-                413 => "File is larger than the 50 MB server limit.",
-                415 => "That file type isn't supported.",
-                _   => MapError(ex),
-            };
-        }
-        catch (Exception ex)
-        {
-            _error = $"Network error: {ex.Message}";
         }
         finally
         {
+            foreach (var (_, _, _, content) in fileData)
+            {
+                await content.DisposeAsync();
+            }
             _busy = false;
             StateHasChanged();
         }
     }
 
-    private static string MapError(DocumentApiException ex) => ex.StatusCode switch
+    private void ResetForm()
     {
-        401 => "Your session has expired. Please sign in again.",
-        409 => "A folder with that name already exists.",
-        400 => ex.Code == "folder_name_required" ? "Folder name is required." : ex.Message,
+        _files.Clear();
+        _uploaded = false;
+        _model.SubjectCode = string.Empty;
+        _model.Semester = string.Empty;
+        _model.FolderId = null;
+        _selectedFolderIdStr = "";
+        _newFolderName = null;
+        _error = null;
+        _form?.ResetAsync();
+        _humanCheck?.ResetAsync();
+        StateHasChanged();
+    }
+
+    private static string MapError(DocumentApiException ex) => (ex.StatusCode, ex.Code) switch
+    {
+        (401, _) => "Your session has expired. Please sign in again.",
+        (409, "folder_full") => ex.Message,
+        (409, "duplicate_file") => ex.Message,
+        (409, _) => "A folder with that name already exists.",
+        (400, "folder_name_required") => "Folder name is required.",
+        (400, "empty_file") => ex.Message,
+        (400, _) => $"The server rejected the request. Check that the subject code (e.g. SWP391) and semester (e.g. SU26) are correct.",
         _ => ex.Message,
     };
 

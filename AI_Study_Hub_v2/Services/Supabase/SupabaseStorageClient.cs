@@ -122,15 +122,50 @@ public sealed class SupabaseStorageClient : ISupabaseStorageClient
         return $"{publicBase}/storage/v1{relative}";
     }
 
+    public async Task<(Stream Content, string ContentType)> DownloadFileAsync(
+        string bucket,
+        string objectPath,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(bucket);
+        ArgumentException.ThrowIfNullOrWhiteSpace(objectPath);
+
+        // Storage REST: GET /object/{bucket}/{path} returns the raw file content.
+        // Build the request manually with explicit auth to handle quirks of local Supabase.
+        var relativePath = $"object/{bucket}/{objectPath}";
+        using var req = new HttpRequestMessage(HttpMethod.Get, relativePath);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ServiceRoleKey);
+        req.Headers.TryAddWithoutValidation("apikey", _options.ServiceRoleKey);
+
+        using var resp = await _http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+
+        if (!resp.IsSuccessStatusCode)
+        {
+            var body = await resp.Content.ReadAsStringAsync(cancellationToken);
+            _logger.LogError(
+                "Supabase Storage download failed: bucket={Bucket} path={Path} status={Status} body={Body}",
+                bucket, objectPath, resp.StatusCode, body);
+            throw new SupabaseStorageException(
+                $"Download {bucket}/{objectPath} failed with HTTP {(int)resp.StatusCode}: {body}");
+        }
+
+        var contentType = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
+        var stream = await resp.Content.ReadAsStreamAsync(cancellationToken);
+        return (stream, contentType);
+    }
+
     public async Task DeleteAsync(string bucket, string objectPath, CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(bucket);
         ArgumentException.ThrowIfNullOrWhiteSpace(objectPath);
 
-        using var resp = await _http.DeleteAsync($"object/{bucket}/{objectPath}", cancellationToken);
+        using var req = new HttpRequestMessage(HttpMethod.Delete, $"object/{bucket}/{objectPath}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ServiceRoleKey);
+        req.Headers.TryAddWithoutValidation("apikey", _options.ServiceRoleKey);
+
+        using var resp = await _http.SendAsync(req, cancellationToken);
         if (resp.StatusCode == HttpStatusCode.NotFound)
         {
-            // Idempotent delete — already gone.
             return;
         }
         if (!resp.IsSuccessStatusCode)

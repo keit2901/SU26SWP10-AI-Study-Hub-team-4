@@ -1,0 +1,561 @@
+@using AI_Study_Hub_v2.Data.Entities
+@namespace AI_Study_Hub_v2.Components.Shared.Quiz
+@inject AiChatApiClient ChatApi
+@inject AuthSessionState Session
+@inject ISnackbar Snackbar
+
+<MudDialog Options="_dialogOptions" Class="quiz-dialog-root">
+    <DialogContent>
+        @if (_saveError)
+        {
+            <div class="quiz-save-error-banner">
+                <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" />
+                <span>Could not save progress. </span>
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="RetrySave" Class="quiz-retry-btn">
+                    Retry
+                </MudButton>
+                <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small" OnClick="DismissSaveError" Class="quiz-dismiss-btn">
+                    Dismiss
+                </MudButton>
+            </div>
+        }
+        @if (_quiz is null)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Filled">Quiz data is not available.</MudAlert>
+        }
+        else if (_showResult)
+        {
+            <div class="quiz-result-overlay">
+                <div class="quiz-result-card">
+                    <div class="quiz-result-icon">@GetResultIcon()</div>
+                    <h2 class="quiz-result-title">@GetResultTitle()</h2>
+                    <div class="quiz-result-score">
+                        <span class="quiz-result-score-value">@_localScore</span>
+                        <span class="quiz-result-score-divider">/</span>
+                        <span class="quiz-result-score-total">@_quiz.TotalQuestions</span>
+                    </div>
+                    <p class="quiz-result-label">Correct Answers</p>
+                    <div class="quiz-result-detail">
+                        <span>@_answeredQuestions answered</span>
+                        <span>·</span>
+                        <span>@(Math.Round((double)(_localScore ?? 0) / Math.Max(_quiz.TotalQuestions, 1) * 100))% accuracy</span>
+                    </div>
+
+                    <div class="quiz-result-summary">
+                        @for (var i = 0; i < _quiz.TotalQuestions; i++)
+                        {
+                            var q = _quiz.Questions[i];
+                            var isQCorrect = _localSubmitted.TryGetValue(q.Index, out var sub) && sub
+                                && _localAnswers.TryGetValue(q.Index, out var ans) && ans == q.CorrectOptionId;
+                            var qAnswered = _localSubmitted.TryGetValue(q.Index, out var sub2) && sub2;
+                            var summaryClass = qAnswered
+                                ? (isQCorrect ? "q-summary-item q-summary-correct" : "q-summary-item q-summary-incorrect")
+                                : "q-summary-item q-summary-unanswered";
+
+                            <button type="button" class="@summaryClass" title="@q.Question" @onclick="() => GoToQuestion(q.Index)">
+                                <span class="q-summary-num">@(i + 1)</span>
+                                <span class="q-summary-icon">
+                                    @if (qAnswered)
+                                    {
+                                        @if (isQCorrect)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" />
+                                        }
+                                        else
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" />
+                                        }
+                                    }
+                                </span>
+                            </button>
+                        }
+                    </div>
+
+                    <div class="quiz-result-actions">
+                        <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                                   OnClick="() => _showResult = false" Class="quiz-result-btn">
+                            Review Answers
+                        </MudButton>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   OnClick="Close" Class="quiz-result-btn">
+                            Close
+                        </MudButton>
+                    </div>
+                </div>
+            </div>
+        }
+        else if (_currentIndex < _quiz.Questions.Count)
+        {
+            var question = _quiz.Questions[_currentIndex];
+            var answered = _localAnswers.TryGetValue(question.Index, out var selectedId);
+            var isSubmitted = _localSubmitted.TryGetValue(question.Index, out var sub) && sub;
+            var isCorrect = isSubmitted && selectedId == question.CorrectOptionId;
+
+            <div class="quiz-dialog">
+                <div class="quiz-dialog-header">
+                    <div class="quiz-dialog-header-left">
+                        <span class="quiz-dialog-breadcrumb">@_quiz.Title</span>
+                        <span class="quiz-dialog-breadcrumb-sep">/</span>
+                        <span class="quiz-dialog-breadcrumb-current">Question @(_currentIndex + 1)</span>
+                    </div>
+                    <QuizProgressIndicator Answered="@_answeredQuestions" Total="@_quiz.TotalQuestions" />
+                </div>
+
+                <div class="quiz-dialog-body">
+                    <div class="quiz-dialog-question-text">@question.Question</div>
+                    @if (!string.IsNullOrWhiteSpace(question.Subtitle))
+                    {
+                        <div class="quiz-dialog-question-subtitle">@question.Subtitle</div>
+                    }
+
+                    <div class="quiz-dialog-options-grid">
+                        @foreach (var option in question.Options)
+                        {
+                            var optId = option.Id;
+                            var isSelected = selectedId == optId;
+                            var optClass = "quiz-dialog-option";
+                            if (isSubmitted)
+                            {
+                                optClass += isSelected
+                                    ? (isCorrect ? " quiz-option-correct" : " quiz-option-incorrect")
+                                    : (optId == question.CorrectOptionId ? " quiz-option-correct" : "");
+                            }
+                            else if (isSelected)
+                            {
+                                optClass += " quiz-option-selected";
+                            }
+
+                            <button type="button"
+                                    class="@optClass"
+                                    disabled="@isSubmitted"
+                                    @onclick="() => SelectOption(question.Index, optId)">
+                                <span class="quiz-option-id">@optId</span>
+                                <span class="quiz-option-text">@option.Text</span>
+                                @if (isSubmitted)
+                                {
+                                    <span class="quiz-option-icon">
+                                        @if (isSelected && isCorrect)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" />
+                                        }
+                                        else if (isSelected && !isCorrect)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" />
+                                        }
+                                        else if (optId == question.CorrectOptionId)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" />
+                                        }
+                                    </span>
+                                }
+                            </button>
+                        }
+                    </div>
+
+                    @if (isSubmitted)
+                    {
+                        <div class="quiz-dialog-feedback @(isCorrect ? "quiz-feedback-correct" : "quiz-feedback-incorrect")">
+                            <div class="quiz-feedback-header">
+                                <MudIcon Icon="@(isCorrect ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" Size="Size.Small" />
+                                <strong>@(isCorrect ? "Correct!" : "Incorrect")</strong>
+                            </div>
+                            <p class="quiz-feedback-explanation">@question.Explanation</p>
+                            @if (!string.IsNullOrWhiteSpace(question.SourceLabel))
+                            {
+                                <span class="quiz-feedback-source">Source: @question.SourceLabel</span>
+                            }
+                        </div>
+
+                    @if (_isReviewMode)
+                    {
+                        <div class="quiz-dialog-nav-row">
+                            @if (_currentIndex > 0)
+                            {
+                                <MudButton Variant="Variant.Outlined" Color="Color.Default" Size="Size.Small"
+                                           OnClick="PrevQuestion" Class="quiz-nav-btn"
+                                           StartIcon="@Icons.Material.Filled.ChevronLeft">
+                                    Previous
+                                </MudButton>
+                            }
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                       OnClick="ReviewNext" Class="quiz-next-btn"
+                                       StartIcon="@Icons.Material.Filled.ArrowForward">
+                                @(_currentIndex < _quiz.Questions.Count - 1 ? "Next Question" : "Back to Results")
+                            </MudButton>
+                        </div>
+                    }
+                        else if (_currentIndex < _quiz.Questions.Count - 1)
+                        {
+                            <div class="quiz-dialog-next-wrap">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="NextQuestion" Class="quiz-next-btn"
+                                           StartIcon="@Icons.Material.Filled.ArrowForward">
+                                    Next Question
+                                </MudButton>
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="quiz-dialog-next-wrap">
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                           OnClick="FinishQuiz" Class="quiz-next-btn quiz-finish-btn"
+                                           StartIcon="@Icons.Material.Filled.Check">
+                                    @(_answeredQuestions < _quiz.TotalQuestions ? "Answer all questions first" : "Finish Quiz")
+                                </MudButton>
+                            </div>
+                        }
+                    }
+                </div>
+
+                <div class="quiz-dialog-footer">
+                    <div class="quiz-dialog-footer-left">
+                        <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                                   Disabled="@(_currentIndex == 0)" OnClick="PrevQuestion" Class="quiz-footer-btn">
+                            <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" />
+                            Previous
+                        </MudButton>
+                    </div>
+                    <div class="quiz-dialog-footer-center">
+                        @if (_isReviewMode)
+                        {
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                       OnClick="BackToResults" Class="quiz-footer-btn quiz-footer-review-btn"
+                                       StartIcon="@Icons.Material.Filled.Assignment">
+                                Back to Results
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <span class="quiz-footer-progress-text">@(_currentIndex + 1) of @_quiz.TotalQuestions</span>
+                        }
+                    </div>
+                    <div class="quiz-dialog-footer-right">
+                        @if (_isReviewMode || _currentIndex < _quiz.Questions.Count - 1)
+                        {
+                            <MudButton Variant="Variant.Text" Color="Color.Default" Size="Size.Small"
+                                       Disabled="@(!_isReviewMode && _currentIndex >= _quiz.Questions.Count - 1)"
+                                       OnClick="NextQuestion" Class="quiz-footer-btn">
+                                Next
+                                <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
+                            </MudButton>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       OnClick="FinishQuiz" Class="quiz-footer-btn quiz-footer-finish"
+                                       Disabled="@(_answeredQuestions < _quiz.TotalQuestions)">
+                                @if (_answeredQuestions < _quiz.TotalQuestions)
+                                {
+                                    <span>Answer all questions first</span>
+                                }
+                                else
+                                {
+                                    <span>Finish Quiz</span>
+                                }
+                            </MudButton>
+                        }
+                    </div>
+                </div>
+            </div>
+        }
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter, EditorRequired]
+    public QuizDto? Quiz { get; set; }
+
+    [Parameter]
+    public EventCallback<QuizDto> OnQuizUpdated { get; set; }
+
+    [Parameter]
+    public EventCallback<QuizDto> OnQuizCompleted { get; set; }
+
+    private QuizDto? _quiz;
+    private int _currentIndex;
+    private Dictionary<int, string?> _localAnswers = new();
+    private Dictionary<int, bool> _localSubmitted = new();
+    private int? _localScore;
+    private bool _showResult;
+    private int _answeredQuestions;
+    private bool _saveError;
+    private SaveQuizRequest? _pendingSave;
+    private Task? _pendingSaveTask;
+    private bool _isCompleting;
+
+    private bool _isReviewMode => _quiz?.Status == QuizStatus.Completed && !_showResult;
+
+    private readonly DialogOptions _dialogOptions = new()
+    {
+        FullWidth = true,
+        MaxWidth = MaxWidth.ExtraLarge,
+        CloseButton = true,
+        CloseOnEscapeKey = true,
+        BackgroundClass = "quiz-dialog-backdrop",
+    };
+
+    protected override void OnInitialized()
+    {
+        _quiz = Quiz;
+        if (_quiz is not null)
+        {
+            _currentIndex = Math.Clamp(_quiz.CurrentQuestionIndex, 0, _quiz.Questions.Count - 1);
+            _localAnswers = new Dictionary<int, string?>(_quiz.Answers);
+            _localSubmitted = new Dictionary<int, bool>(_quiz.Submitted);
+            _localScore = _quiz.Score;
+            RecalculateStats();
+            if (_quiz.Status == QuizStatus.Completed)
+            {
+                _showResult = true;
+            }
+        }
+    }
+
+    private void SelectOption(int questionIndex, string optionId)
+    {
+        if (_localSubmitted.TryGetValue(questionIndex, out var sub) && sub)
+        {
+            return;
+        }
+
+        _localAnswers[questionIndex] = optionId;
+        _localSubmitted[questionIndex] = true;
+
+        if (IsAnswerCorrect(questionIndex, optionId))
+        {
+            _localScore = (_localScore ?? 0) + 1;
+        }
+
+        RecalculateStats();
+        _pendingSaveTask = SaveProgressAsync();
+    }
+
+    private bool IsAnswerCorrect(int questionIndex, string optionId)
+    {
+        var question = _quiz?.Questions.FirstOrDefault(q => q.Index == questionIndex);
+        return question is not null && question.CorrectOptionId == optionId;
+    }
+
+    private void RecalculateStats()
+    {
+        _answeredQuestions = _localSubmitted.Count(kvp => kvp.Value);
+        if (_quiz is not null)
+        {
+            _localScore = _quiz.Questions.Count(q =>
+                _localSubmitted.TryGetValue(q.Index, out var sub) && sub &&
+                _localAnswers.TryGetValue(q.Index, out var ans) && ans == q.CorrectOptionId);
+        }
+    }
+
+    private async Task NextQuestion()
+    {
+        if (_currentIndex < (_quiz?.Questions.Count ?? 1) - 1)
+        {
+            _currentIndex++;
+            await SaveProgressAsync();
+        }
+    }
+
+    private async Task PrevQuestion()
+    {
+        if (_currentIndex > 0)
+        {
+            _currentIndex--;
+        }
+    }
+
+    private async Task FinishQuiz()
+    {
+        if (_quiz is null)
+        {
+            return;
+        }
+
+        _isCompleting = true;
+
+        // Wait for any in-flight progress save to complete first
+        if (_pendingSaveTask is not null && !_pendingSaveTask.IsCompleted)
+        {
+            try { await _pendingSaveTask; } catch { /* best-effort */ }
+        }
+
+        var saveRequest = new SaveQuizRequest(
+            QuizStatus.Completed,
+            _currentIndex,
+            _localAnswers,
+            _localSubmitted,
+            _localScore);
+
+        _pendingSave = saveRequest;
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                await ChatApi.SaveQuizAsync(Session.AccessToken!, _quiz.Id, saveRequest);
+            }
+
+            _saveError = false;
+            _pendingSave = null;
+
+            _quiz = _quiz with
+            {
+                Status = QuizStatus.Completed,
+                Score = _localScore,
+                Answers = _localAnswers,
+                Submitted = _localSubmitted,
+                CurrentQuestionIndex = _currentIndex,
+            };
+
+            _showResult = true;
+            await OnQuizUpdated.InvokeAsync(_quiz);
+            await OnQuizCompleted.InvokeAsync(_quiz);
+            Snackbar.Add($"Quiz completed! Score: {_localScore}/{_quiz.TotalQuestions}", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _saveError = true;
+            Snackbar.Add($"Failed to save quiz: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task SaveProgressAsync()
+    {
+        if (_isCompleting || _quiz?.Status == QuizStatus.Completed)
+        {
+            return;
+        }
+
+        if (_quiz is null || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            return;
+        }
+
+        var saveRequest = new SaveQuizRequest(
+            QuizStatus.InProgress,
+            _currentIndex,
+            _localAnswers,
+            _localSubmitted,
+            _localScore);
+
+        _pendingSave = saveRequest;
+
+        try
+        {
+            await ChatApi.SaveQuizAsync(Session.AccessToken!, _quiz.Id, saveRequest);
+            _saveError = false;
+            _pendingSave = null;
+
+            _quiz = _quiz with
+            {
+                CurrentQuestionIndex = _currentIndex,
+                Answers = _localAnswers,
+                Submitted = _localSubmitted,
+                Score = _localScore,
+            };
+
+            await OnQuizUpdated.InvokeAsync(_quiz);
+        }
+        catch
+        {
+            _saveError = true;
+        }
+    }
+
+    private async Task RetrySave()
+    {
+        if (_quiz is null || string.IsNullOrWhiteSpace(Session.AccessToken) || _pendingSave is null)
+        {
+            _saveError = false;
+            return;
+        }
+
+        try
+        {
+            await ChatApi.SaveQuizAsync(Session.AccessToken!, _quiz.Id, _pendingSave);
+            _saveError = false;
+            _pendingSave = null;
+
+            _quiz = _quiz with
+            {
+                CurrentQuestionIndex = _currentIndex,
+                Answers = _localAnswers,
+                Submitted = _localSubmitted,
+                Score = _localScore,
+            };
+
+            await OnQuizUpdated.InvokeAsync(_quiz);
+        }
+        catch
+        {
+            _saveError = true;
+        }
+    }
+
+    private void DismissSaveError()
+    {
+        _saveError = false;
+        _pendingSave = null;
+    }
+
+    private string GetResultIcon()
+    {
+        if (_quiz is null)
+        {
+            return "❓";
+        }
+
+        var pct = (double)(_localScore ?? 0) / Math.Max(_quiz.TotalQuestions, 1);
+        return pct >= 0.8 ? "🎉" : pct >= 0.5 ? "👍" : "📚";
+    }
+
+    private string GetResultTitle()
+    {
+        if (_quiz is null)
+        {
+            return "";
+        }
+
+        var pct = (double)(_localScore ?? 0) / Math.Max(_quiz.TotalQuestions, 1);
+        return pct >= 0.8 ? "Great job!" : pct >= 0.5 ? "Good effort!" : "Keep studying!";
+    }
+
+    private void Close()
+    {
+        MudDialog.Close();
+    }
+
+    private void BackToResults()
+    {
+        _showResult = true;
+    }
+
+    private void GoToQuestion(int questionIndex)
+    {
+        if (_quiz is null) return;
+        var idx = -1;
+        for (var j = 0; j < _quiz.Questions.Count; j++)
+        {
+            if (_quiz.Questions[j].Index == questionIndex) { idx = j; break; }
+        }
+        if (idx < 0) return;
+        _currentIndex = idx;
+        _showResult = false;
+        StateHasChanged();
+    }
+
+    private async Task ReviewNext()
+    {
+        if (_currentIndex < (_quiz?.Questions.Count ?? 1) - 1)
+        {
+            _currentIndex++;
+        }
+        else
+        {
+            BackToResults();
+        }
+    }
+}

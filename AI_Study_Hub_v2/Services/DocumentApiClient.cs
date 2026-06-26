@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using AI_Study_Hub_v2.Dtos;
+using AI_Study_Hub_v2.Services.Rag;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -109,6 +110,27 @@ public sealed class DocumentApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    /// <summary>Returns the extracted text chunks for a document.</summary>
+    public async Task<DocumentContentDto> GetContentAsync(
+        string accessToken,
+        Guid id,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/documents/{id}/content");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<DocumentContentDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     /// <summary>Fetches one document by id. The returned DTO carries a 5-minute signed download URL.</summary>
     public async Task<DocumentDto> GetAsync(
         string accessToken,
@@ -150,6 +172,74 @@ public sealed class DocumentApiClient
         {
             var dto = await resp.Content.ReadFromJsonAsync<DocumentDto>(cancellationToken: ct);
             return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    /// <summary>Returns viewer URLs for the Microsoft Office Online Viewer iframe plus a direct download fallback.</summary>
+    public async Task<FileViewUrlResponse> GetFileViewUrlAsync(
+        string accessToken,
+        Guid id,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/documents/{id}/file");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            return await resp.Content.ReadFromJsonAsync<FileViewUrlResponse>(cancellationToken: ct)
+                ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    /// <summary>Renames a document. Only FileName is updated client-side; storage path is unchanged server-side.</summary>
+    public async Task<DocumentDto> RenameAsync(
+        string accessToken,
+        Guid id,
+        string newFileName,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(newFileName);
+
+        using var req = new HttpRequestMessage(HttpMethod.Put, $"api/documents/{id}/rename")
+        {
+            Content = JsonContent.Create(new RenameDocumentRequest { FileName = newFileName })
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<DocumentDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    /// <summary>Triggers a fresh ingestion pipeline run (re-chunk + re-embed) for the document.</summary>
+    public async Task<DocumentIngestionResult> ReIngestAsync(
+        string accessToken,
+        Guid id,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/documents/{id}/ingest");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            return await resp.Content.ReadFromJsonAsync<DocumentIngestionResult>(cancellationToken: ct)
+                ?? new DocumentIngestionResult(id, 0, false, "Server returned empty response.");
         }
         await ThrowFromResponseAsync(resp, ct);
         throw new InvalidOperationException("Unreachable");

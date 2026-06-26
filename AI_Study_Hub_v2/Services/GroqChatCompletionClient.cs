@@ -51,10 +51,13 @@ public sealed class GroqChatCompletionClient : IAiChatCompletionClient
 
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Groq chat completion failed with HTTP {StatusCode}.", (int)response.StatusCode);
+            var statusCode = (int)response.StatusCode;
+            _logger.LogWarning("Groq chat completion failed with HTTP {StatusCode}.", statusCode);
+            var code = statusCode == 429 ? "groq_rate_limited" : "groq_http_error";
             throw new AiChatProviderException(
-                "groq_http_error",
-                $"Groq chat completion failed with HTTP {(int)response.StatusCode}.");
+                code,
+                $"Groq chat completion failed with HTTP {statusCode}.",
+                statusCode: statusCode);
         }
 
         try
@@ -70,7 +73,7 @@ public sealed class GroqChatCompletionClient : IAiChatCompletionClient
         }
         catch (JsonException ex)
         {
-            throw new AiChatProviderException("groq_invalid_response", "Groq returned an invalid response.", ex);
+            throw new AiChatProviderException("groq_invalid_response", "Groq returned an invalid response.", innerException: ex);
         }
     }
 
@@ -90,16 +93,18 @@ public sealed class GroqChatCompletionClient : IAiChatCompletionClient
 
     private object BuildPayload(AiChatCompletionRequest request)
     {
+        var model = request.ModelName
+            ?? (string.IsNullOrWhiteSpace(_options.Model) ? "llama-3.3-70b-versatile" : _options.Model);
         return new
         {
-            model = string.IsNullOrWhiteSpace(_options.Model) ? "llama-3.1-8b-instant" : _options.Model,
+            model,
             messages = new[]
             {
                 new { role = "system", content = request.SystemPrompt },
                 new { role = "user", content = request.UserPrompt },
             },
             temperature = _options.Temperature,
-            max_tokens = _options.MaxTokens > 0 ? _options.MaxTokens : 1024,
+            max_tokens = request.MaxTokens ?? (_options.MaxTokens > 0 ? _options.MaxTokens : 1024),
         };
     }
 

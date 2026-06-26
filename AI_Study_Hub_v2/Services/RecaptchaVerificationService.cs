@@ -1,10 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Net.Http;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
-using System.Threading;
-using System.Threading.Tasks;
 using AI_Study_Hub_v2.Options;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -31,6 +26,9 @@ public sealed class RecaptchaVerificationService : IRecaptchaVerificationService
 
     public bool IsConfigured => _options.IsConfigured;
 
+    public bool ShouldVerify => _options.Enabled && !_options.AllowDevelopmentFallback;
+
+
     public async Task<RecaptchaVerificationResult> VerifyAsync(
         string? token,
         string? remoteIp = null,
@@ -42,6 +40,12 @@ public sealed class RecaptchaVerificationService : IRecaptchaVerificationService
             return RecaptchaVerificationResult.Valid("reCAPTCHA is disabled for this environment.");
         }
 
+        if (_options.AllowDevelopmentFallback)
+        {
+            return RecaptchaVerificationResult.Valid("reCAPTCHA verification bypassed (development fallback).");
+        }
+
+
         if (!_options.IsConfigured)
         {
             return RecaptchaVerificationResult.Invalid("reCAPTCHA is enabled but missing SiteKey or SecretKey configuration.");
@@ -49,10 +53,10 @@ public sealed class RecaptchaVerificationService : IRecaptchaVerificationService
 
         if (string.IsNullOrWhiteSpace(token))
         {
-            return RecaptchaVerificationResult.Invalid("Complete the Google reCAPTCHA v2 challenge before continuing.", new[] { "missing-input-response" });
+            return RecaptchaVerificationResult.Invalid("Complete the reCAPTCHA challenge before continuing.", new[] { "missing-input-response" });
         }
 
-        if (token.Length > 8192)
+        if (token.Length > 10000)
         {
             return RecaptchaVerificationResult.Invalid("reCAPTCHA response token is too long.", new[] { "invalid-input-response" });
         }
@@ -94,7 +98,7 @@ public sealed class RecaptchaVerificationService : IRecaptchaVerificationService
                 return RecaptchaVerificationResult.Invalid("reCAPTCHA verification failed. Please retry the challenge.", body.ErrorCodes);
             }
 
-            return RecaptchaVerificationResult.Valid("Google reCAPTCHA v2 verification passed.");
+            return RecaptchaVerificationResult.Valid("reCAPTCHA verification passed.");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

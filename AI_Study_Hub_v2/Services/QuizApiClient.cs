@@ -20,7 +20,7 @@ public sealed class QuizApiClient
 
     public Task<QuizGenerateResponse> GenerateAsync(
         string accessToken,
-        QuizGenerateRequest request,
+        QuizGenerateRequestV2 request,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
@@ -92,7 +92,7 @@ public sealed class QuizApiClient
 
         return dto with
         {
-            Questions = dto.Questions ?? Array.Empty<QuizQuestionDto>(),
+            Questions = dto.Questions ?? Array.Empty<QuizQuestionDtoV2>(),
             Sources = dto.Sources ?? Array.Empty<QuizSourceDto>(),
         };
     }

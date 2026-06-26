@@ -29,7 +29,7 @@ public sealed class QuizzesController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<QuizGenerateResponse>> Generate(
-        [FromBody] QuizGenerateRequest request,
+        [FromBody] QuizGenerateRequestV2 request,
         CancellationToken cancellationToken)
     {
         if (request is null)
@@ -40,7 +40,7 @@ public sealed class QuizzesController : ControllerBase
         try
         {
             var supabaseUserId = GetSupabaseUserIdFromClaims();
-            var response = await _service.GenerateAsync(supabaseUserId, request, cancellationToken);
+            var response = await _service.GenerateAsyncV2(supabaseUserId, request, cancellationToken);
             return Ok(response);
         }
         catch (AiStudyFeatureException ex)

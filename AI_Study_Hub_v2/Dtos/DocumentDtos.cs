@@ -76,11 +76,41 @@ public sealed class DocumentListQuery
     public string? Q { get; set; }
 }
 
+public sealed class FileViewUrlResponse
+{
+    /// <summary>Microsoft Office Online Viewer URL (iframe src).</summary>
+    public string Url { get; set; } = string.Empty;
+
+    /// <summary>Direct proxy URL for downloading the file (fallback when the embedded viewer is unavailable).</summary>
+    public string? DownloadUrl { get; set; }
+}
+
+public sealed class RenameDocumentRequest
+{
+    [Required]
+    [StringLength(255, MinimumLength = 1)]
+    public string FileName { get; set; } = string.Empty;
+}
+
 public sealed class MoveDocumentFolderRequest
 {
     /// <summary>Target folder id. Null moves the document back to loose documents.</summary>
     public Guid? FolderId { get; set; }
 }
+
+public sealed record DocumentContentChunkDto(
+    int ChunkIndex,
+    int? PageNumber,
+    string Content,
+    int? TokenCount);
+
+public sealed record DocumentContentDto(
+    Guid DocumentId,
+    string FileName,
+    string MimeType,
+    int TotalChunks,
+    int? PageCount,
+    IReadOnlyList<DocumentContentChunkDto> Chunks);
 
 public sealed class FolderDto
 {
@@ -92,9 +122,34 @@ public sealed class FolderDto
 
     public int DocumentCount { get; set; }
 
+    public bool IsFavorite { get; set; }
+
+    public bool IsShared { get; set; }
+
+    public DateTimeOffset? SharedAt { get; set; }
+
+    public string? Icon { get; set; }
+
     public DateTimeOffset CreatedAt { get; set; }
 
     public DateTimeOffset UpdatedAt { get; set; }
+
+    /// <summary>Display name of the folder owner (populated only by shared-list endpoint).</summary>
+    public string? OwnerName { get; set; }
+
+    public int LikeCount { get; set; }
+
+    public int DislikeCount { get; set; }
+
+    /// <summary>Reaction of the current authenticated user (null = no vote, true = like, false = dislike).</summary>
+    public bool? CurrentUserVote { get; set; }
+
+    // UI-only computed properties (not from API)
+    public string? Subject { get; set; }
+    public string? Semester { get; set; }
+    public string? Color { get; set; }
+    public string? BorderColor { get; set; }
+    public string? LastAccessText { get; set; }
 }
 
 public sealed class CreateFolderRequest
@@ -109,10 +164,21 @@ public sealed class CreateFolderRequest
 
 public sealed class UpdateFolderRequest
 {
-    [Required]
     [StringLength(100, MinimumLength = 1)]
-    public string Name { get; set; } = string.Empty;
+    public string? Name { get; set; }
 
     [StringLength(500)]
     public string? Description { get; set; }
+
+    public string? Icon { get; set; }
+
+    public bool? IsFavorite { get; set; }
+
+    public bool? IsShared { get; set; }
+}
+
+public sealed class VoteRequest
+{
+    [Required]
+    public bool IsLike { get; set; }
 }

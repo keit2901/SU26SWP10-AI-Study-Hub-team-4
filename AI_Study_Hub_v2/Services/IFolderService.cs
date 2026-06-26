@@ -23,4 +23,32 @@ public interface IFolderService
         Guid supabaseUserId,
         Guid folderId,
         CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<FolderDto>> ListSharedAsync(
+        CancellationToken cancellationToken = default);
+
+    Task<IReadOnlyList<FolderDto>> ListPersonalSharedAsync(
+        Guid supabaseUserId,
+        CancellationToken cancellationToken = default);
+
+    Task<FolderDto> ToggleFavoriteAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        CancellationToken cancellationToken = default);
+
+    Task<FolderDto> ToggleShareAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        CancellationToken cancellationToken = default);
+
+    Task<FolderDto> VoteAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        bool isLike,
+        CancellationToken cancellationToken = default);
+
+    Task<FolderDto> CopySharedFolderAsync(
+        Guid supabaseUserId,
+        Guid sharedFolderId,
+        CancellationToken cancellationToken = default);
 }

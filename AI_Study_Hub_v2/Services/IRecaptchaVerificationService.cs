@@ -10,6 +10,8 @@ public interface IRecaptchaVerificationService
 
     bool IsConfigured { get; }
 
+    bool ShouldVerify { get; }
+
     Task<RecaptchaVerificationResult> VerifyAsync(
         string? token,
         string? remoteIp = null,

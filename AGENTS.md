@@ -7,11 +7,11 @@
 - Current active branch from latest handoff: `sprint2/integration`.
 
 ## Required context workflow
-- At session start, read the newest relevant handoff under `D:\FPT\summer2026\SWP391\previous_session\`, plus:
-  - `D:\FPT\summer2026\SWP391\previous_session\rule.md`
-  - `D:\FPT\summer2026\SWP391\previous_session\skill.md`
-- Latest loaded handoff as of 2026-05-27: `17_Session_2026-05-27_Sprint2_UI_Redesign_Forum_Handoff.md`.
-- Maintain a live session log in `D:\FPT\summer2026\SWP391\previous_session\` after meaningful actions.
+- At session start, read the newest relevant handoff under `D:\Project\AI_Study_Hub\SU26SWP10-AI-Study-Hub-team-4\SU26SWP10-AI-Study-Hub-team-4\previous_session\`, plus:
+  - `D:\Project\AI_Study_Hub\SU26SWP10-AI-Study-Hub-team-4\SU26SWP10-AI-Study-Hub-team-4\previous_session\rule.md`
+  - `D:\Project\AI_Study_Hub\SU26SWP10-AI-Study-Hub-team-4\SU26SWP10-AI-Study-Hub-team-4\previous_session\skill.md`
+- Latest loaded handoff as of 2026-06-17: `handoff_backend_2026-06-17.md`.
+- Maintain a live session log in `D:\Project\AI_Study_Hub\SU26SWP10-AI-Study-Hub-team-4\SU26SWP10-AI-Study-Hub-team-4\previous_session\` after meaningful actions.
 - If `_CURRENT_SESSION.md` is already owned by another active task, create a topic-specific `_CURRENT_SESSION_<TOPIC>.md` instead of overwriting it.
 - Do not edit old closed `NN_Session_*_Handoff.md` files. Write corrections in the active live log or a new handoff.
 

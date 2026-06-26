@@ -83,6 +83,7 @@ public class AuthControllerTests
         var recaptcha = new Mock<IRecaptchaVerificationService>();
         recaptcha.SetupGet(t => t.IsEnabled).Returns(false);
         recaptcha.SetupGet(t => t.IsConfigured).Returns(false);
+        recaptcha.SetupGet(t => t.ShouldVerify).Returns(false);
         recaptcha.Setup(t => t.VerifyAsync(
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),
@@ -97,6 +98,7 @@ public class AuthControllerTests
         var recaptcha = new Mock<IRecaptchaVerificationService>();
         recaptcha.SetupGet(t => t.IsEnabled).Returns(true);
         recaptcha.SetupGet(t => t.IsConfigured).Returns(true);
+        recaptcha.SetupGet(t => t.ShouldVerify).Returns(true);
         recaptcha.Setup(t => t.VerifyAsync(
                 It.IsAny<string?>(),
                 It.IsAny<string?>(),

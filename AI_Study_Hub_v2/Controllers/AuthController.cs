@@ -34,6 +34,27 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
+        if (!ModelState.IsValid)
+        {
+            var errorMap = new Dictionary<string, string[]>();
+            foreach (var (key, entry) in ModelState)
+            {
+                var messages = entry.Errors?.Select(e => e.ErrorMessage).Where(m => m is not null).Cast<string>().ToArray() ?? [];
+                if (messages.Length > 0)
+                {
+                    errorMap[key] = messages;
+                }
+            }
+            _logger.LogWarning("Register model invalid: {Errors}",
+                string.Join("; ", errorMap.SelectMany(kv => kv.Value.Select(v => $"{kv.Key}: {v}"))));
+            return BadRequest(new ApiErrorResponse
+            {
+                Code = "validation_failed",
+                Message = "One or more fields are invalid.",
+                Errors = errorMap
+            });
+        }
+
         var verification = await VerifyRecaptchaAsync(request.RecaptchaToken, "register", cancellationToken);
         if (verification is not null)
         {
@@ -114,6 +135,11 @@ public sealed class AuthController : ControllerBase
         string action,
         CancellationToken cancellationToken)
     {
+        if (!_recaptcha.ShouldVerify)
+        {
+            return null;
+        }
+
         var result = await _recaptcha.VerifyAsync(token, GetIpAddress(), action, cancellationToken);
         if (result.Success)
         {

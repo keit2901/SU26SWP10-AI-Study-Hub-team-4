@@ -10,6 +10,8 @@ namespace AI_Study_Hub_v2.Services;
 public sealed class AiChatApiClient
 {
     private const string AskPath = "api/ai/chat/ask";
+    private const string SessionsPath = "api/ai/chat/sessions";
+    private const string QuizPath = "api/quiz";
 
     private readonly HttpClient _http;
 
@@ -66,6 +68,167 @@ public sealed class AiChatApiClient
 
         await ThrowFromResponseAsync(resp, cancellationToken);
         throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<IReadOnlyList<ChatSessionDto>> ListSessionsAsync(string accessToken, Guid? folderId = null, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        var url = folderId.HasValue
+            ? $"{SessionsPath}?folderId={folderId.Value}"
+            : SessionsPath;
+        using var req = new HttpRequestMessage(HttpMethod.Get, url);
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var result = await resp.Content.ReadFromJsonAsync<List<ChatSessionDto>>(cancellationToken: ct) ?? new List<ChatSessionDto>();
+            return result;
+        }
+
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<ChatSessionDto> CreateSessionAsync(string accessToken, CreateChatSessionRequest request, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, SessionsPath)
+        {
+            Content = JsonContent.Create(request),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var result = await resp.Content.ReadFromJsonAsync<ChatSessionDto>(cancellationToken: ct);
+            return result ?? throw new AiChatApiException(500, "empty_response", "Server returned empty session.");
+        }
+
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<IReadOnlyList<ChatMessageDto>> GetSessionMessagesAsync(string accessToken, Guid sessionId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{SessionsPath}/{sessionId}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var result = await resp.Content.ReadFromJsonAsync<List<ChatMessageDto>>(cancellationToken: ct) ?? new List<ChatMessageDto>();
+            return result;
+        }
+
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task DeleteSessionAsync(string accessToken, Guid sessionId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Delete, $"{SessionsPath}/{sessionId}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            await ThrowFromResponseAsync(resp, ct);
+        }
+    }
+
+    public async Task<QuizDto> GenerateQuizAsync(string accessToken, GenerateQuizRequest request, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"{QuizPath}/generate")
+        {
+            Content = JsonContent.Create(request),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<QuizDto>(cancellationToken: ct);
+            return dto ?? throw new AiChatApiException(500, "empty_response", "Server returned empty quiz.");
+        }
+
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<QuizDto?> ResumeQuizAsync(string accessToken, Guid sessionId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{QuizPath}/resume?sessionId={sessionId}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<QuizDto>(cancellationToken: ct);
+            return dto;
+        }
+
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<QuizDto?> GetQuizAsync(string accessToken, Guid quizId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"{QuizPath}/{quizId}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.StatusCode == System.Net.HttpStatusCode.NotFound)
+        {
+            return null;
+        }
+
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<QuizDto>(cancellationToken: ct);
+            return dto;
+        }
+
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task SaveQuizAsync(string accessToken, Guid quizId, SaveQuizRequest request, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var req = new HttpRequestMessage(HttpMethod.Patch, $"{QuizPath}/{quizId}/save")
+        {
+            Content = JsonContent.Create(request),
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode)
+        {
+            await ThrowFromResponseAsync(resp, ct);
+        }
     }
 
     private static async Task ThrowFromResponseAsync(HttpResponseMessage resp, CancellationToken cancellationToken)

@@ -77,6 +77,21 @@ public class DocumentServiceTests
         return doc;
     }
 
+    private static Folder SeedFolder(AppDbContext db, Guid userId, string name = "Sprint notes")
+    {
+        var folder = new Folder
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            Name = name,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Folders.Add(folder);
+        db.SaveChanges();
+        return folder;
+    }
+
     private static UploadDocumentRequest UploadReq(string subject = "SWP391", string semester = "SU26", Guid? folderId = null) => new()
     {
         SubjectCode = subject,
@@ -397,29 +412,76 @@ public class DocumentServiceTests
     }
 
     [Test]
-    public async Task UploadAsync_SupabaseStorageException_Throws503StorageUnavailable_AndDoesNotInsertRow()
+    public async Task UploadAsync_FolderFull_Throws409()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
         var profile = SeedActiveStudent(db);
-        var storage = new Mock<ISupabaseStorageClient>();
-        storage.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(),
-                It.IsAny<string>(), false, It.IsAny<CancellationToken>()))
-            .ThrowsAsync(new SupabaseStorageException("storage service unavailable"));
+        var folder = SeedFolder(db, profile.Id);
+
+        for (int i = 0; i < DocumentService.MaxDocumentsPerFolder; i++)
+        {
+            SeedDocument(db, profile.Id, folderId: folder.Id, fileName: $"doc{i}.pdf");
+        }
+
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
         var sut = BuildSut(db, storage.Object);
 
-        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
-            fileName: "x.pdf", contentType: "application/pdf",
+        var act = () => sut.UploadAsync(profile.SupabaseUserId,
+            UploadReq(folderId: folder.Id),
+            fileName: "overflow.pdf", contentType: "application/pdf",
             fileSizeBytes: 100, content: Stream(100));
 
         var ex = await act.Should().ThrowAsync<DocumentException>();
-        ex.Which.StatusCode.Should().Be(503);
-        ex.Which.Code.Should().Be("storage_unavailable");
-        ex.Which.Message.Should().Contain("Document storage is unavailable");
-        (await db.Documents.CountAsync()).Should().Be(0);
+        ex.Which.StatusCode.Should().Be(409);
+        ex.Which.Code.Should().Be("folder_full");
     }
 
     [Test]
-    public async Task UploadAsync_UnexpectedStorageException_Bubbles_AndDoesNotInsertRow()
+    public async Task UploadAsync_DuplicateFileNameInFolder_Throws409()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var folder = SeedFolder(db, profile.Id);
+        SeedDocument(db, profile.Id, folderId: folder.Id, fileName: "report.pdf");
+
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        var sut = BuildSut(db, storage.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId,
+            UploadReq(folderId: folder.Id),
+            fileName: "Report.pdf", contentType: "application/pdf",
+            fileSizeBytes: 100, content: Stream(100));
+
+        var ex = await act.Should().ThrowAsync<DocumentException>();
+        ex.Which.StatusCode.Should().Be(409);
+        ex.Which.Code.Should().Be("duplicate_file");
+    }
+
+    [Test]
+    public async Task UploadAsync_DuplicateFileNameOutsideFolder_Allowed()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var folderA = SeedFolder(db, profile.Id, "A");
+        var folderB = SeedFolder(db, profile.Id, "B");
+        SeedDocument(db, profile.Id, folderId: folderA.Id, fileName: "same.pdf");
+
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(),
+            It.IsAny<string>(), false, It.IsAny<CancellationToken>())).ReturnsAsync("ok");
+        var sut = BuildSut(db, storage.Object);
+
+        var dto = await sut.UploadAsync(profile.SupabaseUserId,
+            UploadReq(folderId: folderB.Id),
+            fileName: "same.pdf", contentType: "application/pdf",
+            fileSizeBytes: 100, content: Stream(100));
+
+        dto.FolderId.Should().Be(folderB.Id);
+        dto.FileName.Should().Be("same.pdf");
+    }
+
+    [Test]
+    public async Task UploadAsync_StorageUploadThrows_Bubbles_AndDoesNotInsertRow()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
         var profile = SeedActiveStudent(db);
@@ -736,10 +798,8 @@ public class DocumentServiceTests
     }
 
     [Test]
-    public async Task DeleteAsync_StorageDeleteThrows_StillRemovesRow_AndSwallowsException()
+    public async Task DeleteAsync_StorageDeleteThrows_DoesNotRemoveRow()
     {
-        // Best-effort cleanup contract: a leaked storage object is recoverable; a
-        // dangling DB row pointing at a missing object is worse for UX.
         using var db = TestDb.CreateInMemoryWithDocuments();
         var me = SeedActiveStudent(db);
         var doc = SeedDocument(db, me.Id);
@@ -750,9 +810,10 @@ public class DocumentServiceTests
             .ThrowsAsync(new HttpRequestException("storage 503"));
         var sut = BuildSut(db, storage.Object);
 
-        await sut.DeleteAsync(me.SupabaseUserId, doc.Id); // must NOT throw
+        var act = () => sut.DeleteAsync(me.SupabaseUserId, doc.Id);
 
-        (await db.Documents.CountAsync()).Should().Be(0);
+        await act.Should().ThrowAsync<HttpRequestException>();
+        (await db.Documents.CountAsync()).Should().Be(1); // row preserved
         storage.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 }

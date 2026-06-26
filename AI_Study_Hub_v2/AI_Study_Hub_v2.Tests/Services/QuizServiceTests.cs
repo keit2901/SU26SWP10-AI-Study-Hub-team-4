@@ -1,10 +1,14 @@
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
+using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using Moq;
 
 namespace AI_Study_Hub_v2.Tests.Services;
@@ -35,9 +39,9 @@ public sealed class QuizServiceTests
                 new RagSearchResultDto("S2", Guid.NewGuid(), "quiz.pdf", 1, 3, "Quiz generation should reuse retrieved context deterministically.", 0.2),
             });
 
-        var sut = new QuizService(db, rag.Object);
+        var sut = CreateSut(db, rag.Object);
 
-        var response = await sut.GenerateAsync(user.SupabaseUserId, new QuizGenerateRequest(
+        var response = await sut.GenerateAsyncV2(user.SupabaseUserId, new QuizGenerateRequestV2(
             Prompt: " rag quiz ",
             DocumentId: documentId,
             FolderId: folderId,
@@ -77,9 +81,9 @@ public sealed class QuizServiceTests
         var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
         rag.Setup(s => s.SearchAsync(It.IsAny<Guid>(), It.IsAny<RagSearchRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(Array.Empty<RagSearchResultDto>());
-        var sut = new QuizService(db, rag.Object);
+        var sut = CreateSut(db, rag.Object);
 
-        var act = () => sut.GenerateAsync(user.SupabaseUserId, new QuizGenerateRequest("RAG"));
+        var act = () => sut.GenerateAsyncV2(user.SupabaseUserId, new QuizGenerateRequestV2("RAG"));
 
         var ex = await act.Should().ThrowAsync<AiStudyFeatureException>();
         ex.Which.StatusCode.Should().Be(404);
@@ -99,8 +103,8 @@ public sealed class QuizServiceTests
             {
                 new RagSearchResultDto("S1", Guid.NewGuid(), "rag.pdf", 0, 1, "RAG retrieves relevant document chunks before answering.", 0.1),
             });
-        var sut = new QuizService(db, rag.Object);
-        var quiz = await sut.GenerateAsync(user.SupabaseUserId, new QuizGenerateRequest("RAG retrieval", QuestionCount: 1));
+        var sut = CreateSut(db, rag.Object);
+        var quiz = await sut.GenerateAsyncV2(user.SupabaseUserId, new QuizGenerateRequestV2("RAG retrieval", QuestionCount: 1));
 
         var response = await sut.SubmitAsync(user.SupabaseUserId, quiz.QuizId, new QuizSubmitRequest(new[]
         {
@@ -112,11 +116,9 @@ public sealed class QuizServiceTests
         response.Results.Should().ContainSingle().Which.CorrectOptionId.Should().Be("B");
         response.Results[0].Explanation.Should().Contain("S1");
 
-        var attempt = await db.QuizAttempts.AsNoTracking().SingleAsync();
-        attempt.QuizId.Should().Be(quiz.QuizId);
-        attempt.UserId.Should().Be(user.Id);
-        attempt.Score.Should().Be(1);
-        attempt.Total.Should().Be(1);
+        // Quiz is updated with score in the database
+        var updatedQuiz = await db.Quizzes.AsNoTracking().SingleAsync(q => q.Id == quiz.QuizId);
+        updatedQuiz.Score.Should().Be(1);
         rag.VerifyAll();
     }
 
@@ -137,13 +139,29 @@ public sealed class QuizServiceTests
         };
         db.Quizzes.Add(quiz);
         await db.SaveChangesAsync();
-        var sut = new QuizService(db, Mock.Of<IRagSearchService>());
+        var sut = CreateSut(db, Mock.Of<IRagSearchService>());
 
         var act = () => sut.SubmitAsync(other.SupabaseUserId, quiz.Id, new QuizSubmitRequest(Array.Empty<QuizAnswerDto>()));
 
         var ex = await act.Should().ThrowAsync<AiStudyFeatureException>();
         ex.Which.StatusCode.Should().Be(404);
         ex.Which.Code.Should().Be("quiz_not_found");
+    }
+
+    private static QuizService CreateSut(AppDbContext db, IRagSearchService rag)
+    {
+        var groqOptions = Microsoft.Extensions.Options.Options.Create(new GroqOptions
+        {
+            ApiKey = "test-key",
+            Model = "llama-3.3-70b-versatile",
+        });
+        return new QuizService(
+            db,
+            rag,
+            Mock.Of<IAiChatCompletionClientFactory>(),
+            groqOptions,
+            Mock.Of<IChatPersistenceService>(),
+            Mock.Of<ILogger<QuizService>>());
     }
 
     private static User SeedActiveStudent(AppDbContext db)

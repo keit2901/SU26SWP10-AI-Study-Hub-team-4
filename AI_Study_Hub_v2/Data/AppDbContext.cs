@@ -19,11 +19,19 @@ public class AppDbContext : DbContext
 
     public DbSet<DocumentChunk> DocumentChunks => Set<DocumentChunk>();
 
+    public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
+
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+
     public DbSet<AiAnswerReport> AiAnswerReports => Set<AiAnswerReport>();
 
     public DbSet<Quiz> Quizzes => Set<Quiz>();
 
     public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
+
+    public DbSet<FolderReaction> FolderReactions => Set<FolderReaction>();
+
+    public DbSet<CommunityReport> CommunityReports => Set<CommunityReport>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -77,6 +85,22 @@ public class AppDbContext : DbContext
         }
 
         foreach (var entry in ChangeTracker.Entries<Document>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAt = now;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<ChatSession>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAt = now;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<Quiz>())
         {
             if (entry.State == EntityState.Modified)
             {

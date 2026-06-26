@@ -1,0 +1,1288 @@
+@page "/documents"
+@using AI_Study_Hub_v2.Data.Entities
+@inject DocumentApiClient DocumentsApi
+@inject FolderApiClient FoldersApi
+@inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+@inject IDialogService Dialogs
+
+<PageTitle>Document Library - AI Study Hub v2</PageTitle>
+
+<style>
+    .library-layout { display: flex; min-height: calc(100vh - 56px); background: #f8f9fc; }
+    .library-left-rail { width: 240px; flex-shrink: 0; padding: 16px; background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 16px; }
+    .library-center-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+    .library-right-rail { width: 300px; flex-shrink: 0; padding: 16px; background: #fff; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 16px; }
+    .glass-card { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; padding: 16px; }
+    .welcome-banner { background: linear-gradient(135deg, #eef2ff 0%, #f8f9fc 60%, #f0fdf4 100%); padding: 24px 32px; border-bottom: 1px solid #e2e8f0; position: relative; overflow: hidden; }
+    .banner-orb { position: absolute; border-radius: 50%; pointer-events: none; }
+    .banner-orb-one { top: -40px; right: 200px; width: 200px; height: 200px; background: rgba(99,102,241,0.05); }
+    .banner-orb-two { bottom: -60px; right: 80px; width: 280px; height: 280px; background: rgba(16,185,129,0.04); }
+    .banner-content { position: relative; z-index: 1; }
+    .banner-breadcrumb { font-size: 10px; color: #6366f1; font-weight: 700; letter-spacing: 1px; display: block; margin-bottom: 12px; }
+    .banner-greeting { font-size: 28px !important; font-weight: 800 !important; color: #1e293b; }
+    .banner-date-text { color: #94a3b8; font-size: 13px; margin-top: 4px; }
+    .banner-actions { display: flex; gap: 12px; align-items: center; }
+    .banner-action-button { border-radius: 0.85rem !important; text-transform: none !important; font-weight: 700 !important; font-size: 0.75rem !important; padding: 4px 14px !important; min-height: 0 !important; letter-spacing: 0.02em; white-space: nowrap; }
+    .banner-action-primary { box-shadow: 0 4px 16px rgba(16,185,129,0.25) !important; }
+    .banner-action-secondary { border-radius: 0.85rem !important; }
+    .banner-flex-row { display: flex; justify-content: space-between; align-items: flex-start; }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px 32px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+    .stat-card { display: flex; align-items: center; gap: 16px; padding: 16px !important; border-radius: 12px !important; }
+    .stat-card-violet { background: #f5f3ff; border: 1px solid #ddd6fe; }
+    .stat-card-green { background: #f0fdf4; border: 1px solid #bbf7d0; }
+    .stat-card-amber { background: #fffbeb; border: 1px solid #fde68a; }
+    .stat-icon { width: 44px; height: 44px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .stat-icon-violet { background: #ede9fe; }
+    .stat-icon-violet .mud-icon { color: #6366f1 !important; }
+    .stat-icon-green { background: #dcfce7; }
+    .stat-icon-green .mud-icon { color: #10b981 !important; }
+    .stat-icon-amber { background: #fef3c7; }
+    .stat-icon-amber .mud-icon { color: #f59e0b !important; }
+    .stat-value { font-size: 28px !important; font-weight: 800 !important; color: #1e293b; line-height: 1.1; margin: 0; }
+    .stat-label { font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; color: #94a3b8; margin: 0; }
+    .folders-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin: 24px 32px; }
+    .folders-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .folders-header-left { display: flex; align-items: center; gap: 8px; }
+    .folders-header-title { font-size: 14px !important; font-weight: 700 !important; color: #1e293b; }
+    .folders-header-right { display: flex; align-items: center; gap: 12px; }
+    .folder-dots { display: flex; align-items: center; gap: 6px; }
+    .folder-dot { width: 6px; height: 6px; border-radius: 3px; background: #e2e8f0; cursor: pointer; transition: all 0.2s; border: none; padding: 0; }
+    .folder-dot-active { width: 20px; height: 6px; border-radius: 3px; background: #6366f1; cursor: pointer; transition: all 0.2s; border: none; padding: 0; }
+    .folder-card { transition: all 0.15s; cursor: pointer; position: relative; border-radius: 12px !important; background: #fff !important; border: 1px solid #e2e8f0 !important; padding: 16px; }
+    .folder-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .folder-card-more { position: absolute; top: 8px; right: 8px; color: #94a3b8; cursor: pointer; }
+    .folder-card-menu-btn { position: absolute; top: 8px; right: 8px; z-index: 2000; color: #94a3b8; }
+    .folder-card-menu-btn:hover { color: #6366f1; }
+    .folder-card-dropdown { position: absolute; top: 32px; right: 8px; z-index: 2000; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 6px; min-width: 170px; }
+    .folder-card-dropdown-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; font-size: 13px; color: #1e293b; border-radius: 6px; transition: background 0.1s; }
+    .folder-card-dropdown-item:hover { background: #f8fafc; }
+    .folder-card-icon-box { width: 40px; height: 40px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; position: relative; }
+    .folder-card-fav-btn { position: absolute; bottom: -6px; right: -6px; z-index: 3; }
+    .folder-card-fav-btn .mud-icon-button { width: 20px; height: 20px; padding: 0; }
+    .folder-card-fav-btn .mud-icon-button .mud-icon-size-small { font-size: 14px; }
+    .folder-card-name { font-weight: 700 !important; font-size: 12px !important; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
+    .folder-card-subject { margin-bottom: 4px; }
+    .folder-card-semester { font-size: 11px !important; color: #94a3b8; margin-bottom: 2px; }
+    .folder-card-docs { font-size: 11px !important; color: #94a3b8; display: flex; align-items: center; gap: 4px; }
+    .filter-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 0 32px; margin-bottom: 20px; }
+    .filter-select { min-width: 140px; }
+    .filter-search { flex: 1; min-width: 180px; }
+    .filter-btn { }
+    .document-table-section { padding: 0 32px 32px; }
+    .document-table { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
+    .table-header-cell { color: #94a3b8 !important; font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; background: #f8fafc; padding: 12px 8px !important; }
+    .table-cell { font-size: 12px !important; color: #475569; padding: 8px !important; }
+    .doc-name { font-weight: 600; color: #1e293b; font-size: 13px; }
+    .table-actions { display: flex; gap: 4px; }
+    .pagination-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; gap: 16px; flex-wrap: wrap; }
+    .pagination-left { flex: 1; }
+    .pagination-center { display: flex; align-items: center; gap: 4px; }
+    .pagination-right { display: flex; align-items: center; gap: 8px; }
+    .page-size-select { min-width: 120px; }
+    .go-to-page { display: flex; align-items: center; gap: 4px; }
+    .go-to-input { max-width: 80px; }
+    .pagination-nav-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #e2e8f0; background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
+    .pagination-nav-btn:hover { border-color: #6366f1; background: #f5f3ff; }
+    .pagination-nav-btn:disabled { opacity: 0.4; cursor: default; }
+    .page-number-btn { min-width: 32px; height: 32px; border-radius: 6px !important; font-size: 13px !important; font-weight: 600 !important; padding: 0 8px !important; }
+    .page-number-btn-active { background: #6366f1 !important; color: #fff !important; border-color: #6366f1 !important; }
+    .page-number-btn-inactive { background: #fff !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; }
+    .recent-folders-list { display: flex; flex-direction: column; gap: 8px; }
+    .recent-folder-card { display: flex; align-items: center; gap: 12px; padding: 12px !important; border-radius: 10px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s; background: #fff; }
+    .recent-folder-card:hover { transform: translateX(4px); }
+    .recent-folder-icon-box { width: 36px; height: 36px; border-radius: 6px; background: #fff; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .recent-folder-info { flex: 1; min-width: 0; }
+    .recent-folder-name { font-weight: 600 !important; font-size: 12px !important; color: #1e293b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .recent-folder-meta { font-size: 10px !important; color: #94a3b8; display: flex; align-items: center; gap: 4px; }
+    .library-panel-header { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+    .library-panel-header .mud-text { font-weight: 700 !important; font-size: 13px !important; color: #1e293b; }
+    .right-panel-title { font-size: 15px !important; font-weight: 800 !important; color: #1e293b; }
+    .right-panel-subtitle { font-size: 11px !important; color: #94a3b8; margin-bottom: 12px; }
+    .library-ai-panel { }
+    .library-folder-nav { }
+    .library-recent-folders { }
+    .folder-nav-active { background: rgba(99,102,241,0.1) !important; border-radius: 8px; }
+    .folder-nav-active .mud-icon { color: #6366f1 !important; }
+    .empty-folders-card { padding: 32px !important; text-align: center; }
+    .empty-table-card { padding: 64px 16px !important; text-align: center; }
+    .empty-table-icon { width: 64px; height: 64px; border-radius: 50%; background: #f5f3ff; border: 2px solid #ddd6fe; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; }
+    .mb-4 { margin-bottom: 16px; }
+    .flex-grow-1 { flex: 1; }
+    .sidebar-folder-pagination { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 8px; padding-top: 8px; border-top: 1px solid #e2e8f0; }
+    .sidebar-page-btn { background: none; border: 1px solid #e2e8f0; border-radius: 6px; padding: 2px 8px; cursor: pointer; display: flex; align-items: center; color: #475569; font-size: 12px; }
+    .sidebar-page-btn:disabled { opacity: 0.35; cursor: default; }
+    .sidebar-page-btn:hover:not(:disabled) { background: #f1f5f9; }
+    .sidebar-page-info { font-size: 11px; color: #64748b; font-weight: 600; }
+    /* Override parent layout width constraint so this page spans edge-to-edge */
+    .page:has(.library-layout) > .main-stage > .content {
+        width: 100% !important;
+        max-width: 100% !important;
+        margin: 0 !important;
+    }
+</style>
+
+@if (_loading && _documents.Count == 0)
+{
+    <MudPaper Class="pa-8" Elevation="0" Outlined="false">
+        <MudStack AlignItems="AlignItems.Center" Spacing="3">
+            <MudProgressCircular Indeterminate="true" Size="Size.Large" />
+            <MudText Typo="Typo.body1" Color="Color.Secondary">Loading your document library...</MudText>
+        </MudStack>
+    </MudPaper>
+}
+else if (!Session.IsAuthenticated)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Filled">
+        Please sign in to access your document library.
+    </MudAlert>
+}
+else
+{
+    <div class="library-layout">
+        <aside class="library-left-rail">
+            <MudPaper Class="library-ai-panel glass-card" Elevation="0" Outlined="false">
+                <div class="library-panel-header">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" Color="Color.Primary" />
+                    <MudText Typo="Typo.subtitle2">AI Study Panel</MudText>
+                </div>
+                <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">
+                    Ask questions, generate summaries, and create quizzes from your documents.
+                </MudText>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.Chat"
+                           Href="/ai/chat"
+                           Class="premium-button">
+                    Open AI Chat
+                </MudButton>
+            </MudPaper>
+
+            <MudPaper Class="library-folder-nav glass-card" Elevation="0" Outlined="false">
+                <div class="library-panel-header">
+                    <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle2">Folders</MudText>
+                </div>
+                <MudList T="string" Dense="true">
+                    <MudListItem Icon="@Icons.Material.Filled.FolderSpecial"
+                                 Text="All Documents"
+                                 OnClick="@(() => { FilterByFolder(null); _sidebarFolderPage = 1; })"
+                                 Class="@(_filterFolderId is null ? "folder-nav-active" : "")" />
+                    @foreach (var folder in _pagedSidebarFolders)
+                    {
+                        <MudListItem OnClick="@(() => { FilterByFolder(folder.Id); _sidebarFolderPage = 1; })"
+                                     Class="@(_filterFolderId == folder.Id ? "folder-nav-active" : "")">
+                            <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Style="@GetFolderIconStyle(folder)" />
+                            <span class="ml-2">@folder.Name</span>
+                        </MudListItem>
+                    }
+                </MudList>
+                @if (_folders.Count > SidebarFolderPageSize)
+                {
+                    <div class="sidebar-folder-pagination">
+                        <button type="button"
+                                class="sidebar-page-btn"
+                                disabled="@(_sidebarFolderPage <= 1)"
+                                @onclick="@(() => _sidebarFolderPage = Math.Max(1, _sidebarFolderPage - 1))">
+                            <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" />
+                        </button>
+                        <span class="sidebar-page-info">@_sidebarFolderPage / @_totalSidebarFolderPages</span>
+                        <button type="button"
+                                class="sidebar-page-btn"
+                                disabled="@(_sidebarFolderPage >= _totalSidebarFolderPages)"
+                                @onclick="@(() => _sidebarFolderPage = Math.Min(_totalSidebarFolderPages, _sidebarFolderPage + 1))">
+                            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
+                        </button>
+                    </div>
+                }
+            </MudPaper>
+        </aside>
+
+        <main class="library-center-stage">
+            <section class="welcome-banner" aria-labelledby="welcome-title">
+                <div class="banner-orb banner-orb-one" aria-hidden="true"></div>
+                <div class="banner-orb banner-orb-two" aria-hidden="true"></div>
+                <div class="banner-content">
+                    <span class="banner-breadcrumb">STUDY HUB &gt; DASHBOARD</span>
+                    <div class="banner-flex-row">
+                        <div>
+                            <MudText id="welcome-title" Typo="Typo.h3" Class="banner-greeting">@GetGreetingHtml()</MudText>
+                            <MudText Typo="Typo.body1" Class="banner-date-text">@GetCurrentDateString() — what knowledge will you conquer today?</MudText>
+                        </div>
+                        <div class="banner-actions">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Success"
+                                       Size="Size.Small"
+                                       Class="banner-action-button banner-action-primary"
+                                       StartIcon="@Icons.Material.Filled.Explore"
+                                       Href="/ai/chat">
+                                EXPLORE NEW TOPICS
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined"
+                                       Size="Size.Small"
+                                       Class="banner-action-button banner-action-secondary"
+                                       StartIcon="@Icons.Material.Filled.CloudUpload"
+                                       Href="/documents/upload">
+                                UPLOAD DOCUMENTS
+                            </MudButton>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <div class="stats-grid">
+                <MudPaper Class="stat-card stat-card-violet" Elevation="0" Outlined="false">
+                    <span class="stat-icon stat-icon-violet">
+                        <MudIcon Icon="@Icons.Material.Outlined.Folder" Size="Size.Small" />
+                    </span>
+                    <div class="stat-info">
+                        <MudText Typo="Typo.h4" Class="stat-value">@_totalFolders</MudText>
+                        <MudText Typo="Typo.body2" Class="stat-label">FOLDERS</MudText>
+                        <MudText Typo="Typo.caption" Class="stat-desc" Style="font-size:10px;color:#94a3b8;">Total folders</MudText>
+                    </div>
+                </MudPaper>
+
+                <MudPaper Class="stat-card stat-card-green" Elevation="0" Outlined="false">
+                    <span class="stat-icon stat-icon-green">
+                        <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                    </span>
+                    <div class="stat-info">
+                        <MudText Typo="Typo.h4" Class="stat-value">@_totalDocuments</MudText>
+                        <MudText Typo="Typo.body2" Class="stat-label">DOCUMENTS</MudText>
+                        <MudText Typo="Typo.caption" Class="stat-desc" Style="font-size:10px;color:#94a3b8;">Documents in library</MudText>
+                    </div>
+                </MudPaper>
+
+                <MudPaper Class="stat-card stat-card-amber" Elevation="0" Outlined="false">
+                    <span class="stat-icon stat-icon-amber">
+                        <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" />
+                    </span>
+                    <div class="stat-info">
+                        <MudText Typo="Typo.h4" Class="stat-value">0</MudText>
+                        <MudText Typo="Typo.body2" Class="stat-label">ONLINE USERS</MudText>
+                        <MudText Typo="Typo.caption" Class="stat-desc" Style="font-size:10px;color:#94a3b8;">Users online</MudText>
+                    </div>
+                </MudPaper>
+            </div>
+
+            <section class="folders-section" aria-labelledby="folders-title">
+                <div class="folders-header">
+                    <div class="folders-header-left">
+                        <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Color="Color.Primary" />
+                        <MudText id="folders-title" Class="folders-header-title">My Folders</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@_folders.Count</MudChip>
+                    </div>
+                    <div class="folders-header-right">
+                        <div class="folder-dots">
+                            @for (int i = 1; i <= _totalFolderPages; i++)
+                            {
+                                var page = i;
+                                <button class="@(page == _folderPage ? "folder-dot-active" : "folder-dot")"
+                                        @onclick="() => _folderPage = page"
+                                        aria-label="@("Page " + page)">
+                                </button>
+                            }
+                        </div>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.CreateNewFolder"
+                                   OnClick="ShowCreateFolderDialogAsync">
+                            Create New
+                        </MudButton>
+                    </div>
+                </div>
+
+                @if (_folders.Count == 0)
+                {
+                    <MudPaper Class="empty-folders-card glass-card" Elevation="0" Outlined="false">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.FolderOff" Size="Size.Large" Color="Color.Secondary" />
+                            <MudText Typo="Typo.body1" Color="Color.Secondary">No folders yet. Create your first folder!</MudText>
+                        </MudStack>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudGrid>
+                        @{
+                            var fc = new[] { "#6366f1", "#10b981", "#f59e0b", "#3b82f6", "#ec4899", "#8b5cf6", "#64748b", "#94a3b8" };
+                        }
+                        @foreach (var folder in _pagedFolders)
+                        {
+                            var idx = _folders.IndexOf(folder);
+                            var color = fc[idx % fc.Length];
+                            <MudItem xs="12" sm="6" md="4" lg="3">
+                                <MudPaper Class="folder-card" Elevation="0" Outlined="false" Style="@("border-color: " + color + " !important;")">
+                                    <div @onclick="@(() => HandleFolderClick(folder))" @ondblclick="@(() => HandleFolderDoubleClick(folder))" style="cursor:pointer;position:relative;">
+                                        <div class="folder-card-icon-box" style="@("border: 2px solid " + color + ";")">
+                                            <MudIcon Icon="@GetFolderIcon(folder)" Size="Size.Small" Style="@("color: " + color + ";")" />
+                                            <span @onclick:stopPropagation class="folder-card-fav-btn">
+                                                <MudIconButton Icon="@(folder.IsFavorite ? Icons.Material.Filled.Favorite : Icons.Material.Outlined.FavoriteBorder)"
+                                                               Size="Size.Small"
+                                                               Color="@(folder.IsFavorite ? Color.Error : Color.Default)"
+                                                               OnClick="@(() => ToggleFavoriteAsync(folder))" />
+                                            </span>
+                                        </div>
+                                        <MudText Class="folder-card-name">@folder.Name</MudText>
+                                        @if (!string.IsNullOrWhiteSpace(folder.Subject))
+                                        {
+                                            <div class="folder-card-subject">
+                                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">@folder.Subject</MudChip>
+                                            </div>
+                                        }
+                                        <MudText Class="folder-card-semester">@folder.Semester</MudText>
+                                        <div class="folder-card-docs">
+                                            <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
+                                            <span>@folder.DocumentCount documents</span>
+                                        </div>
+                                        <span @onclick:stopPropagation>
+                                            <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" Class="folder-card-menu-btn" OnClick="@(() => ToggleFolderMenu(folder.Id))" />
+                                        </span>
+                                        @if (_openMenuFolderId == folder.Id)
+                                        {
+                                            <div @onclick="@(() => _openMenuFolderId = null)" style="position:absolute;top:0;left:0;right:0;bottom:0;background:transparent;z-index:999;border-radius:12px;" />
+                                            <div class="folder-card-dropdown" @onclick:stopPropagation>
+                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ShowRenameFolderDialogAsync(folder); })">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
+                                                    <span>Rename</span>
+                                                </div>
+                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ShowChangeFolderIconDialogAsync(folder); })">
+                                                    <MudIcon Icon="@Icons.Material.Filled.EmojiSymbols" Size="Size.Small" />
+                                                    <span>Change Icon</span>
+                                                </div>
+                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ToggleShareAsync(folder); })">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" Color="@(folder.IsShared ? Color.Primary : Color.Default)" />
+                                                    <span>@(folder.IsShared ? "Unshare" : "Share")</span>
+                                                </div>
+                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ConfirmDeleteFolderAsync(folder); })">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" />
+                                                    <span>Delete</span>
+                                                </div>
+                                            </div>
+                                        }
+                                    </div>
+                                </MudPaper>
+                            </MudItem>
+                        }
+                    </MudGrid>
+                }
+            </section>
+
+            <section class="filter-toolbar" aria-label="Document filters">
+                <MudSelect T="string"
+                           Label="Subject"
+                           @bind-Value="_filterSubject"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Class="filter-select">
+                    <MudSelectItem T="string" Value="@null">All Subjects</MudSelectItem>
+                    @foreach (var subject in _uniqueSubjects)
+                    {
+                        <MudSelectItem T="string" Value="@subject">@subject</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudSelect T="string"
+                           Label="Semester"
+                           @bind-Value="_filterSemester"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Class="filter-select">
+                    <MudSelectItem T="string" Value="@null">All Semesters</MudSelectItem>
+                    @foreach (var semester in _uniqueSemesters)
+                    {
+                        <MudSelectItem T="string" Value="@semester">@semester</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudSelect T="Guid?"
+                           Label="Folder"
+                           @bind-Value="_filterFolderId"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           Clearable="true"
+                           Class="filter-select">
+                    <MudSelectItem T="Guid?" Value="@null">All Folders</MudSelectItem>
+                    @foreach (var folder in _folders)
+                    {
+                        <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name</MudSelectItem>
+                    }
+                </MudSelect>
+
+                <MudTextField T="string"
+                              @bind-Value="_searchQuery"
+                              Placeholder="Search documents..."
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Search"
+                              Class="filter-search" />
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           OnClick="ApplyFilters"
+                           Class="filter-btn">
+                            FILTER
+                </MudButton>
+
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Secondary"
+                           Size="Size.Small"
+                           OnClick="ClearFilters"
+                           Class="filter-btn">
+                    CLEAR FILTER
+                </MudButton>
+            </section>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true" Class="my-3">
+                    @_error
+                </MudAlert>
+            }
+
+            <section class="document-table-section" aria-label="Document list">
+                @if (_pagedDocuments.Count == 0)
+                {
+                    <MudPaper Class="empty-table-card glass-card" Elevation="0" Outlined="false">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                            <div class="empty-table-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.AutoStories" Size="Size.Large" Color="Color.Primary" />
+                            </div>
+                            <MudText Typo="Typo.h6">No documents found</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                @if (!string.IsNullOrEmpty(_searchQuery) || !string.IsNullOrEmpty(_filterSubject) || !string.IsNullOrEmpty(_filterSemester) || _filterFolderId.HasValue)
+                                {
+                                    <span>Try adjusting your search or filters.</span>
+                                }
+                                else
+                                {
+                                    <span>Upload your first document to get started.</span>
+                                }
+                            </MudText>
+                            @if (!string.IsNullOrEmpty(_searchQuery) || !string.IsNullOrEmpty(_filterSubject) || !string.IsNullOrEmpty(_filterSemester) || _filterFolderId.HasValue)
+                            {
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ClearFilters">Clear filters</MudButton>
+                            }
+                            else
+                            {
+                                <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.CloudUpload" Href="/documents/upload">
+                                    Upload documents
+                                </MudButton>
+                            }
+                        </MudStack>
+                    </MudPaper>
+                }
+                else
+                {
+                    <MudTable Items="@_pagedDocuments"
+                              Hover="true"
+                              Elevation="0"
+                              Outlined="false"
+                              Class="document-table"
+                              Dense="true">
+                        <ColGroup>
+                            <col style="width: 26%" />
+                            <col style="width: 11%" />
+                            <col style="width: 9%" />
+                            <col style="width: 13%" />
+                            <col style="width: 9%" />
+                            <col style="width: 10%" />
+                            <col style="width: 10%" />
+                            <col style="width: 12%" />
+                        </ColGroup>
+                        <HeaderContent>
+                            <MudTh Class="table-header-cell">NAME</MudTh>
+                            <MudTh Class="table-header-cell">SUBJECT</MudTh>
+                            <MudTh Class="table-header-cell">SEMESTER</MudTh>
+                            <MudTh Class="table-header-cell">FOLDER</MudTh>
+                            <MudTh Class="table-header-cell">SIZE</MudTh>
+                            <MudTh Class="table-header-cell">STATUS</MudTh>
+                            <MudTh Class="table-header-cell">CREATED</MudTh>
+                            <MudTh Class="table-header-cell">ACTIONS</MudTh>
+                        </HeaderContent>
+                        <RowTemplate>
+                            <MudTd Class="table-cell">
+                                <span class="doc-name" title="@context.FileName">@GetShortFileName(context.FileName, 40)</span>
+                            </MudTd>
+                            <MudTd Class="table-cell">
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info">@context.SubjectCode</MudChip>
+                            </MudTd>
+                            <MudTd Class="table-cell">
+                                <MudText Typo="Typo.body2">@context.Semester</MudText>
+                            </MudTd>
+                            <MudTd Class="table-cell">
+                                <MudText Typo="Typo.body2">@GetFolderName(context.FolderId)</MudText>
+                            </MudTd>
+                            <MudTd Class="table-cell">
+                                <MudText Typo="Typo.body2">@FormatFileSize(context.FileSizeBytes)</MudText>
+                            </MudTd>
+                            <MudTd Class="table-cell">
+                                <MudChip T="string"
+                                         Size="Size.Small"
+                                         Color="@GetStatusColor(context.Status)"
+                                         Variant="Variant.Filled"
+                                         Icon="@GetStatusIcon(context.Status)">
+                                    @GetStatusText(context.Status)
+                                </MudChip>
+                            </MudTd>
+                            <MudTd Class="table-cell">
+                                <MudText Typo="Typo.body2">@context.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</MudText>
+                            </MudTd>
+                            <MudTd Class="table-cell">
+                                <div class="table-actions">
+                                    <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                                   Size="Size.Small"
+                                                   Href="@($"/documents/{context.Id}")"
+                                                    title="View details" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                   Size="Size.Small"
+                                                   Color="Color.Error"
+                                                   OnClick="@(() => ConfirmDeleteDocumentAsync(context))"
+                                                   title="Delete document" />
+                                </div>
+                            </MudTd>
+                        </RowTemplate>
+                    </MudTable>
+
+                    <div class="pagination-bar">
+                        <div class="pagination-left">
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                Showing @((_currentPage - 1) * _pageSize + 1)-@Math.Min(_currentPage * _pageSize, _filteredDocuments.Count) of @_filteredDocuments.Count documents
+                            </MudText>
+                        </div>
+                        <div class="pagination-center">
+                            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
+                                           Size="Size.Small"
+                                           Class="pagination-nav-btn"
+                                           Disabled="@(_currentPage <= 1)"
+                                           OnClick="@(() => GoToPage(_currentPage - 1))" />
+                            @foreach (var pageNum in GetPageNumbers())
+                            {
+                                if (pageNum == -1)
+                                {
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">...</MudText>
+                                }
+                                else
+                                {
+                                    <MudButton Variant="Variant.Filled"
+                                               Size="Size.Small"
+                                               Class="@(pageNum == _currentPage ? "page-number-btn page-number-btn-active" : "page-number-btn page-number-btn-inactive")"
+                                               OnClick="@(() => GoToPage(pageNum))">
+                                        @pageNum
+                                    </MudButton>
+                                }
+                            }
+                            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
+                                           Size="Size.Small"
+                                           Class="pagination-nav-btn"
+                                           Disabled="@(_currentPage >= _totalPages)"
+                                           OnClick="@(() => GoToPage(_currentPage + 1))" />
+                        </div>
+                        <div class="pagination-right">
+                            <MudSelect T="int"
+                                       @bind-Value="_pageSize"
+                                       Variant="Variant.Outlined"
+                                       Margin="Margin.Dense"
+                                       Class="page-size-select">
+                                @foreach (var size in PageSizeOptions)
+                                {
+                                    <MudSelectItem T="int" Value="@size">@size / page</MudSelectItem>
+                                }
+                            </MudSelect>
+                            <div class="go-to-page">
+                                <MudTextField T="string"
+                                              @bind-Value="_goToPage"
+                                              Placeholder="Page..."
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Class="go-to-input" />
+                                <MudButton Variant="Variant.Outlined"
+                                           Size="Size.Small"
+                                           OnClick="GoToPageInput"
+                                           Disabled="@(string.IsNullOrWhiteSpace(_goToPage))">
+                                    Go
+                                </MudButton>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </section>
+        </main>
+
+        <aside class="library-right-rail">
+            <MudPaper Class="library-recent-folders glass-card" Elevation="0" Outlined="false">
+                <div class="library-panel-header">
+                    <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" Color="Color.Primary" />
+                    <MudText Class="right-panel-title">Recent Folders</MudText>
+                </div>
+                <MudText Class="right-panel-subtitle">Folders you recently accessed</MudText>
+                @if (_folders.Count == 0)
+                {
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="pa-4">No folders yet.</MudText>
+                }
+                else
+                {
+                    <div class="recent-folders-list">
+                        @{
+                            var rfc = new[] { "#6366f1", "#10b981", "#f59e0b", "#3b82f6", "#ec4899", "#8b5cf6", "#64748b", "#94a3b8" };
+                        }
+                        @foreach (var folder in _folders.OrderByDescending(f => f.UpdatedAt).Take(4))
+                        {
+                            var ridx = _folders.IndexOf(folder);
+                            var rcolor = rfc[ridx >= 0 ? ridx % rfc.Length : 0];
+                            <div class="recent-folder-card" @onclick="@(() => FilterByFolder(folder.Id))"
+                                 style="@("border-color: " + rcolor + "; background: " + rcolor + "08;")">
+                                <div class="recent-folder-icon-box" style="@("border: 2px solid " + rcolor + "; box-shadow: 0 2px 6px rgba(0,0,0,0.06);")">
+                                    <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Style="@("color: " + rcolor + ";")" />
+                                </div>
+                                <div class="recent-folder-info">
+                                    <MudText Class="recent-folder-name">@folder.Name</MudText>
+                                    <MudText Class="recent-folder-meta">
+                                        <span>@folder.DocumentCount documents</span>
+                                        @if (!string.IsNullOrWhiteSpace(folder.LastAccessText))
+                                        {
+                                            <span>·</span>
+                                            <span>@folder.LastAccessText</span>
+                                        }
+                                    </MudText>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+            </MudPaper>
+        </aside>
+    </div>
+}
+
+@code {
+    private bool _loading;
+    private bool _foldersBusy;
+    private string? _error;
+
+    private List<DocumentDto> _documents = new();
+    private List<FolderDto> _folders = new();
+
+    private string? _filterSubject;
+    private string? _filterSemester;
+    private Guid? _filterFolderId;
+    private string _searchQuery = "";
+
+    private int _currentPage = 1;
+    private int _pageSize = 10;
+    private string _goToPage = "";
+    private static readonly int[] PageSizeOptions = [10, 25, 50, 100];
+
+    private int _folderPage = 1;
+    private const int FolderPageSize = 4;
+    private int _sidebarFolderPage = 1;
+    private const int SidebarFolderPageSize = 4;
+    private CancellationTokenSource? _folderClickCts;
+    private Guid? _openMenuFolderId;
+
+    private List<string> _uniqueSubjects => _documents
+        .Select(d => d.SubjectCode)
+        .Where(s => !string.IsNullOrWhiteSpace(s))
+        .Distinct()
+        .OrderBy(s => s)
+        .ToList();
+
+    private List<string> _uniqueSemesters => _documents
+        .Select(d => d.Semester)
+        .Where(s => !string.IsNullOrWhiteSpace(s))
+        .Distinct()
+        .OrderByDescending(s => s)
+        .ToList();
+
+    private List<DocumentDto> _filteredDocuments => _documents
+        .Where(d => string.IsNullOrEmpty(_filterSubject) || d.SubjectCode == _filterSubject)
+        .Where(d => string.IsNullOrEmpty(_filterSemester) || d.Semester == _filterSemester)
+        .Where(d => !_filterFolderId.HasValue || d.FolderId == _filterFolderId.Value)
+        .Where(d => string.IsNullOrEmpty(_searchQuery) || d.FileName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+        .ToList();
+
+    private List<DocumentDto> _pagedDocuments => _filteredDocuments
+        .Skip((_currentPage - 1) * _pageSize)
+        .Take(_pageSize)
+        .ToList();
+
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredDocuments.Count / _pageSize));
+
+    private List<FolderDto> _pagedFolders => _folders
+        .Skip((_folderPage - 1) * FolderPageSize)
+        .Take(FolderPageSize)
+        .ToList();
+
+    private int _totalFolderPages => Math.Max(1, (int)Math.Ceiling((double)_folders.Count / FolderPageSize));
+    private List<FolderDto> _pagedSidebarFolders => _folders
+        .Skip((_sidebarFolderPage - 1) * SidebarFolderPageSize)
+        .Take(SidebarFolderPageSize)
+        .ToList();
+    private int _totalSidebarFolderPages => Math.Max(1, (int)Math.Ceiling((double)_folders.Count / SidebarFolderPageSize));
+
+    private int _totalDocuments => _documents.Count;
+    private int _readyDocuments => _documents.Count(d => d.Status == DocumentStatus.Ready);
+    private int _processingDocuments => _documents.Count(d => d.Status is DocumentStatus.Uploading or DocumentStatus.Processing);
+    private int _totalFolders => _folders.Count;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+                Session.Set(restored);
+            if (!Session.IsAuthenticated)
+            {
+                Nav.NavigateTo("/login", replace: true);
+                return;
+            }
+        }
+        await LoadDataAsync();
+    }
+
+    private async Task LoadDataAsync()
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken)) return;
+        _loading = true;
+        _error = null;
+        StateHasChanged();
+        try
+        {
+            var docsTask = DocumentsApi.ListAsync(Session.AccessToken!);
+            var foldersTask = FoldersApi.ListAsync(Session.AccessToken!);
+            await Task.WhenAll(docsTask, foldersTask);
+            _documents = docsTask.Result.OrderByDescending(d => d.UpdatedAt).ToList();
+            _folders = foldersTask.Result.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
+            _folderPage = 1;
+            _sidebarFolderPage = 1;
+        }
+        catch (DocumentApiException ex)
+        {
+            _error = MapError(ex);
+            Snackbar.Add(_error ?? ex.Message, Severity.Warning);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not load library: {ex.Message}";
+            Snackbar.Add(_error, Severity.Warning);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private void ApplyFilters()
+    {
+        _currentPage = 1;
+    }
+
+    private void ClearFilters()
+    {
+        _filterSubject = null;
+        _filterSemester = null;
+        _filterFolderId = null;
+        _searchQuery = "";
+        _currentPage = 1;
+    }
+
+    private void ToggleFolderMenu(Guid folderId)
+    {
+        _openMenuFolderId = _openMenuFolderId == folderId ? null : folderId;
+    }
+
+    private void CloseFolderMenu()
+    {
+        _openMenuFolderId = null;
+    }
+
+    private async Task HandleFolderClick(FolderDto folder)
+    {
+        CloseFolderMenu();
+        _folderClickCts?.Cancel();
+        _folderClickCts?.Dispose();
+        _folderClickCts = new CancellationTokenSource();
+        try
+        {
+            await Task.Delay(300, _folderClickCts.Token);
+            FilterByFolder(folder.Id);
+            StateHasChanged();
+        }
+        catch (TaskCanceledException) { }
+    }
+
+    private void HandleFolderDoubleClick(FolderDto folder)
+    {
+        _folderClickCts?.Cancel();
+        Nav.NavigateTo($"/ai/chat?folderId={folder.Id}");
+    }
+
+    private void FilterByFolder(Guid? folderId)
+    {
+        _filterFolderId = folderId;
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, _totalPages);
+    }
+
+    private void GoToPageInput()
+    {
+        if (int.TryParse(_goToPage, out var page))
+        {
+            GoToPage(page);
+            _goToPage = "";
+        }
+    }
+
+    private async Task ShowCreateFolderDialogAsync()
+    {
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialogRef = await Dialogs.ShowAsync<CreateFolderDialog>("Create New Folder", options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+        var data = result.Data as CreateFolderDialog.CreateFolderDialogResult;
+        if (data is null || string.IsNullOrWhiteSpace(data.Name)) return;
+        await CreateFolderAsync(data.Name, data.Description);
+    }
+
+    private async Task CreateFolderAsync(string name, string? description)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+        _foldersBusy = true;
+        try
+        {
+            var folder = await FoldersApi.CreateAsync(
+                Session.AccessToken!,
+                new CreateFolderRequest { Name = name, Description = description });
+            _folders.Add(folder);
+            _folders = _folders.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
+            _folderPage = 1;
+            _sidebarFolderPage = 1;
+            Snackbar.Add($"Created folder \"{folder.Name}\".", Severity.Success);
+            StateHasChanged();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not create folder: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _foldersBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ConfirmDeleteDocumentAsync(DocumentDto doc)
+    {
+        if (doc is null) return;
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Delete document?",
+            ["Message"] = $"Delete \"{doc.FileName}\"? This cannot be undone.",
+            ["ConfirmText"] = "Delete",
+            ["ConfirmColor"] = Color.Error,
+            ["Icon"] = Icons.Material.Filled.DeleteForever,
+            ["IconColor"] = Color.Error,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialogRef = await Dialogs.ShowAsync<ConfirmDialog>("Delete document", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+        await DeleteDocumentAsync(doc);
+    }
+
+    private async Task DeleteDocumentAsync(DocumentDto doc)
+    {
+        if (string.IsNullOrEmpty(Session.AccessToken) || doc is null) return;
+        _loading = true;
+        try
+        {
+            await DocumentsApi.DeleteAsync(Session.AccessToken!, doc.Id);
+            _documents = _documents.Where(d => d.Id != doc.Id).ToList();
+            if (_filteredDocuments.Count == 0 && _currentPage > 1)
+            {
+                _currentPage--;
+            }
+            if (doc.FolderId.HasValue)
+            {
+                var folder = _folders.FirstOrDefault(f => f.Id == doc.FolderId.Value);
+                if (folder is not null && folder.DocumentCount > 0)
+                    folder.DocumentCount--;
+            }
+            Snackbar.Add($"Deleted \"{doc.FileName}\".", Severity.Success);
+            StateHasChanged();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Network error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _loading = false;
+            StateHasChanged();
+        }
+    }
+
+    private static string GetFolderCardStyle(FolderDto folder)
+    {
+        var bg = !string.IsNullOrWhiteSpace(folder.Color) ? folder.Color : "#eef2ff";
+        var border = !string.IsNullOrWhiteSpace(folder.BorderColor) ? folder.BorderColor : "#c7d2fe";
+        return $"background: {bg}; border: 2px solid {border}; border-radius: 12px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease;";
+    }
+
+    private static string GetFolderIconStyle(FolderDto folder)
+    {
+        var color = !string.IsNullOrWhiteSpace(folder.Color) ? folder.Color : "#6366f1";
+        return $"color: {color};";
+    }
+
+    private static string GetFolderAccentStyle(FolderDto folder)
+    {
+        var color = !string.IsNullOrWhiteSpace(folder.Color) ? folder.Color : "#6366f1";
+        return $"background-color: {color};";
+    }
+
+    private string GetGreeting()
+    {
+        var hour = DateTime.Now.Hour;
+        var name = Session.CurrentUser?.FullName ?? "there";
+        var prefix = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+        return $"{prefix}, {name}";
+    }
+
+    private MarkupString GetGreetingHtml()
+    {
+        var hour = DateTime.Now.Hour;
+        var name = Session.CurrentUser?.FullName ?? "there";
+        var prefix = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+        return new MarkupString($"{prefix}, <span style=\"color:#6366f1\">{System.Net.WebUtility.HtmlEncode(name)}</span>");
+    }
+
+    private static string GetCurrentDateString()
+    {
+        var now = DateTime.Now;
+        var dayOfWeek = now.DayOfWeek switch
+        {
+            DayOfWeek.Monday => "Monday",
+            DayOfWeek.Tuesday => "Tuesday",
+            DayOfWeek.Wednesday => "Wednesday",
+            DayOfWeek.Thursday => "Thursday",
+            DayOfWeek.Friday => "Friday",
+            DayOfWeek.Saturday => "Saturday",
+            DayOfWeek.Sunday => "Sunday",
+            _ => ""
+        };
+        return $"{dayOfWeek}, {now:MMMM d, yyyy}";
+    }
+
+    private string GetFolderName(Guid? folderId)
+    {
+        if (!folderId.HasValue) return "—";
+        return _folders.FirstOrDefault(f => f.Id == folderId.Value)?.Name ?? "—";
+    }
+
+    private static Color GetStatusColor(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Ready => Color.Success,
+        DocumentStatus.Uploading => Color.Info,
+        DocumentStatus.Processing => Color.Warning,
+        DocumentStatus.Failed => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string GetStatusIcon(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Ready => Icons.Material.Filled.CheckCircle,
+        DocumentStatus.Uploading => Icons.Material.Filled.CloudUpload,
+        DocumentStatus.Processing => Icons.Material.Filled.HourglassTop,
+        DocumentStatus.Failed => Icons.Material.Filled.Error,
+        _ => Icons.Material.Filled.Help,
+    };
+
+    private static string GetStatusText(DocumentStatus status) => status switch
+    {
+        DocumentStatus.Ready => "Ready",
+        DocumentStatus.Uploading => "Uploading",
+        DocumentStatus.Processing => "Processing",
+        DocumentStatus.Failed => "Failed",
+        _ => status.ToString(),
+    };
+
+    private static string GetShortFileName(string fileName, int maxLength)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || fileName.Length <= maxLength)
+        {
+            return fileName ?? "";
+        }
+        var extension = Path.GetExtension(fileName);
+        var nameWithoutExtension = Path.GetFileNameWithoutExtension(fileName);
+        var reserved = string.IsNullOrEmpty(extension) ? 1 : extension.Length + 1;
+        var available = Math.Max(8, maxLength - reserved);
+        var prefix = nameWithoutExtension.Length <= available
+            ? nameWithoutExtension
+            : nameWithoutExtension[..available];
+        return $"{prefix}...{extension}";
+    }
+
+    private static string FormatFileSize(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024.0:0.#} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):0.#} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
+    }
+
+    private int[] GetPageNumbers()
+    {
+        if (_totalPages <= 7)
+        {
+            return Enumerable.Range(1, _totalPages).ToArray();
+        }
+        var pages = new List<int> { 1 };
+        var start = Math.Max(2, _currentPage - 1);
+        var end = Math.Min(_totalPages - 1, _currentPage + 1);
+        if (start > 2) pages.Add(-1);
+        for (var i = start; i <= end; i++)
+        {
+            pages.Add(i);
+        }
+        if (end < _totalPages - 1) pages.Add(-1);
+        pages.Add(_totalPages);
+        return pages.ToArray();
+    }
+
+    private static string MapError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session has expired. Please sign in again.",
+        403 => "You do not have access to this resource.",
+        404 => "Resource not found.",
+        409 => "A resource with that name already exists.",
+        _ => ex.Message,
+    };
+
+    // ── Folder context menu actions ──
+
+    private async Task ToggleFavoriteAsync(FolderDto folder)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+        try
+        {
+            var updated = await FoldersApi.ToggleFavoriteAsync(Session.AccessToken!, folder.Id);
+            var idx = _folders.FindIndex(f => f.Id == folder.Id);
+            if (idx >= 0)
+            {
+                _folders[idx] = updated;
+                _folders = _folders.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
+                _folderPage = 1;
+                StateHasChanged();
+            }
+            Snackbar.Add(updated.IsFavorite ? "Folder added to favorites." : "Folder removed from favorites.", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ShowRenameFolderDialogAsync(FolderDto folder)
+    {
+        var parameters = new DialogParameters
+        {
+            ["FolderName"] = folder.Name,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialogRef = await Dialogs.ShowAsync<RenameFolderDialog>("Rename Folder", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+        var newName = result.Data as string;
+        if (string.IsNullOrWhiteSpace(newName)) return;
+        await RenameFolderAsync(folder, newName);
+    }
+
+    private async Task RenameFolderAsync(FolderDto folder, string newName)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+        try
+        {
+            var updated = await FoldersApi.UpdateAsync(
+                Session.AccessToken!, folder.Id,
+                new UpdateFolderRequest { Name = newName, Description = folder.Description, Icon = folder.Icon });
+            var idx = _folders.FindIndex(f => f.Id == folder.Id);
+            if (idx >= 0)
+            {
+                _folders[idx] = updated;
+                _folders = _folders.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
+                StateHasChanged();
+            }
+            Snackbar.Add($"Renamed folder to \"{newName}\".", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ShowChangeFolderIconDialogAsync(FolderDto folder)
+    {
+        var parameters = new DialogParameters
+        {
+            ["FolderIcon"] = folder.Icon,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialogRef = await Dialogs.ShowAsync<ChangeFolderIconDialog>("Change Icon", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+        var icon = result.Data as string;
+        if (string.IsNullOrWhiteSpace(icon)) return;
+        await ChangeFolderIconAsync(folder, icon);
+    }
+
+    private async Task ChangeFolderIconAsync(FolderDto folder, string icon)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+        try
+        {
+            var updated = await FoldersApi.UpdateAsync(
+                Session.AccessToken!, folder.Id,
+                new UpdateFolderRequest { Name = folder.Name, Description = folder.Description, Icon = icon });
+            var idx = _folders.FindIndex(f => f.Id == folder.Id);
+            if (idx >= 0)
+            {
+                _folders[idx] = updated;
+                _folders = _folders.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
+                StateHasChanged();
+            }
+            Snackbar.Add("Folder icon updated.", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ConfirmDeleteFolderAsync(FolderDto folder)
+    {
+        if (folder is null) return;
+        var docCount = folder.DocumentCount;
+        var msg = docCount > 0
+            ? $"Delete \"{folder.Name}\"? This will also delete all {docCount} documents inside it. This cannot be undone."
+            : $"Delete \"{folder.Name}\"? This cannot be undone.";
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Delete folder?",
+            ["Message"] = msg,
+            ["ConfirmText"] = "Delete",
+            ["ConfirmColor"] = Color.Error,
+            ["Icon"] = Icons.Material.Filled.DeleteForever,
+            ["IconColor"] = Color.Error,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true };
+        var dialogRef = await Dialogs.ShowAsync<ConfirmDialog>("Delete folder", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+        await DeleteFolderAsync(folder);
+    }
+
+    private async Task DeleteFolderAsync(FolderDto folder)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken) || folder is null) return;
+        try
+        {
+            await FoldersApi.DeleteAsync(Session.AccessToken!, folder.Id);
+            _folders.Remove(folder);
+            if (_filterFolderId == folder.Id) _filterFolderId = null;
+            Snackbar.Add($"Deleted \"{folder.Name}\".", Severity.Success);
+            StateHasChanged();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+    }
+
+    private async Task ToggleShareAsync(FolderDto folder)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+        try
+        {
+            var updated = await FoldersApi.ToggleShareAsync(Session.AccessToken!, folder.Id);
+            var idx = _folders.FindIndex(f => f.Id == folder.Id);
+            if (idx >= 0)
+            {
+                _folders[idx] = updated;
+                _folders = _folders.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
+                StateHasChanged();
+            }
+            Snackbar.Add(updated.IsShared ? "Folder shared to community." : "Folder unshared.", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+        }
+    }
+
+    private static string GetFolderIcon(FolderDto folder)
+    {
+        return folder.Icon switch
+        {
+            "star" => Icons.Material.Filled.Star,
+            "book" => Icons.Material.Filled.Book,
+            "school" => Icons.Material.Filled.School,
+            "auto_stories" => Icons.Material.Filled.AutoStories,
+            "science" => Icons.Material.Filled.Science,
+            "code" => Icons.Material.Filled.Code,
+            "palette" => Icons.Material.Filled.Palette,
+            "music_note" => Icons.Material.Filled.MusicNote,
+            "sports_esports" => Icons.Material.Filled.SportsEsports,
+            "favorite" => Icons.Material.Filled.Favorite,
+            "article" => Icons.Material.Filled.Article,
+            "collections_bookmark" => Icons.Material.Filled.CollectionsBookmark,
+            "lightbulb" => Icons.Material.Filled.Lightbulb,
+            "computer" => Icons.Material.Filled.Computer,
+            "language" => Icons.Material.Filled.Language,
+            "menu_book" => Icons.Material.Filled.MenuBook,
+            "psychology" => Icons.Material.Filled.Psychology,
+            "dashboard" => Icons.Material.Filled.Dashboard,
+            "folder_special" => Icons.Material.Filled.FolderSpecial,
+            _ => Icons.Material.Filled.Folder,
+        };
+    }
+
+}

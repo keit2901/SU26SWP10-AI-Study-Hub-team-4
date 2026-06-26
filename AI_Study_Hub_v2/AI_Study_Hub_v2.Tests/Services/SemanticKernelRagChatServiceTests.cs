@@ -15,13 +15,18 @@ public class SemanticKernelRagChatServiceTests
         IRagSearchService ragSearchService,
         IAiChatCompletionClient completionClient,
         RagOptions? options = null,
-        GroqOptions? groqOptions = null) =>
-        new(
+        GroqOptions? groqOptions = null)
+    {
+        var factoryMock = new Mock<IAiChatCompletionClientFactory>(MockBehavior.Strict);
+        factoryMock.Setup(f => f.GetClient(It.IsAny<string?>())).Returns(completionClient);
+        factoryMock.Setup(f => f.GetProviderName(It.IsAny<string?>())).Returns("groq");
+        return new(
             ragSearchService,
-            completionClient,
+            factoryMock.Object,
             Microsoft.Extensions.Options.Options.Create(options ?? new RagOptions()),
             Microsoft.Extensions.Options.Options.Create(groqOptions ?? new GroqOptions()),
             NullLogger<SemanticKernelRagChatService>.Instance);
+    }
 
     [Test]
     public async Task AskAsync_EmptyQuestion_Throws400_AndSkipsRetrievalAndProvider()
@@ -40,51 +45,44 @@ public class SemanticKernelRagChatServiceTests
     }
 
     [Test]
-    public async Task AskAsync_NoSources_ReturnsFallback_AndDoesNotCallProvider()
+    public async Task AskAsync_NoSources_CallsGeneralProvider_AndReturnsNoCitations()
     {
-        var supabaseUserId = Guid.NewGuid();
-        RagSearchRequest? capturedRequest = null;
-        Guid? capturedUserId = null;
+        AiChatCompletionRequest? capturedCompletionRequest = null;
 
         var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
-        rag.Setup(s => s.SearchAsync(
-                It.IsAny<Guid>(),
-                It.IsAny<RagSearchRequest>(),
-                It.IsAny<CancellationToken>()))
-            .Callback<Guid, RagSearchRequest, CancellationToken>((uid, request, _) =>
-            {
-                capturedUserId = uid;
-                capturedRequest = request;
-            })
-            .ReturnsAsync(Array.Empty<RagSearchResultDto>());
-
         var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        completion.Setup(c => c.CompleteAsync(
+                It.IsAny<AiChatCompletionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<AiChatCompletionRequest, CancellationToken>((request, _) => capturedCompletionRequest = request)
+            .ReturnsAsync("RAG stands for Retrieval-Augmented Generation.");
+
         var sut = BuildSut(rag.Object, completion.Object);
 
-        var response = await sut.AskAsync(supabaseUserId, new AiChatAskRequest(
+        var response = await sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest(
             "  Explain RAG  ",
             DocumentId: null,
             FolderId: null,
-            SubjectCode: " swp391 ",
-            Semester: " su26 "));
+            SubjectCode: null,
+            Semester: null));
 
-        response.Answer.Should().Be(SemanticKernelRagChatService.NoSourcesAnswer);
-        response.RefusalReason.Should().Be("no_sources");
+        response.Answer.Should().Be("RAG stands for Retrieval-Augmented Generation.");
+        response.RefusalReason.Should().BeNull();
         response.Sources.Should().BeEmpty();
         response.DurationMs.Should().NotBeNull();
-        capturedUserId.Should().Be(supabaseUserId);
-        capturedRequest.Should().NotBeNull();
-        capturedRequest!.Query.Should().Be("Explain RAG");
-        capturedRequest.SubjectCode.Should().Be("SWP391");
-        capturedRequest.Semester.Should().Be("SU26");
-        capturedRequest.TopK.Should().Be(5);
-        rag.VerifyAll();
-        completion.VerifyNoOtherCalls();
+        capturedCompletionRequest.Should().NotBeNull();
+        capturedCompletionRequest!.SystemPrompt.Should().Contain("Answer using your general knowledge");
+        capturedCompletionRequest.SystemPrompt.Should().NotContain("If source excerpts are provided");
+        capturedCompletionRequest.UserPrompt.Should().Contain("No source excerpts are available");
+        rag.VerifyNoOtherCalls();
+        completion.VerifyAll();
     }
 
     [Test]
-    public async Task AskAsync_WhitespaceSourceExcerpts_ReturnsFallback_AndDoesNotCallProvider()
+    public async Task AskAsync_WhitespaceSourceExcerpts_CallsGeneralProvider_AndReturnsNoCitations()
     {
+        AiChatCompletionRequest? capturedCompletionRequest = null;
+
         var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
         rag.Setup(s => s.SearchAsync(
                 It.IsAny<Guid>(),
@@ -97,15 +95,28 @@ public class SemanticKernelRagChatServiceTests
             });
 
         var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        completion.Setup(c => c.CompleteAsync(
+                It.IsAny<AiChatCompletionRequest>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<AiChatCompletionRequest, CancellationToken>((request, _) => capturedCompletionRequest = request)
+            .ReturnsAsync("General study answer based on knowledge.");
+
         var sut = BuildSut(rag.Object, completion.Object);
 
-        var response = await sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("Explain the notes", null, null, null, null));
+        var response = await sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest(
+            "Explain the notes",
+            DocumentId: Guid.NewGuid(),
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null));
 
-        response.Answer.Should().Be(SemanticKernelRagChatService.NoSourcesAnswer);
-        response.RefusalReason.Should().Be("no_sources");
+        response.Answer.Should().Be("General study answer based on knowledge.");
+        response.RefusalReason.Should().BeNull();
         response.Sources.Should().BeEmpty();
+        capturedCompletionRequest.Should().NotBeNull();
+        capturedCompletionRequest!.SystemPrompt.Should().Contain("If source excerpts are provided");
         rag.VerifyAll();
-        completion.VerifyNoOtherCalls();
+        completion.VerifyAll();
     }
 
     [Test]
@@ -164,7 +175,7 @@ public class SemanticKernelRagChatServiceTests
         capturedRagRequest.Should().NotBeNull();
         capturedRagRequest!.TopK.Should().Be(3);
         capturedCompletionRequest.Should().NotBeNull();
-        capturedCompletionRequest!.SystemPrompt.Should().Contain("Answer only using the provided source excerpts");
+        capturedCompletionRequest!.SystemPrompt.Should().Contain("If source excerpts are provided");
         capturedCompletionRequest.SystemPrompt.Should().Contain("Do not invent citations");
         capturedCompletionRequest.UserPrompt.Should().Contain("[S1]");
         capturedCompletionRequest.UserPrompt.Should().Contain("rag-notes.pdf");
@@ -187,7 +198,7 @@ public class SemanticKernelRagChatServiceTests
         var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
         var sut = BuildSut(rag.Object, completion.Object);
 
-        var act = () => sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("RAG?", null, null, null, null));
+        var act = () => sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("RAG?", Guid.NewGuid(), null, null, null));
 
         var ex = await act.Should().ThrowAsync<AiChatException>();
         ex.Which.StatusCode.Should().Be(403);
@@ -220,7 +231,7 @@ public class SemanticKernelRagChatServiceTests
             completion.Object,
             groqOptions: new GroqOptions { UseLocalDemoFallback = true });
 
-        var response = await sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("How is Groq used?", null, null, null, null));
+        var response = await sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("How is Groq used?", documentId, null, null, null));
 
         response.RefusalReason.Should().BeNull();
         response.Answer.Should().Contain("Local demo fallback answer");
@@ -252,7 +263,7 @@ public class SemanticKernelRagChatServiceTests
 
         var sut = BuildSut(rag.Object, completion.Object);
 
-        var act = () => sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("How is Groq used?", null, null, null, null));
+        var act = () => sut.AskAsync(Guid.NewGuid(), new AiChatAskRequest("How is Groq used?", Guid.NewGuid(), null, null, null));
 
         var ex = await act.Should().ThrowAsync<AiChatException>();
         ex.Which.StatusCode.Should().Be(503);

@@ -16,7 +16,9 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
     private readonly ITextExtractionService _textExtraction;
     private readonly IChunkingService _chunking;
     private readonly IEmbeddingService _embedding;
+    private readonly IImageDescriptionService _imageDescription;
     private readonly RagOptions _options;
+    private readonly GroqOptions _groqOptions;
     private readonly ILogger<DocumentIngestionService> _logger;
 
     public DocumentIngestionService(
@@ -25,7 +27,9 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
         ITextExtractionService textExtraction,
         IChunkingService chunking,
         IEmbeddingService embedding,
+        IImageDescriptionService imageDescription,
         IOptions<RagOptions> options,
+        IOptions<GroqOptions> groqOptions,
         ILogger<DocumentIngestionService> logger)
     {
         _db = db;
@@ -33,7 +37,9 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
         _textExtraction = textExtraction;
         _chunking = chunking;
         _embedding = embedding;
+        _imageDescription = imageDescription;
         _options = options.Value;
+        _groqOptions = groqOptions.Value;
         _logger = logger;
     }
 
@@ -66,6 +72,53 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
 
             using var fileStream = await _storageRead.OpenReadAsync(document, cancellationToken);
             var pages = await _textExtraction.ExtractPagesAsync(fileStream, document.MimeType, cancellationToken);
+
+            var totalImages = pages.Sum(p => p.Images?.Count ?? 0);
+            var maxImages = _groqOptions.MaxImagesPerDocument;
+            var imagesSkipped = 0;
+
+            if (totalImages > maxImages && _groqOptions.SkipImagesWhenLimitExceeded)
+            {
+                _logger.LogWarning(
+                    "Document {DocumentId} has {TotalImages} images, exceeding limit of {MaxImages}. " +
+                    "Truncating to first {MaxImages} images.",
+                    document.Id, totalImages, maxImages, maxImages);
+            }
+
+            var remainingBudget = maxImages;
+
+            foreach (var page in pages)
+            {
+                if (page.Images?.Count > 0)
+                {
+                    if (remainingBudget <= 0 && _groqOptions.SkipImagesWhenLimitExceeded)
+                    {
+                        imagesSkipped += page.Images.Count;
+                        continue;
+                    }
+
+                    var pageImages = page.Images;
+                    if (remainingBudget < pageImages.Count)
+                    {
+                        imagesSkipped += pageImages.Count - remainingBudget;
+                        pageImages = pageImages.Take(remainingBudget).ToList();
+                        remainingBudget = 0;
+                    }
+                    else
+                    {
+                        remainingBudget -= pageImages.Count;
+                    }
+
+                    var description = await _imageDescription.DescribeAsync(pageImages, cancellationToken);
+                    if (!string.IsNullOrWhiteSpace(description))
+                    {
+                        page.Text = string.IsNullOrWhiteSpace(page.Text)
+                            ? description
+                            : page.Text + "\n\n" + description;
+                    }
+                }
+            }
+
             var nonEmptyPageCount = pages.Count(p => !string.IsNullOrWhiteSpace(p.Text));
             if (nonEmptyPageCount == 0)
             {
