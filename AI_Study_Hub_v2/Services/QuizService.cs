@@ -109,10 +109,9 @@ public sealed class QuizService : IQuizService
         var context = BuildQuizContext(searchResults);
 
         // Load previous quiz questions to avoid duplicates
-        var supabaseUserIdStr = supabaseUserId.ToString();
         var previousQuestions = await _db.Quizzes
             .AsNoTracking()
-            .Where(q => q.UserId == supabaseUserIdStr)
+            .Where(q => q.UserId == profile.Id)
             .Select(q => q.QuestionsJson)
             .ToListAsync(ct);
 
@@ -238,7 +237,7 @@ public sealed class QuizService : IQuizService
         {
             Id = Guid.NewGuid(),
             SessionId = request.SessionId,
-            UserId = supabaseUserId.ToString(),
+            UserId = profile.Id,
             Title = parsed.Title,
             Status = QuizStatus.InProgress,
             CurrentQuestionIndex = 0,
@@ -288,9 +287,13 @@ public sealed class QuizService : IQuizService
     {
         try
         {
+            var profile = await _db.Users
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct)
+                ?? throw new QuizException(404, "user_not_found", "User profile not found.");
+
             var quiz = await _db.Quizzes
                 .AsNoTracking()
-                .Where(q => q.SessionId == sessionId && q.UserId == supabaseUserId.ToString())
+                .Where(q => q.SessionId == sessionId && q.UserId == profile.Id)
                 .OrderByDescending(q => q.UpdatedAt)
                 .FirstOrDefaultAsync(ct);
 
@@ -321,8 +324,12 @@ public sealed class QuizService : IQuizService
         Quiz quiz;
         try
         {
+            var profile = await _db.Users
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct)
+                ?? throw new QuizException(404, "user_not_found", "User profile not found.");
+
             quiz = await _db.Quizzes
-                .FirstOrDefaultAsync(q => q.Id == quizId && q.UserId == supabaseUserId.ToString(), ct)
+                .FirstOrDefaultAsync(q => q.Id == quizId && q.UserId == profile.Id, ct)
                 ?? throw new QuizException(404, "quiz_not_found", "Quiz not found.");
         }
         catch (QuizException)
@@ -380,9 +387,13 @@ public sealed class QuizService : IQuizService
     {
         try
         {
+            var profile = await _db.Users
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct)
+                ?? throw new QuizException(404, "user_not_found", "User profile not found.");
+
             var quiz = await _db.Quizzes
                 .AsNoTracking()
-                .FirstOrDefaultAsync(q => q.Id == quizId && q.UserId == supabaseUserId.ToString(), ct);
+                .FirstOrDefaultAsync(q => q.Id == quizId && q.UserId == profile.Id, ct);
 
             if (quiz is null)
             {
@@ -672,6 +683,263 @@ Output exactly this JSON structure (no extra text):
         int Index,
         string Question,
         string Subtitle,
+        IReadOnlyList<QuizOptionDto> Options,
+        string CorrectOptionId,
+        string Explanation,
+        string? SourceLabel);
+
+    // Sprint 3: Standalone quiz APIs ------------------------------------------------
+
+    public async Task<QuizGenerateResponse> GenerateAsyncV2(
+        Guid supabaseUserId,
+        QuizGenerateRequestV2 request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var user = await ResolveActiveUserAsync(supabaseUserId, cancellationToken);
+        var prompt = NormalizePrompt(request.Prompt);
+        var topK = request.TopK > 0 ? request.TopK : 5;
+
+        IReadOnlyList<RagSearchResultDto> sources;
+        try
+        {
+            sources = await _ragSearch.SearchAsync(
+                supabaseUserId,
+                new RagSearchRequest(
+                    prompt,
+                    request.DocumentId,
+                    request.FolderId,
+                    NormalizeFilter(request.SubjectCode),
+                    NormalizeFilter(request.Semester),
+                    topK,
+                    request.DocumentIds),
+                cancellationToken);
+        }
+        catch (DocumentException ex)
+        {
+            throw new QuizException(ex.StatusCode, ex.Code, ex.Message);
+        }
+
+        var usableSources = sources
+            .Where(s => !string.IsNullOrWhiteSpace(s.ContentExcerpt))
+            .Take(Math.Max(1, topK))
+            .ToList();
+
+        if (usableSources.Count == 0)
+        {
+            throw new QuizException(404, "no_quiz_sources", "No indexed document sources were found for quiz generation.");
+        }
+
+        var requestedCount = request.QuestionCount > 0 ? request.QuestionCount : 3;
+        var questionCount = Math.Clamp(requestedCount, 1, Math.Min(10, usableSources.Count));
+        var storedQuestions = BuildQuestions(prompt, usableSources, questionCount);
+        var sourceDtos = usableSources.Select((source, index) => ToQuizSource(source, index)).ToList();
+        var now = DateTimeOffset.UtcNow;
+        var title = BuildTitle(prompt);
+
+        var quiz = new Quiz
+        {
+            Id = Guid.NewGuid(),
+            SessionId = Guid.Empty,
+            UserId = user.Id,
+            Title = title,
+            Status = QuizStatus.Completed,
+            TotalQuestions = storedQuestions.Count,
+            QuestionsJson = JsonSerializer.Serialize(storedQuestions, JsonOptions),
+            ScopeJson = JsonSerializer.Serialize(new
+            {
+                prompt,
+                request.DocumentId,
+                request.FolderId,
+                request.DocumentIds,
+                subjectCode = NormalizeFilter(request.SubjectCode),
+                semester = NormalizeFilter(request.Semester),
+                topK,
+                sources = sourceDtos,
+            }, JsonOptions),
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        _db.Quizzes.Add(quiz);
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return new QuizGenerateResponse(
+            quiz.Id,
+            quiz.Title,
+            storedQuestions.Select(ToPublicQuestion).ToList(),
+            sourceDtos,
+            quiz.CreatedAt);
+    }
+
+    public async Task<QuizSubmitResponse> SubmitAsync(
+        Guid supabaseUserId,
+        Guid quizId,
+        QuizSubmitRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var user = await ResolveActiveUserAsync(supabaseUserId, cancellationToken);
+        if (quizId == Guid.Empty)
+        {
+            throw new QuizException(400, "quiz_id_required", "Quiz id is required.");
+        }
+
+        var quiz = await _db.Quizzes
+            .FirstOrDefaultAsync(q => q.Id == quizId && q.UserId == user.Id, cancellationToken)
+            ?? throw new QuizException(404, "quiz_not_found", "Quiz was not found for the authenticated user.");
+
+        var questions = JsonSerializer.Deserialize<List<QuizQuestionParsed>>(quiz.QuestionsJson, JsonOptions) ?? new();
+        if (questions.Count == 0)
+        {
+            throw new QuizException(409, "quiz_has_no_questions", "Quiz has no questions to grade.");
+        }
+
+        var answerMap = (request.Answers ?? Array.Empty<QuizAnswerDto>())
+            .Where(a => !string.IsNullOrWhiteSpace(a.QuestionId))
+            .GroupBy(a => a.QuestionId.Trim(), StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(g => g.Key, g => g.Last().OptionId?.Trim(), StringComparer.OrdinalIgnoreCase);
+
+        var results = new List<QuizQuestionResultDto>(questions.Count);
+        var score = 0;
+        foreach (var question in questions)
+        {
+            answerMap.TryGetValue(question.Index.ToString(), out var submittedOptionId);
+            var isCorrect = string.Equals(submittedOptionId, question.CorrectOptionId, StringComparison.OrdinalIgnoreCase);
+            if (isCorrect)
+            {
+                score++;
+            }
+
+            results.Add(new QuizQuestionResultDto(
+                question.Index.ToString(),
+                isCorrect,
+                string.IsNullOrWhiteSpace(submittedOptionId) ? null : submittedOptionId,
+                question.CorrectOptionId,
+                question.Explanation));
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        quiz.Score = score;
+        quiz.Status = QuizStatus.Completed;
+        quiz.UpdatedAt = now;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return new QuizSubmitResponse(
+            Guid.NewGuid(), quiz.Id, score, questions.Count, results, now);
+    }
+
+    private async Task<User> ResolveActiveUserAsync(Guid supabaseUserId, CancellationToken cancellationToken)
+    {
+        if (supabaseUserId == Guid.Empty)
+        {
+            throw new QuizException(401, "missing_user_id", "Authenticated Supabase user id is missing.");
+        }
+
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, cancellationToken)
+            ?? throw new QuizException(404, "user_not_found", "Authenticated user has no profile in public.users.");
+
+        if (!user.IsActive)
+        {
+            throw new QuizException(403, "user_inactive", "User account is inactive.");
+        }
+
+        return user;
+    }
+
+    private static string NormalizePrompt(string? prompt)
+    {
+        var normalized = string.Join(' ', (prompt ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (normalized.Length < 3)
+        {
+            throw new QuizException(400, "prompt_required", "Quiz prompt or topic is required.");
+        }
+
+        return normalized;
+    }
+
+    private static string? NormalizeFilter(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim().ToUpperInvariant();
+
+    private static string BuildTitle(string prompt) => $"Quiz: {Shorten(prompt, 80)}";
+
+    private static string Shorten(string value, int maxLength)
+    {
+        if (value.Length <= maxLength)
+        {
+            return value;
+        }
+
+        return value[..Math.Max(0, maxLength - 3)].TrimEnd() + "...";
+    }
+
+    private static IReadOnlyList<StoredQuizQuestion> BuildQuestions(
+        string prompt,
+        IReadOnlyList<RagSearchResultDto> sources,
+        int questionCount)
+    {
+        var questions = new List<StoredQuizQuestion>(questionCount);
+        for (var i = 0; i < questionCount; i++)
+        {
+            var source = sources[i % sources.Count];
+            var sentence = FirstSentence(source.ContentExcerpt);
+            var keyPhrase = ExtractKeyPhrase(sentence, prompt);
+            var label = string.IsNullOrWhiteSpace(source.SourceLabel) ? $"S{i + 1}" : source.SourceLabel;
+
+            questions.Add(new StoredQuizQuestion(
+                $"q{i + 1}",
+                $"According to {label}, which statement best answers: {Shorten(prompt, 90)}?",
+                new[]
+                {
+                    new QuizOptionDto("A", $"It is unrelated to {Shorten(prompt, 48)}."),
+                    new QuizOptionDto("B", keyPhrase),
+                    new QuizOptionDto("C", "It is not mentioned in the retrieved source."),
+                    new QuizOptionDto("D", "It only applies when no documents are indexed."),
+                },
+                "B",
+                $"The answer is grounded in {label}: {sentence}",
+                label));
+        }
+
+        return questions;
+    }
+
+    private static QuizQuestionDtoV2 ToPublicQuestion(StoredQuizQuestion question) =>
+        new(question.Id, question.Text, question.Options, question.SourceLabel, Explanation: null);
+
+    private static QuizSourceDto ToQuizSource(RagSearchResultDto source, int index) =>
+        new(
+            string.IsNullOrWhiteSpace(source.SourceLabel) ? $"S{index + 1}" : source.SourceLabel,
+            source.DocumentId,
+            source.FileName,
+            source.ChunkIndex,
+            source.PageNumber,
+            source.Score);
+
+    private static string FirstSentence(string excerpt)
+    {
+        var normalized = string.Join(' ', (excerpt ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return "The retrieved source contains relevant study context.";
+        }
+
+        var terminator = normalized.IndexOfAny(new[] { '.', '!', '?' });
+        var sentence = terminator >= 24 ? normalized[..(terminator + 1)] : normalized;
+        return Shorten(sentence, 220);
+    }
+
+    private static string ExtractKeyPhrase(string sentence, string prompt)
+    {
+        var candidate = sentence.Length >= 18 ? sentence : $"The source supports the topic: {prompt}.";
+        return Shorten(candidate, 140);
+    }
+
+    private sealed record StoredQuizQuestion(
+        string Id,
+        string Text,
         IReadOnlyList<QuizOptionDto> Options,
         string CorrectOptionId,
         string Explanation,

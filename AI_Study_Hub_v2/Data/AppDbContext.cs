@@ -23,7 +23,11 @@ public class AppDbContext : DbContext
 
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
+    public DbSet<AiAnswerReport> AiAnswerReports => Set<AiAnswerReport>();
+
     public DbSet<Quiz> Quizzes => Set<Quiz>();
+
+    public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
 
     public DbSet<FolderReaction> FolderReactions => Set<FolderReaction>();
 

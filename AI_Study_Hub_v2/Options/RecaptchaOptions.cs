@@ -8,5 +8,7 @@ public sealed class RecaptchaOptions
     public string SiteKey { get; set; } = string.Empty;
     public string SecretKey { get; set; } = string.Empty;
     public string VerifyEndpoint { get; set; } = "https://www.google.com/recaptcha/api/siteverify";
+    public string Theme { get; set; } = "light";
+    public string Size { get; set; } = "normal";
     public bool IsConfigured => !string.IsNullOrWhiteSpace(SiteKey) && !string.IsNullOrWhiteSpace(SecretKey);
 }

@@ -45,7 +45,7 @@
         else
         {
             <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Filled">
-                Google reCAPTCHA is required but is not configured. Ask an administrator to set reCAPTCHA keys.
+                reCAPTCHA is required but is not configured. Ask an administrator to set reCAPTCHA keys.
             </MudAlert>
         }
     </MudStack>
@@ -83,7 +83,7 @@
         ? "Google reCAPTCHA."
         : UseDevelopmentFallback
             ? "Development fallback because reCAPTCHA is not configured."
-            : "Google reCAPTCHA configuration is required.";
+            : "reCAPTCHA configuration is required.";
 
     private string ChallengeText => $"What is {Left} + {Right}?";
 
@@ -108,7 +108,7 @@
         {
             _recaptchaToken = null;
             _recaptchaPassed = false;
-            _message = "Google reCAPTCHA could not load. Check your connection and retry.";
+            _message = "reCAPTCHA could not load. Check your connection and retry.";
             await ValidChanged.InvokeAsync(false);
             StateHasChanged();
         }
@@ -138,13 +138,13 @@
         if (string.IsNullOrWhiteSpace(_recaptchaToken))
         {
             _recaptchaPassed = false;
-            _message = "Complete the Google reCAPTCHA challenge before continuing.";
+            _message = "Complete the reCAPTCHA challenge before continuing.";
             await ValidChanged.InvokeAsync(false);
             StateHasChanged();
             return false;
         }
 
-        _message = "Google reCAPTCHA challenge completed. The server will verify it before processing.";
+        _message = "reCAPTCHA challenge completed. The server will verify it before processing.";
         await ValidChanged.InvokeAsync(IsValid);
         StateHasChanged();
         return IsValid;
@@ -194,7 +194,7 @@
     {
         _recaptchaToken = token;
         _recaptchaPassed = true;
-        _message = "Google reCAPTCHA challenge completed.";
+        _message = "reCAPTCHA challenge completed.";
         await ValidChanged.InvokeAsync(true);
         StateHasChanged();
     }

@@ -1,36 +1,10 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using AI_Study_Hub_v2.Options;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 
 namespace AI_Study_Hub_v2.Services;
-
-public interface IRecaptchaVerificationService
-{
-    bool IsEnabled { get; }
-
-    bool IsConfigured { get; }
-
-    bool ShouldVerify { get; }
-
-    Task<RecaptchaVerificationResult> VerifyAsync(
-        string? token,
-        string? remoteIp = null,
-        string? expectedAction = null,
-        CancellationToken cancellationToken = default);
-}
-
-public sealed record RecaptchaVerificationResult(
-    bool Success,
-    string Message,
-    IReadOnlyList<string> ErrorCodes)
-{
-    public static RecaptchaVerificationResult Valid(string message = "Verification passed.")
-        => new(true, message, Array.Empty<string>());
-
-    public static RecaptchaVerificationResult Invalid(string message, IReadOnlyList<string>? errorCodes = null)
-        => new(false, message, errorCodes ?? Array.Empty<string>());
-}
 
 public sealed class RecaptchaVerificationService : IRecaptchaVerificationService
 {
@@ -54,6 +28,7 @@ public sealed class RecaptchaVerificationService : IRecaptchaVerificationService
 
     public bool ShouldVerify => _options.Enabled && !_options.AllowDevelopmentFallback;
 
+
     public async Task<RecaptchaVerificationResult> VerifyAsync(
         string? token,
         string? remoteIp = null,
@@ -69,6 +44,7 @@ public sealed class RecaptchaVerificationService : IRecaptchaVerificationService
         {
             return RecaptchaVerificationResult.Valid("reCAPTCHA verification bypassed (development fallback).");
         }
+
 
         if (!_options.IsConfigured)
         {
@@ -122,7 +98,7 @@ public sealed class RecaptchaVerificationService : IRecaptchaVerificationService
                 return RecaptchaVerificationResult.Invalid("reCAPTCHA verification failed. Please retry the challenge.", body.ErrorCodes);
             }
 
-            return RecaptchaVerificationResult.Valid("Google reCAPTCHA verification passed.");
+            return RecaptchaVerificationResult.Valid("reCAPTCHA verification passed.");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {

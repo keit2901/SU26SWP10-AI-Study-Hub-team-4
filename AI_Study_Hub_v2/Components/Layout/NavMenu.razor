@@ -15,14 +15,22 @@
         <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
             @if (Session.IsAuthenticated)
             {
-                <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
-                <a class="nav-pill @NavClass("community")" href="community">Community</a>
-                <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
-                <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
+                @if (IsAdmin)
+                {
+                    <a class="nav-pill @NavClass("admin")" href="admin">Dashboard</a>
+                }
+                else
+                {
+                    <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
+                    <a class="nav-pill @NavClass("community")" href="community">Community</a>
+                    <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
+                    <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
+                }
             }
             else
             {
                 <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
+                <NavLink class="nav-pill" href="#public-community">Community</NavLink>
                 <NavLink class="nav-pill" href="login">Sign In</NavLink>
                 <NavLink class="nav-pill" href="register">Get Started</NavLink>
             }
@@ -35,7 +43,7 @@
                     <span>@DisplayName</span>
                     <small>Pro Plan</small>
                 </div>
-                <a class="user-chip teammate-user-chip" href="profile">
+                <a class="user-chip teammate-user-chip" href="@(IsAdmin ? "admin" : "profile")">
                     <span class="user-avatar"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
                 </a>
                 <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
@@ -59,8 +67,13 @@
             return (rel == "documents" || rel.StartsWith("documents/")) && !rel.StartsWith("documents/upload") ? "active" : "";
         if (href == "documents/upload")
             return rel == "documents/upload" ? "active" : "";
+        if (href == "admin")
+            return rel == "admin" ? "active" : "";
         return rel == href ? "active" : "";
     }
+
+    private bool IsAdmin =>
+        Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
 
     private string DisplayName =>
         Session.CurrentUser?.FullName
