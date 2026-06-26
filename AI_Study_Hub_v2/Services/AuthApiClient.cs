@@ -74,15 +74,48 @@ public sealed class AuthApiClient
     private static async Task ThrowFromResponseAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         var status = (int)resp.StatusCode;
+        var raw = string.Empty;
         try
         {
-            var err = await resp.Content.ReadFromJsonAsync<ApiErrorResponse>(cancellationToken: ct);
-            if (err is not null && (!string.IsNullOrEmpty(err.Code) || !string.IsNullOrEmpty(err.Message)))
+            raw = await resp.Content.ReadAsStringAsync(ct);
+            if (!string.IsNullOrWhiteSpace(raw))
             {
-                var message = !string.IsNullOrWhiteSpace(err.Message)
-                    ? err.Message
-                    : $"Request failed with status {status}.";
-                throw new AuthApiException(status, err.Code ?? "request_failed", message, err.Errors);
+                var json = System.Text.Json.Nodes.JsonNode.Parse(raw) as System.Text.Json.Nodes.JsonObject;
+                if (json is not null)
+                {
+                    var code = json["code"]?.ToString() ?? "request_failed";
+                    var message = json["message"]?.ToString();
+                    var errors = new Dictionary<string, string[]>();
+
+                    // Support ASP.NET Core ValidationProblemDetails
+                    if (string.IsNullOrWhiteSpace(message))
+                    {
+                        message = json["title"]?.ToString();
+                    }
+
+                    if (json["errors"] is System.Text.Json.Nodes.JsonObject errorsObj)
+                    {
+                        var errorMessages = new List<string>();
+                        foreach (var prop in errorsObj)
+                        {
+                            if (prop.Value is System.Text.Json.Nodes.JsonArray arr)
+                            {
+                                var msgs = arr.Select(x => x?.ToString() ?? "").ToArray();
+                                errors[prop.Key] = msgs;
+                                errorMessages.AddRange(msgs);
+                            }
+                        }
+                        if (string.IsNullOrWhiteSpace(message) || message == "One or more validation errors occurred.")
+                        {
+                            message = string.Join(" ", errorMessages);
+                        }
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        throw new AuthApiException(status, code, message, errors);
+                    }
+                }
             }
         }
         catch (AuthApiException) { throw; }
@@ -90,7 +123,7 @@ public sealed class AuthApiClient
         {
             // fall through to generic
         }
-        var raw = await resp.Content.ReadAsStringAsync(ct);
+        
         throw new AuthApiException(status, "request_failed", string.IsNullOrWhiteSpace(raw) ? $"Request failed ({status})." : raw);
     }
 }

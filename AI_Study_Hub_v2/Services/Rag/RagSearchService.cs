@@ -130,6 +130,11 @@ public sealed class RagSearchService : IRagSearchService
         {
             query = query.Where(c => c.DocumentId == request.DocumentId.Value);
         }
+        else if (request.DocumentIds is { Count: > 0 })
+        {
+            var documentIds = request.DocumentIds.Distinct().ToArray();
+            query = query.Where(c => documentIds.Contains(c.DocumentId));
+        }
 
         if (request.FolderId.HasValue)
         {

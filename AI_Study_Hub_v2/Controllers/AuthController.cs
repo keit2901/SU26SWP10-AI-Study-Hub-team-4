@@ -14,11 +14,16 @@ namespace AI_Study_Hub_v2.Controllers;
 public sealed class AuthController : ControllerBase
 {
     private readonly IAuthService _authService;
+    private readonly IRecaptchaVerificationService _recaptcha;
     private readonly ILogger<AuthController> _logger;
 
-    public AuthController(IAuthService authService, ILogger<AuthController> logger)
+    public AuthController(
+        IAuthService authService,
+        IRecaptchaVerificationService recaptcha,
+        ILogger<AuthController> logger)
     {
         _authService = authService;
+        _recaptcha = recaptcha;
         _logger = logger;
     }
 
@@ -29,6 +34,12 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
+        var verification = await VerifyRecaptchaAsync(request.RecaptchaToken, "register", cancellationToken);
+        if (verification is not null)
+        {
+            return verification;
+        }
+
         return await ExecuteAsync(() => _authService.RegisterAsync(request, GetUserAgent(), GetIpAddress(), cancellationToken));
     }
 
@@ -38,6 +49,12 @@ public sealed class AuthController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<AuthResponse>> Login([FromBody] LoginRequest request, CancellationToken cancellationToken)
     {
+        var verification = await VerifyRecaptchaAsync(request.RecaptchaToken, "login", cancellationToken);
+        if (verification is not null)
+        {
+            return verification;
+        }
+
         return await ExecuteAsync(() => _authService.LoginAsync(request, GetUserAgent(), GetIpAddress(), cancellationToken));
     }
 
@@ -89,6 +106,27 @@ public sealed class AuthController : ControllerBase
             var supabaseUserId = GetSupabaseUserIdFromClaims();
             var email = GetEmailFromClaims();
             return _authService.GetCurrentUserAsync(supabaseUserId, email, cancellationToken);
+        });
+    }
+
+    private async Task<ActionResult<AuthResponse>?> VerifyRecaptchaAsync(
+        string? token,
+        string action,
+        CancellationToken cancellationToken)
+    {
+        var result = await _recaptcha.VerifyAsync(token, GetIpAddress(), action, cancellationToken);
+        if (result.Success)
+        {
+            return null;
+        }
+
+        return BadRequest(new ApiErrorResponse
+        {
+            Code = "recaptcha_failed",
+            Message = result.Message,
+            Errors = result.ErrorCodes.Count == 0
+                ? null
+                : new Dictionary<string, string[]> { ["recaptcha"] = result.ErrorCodes.ToArray() }
         });
     }
 

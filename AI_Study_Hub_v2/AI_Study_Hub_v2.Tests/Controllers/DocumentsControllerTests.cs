@@ -194,6 +194,7 @@ public class DocumentsControllerTests
     [TestCase(413, "file_too_large")]
     [TestCase(415, "unsupported_media_type")]
     [TestCase(404, "folder_not_found")]
+    [TestCase(503, "storage_unavailable")]
     [TestCase(500, "upload_persist_failed")]
     public async Task Upload_WhenServiceThrowsDocumentException_MapsStatusAndCode(int status, string code)
     {

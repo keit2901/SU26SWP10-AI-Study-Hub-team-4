@@ -27,6 +27,77 @@ namespace AI_Study_Hub_v2.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresExtension(modelBuilder, "vector");
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.AiAnswerReport", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Answer")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("answer");
+
+                    b.Property<string>("ContextJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("context_json")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Details")
+                        .HasColumnType("text")
+                        .HasColumnName("details");
+
+                    b.Property<string>("Question")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("question");
+
+                    b.Property<string>("Reason")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("reason");
+
+                    b.Property<string>("SourcesJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("sources_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(30)
+                        .HasColumnType("character varying(30)")
+                        .HasDefaultValue("open")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("ai_answer_reports", (string)null);
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Document", b =>
                 {
                     b.Property<Guid>("Id")
@@ -214,6 +285,101 @@ namespace AI_Study_Hub_v2.Migrations
                     b.ToTable("folders", (string)null);
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("QuestionsJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("questions_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
+                    b.Property<string>("ScopeJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("scope_json")
+                        .HasDefaultValueSql("'{}'::jsonb");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("character varying(160)")
+                        .HasColumnName("title");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("quizzes", (string)null);
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.QuizAttempt", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("AnswersJson")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("answers_json")
+                        .HasDefaultValueSql("'[]'::jsonb");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid>("QuizId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("quiz_id");
+
+                    b.Property<int>("Score")
+                        .HasColumnType("integer")
+                        .HasColumnName("score");
+
+                    b.Property<int>("Total")
+                        .HasColumnType("integer")
+                        .HasColumnName("total");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("QuizId");
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("quiz_attempts", (string)null);
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Role", b =>
                 {
                     b.Property<int>("Id")
@@ -328,6 +494,17 @@ namespace AI_Study_Hub_v2.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.AiAnswerReport", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Document", b =>
                 {
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.Folder", "Folder")
@@ -368,6 +545,36 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.QuizAttempt", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Quiz", "Quiz")
+                        .WithMany("Attempts")
+                        .HasForeignKey("QuizId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Quiz");
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.User", b =>
                 {
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.Role", "Role")
@@ -387,6 +594,11 @@ namespace AI_Study_Hub_v2.Migrations
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Folder", b =>
                 {
                     b.Navigation("Documents");
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
+                {
+                    b.Navigation("Attempts");
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Role", b =>

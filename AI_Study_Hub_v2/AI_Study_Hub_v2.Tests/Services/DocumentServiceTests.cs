@@ -289,6 +289,52 @@ public class DocumentServiceTests
     }
 
     [Test]
+    public async Task UploadAsync_DocxWithOctetStream_StoresCanonicalMime()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        const string docxMime = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage
+            .Setup(s => s.UploadAsync(
+                DocumentService.BucketName,
+                It.IsAny<string>(),
+                It.IsAny<Stream>(),
+                docxMime,
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, string path, Stream _, string _, bool _, CancellationToken _) => path);
+        var sut = BuildSut(db, storage.Object);
+
+        var dto = await sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
+            fileName: "slides-notes.docx", contentType: "application/octet-stream",
+            fileSizeBytes: 100, content: Stream(100));
+
+        dto.MimeType.Should().Be(docxMime);
+        var row = await db.Documents.AsNoTracking().SingleAsync();
+        row.MimeType.Should().Be(docxMime);
+        storage.VerifyAll();
+    }
+
+    [Test]
+    public async Task UploadAsync_UnknownExtensionWithOctetStream_Throws415_UnsupportedMediaType()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        var sut = BuildSut(db, storage.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
+            fileName: "archive.bin", contentType: "application/octet-stream",
+            fileSizeBytes: 100, content: Stream(100));
+
+        var ex = await act.Should().ThrowAsync<DocumentException>();
+        ex.Which.StatusCode.Should().Be(415);
+        ex.Which.Code.Should().Be("unsupported_media_type");
+    }
+
+    [Test]
     public async Task UploadAsync_FolderNotOwned_Throws404_FolderNotFound()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
@@ -351,7 +397,29 @@ public class DocumentServiceTests
     }
 
     [Test]
-    public async Task UploadAsync_StorageUploadThrows_Bubbles_AndDoesNotInsertRow()
+    public async Task UploadAsync_SupabaseStorageException_Throws503StorageUnavailable_AndDoesNotInsertRow()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(s => s.UploadAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Stream>(),
+                It.IsAny<string>(), false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new SupabaseStorageException("storage service unavailable"));
+        var sut = BuildSut(db, storage.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
+            fileName: "x.pdf", contentType: "application/pdf",
+            fileSizeBytes: 100, content: Stream(100));
+
+        var ex = await act.Should().ThrowAsync<DocumentException>();
+        ex.Which.StatusCode.Should().Be(503);
+        ex.Which.Code.Should().Be("storage_unavailable");
+        ex.Which.Message.Should().Contain("Document storage is unavailable");
+        (await db.Documents.CountAsync()).Should().Be(0);
+    }
+
+    [Test]
+    public async Task UploadAsync_UnexpectedStorageException_Bubbles_AndDoesNotInsertRow()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
         var profile = SeedActiveStudent(db);

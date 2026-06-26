@@ -100,6 +100,31 @@ public sealed class RagSearchServiceTests
     }
 
     [Test]
+    public async Task SearchAsync_DocumentIds_AreScopedToCurrentFolder()
+    {
+        using var db = CreateDb();
+        var owner = SeedUser(db);
+        var folderA = Guid.NewGuid();
+        var folderB = Guid.NewGuid();
+        db.Folders.Add(new Folder { Id = folderA, UserId = owner.Id, Name = "A", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
+        db.Folders.Add(new Folder { Id = folderB, UserId = owner.Id, Name = "B", CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow });
+
+        var allowed = SeedDocument(db, owner.Id, folderId: folderB, fileName: "allowed.pdf");
+        var blocked = SeedDocument(db, owner.Id, folderId: folderA, fileName: "blocked.pdf");
+        SeedChunk(db, allowed, chunkIndex: 0, content: "allowed folder content", embedding: UnitAt(0));
+        SeedChunk(db, blocked, chunkIndex: 0, content: "blocked folder content", embedding: UnitAt(0));
+        await db.SaveChangesAsync();
+
+        var sut = BuildSut(db, UnitAt(0));
+
+        var results = await sut.SearchAsync(owner.SupabaseUserId,
+            new RagSearchRequest("content", null, folderB, null, null, TopK: 10, DocumentIds: new[] { allowed.Id, blocked.Id }));
+
+        results.Should().ContainSingle();
+        results[0].DocumentId.Should().Be(allowed.Id);
+    }
+
+    [Test]
     public async Task SearchAsync_CapsTopK_FromOptions()
     {
         using var db = CreateDb();

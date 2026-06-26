@@ -20,9 +20,15 @@ namespace AI_Study_Hub_v2.Tests.Controllers;
 [TestFixture]
 public class AuthControllerTests
 {
-    private static AuthController BuildSut(IAuthService service, ClaimsPrincipal? user = null, string? bearerHeader = null, string? savedAccessToken = null)
+    private static AuthController BuildSut(
+        IAuthService service,
+        ClaimsPrincipal? user = null,
+        string? bearerHeader = null,
+        string? savedAccessToken = null,
+        IRecaptchaVerificationService? recaptcha = null)
     {
-        var ctrl = new AuthController(service, NullLogger<AuthController>.Instance);
+        recaptcha ??= PassingRecaptcha();
+        var ctrl = new AuthController(service, recaptcha, NullLogger<AuthController>.Instance);
         var http = new DefaultHttpContext();
 
         // HttpContext.GetTokenAsync() delegates to IAuthenticationService.AuthenticateAsync
@@ -72,6 +78,34 @@ public class AuthControllerTests
     private static ClaimsPrincipal Principal(params Claim[] claims) =>
         new(new ClaimsIdentity(claims, authenticationType: "Bearer"));
 
+    private static IRecaptchaVerificationService PassingRecaptcha()
+    {
+        var recaptcha = new Mock<IRecaptchaVerificationService>();
+        recaptcha.SetupGet(t => t.IsEnabled).Returns(false);
+        recaptcha.SetupGet(t => t.IsConfigured).Returns(false);
+        recaptcha.Setup(t => t.VerifyAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RecaptchaVerificationResult.Valid());
+        return recaptcha.Object;
+    }
+
+    private static IRecaptchaVerificationService FailingRecaptcha()
+    {
+        var recaptcha = new Mock<IRecaptchaVerificationService>();
+        recaptcha.SetupGet(t => t.IsEnabled).Returns(true);
+        recaptcha.SetupGet(t => t.IsConfigured).Returns(true);
+        recaptcha.Setup(t => t.VerifyAsync(
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<string?>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(RecaptchaVerificationResult.Invalid("reCAPTCHA failed.", new[] { "missing-input-response" }));
+        return recaptcha.Object;
+    }
+
     private static AuthResponse SampleAuthResponse(string username = "alice", string role = "Student") => new()
     {
         AccessToken = "access.jwt",
@@ -112,6 +146,20 @@ public class AuthControllerTests
     }
 
     [Test]
+    public async Task Login_WhenRecaptchaFails_Returns400_AndDoesNotCallAuthService()
+    {
+        var svc = new Mock<IAuthService>(MockBehavior.Strict);
+        var sut = BuildSut(svc.Object, recaptcha: FailingRecaptcha());
+
+        var actionResult = await sut.Login(new LoginRequest { Email = "a@x.com", Password = "p" }, CancellationToken.None);
+
+        var badRequest = actionResult.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var error = badRequest.Value.Should().BeOfType<ApiErrorResponse>().Subject;
+        error.Code.Should().Be("recaptcha_failed");
+        error.Errors.Should().ContainKey("recaptcha");
+    }
+
+    [Test]
     public async Task Login_WhenServiceThrowsAuthException_ReturnsMappedStatusAndCode()
     {
         var svc = new Mock<IAuthService>();
@@ -127,6 +175,20 @@ public class AuthControllerTests
         var err = obj.Value.Should().BeOfType<ApiErrorResponse>().Subject;
         err.Code.Should().Be("invalid_credentials");
         err.Message.Should().Be("Email or password is incorrect.");
+    }
+
+    [Test]
+    public async Task Register_WhenRecaptchaFails_Returns400_AndDoesNotCallAuthService()
+    {
+        var svc = new Mock<IAuthService>(MockBehavior.Strict);
+        var sut = BuildSut(svc.Object, recaptcha: FailingRecaptcha());
+
+        var actionResult = await sut.Register(
+            new RegisterRequest { Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
+            CancellationToken.None);
+
+        var badRequest = actionResult.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        badRequest.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("recaptcha_failed");
     }
 
     [Test]

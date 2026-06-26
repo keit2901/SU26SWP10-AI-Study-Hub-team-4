@@ -1,4 +1,4 @@
-﻿#requires -Version 5.1
+#requires -Version 5.1
 <#
 .SYNOPSIS
   Bootstrap script cho AI_Study_Hub_v2 --  generate Supabase secrets, up stack,
@@ -76,6 +76,24 @@ function New-RandomHex([int]$bytes) {
 
 function ConvertTo-Base64Url([byte[]]$bytes) {
     return ([Convert]::ToBase64String($bytes)).TrimEnd('=').Replace('+','-').Replace('/','_')
+}
+
+function Wait-ForContainerHealth([string]$containerName, [int]$timeoutSeconds, [string]$label) {
+    Write-Step "Waiting for $label to become healthy (max ${timeoutSeconds}s)..."
+    $deadline = (Get-Date).AddSeconds($timeoutSeconds)
+    $status = 'starting'
+    do {
+        Start-Sleep -Seconds 3
+        $status = (& docker inspect $containerName --format '{{.State.Health.Status}}' 2>$null)
+        if (-not $status) { $status = 'starting' }
+        Write-Hint "$label health = $status"
+    } while ($status -ne 'healthy' -and (Get-Date) -lt $deadline)
+
+    if ($status -ne 'healthy') {
+        Write-Warn2 "$label not healthy within timeout. Continuing --  check 'docker compose ps'."
+    } else {
+        Write-Ok "$label healthy."
+    }
 }
 
 function New-HmacJwt([string]$payloadJson, [string]$secret) {
@@ -303,21 +321,13 @@ if (-not $SkipUp) {
     & docker compose -f (Join-Path $infraDir 'docker-compose.yml') --project-directory $infraDir up -d
     if ($LASTEXITCODE -ne 0) { Fail 'docker compose up failed.' }
 
-    Write-Step 'Waiting for supabase-db to become healthy (max 120s)...'
-    $deadline = (Get-Date).AddSeconds(120)
-    $status = 'starting'
-    do {
-        Start-Sleep -Seconds 3
-        $status = (& docker inspect supabase-db --format '{{.State.Health.Status}}' 2>$null)
-        if (-not $status) { $status = 'starting' }
-        Write-Hint "db health = $status"
-    } while ($status -ne 'healthy' -and (Get-Date) -lt $deadline)
+    Wait-ForContainerHealth -containerName 'supabase-db' -timeoutSeconds 120 -label 'supabase-db'
 
-    if ($status -ne 'healthy') {
-        Write-Warn2 "supabase-db not healthy within timeout. Continuing --  check 'docker compose ps'."
-    } else {
-        Write-Ok 'supabase-db healthy.'
-    }
+    Write-Step 'Starting minimal upload storage services (storage + imgproxy)...'
+    & docker compose --profile phase2 -f (Join-Path $infraDir 'docker-compose.yml') --project-directory $infraDir up -d storage imgproxy
+    if ($LASTEXITCODE -ne 0) { Fail 'docker compose up storage imgproxy failed.' }
+
+    Wait-ForContainerHealth -containerName 'supabase-storage' -timeoutSeconds 120 -label 'supabase-storage'
 } else {
     Write-Step 'Skipping docker compose up (-SkipUp).'
 }
@@ -346,13 +356,15 @@ $secretMap = [ordered]@{
     'Supabase:AnonKey'           = $secrets['ANON_KEY']
     'Supabase:ServiceRoleKey'    = $secrets['SERVICE_ROLE_KEY']
     'Seed:DefaultAdmin:Password' = $adminPwd
+    'Recaptcha:SiteKey'          = '6LcglxotAAAAAJMIi0jZaLDtbPWuk9HUDeVTwH2x'
+    'Recaptcha:SecretKey'        = '6LcglxotAAAAAIVFsLCsvdVFBPANrW9jeiydiuhI'
 }
 
 foreach ($kv in $secretMap.GetEnumerator()) {
     & dotnet user-secrets set $kv.Key $kv.Value --project $csproj *> $null
     if ($LASTEXITCODE -ne 0) { Fail "Failed to set user-secret '$($kv.Key)'." }
 }
-Write-Ok 'user-secrets set (5 keys).'
+Write-Ok 'user-secrets set (7 keys).'
 
 # ---------------------------------------------------------------------------
 # 6. dotnet build

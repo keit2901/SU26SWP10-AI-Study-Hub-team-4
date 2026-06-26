@@ -21,6 +21,9 @@ public sealed class RegisterRequest
     [MinLength(8)]
     [StringLength(128)]
     public string Password { get; set; } = string.Empty;
+
+    [StringLength(8192)]
+    public string? RecaptchaToken { get; set; }
 }
 
 public sealed class LoginRequest
@@ -33,6 +36,9 @@ public sealed class LoginRequest
     [Required]
     [StringLength(128, MinimumLength = 1)]
     public string Password { get; set; } = string.Empty;
+
+    [StringLength(8192)]
+    public string? RecaptchaToken { get; set; }
 }
 
 public sealed class RefreshTokenRequest
