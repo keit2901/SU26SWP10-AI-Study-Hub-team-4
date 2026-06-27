@@ -1,8 +1,9 @@
 # RBL Phase 1 — Real Embedding (Ollama + all-minilm:l6-v2)
 
-> **Status:** DRAFT — đợi teammates review & quyết định  
+> **Status:** ✅ APPROVED — quyết định đã chốt, sẵn sàng triển khai  
 > **Ngày:** 2026-06-26  
-> **Review:** Đã qua 2 vòng challenger review. Các vấn đề đã được ghi nhận bên dưới.
+> **Review:** Đã qua 2 vòng challenger review + thảo luận team.  
+> **Team:** Sơn (@ThShadow), Bảo (@TranGiaBao2005), Phước (@ChickMann)
 
 ---
 
@@ -250,68 +251,46 @@ public async Task RealOllama_Returns_384Dim_NonZero_DifferentVectors()
 
 ---
 
-## Phân công (đã sửa từ challenger feedback)
+## Phân công cuối cùng ✅
 
-### Round 1 — Cả team cùng làm (30 phút)
-
-| Việc | 
-|------|
-| Cùng tạo docker-compose Ollama + start container |
-| Cùng chốt Design A hay B cho transaction |
-| Cùng chốt cấu trúc `OllamaOptions` |
-
-### Round 2 — Song song
-
-| Dev 1 | Dev 2 | Dev 3 |
-|-------|-------|-------|
-| `OllamaEmbeddingService` core | `OllamaHealthCheck` | Unit test mock cho `OllamaEmbeddingService` |
-| Migration (cột + index) | Error handling + friendly message | Unit test cho `RagSearchService` filter model |
-| `Program.cs` DI swap | Transaction refactoring (Design đã chọn) | Chuẩn bị test PDF + câu hỏi benchmark |
-| Re-ingest endpoint | | |
-
-### Round 3 — Tích hợp + Test
-
-| Cả team |
-|---------|
-| Integration test với Ollama thật |
-| Smoke test upload → chat → verify |
-| Benchmark baseline |
-| Bug fix |
+| Dev | GitHub | Round 1 (cùng làm, 30m) | Round 2 (song song, 3-4h) | Round 3 (tích hợp, 2-3h) |
+|-----|--------|--------------------------|---------------------------|---------------------------|
+| **Sơn** | `@ThShadow` | Docker Ollama + chốt thiết kế | `OllamaEmbeddingService` + migration + DI swap | Smoke test |
+| **Bảo** | `@TranGiaBao2005` | Docker Ollama + chốt thiết kế | `OllamaHealthCheck` + error handling + transaction refactor (Design B) | Integration test |
+| **Phước** | `@ChickMann` | Docker Ollama + chốt thiết kế | Unit test mock + benchmark baseline | Benchmark + verify |
 
 ---
 
-## Quyết định cần teammates chốt
+## 6 Quyết định đã chốt ✅
 
-| # | Câu hỏi | Options |
-|---|---------|---------|
-| Q1 | Transaction refactoring: xóa chunk cũ trước (Design A) hay ghi chunk mới trước (Design B)? | A: xóa trước, rủi ro crash mất hết / B: ghi trước, an toàn hơn |
-| Q2 | Re-ingest tự động lúc startup hay endpoint admin thủ công? | Auto: tiện nhưng chậm startup / Manual: admin chủ động |
-| Q3 | Ollama compose tách riêng hay gắn vào Supabase compose? | Tách riêng: an toàn hơn / Gắn chung: tiện start 1 lệnh |
-| Q4 | Có cần benchmark trước/sau không? Hay "nó hoạt động" là đủ? | Có: tốn 1-2h nhưng có số liệu / Không: tiết kiệm thời gian |
-| Q5 | `[Ignore]` integration test: ai chạy và khi nào? | Dev chạy manual trước PR / CI chạy với Docker runner |
-| Q6 | Production dùng Ollama local hay cloud embedding API? | Local: free, latency thấp / Cloud: không cần maintain container |
+| # | Câu hỏi | Quyết định | Lý do |
+|---|---------|-----------|-------|
+| Q1 | Transaction refactoring? | **Design B** — ghi chunk mới trước, cleanup cũ sau | Crash giữa chừng không mất dữ liệu |
+| Q2 | Re-ingest auto hay manual? | **Manual** — `POST /api/admin/documents/reingest-all` | Không block app startup, admin chủ động |
+| Q3 | Ollama compose tách/gộp? | **Tách riêng** `infra/ollama/docker-compose.yml`, share network `supabase_network` | Down Supabase không giết Ollama |
+| Q4 | Có benchmark không? | **Có** — latency + recall@5 trước/sau | Cần evidence định lượng |
+| Q5 | Ai chạy integration test? | **Dev chạy manual trước PR**, `[Ignore]` | CI không có Docker |
+| Q6 | Production embedding? | **Ollama local** cho Phase 1 | Miễn phí, interface cho phép swap cloud API sau |
 
 ---
 
-## Timeline (đã sửa)
+## Timeline
 
-| Phase | Thời gian | Ai |
-|-------|----------|-----|
-| Chuẩn bị (Docker, query DB, config) | 1h | Cả team |
-| Round 1: Chốt thiết kế | 0.5h | Cả team |
-| Round 2: Code song song | 3-4h | Dev 1 + Dev 2 + Dev 3 |
-| Round 3: Tích hợp, test, fix bug | 2-3h | Cả team |
-| **Tổng** | **7-9h** (1-2 ngày) | |
+| Phase | Thời gian |
+|-------|----------|
+| Chuẩn bị (Docker, query DB, config) | 1h |
+| Round 1: Cùng chốt thiết kế | 0.5h |
+| Round 2: Code song song | 3-4h |
+| Round 3: Tích hợp, test, fix bug | 2-3h |
+| **Tổng** | **7-9h** (1-2 ngày) |
 
 ---
 
 ## Rollback Plan
 
-Nếu Ollama embedding gây lỗi production:
-
-1. **Switch lại FakeEmbeddingService:** Đổi 1 dòng trong `Program.cs` → deploy
-2. **Giữ nguyên dữ liệu:** Chunk có `embedding_model='all-minilm:l6-v2'` vẫn nằm trong DB, nhưng `RagSearchService` filter `embedding_model` nên sẽ không dùng đến nếu model không khớp
-3. **Re-ingest bằng fake embedding:** Chạy endpoint admin, chunk cũ bị xóa, chunk mới dùng fake
+1. **Switch lại FakeEmbeddingService:** Đổi 1 dòng `Program.cs` → deploy
+2. **Dữ liệu an toàn:** `embedding_model` column đảm bảo chunk cũ/không model bị filter out
+3. **Re-ingest bằng fake:** Endpoint admin xóa chunk cũ, tạo lại chunk fake
 
 ---
 
@@ -320,7 +299,7 @@ Nếu Ollama embedding gây lỗi production:
 | File | Mục đích |
 |------|----------|
 | `Services/Rag/RagContracts.cs` | Interface `IEmbeddingService` |
-| `Services/Rag/FakeEmbeddingService.cs` | Implementation hiện tại (tham khảo contract) |
+| `Services/Rag/FakeEmbeddingService.cs` | Implementation hiện tại |
 | `Services/Rag/DocumentIngestionService.cs:134-167` | Transaction cần refactor |
 | `Services/Rag/RagSearchService.cs:120-163` | ApplyFilters cần thêm model filter |
 | `Program.cs:119` | DI registration cần swap |
@@ -328,4 +307,4 @@ Nếu Ollama embedding gây lỗi production:
 
 ---
 
-> **Next step:** Teammates review, thảo luận 6 câu hỏi Q1-Q6, chốt quyết định → bắt đầu code.
+> **Next step:** Bắt đầu Round 1 — cả 3 cùng khởi tạo Docker Ollama container.
