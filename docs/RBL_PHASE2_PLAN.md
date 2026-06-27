@@ -102,11 +102,11 @@ public sealed class SemanticChunkingService : IChunkingService
 
 ## Phân công
 
-| Dev | Việc |
-|-----|------|
-| **Dev 1** | `SentenceSplitter` — tách sentence từ text (hỗ trợ tiếng Việt: dấu `.` không phải lúc nào cũng kết thúc câu, vd: "TS. Nguyễn", "1.2.3") |
-| **Dev 2** | `BlockParser` — phát hiện heading, paragraph, list, table từ PDF output |
-| **Dev 3** | `ChunkMerger` + integrate vào `ChunkingService` mới + test |
+| Người | GitHub | Việc | Effort |
+|-------|--------|------|--------|
+| **Sơn** | `@ThShadow` | `SentenceSplitter` — tách sentence từ text, xử lý tiếng Việt (abbreviations: "TS.", "1.2.3", dấu `.` không kết thúc câu) | 3h |
+| **Bảo** | `@TranGiaBao2005` | `BlockParser` — phát hiện heading, paragraph, list, table từ PDF text output | 3h |
+| **Phước** | `@ChickMann` | `ChunkMerger` + tích hợp vào `SemanticChunkingService` mới + test + benchmark so sánh fixed vs semantic | 3h |
 
 ---
 

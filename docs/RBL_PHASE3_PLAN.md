@@ -36,7 +36,7 @@ public sealed class CachingEmbeddingService : IEmbeddingService
 | TTL | 30 phút |
 | Cache key | SHA256(text) |
 
-### Phân công: 1 Dev, 2h
+### Phân công: Sơn (@ThShadow), 2h
 
 ---
 
@@ -73,7 +73,7 @@ Query → Embedding → Vector Search (top 20) → Re-ranker (top 5) → LLM
 | `Options/RagOptions.cs` | `ReRankEnabled`, `ReRankTopN` (mặc định 20 → 5) |
 | `Services/Rag/ReRankService.cs` | **Mới** — wrapper gọi Groq/Ollama re-rank API |
 
-### Phân công: 2 Dev, 4h
+### Phân công: Sơn (@ThShadow), 4h
 
 ---
 
@@ -121,7 +121,7 @@ LIMIT 5;
 | `Options/RagOptions.cs` | `HybridSearchEnabled`, `VectorWeight` (mặc định 0.7) |
 | `Dtos/RagDtos.cs` | `RagSearchRequest` thêm `SearchMode` (vector/hybrid/keyword) |
 
-### Phân công: 2 Dev, 5h
+### Phân công: Bảo (@TranGiaBao2005), 5h
 
 ---
 
@@ -149,7 +149,7 @@ Benchmark hiện tại thủ công — chạy `POST /api/benchmark/run` rồi xe
 | `Components/Admin/Benchmarks/` | **Mới** — Blazor page hiển thị chart |
 | Migration | Thêm bảng `benchmark_results` |
 
-### Phân công: 1 Dev, 4h
+### Phân công: Phước (@ChickMann), 4h
 
 ---
 
@@ -171,34 +171,38 @@ Không có metrics về embedding latency, failure rate, model version → khôn
 
 Triển khai qua `ILogger` + structured logging (đã có sẵn). Không cần thêm package.
 
-### Phân công: 1 Dev, 3h
+### Phân công: Sơn (@ThShadow), 1h
 
 ---
 
 ## Tổng kết Phase 3
 
-| Component | Mức độ ưu tiên | Effort | Impact |
-|-----------|---------------|--------|--------|
-| **Embedding Cache** | 🔴 Cao | 2h | Giảm 80% Ollama calls |
-| **Re-ranking** | 🔴 Cao | 4h | Cải thiện search quality rõ rệt |
-| **Hybrid Search** | 🟡 Trung bình | 5h | Cải thiện exact-match queries |
-| **Benchmark Auto** | 🟡 Trung bình | 4h | Phát hiện regression sớm |
-| **Observability** | 🟢 Thấp | 3h | Debug dễ hơn |
+| Component | Mức độ ưu tiên | Effort | Người | Impact |
+|-----------|---------------|--------|-------|--------|
+| **Embedding Cache** | 🔴 Cao | 2h | Phước | Giảm 80% Ollama calls |
+| **Re-ranking** | 🔴 Cao | 4h | Sơn | Cải thiện search quality rõ rệt |
+| **Hybrid Search** | 🟡 Trung bình | 5h | Bảo | Cải thiện exact-match queries |
+| **Benchmark Auto** | 🟡 Trung bình | 4h | Phước | Phát hiện regression sớm |
+| **Observability** | 🟢 Thấp | 1h | Sơn | Debug dễ hơn |
 
 ### Thứ tự triển khai
 
 ```
-Embedding Cache → Re-ranking → Hybrid Search → Benchmark Auto → Observability
-     (2h)            (4h)          (5h)              (4h)            (3h)
+Phước: Embedding Cache → Benchmark Auto
+         (2h)               (4h)
+Sơn:   Re-ranking → Observability
+         (4h)          (1h)
+Bảo:   Hybrid Search
+         (5h)
 ```
 
 ### Phân công tổng
 
-| Dev | Việc | Thời gian |
-|-----|------|----------|
-| **Dev 1** | Embedding Cache + Re-ranking | 6h |
-| **Dev 2** | Hybrid Search + Benchmark Auto | 9h |
-| **Dev 3** | Observability + Integration test | 5h |
+| Người | GitHub | Việc | Thời gian |
+|-------|--------|------|----------|
+| **Sơn** | `@ThShadow` | Re-ranking + Observability | 5h |
+| **Bảo** | `@TranGiaBao2005` | Hybrid Search | 5h |
+| **Phước** | `@ChickMann` | Embedding Cache + Benchmark Automation | 6h |
 
 **Tổng thời gian:** ~18h (2-3 ngày, 3 người song song)
 

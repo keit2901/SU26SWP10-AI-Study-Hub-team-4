@@ -29,11 +29,34 @@ P2 phụ thuộc P1. P3 phụ thuộc P1 + P2.
 
 ## Team
 
-| Người | GitHub | P1 | P2 | P3 |
-|-------|--------|-----|-----|-----|
-| **Sơn** | `@ThShadow` | OllamaEmbeddingService + migration | SentenceSplitter | Embedding Cache + Re-ranking |
-| **Bảo** | `@TranGiaBao2005` | Health check + transaction refactor | BlockParser | Hybrid Search + Benchmark |
-| **Phước** | `@ChickMann` | Test + benchmark baseline | ChunkMerger + integrate | Observability |
+| Người | GitHub | P1 (7-9h) | P2 (~9h) | P3 (~18h) | Tổng effort |
+|-------|--------|-----------|----------|----------|-------------|
+| **Sơn** | `@ThShadow` | OllamaEmbeddingService + migration + DI swap | SentenceSplitter | Re-ranking + Observability | ~11h |
+| **Bảo** | `@TranGiaBao2005` | Health check + transaction refactor (Design B) | BlockParser | Hybrid Search | ~11h |
+| **Phước** | `@ChickMann` | Unit test + benchmark baseline | ChunkMerger + integrate into ChunkingService | Embedding Cache + Benchmark Automation | ~11h |
+
+### Phân công chi tiết theo từng phase
+
+#### P1 — Real Embedding
+| Người | Việc | Effort |
+|-------|------|--------|
+| Sơn | `OllamaEmbeddingService.cs` + `OllamaOptions.cs` + migration `embedding_model` + `Program.cs` DI swap + `RagSearchService` filter | 3h |
+| Bảo | `OllamaHealthCheck.cs` + error handling/friendly messages + refactor `DocumentIngestionService` (Design B) + `docker-compose.yml` | 3h |
+| Phước | Unit test mock + integration test `[Ignore]` + benchmark baseline + `appsettings.json` update | 2.5h |
+
+#### P2 — Semantic Chunking
+| Người | Việc | Effort |
+|-------|------|--------|
+| Sơn | `SentenceSplitter` — tách câu, xử lý tiếng Việt (abbreviations, dấu câu) | 3h |
+| Bảo | `BlockParser` — phát hiện heading, paragraph, list, table từ PDF text | 3h |
+| Phước | `ChunkMerger` + tích hợp vào `SemanticChunkingService` mới + test + benchmark so sánh fixed vs semantic | 3h |
+
+#### P3 — Quality & Performance
+| Người | Việc | Effort |
+|-------|------|--------|
+| Sơn | Re-ranking (cross-encoder, `ReRankService`) + Observability (metrics, structured logging) | 5h |
+| Bảo | Hybrid Search (keyword+vector fusion, migration `search_vector`, RRF scoring) | 5h |
+| Phước | Embedding Cache (`CachingEmbeddingService`, LRU) + Benchmark Automation (DB entity, scheduled job, admin dashboard) | 6h |
 
 ---
 
