@@ -1,0 +1,220 @@
+# RBL Phase 3 — RAG Quality & Performance
+
+> **Status:** DRAFT — đợi Phase 1 + Phase 2 hoàn thành  
+> **Ngày:** 2026-06-26  
+> **Phụ thuộc:** Phase 1 (Real Embedding) + Phase 2 (Semantic Chunking)
+
+---
+
+## Mục tiêu
+
+Sau khi có embedding thật (P1) và chunking ngữ nghĩa (P2), Phase 3 tối ưu **chất lượng tìm kiếm** và **hiệu năng** của toàn bộ pipeline RAG.
+
+---
+
+## 3.1 Embedding Cache
+
+### Vấn đề
+
+Mỗi lần chat/search, system gọi `OllamaEmbeddingService.GenerateEmbeddingAsync()` cho query text. Nếu user hỏi câu tương tự hoặc re-search, Ollama bị gọi lại → lãng phí.
+
+### Giải pháp
+
+**In-memory LRU cache** cho embedding:
+
+```csharp
+public sealed class CachingEmbeddingService : IEmbeddingService
+{
+    private readonly IEmbeddingService _inner;
+    private readonly MemoryCache _cache; // LRU, max 1000 entries, TTL 30 phút
+}
+```
+
+| Config | Giá trị |
+|--------|---------|
+| Max entries | 1000 |
+| TTL | 30 phút |
+| Cache key | SHA256(text) |
+
+### Phân công: 1 Dev, 2h
+
+---
+
+## 3.2 Re-ranking (Cross-encoder)
+
+### Vấn đề
+
+Hiện tại search trả về top-K chunks theo cosine distance. Nhưng cosine distance chỉ đo độ tương tự embedding, không thực sự "hiểu" mối liên hệ giữa query và chunk. Kết quả: chunk có thể chứa keyword nhưng không trả lời đúng câu hỏi.
+
+### Giải pháp
+
+Thêm **re-ranking step** sau vector search:
+
+```
+Query → Embedding → Vector Search (top 20) → Re-ranker (top 5) → LLM
+                                              ↑
+                                   Cross-encoder model
+                                   chấm điểm relevance
+                                   cho từng cặp (query, chunk)
+```
+
+| Model đề xuất | Lý do |
+|--------------|-------|
+| `mixedbread-ai/mxbai-rerank-base-v1` | Nhẹ, miễn phí, chạy được trên CPU |
+| Groq API re-rank endpoint | Không cần self-host, trả phí theo token |
+
+**Khuyến nghị:** Dùng Groq API nếu có budget; nếu không → self-host cross-encoder qua Ollama.
+
+### Files thay đổi
+
+| File | Thay đổi |
+|------|---------|
+| `Services/Rag/RagSearchService.cs` | Thêm re-rank step giữa `SearchPostgresAsync` và `ToDto` |
+| `Options/RagOptions.cs` | `ReRankEnabled`, `ReRankTopN` (mặc định 20 → 5) |
+| `Services/Rag/ReRankService.cs` | **Mới** — wrapper gọi Groq/Ollama re-rank API |
+
+### Phân công: 2 Dev, 4h
+
+---
+
+## 3.3 Hybrid Search (Keyword + Vector)
+
+### Vấn đề
+
+Pure vector search bỏ lỡ exact keyword matches. Ví dụ: user tìm "SWP391" → vector search có thể trả về chunk về "software project" thay vì đúng môn SWP391.
+
+### Giải pháp
+
+**Hybrid search = vector + keyword** với reciprocal rank fusion (RRF):
+
+```
+Score_final = alpha * Score_vector + (1 - alpha) * Score_keyword
+```
+
+| Component | Implementation |
+|-----------|---------------|
+| Vector search | pgvector `CosineDistance` (đã có) |
+| Keyword search | PostgreSQL `tsvector` + `ts_rank` (full-text search) |
+| Fusion | RRF hoặc weighted sum |
+
+```sql
+-- Thêm tsvector column vào document_chunks
+ALTER TABLE document_chunks ADD COLUMN search_vector tsvector
+GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+
+-- Hybrid query
+SELECT *, 
+  (0.7 * (1.0 - (embedding <=> query_vector) / 2.0) + 
+   0.3 * ts_rank(search_vector, plainto_tsquery('english', query))) AS hybrid_score
+FROM document_chunks
+WHERE ...
+ORDER BY hybrid_score DESC
+LIMIT 5;
+```
+
+### Files thay đổi
+
+| File | Thay đổi |
+|------|---------|
+| Migration | Thêm `search_vector tsvector` column + GIN index |
+| `Services/Rag/RagSearchService.cs` | Thêm `SearchHybridAsync()` |
+| `Options/RagOptions.cs` | `HybridSearchEnabled`, `VectorWeight` (mặc định 0.7) |
+| `Dtos/RagDtos.cs` | `RagSearchRequest` thêm `SearchMode` (vector/hybrid/keyword) |
+
+### Phân công: 2 Dev, 5h
+
+---
+
+## 3.4 Benchmark Automation
+
+### Vấn đề
+
+Benchmark hiện tại thủ công — chạy `POST /api/benchmark/run` rồi xem kết quả. Không có baseline history, không có alert khi quality giảm.
+
+### Giải pháp
+
+| Việc | Mô tả |
+|------|-------|
+| Benchmark dataset | Tạo 10 câu hỏi + 5 PDF mẫu → expected relevant chunks |
+| Automated run | Scheduled job (mỗi tuần) chạy benchmark, lưu kết quả vào DB |
+| Dashboard | Trang admin `/admin/benchmarks` hiển thị chart recall@5, MRR, latency theo thời gian |
+| Alert | Nếu recall@5 giảm >10% so với baseline → gửi warning |
+
+### Files thay đổi
+
+| File | Thay đổi |
+|------|---------|
+| `Services/Rag/Benchmarking/BenchmarkRunner.cs` | Tự động lưu kết quả vào DB |
+| `Data/Entities/BenchmarkResult.cs` | **Mới** — entity lưu kết quả benchmark |
+| `Components/Admin/Benchmarks/` | **Mới** — Blazor page hiển thị chart |
+| Migration | Thêm bảng `benchmark_results` |
+
+### Phân công: 1 Dev, 4h
+
+---
+
+## 3.5 Observability
+
+### Vấn đề
+
+Không có metrics về embedding latency, failure rate, model version → không debug được khi có vấn đề.
+
+### Giải pháp
+
+| Metric | Cách đo | Cảnh báo |
+|--------|---------|---------|
+| Embedding latency | `Stopwatch` trong `OllamaEmbeddingService`, log p50/p95/p99 | > 5s |
+| Embedding failure rate | Counter mỗi lần retry thất bại | > 5% |
+| Search latency | `Stopwatch` trong `RagSearchService` | > 2s |
+| Chunk count per doc | Log sau mỗi lần ingest | < 3 hoặc > 100 |
+| Model version | Log `OllamaOptions.Model` khi startup | Thay đổi version |
+
+Triển khai qua `ILogger` + structured logging (đã có sẵn). Không cần thêm package.
+
+### Phân công: 1 Dev, 3h
+
+---
+
+## Tổng kết Phase 3
+
+| Component | Mức độ ưu tiên | Effort | Impact |
+|-----------|---------------|--------|--------|
+| **Embedding Cache** | 🔴 Cao | 2h | Giảm 80% Ollama calls |
+| **Re-ranking** | 🔴 Cao | 4h | Cải thiện search quality rõ rệt |
+| **Hybrid Search** | 🟡 Trung bình | 5h | Cải thiện exact-match queries |
+| **Benchmark Auto** | 🟡 Trung bình | 4h | Phát hiện regression sớm |
+| **Observability** | 🟢 Thấp | 3h | Debug dễ hơn |
+
+### Thứ tự triển khai
+
+```
+Embedding Cache → Re-ranking → Hybrid Search → Benchmark Auto → Observability
+     (2h)            (4h)          (5h)              (4h)            (3h)
+```
+
+### Phân công tổng
+
+| Dev | Việc | Thời gian |
+|-----|------|----------|
+| **Dev 1** | Embedding Cache + Re-ranking | 6h |
+| **Dev 2** | Hybrid Search + Benchmark Auto | 9h |
+| **Dev 3** | Observability + Integration test | 5h |
+
+**Tổng thời gian:** ~18h (2-3 ngày, 3 người song song)
+
+---
+
+## Rollback
+
+Tất cả feature đều toggle qua config:
+
+```json
+"Rag": {
+    "EmbeddingCacheEnabled": true,
+    "ReRankEnabled": true,
+    "HybridSearchEnabled": true,
+    "SearchMode": "hybrid"  // "vector" để quay lại cũ
+}
+```
+
+Tắt 1 dòng config → quay về behavior cũ. Không cần rollback code.
