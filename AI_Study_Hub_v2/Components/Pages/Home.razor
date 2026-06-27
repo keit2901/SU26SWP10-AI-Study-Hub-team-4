@@ -133,7 +133,7 @@
             return;
         }
 
-        var target = Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true
+        var target = AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role)
             ? "/admin"
             : "/documents";
         Nav.NavigateTo(target, replace: true);

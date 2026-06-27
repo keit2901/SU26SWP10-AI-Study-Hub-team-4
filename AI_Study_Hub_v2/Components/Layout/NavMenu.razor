@@ -73,7 +73,7 @@
     }
 
     private bool IsAdmin =>
-        Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+        AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role);
 
     private string DisplayName =>
         Session.CurrentUser?.FullName
