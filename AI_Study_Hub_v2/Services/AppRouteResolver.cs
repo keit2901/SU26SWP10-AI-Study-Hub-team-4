@@ -11,7 +11,7 @@ public static class AppRouteResolver
 
         if (IsModeratorRole(role))
         {
-            return "/dashboard";
+            return "/moderator/dashboard";
         }
 
         return "/documents";

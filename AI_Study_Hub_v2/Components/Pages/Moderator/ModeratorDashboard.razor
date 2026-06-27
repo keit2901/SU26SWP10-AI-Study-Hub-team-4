@@ -1,4 +1,3 @@
-@page "/dashboard"
 @page "/moderator"
 @page "/moderator/dashboard"
 @using AI_Study_Hub_v2.Data
@@ -29,6 +28,45 @@
             <div class="moderator-hero-note-title">Current role routing</div>
             <p>@RoleMessage</p>
         </div>
+    </section>
+
+    @if (!Session.IsAuthenticated)
+    {
+        <section class="moderator-demo-banner" role="note" aria-label="Dashboard demo mode">
+            <MudIcon Icon="@Icons.Material.Filled.Visibility" Size="Size.Small" />
+            <span>Demo mode: this moderator dashboard is visible without login so you can review the UI quickly.</span>
+        </section>
+    }
+
+    <section class="moderator-menu" aria-label="Moderator menu">
+        <a class="moderator-menu-item" href="#moderator-reports">
+            <span class="moderator-menu-icon indigo"><MudIcon Icon="@Icons.Material.Filled.ReportProblem" Size="Size.Small" /></span>
+            <span class="moderator-menu-copy">
+                <strong>Reports Queue</strong>
+                <small>@pendingReports open item(s)</small>
+            </span>
+        </a>
+        <a class="moderator-menu-item" href="#moderator-shared">
+            <span class="moderator-menu-icon amber"><MudIcon Icon="@Icons.Material.Filled.IosShare" Size="Size.Small" /></span>
+            <span class="moderator-menu-copy">
+                <strong>Shared Folders</strong>
+                <small>@sharedFolders public folder(s)</small>
+            </span>
+        </a>
+        <a class="moderator-menu-item" href="#moderator-notes">
+            <span class="moderator-menu-icon emerald"><MudIcon Icon="@Icons.Material.Filled.FactCheck" Size="Size.Small" /></span>
+            <span class="moderator-menu-copy">
+                <strong>Moderation Notes</strong>
+                <small>Review posture and guidance</small>
+            </span>
+        </a>
+        <a class="moderator-menu-item" href="/community">
+            <span class="moderator-menu-icon slate"><MudIcon Icon="@Icons.Material.Filled.Groups" Size="Size.Small" /></span>
+            <span class="moderator-menu-copy">
+                <strong>Open Community</strong>
+                <small>Jump to shared content page</small>
+            </span>
+        </a>
     </section>
 
     @if (isLoading)
@@ -71,7 +109,7 @@
         </section>
 
         <section class="moderator-grid">
-            <article class="moderator-panel moderator-panel-wide">
+            <article id="moderator-reports" class="moderator-panel moderator-panel-wide">
                 <div class="moderator-panel-head">
                     <div>
                         <h2>Pending Community Reports</h2>
@@ -125,7 +163,7 @@
                 }
             </article>
 
-            <article class="moderator-panel">
+            <article id="moderator-shared" class="moderator-panel">
                 <div class="moderator-panel-head">
                     <div>
                         <h2>Recently Shared Folders</h2>
@@ -147,7 +185,7 @@
                 </div>
             </article>
 
-            <article class="moderator-panel">
+            <article id="moderator-notes" class="moderator-panel">
                 <div class="moderator-panel-head">
                     <div>
                         <h2>Moderation Notes</h2>
@@ -189,16 +227,12 @@
     private string RoleMessage =>
         AppRouteResolver.IsModeratorRole(Session.CurrentUser?.Role)
             ? "Your account is already mapped to the moderator workspace."
-            : "The current backend still seeds only Admin and Student. This page is a frontend-ready moderator workspace for when a dedicated role is introduced.";
+            : Session.IsAuthenticated
+                ? "The current backend still seeds only Admin and Student. This page is a frontend-ready moderator workspace for when a dedicated role is introduced."
+                : "You are viewing the moderator dashboard in demo mode without signing in.";
 
     protected override async Task OnInitializedAsync()
     {
-        if (!Session.IsAuthenticated)
-        {
-            Nav.NavigateTo("/login");
-            return;
-        }
-
         var pending = await DbContext.CommunityReports
             .AsNoTracking()
             .Where(r => r.Status == "Pending")

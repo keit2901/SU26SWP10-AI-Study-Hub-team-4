@@ -16,10 +16,7 @@
         <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
             @if (Session.IsAuthenticated)
             {
-                @if (ShowDashboardLink)
-                {
-                    <a class="nav-pill @(IsDashboardActive ? "active" : "")" href="@DashboardHref">Dashboard</a>
-                }
+                <a class="nav-pill @(IsDashboardActive ? "active" : "")" href="@DashboardMenuHref">Dashboard</a>
                 <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
                 <a class="nav-pill @NavClass("community")" href="community">Community</a>
                 <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
@@ -73,21 +70,21 @@
         ?? Session.CurrentUser?.Email
         ?? "Student";
 
-    private string DashboardHref => AppRouteResolver.GetDashboardRoute(Session.CurrentUser?.Role);
+    private string DashboardMenuHref =>
+        AppRouteResolver.IsAdminRole(Session.CurrentUser?.Role)
+            ? "/admin/dashboard"
+            : AppRouteResolver.IsModeratorRole(Session.CurrentUser?.Role)
+                ? "/moderator/dashboard"
+                : "/dashboard";
 
     private bool IsDashboardActive
     {
         get
         {
             var rel = "/" + Nav.ToBaseRelativePath(Nav.Uri).Trim('/');
-            return string.Equals(rel, DashboardHref, StringComparison.OrdinalIgnoreCase);
+            return string.Equals(rel, DashboardMenuHref, StringComparison.OrdinalIgnoreCase);
         }
     }
-
-    private bool ShowDashboardLink =>
-        AppRouteResolver.IsAdminRole(Session.CurrentUser?.Role)
-        || AppRouteResolver.IsModeratorRole(Session.CurrentUser?.Role);
-
     protected override void OnInitialized()
     {
         Session.OnChange += OnSessionChanged;
