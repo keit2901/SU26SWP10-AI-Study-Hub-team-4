@@ -36,7 +36,7 @@ public sealed class CachingEmbeddingService : IEmbeddingService
 | TTL | 30 phút |
 | Cache key | SHA256(text) |
 
-### Phân công: Sơn (@ThShadow), 2h
+### Phân công: Phước (@ChickMann), 2h
 
 ---
 
@@ -58,12 +58,18 @@ Query → Embedding → Vector Search (top 20) → Re-ranker (top 5) → LLM
                                    cho từng cặp (query, chunk)
 ```
 
-| Model đề xuất | Lý do |
-|--------------|-------|
-| `mixedbread-ai/mxbai-rerank-base-v1` | Nhẹ, miễn phí, chạy được trên CPU |
-| Groq API re-rank endpoint | Không cần self-host, trả phí theo token |
+| Model đề xuất | Lý do | Trạng thái |
+|--------------|-------|-----------|
+| `bge-reranker-v2-m3` (GGUF) | Hỗ trợ đa ngôn ngữ, có sẵn GGUF cho Ollama | ✅ Khả dụng |
+| Groq API re-rank endpoint | Không cần self-host, trả phí theo token | ⚠️ Cần budget |
 
-**Khuyến nghị:** Dùng Groq API nếu có budget; nếu không → self-host cross-encoder qua Ollama.
+> **⚠️ TRƯỚC KHI CODE:** Chạy spike 2h kiểm tra Ollama re-rank với GGUF model:
+> 1. Pull GGUF re-ranker: `ollama pull bge-reranker-v2-m3`
+> 2. Set `OLLAMA_NEW_ENGINE=1`
+> 3. Test `POST /api/rerank` với 5 cặp (query, document)
+> 4. Verify scores có ý nghĩa (khác nhau, không toàn 0)
+> 5. Nếu không hoạt động → chuyển sang Groq API hoặc inference server riêng
+> **Thời gian spike: 2h. Không bắt đầu code re-rank trước khi spike pass.**
 
 ### Files thay đổi
 
@@ -98,14 +104,24 @@ Score_final = alpha * Score_vector + (1 - alpha) * Score_keyword
 | Fusion | RRF hoặc weighted sum |
 
 ```sql
+-- Tạo text search config cho tiếng Việt (dùng unaccent + simple)
+-- Yêu cầu: CREATE EXTENSION IF NOT EXISTS unaccent;
+CREATE TEXT SEARCH CONFIGURATION vietnamese (COPY = simple);
+ALTER TEXT SEARCH CONFIGURATION vietnamese
+    ALTER MAPPING FOR hword, hword_part, word
+    WITH unaccent, simple;
+
 -- Thêm tsvector column vào document_chunks
 ALTER TABLE document_chunks ADD COLUMN search_vector tsvector
-GENERATED ALWAYS AS (to_tsvector('english', content)) STORED;
+GENERATED ALWAYS AS (to_tsvector('vietnamese', content)) STORED;
+
+-- GIN index cho full-text search
+CREATE INDEX idx_document_chunks_search ON document_chunks USING GIN (search_vector);
 
 -- Hybrid query
 SELECT *, 
   (0.7 * (1.0 - (embedding <=> query_vector) / 2.0) + 
-   0.3 * ts_rank(search_vector, plainto_tsquery('english', query))) AS hybrid_score
+   0.3 * ts_rank(search_vector, plainto_tsquery('vietnamese', query))) AS hybrid_score
 FROM document_chunks
 WHERE ...
 ORDER BY hybrid_score DESC

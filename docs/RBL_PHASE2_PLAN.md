@@ -102,11 +102,13 @@ public sealed class SemanticChunkingService : IChunkingService
 
 ## Phân công
 
-| Người | GitHub | Việc | Effort |
-|-------|--------|------|--------|
-| **Sơn** | `@ThShadow` | `SentenceSplitter` — tách sentence từ text, xử lý tiếng Việt (abbreviations: "TS.", "1.2.3", dấu `.` không kết thúc câu) | 3h |
-| **Bảo** | `@TranGiaBao2005` | `BlockParser` — phát hiện heading, paragraph, list, table từ PDF text output | 3h |
-| **Phước** | `@ChickMann` | `ChunkMerger` + tích hợp vào `SemanticChunkingService` mới + test + benchmark so sánh fixed vs semantic | 3h |
+| Người | GitHub | Việc | Effort | Phụ thuộc |
+|-------|--------|------|--------|-----------|
+| **Sơn** | `@ThShadow` | `SentenceSplitter` — tách sentence, xử lý tiếng Việt | 3h | Không |
+| **Bảo** | `@TranGiaBao2005` | `BlockParser` — phát hiện heading, paragraph, list | 3h | Không |
+| **Phước** | `@ChickMann` | `ChunkMerger` + tích hợp + test + benchmark | 3h | ⚠️ Chờ Sơn + Bảo xong |
+
+> **⚠️ Lưu ý:** Phước bị block bởi Sơn và Bảo. Trong lúc chờ, Phước có thể chuẩn bị test dataset + viết test framework.
 
 ---
 
@@ -124,14 +126,13 @@ public sealed class SemanticChunkingService : IChunkingService
 
 ## Timeline
 
-| Phase | Thời gian |
-|-------|----------|
-| Thiết kế SentenceSplitter + BlockParser | 1h |
-| Code SentenceSplitter | 2h |
-| Code BlockParser | 2h |
-| Code ChunkMerger + integrate | 2h |
-| Test + benchmark | 2h |
-| **Tổng** | **~9h** (1-2 ngày) |
+| Phase | Thời gian | Ghi chú |
+|-------|----------|---------|
+| Thiết kế SentenceSplitter + BlockParser | 1h | Cả team |
+| Code SentenceSplitter (Sơn) + BlockParser (Bảo) — song song | 3h | Phước chuẩn bị test dataset |
+| Code ChunkMerger + integrate (Phước) | 2h | Cần Sơn + Bảo xong |
+| Test + benchmark | 2h | Cả team |
+| **Tổng** | **~12h** (2-3 ngày) | Phước bị block 3h đầu |
 
 ---
 
