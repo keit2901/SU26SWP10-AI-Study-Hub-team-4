@@ -1092,7 +1092,8 @@ h1:focus {
 
 .teammate-topbar-inner,
 .community-topbar-inner {
-    width: min(1280px, 100%);
+    width: 100% !important;
+    max-width: 100% !important;
     min-height: 4rem;
     margin: 0 auto;
     padding: 0 1.5rem;

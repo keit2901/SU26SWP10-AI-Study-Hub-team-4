@@ -1,0 +1,237 @@
+/* Card Wrapper */
+.identity-card {
+    background-color: #ffffff;
+    border-radius: 0.75rem;
+    box-shadow: 0px 10px 15px -3px rgba(0, 0, 0, 0.1), 0px 4px 6px -4px rgba(0, 0, 0, 0.1);
+    width: 80%;
+    max-width: 100%;
+    overflow: hidden;
+    border: 1px solid #f1f5f9; /* slate-100 */
+    display: flex;
+    flex-direction: column;
+    font-family: "Plus Jakarta Sans", "Inter", sans-serif;
+}
+
+/* Header */
+.identity-card-header {
+    position: relative;
+    padding: 2rem 2rem;
+    display: flex;
+    align-items: center;
+    gap: 1.5rem;
+    border-bottom: 1px solid #f1f5f9; /* slate-100 */
+    background-image: linear-gradient(134.802deg, rgb(224, 231, 255) 0%, rgb(243, 232, 255) 100%);
+    overflow: hidden;
+}
+
+/* Decorative background wave */
+.identity-header-wave {
+    position: absolute;
+    top: -128px;
+    left: 0;
+    width: 384px;
+    height: 384px;
+    border-radius: 9999px;
+    filter: blur(32px);
+    pointer-events: none;
+    overflow: hidden;
+}
+.identity-header-wave-inner {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(255, 255, 255, 0.2);
+    backdrop-filter: blur(1px);
+    border-radius: 9999px;
+}
+
+/* Avatar */
+.identity-avatar {
+    position: relative;
+    flex-shrink: 0;
+    width: 5rem;
+    height: 5rem;
+    border-radius: 9999px;
+    background-color: #6366f1; /* indigo-500 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    font-size: 2.25rem;
+    font-weight: 600;
+    z-index: 10;
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+}
+
+/* Title Container */
+.identity-title-container {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.identity-title {
+    color: #0f172a; /* slate-900 */
+    font-size: 1.5rem;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    margin: 0;
+}
+.identity-subtitle {
+    color: #475569; /* slate-600 */
+    font-size: 0.875rem;
+    margin: 0;
+}
+
+/* Details List Container */
+.identity-details {
+    padding: 2rem 2rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+/* Detail Item */
+.identity-detail-item {
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    width: 100%;
+    gap: 1.5rem;
+}
+.identity-detail-item.border-top {
+    padding-top: 1.5rem;
+    border-top: 1px solid #f8fafc; /* slate-50 */
+}
+
+/* Label Column */
+.detail-label-col {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    width: 220px;
+    flex-shrink: 0;
+}
+.detail-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 1.25rem;
+    height: 1.25rem;
+    color: #475569; /* slate-600 */
+}
+.detail-label {
+    color: #475569; /* slate-600 */
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+
+/* Value Column */
+.detail-value-col {
+    flex-grow: 1;
+    display: flex;
+    justify-content: flex-start;
+    font-size: 0.875rem;
+    text-align: left;
+    color: #334155; /* slate-700 */
+    word-break: break-all;
+}
+.detail-value-mono {
+    font-family: "JetBrains Mono", monospace;
+    color: #475569;
+}
+.detail-value-semibold {
+    font-weight: 600;
+    color: #0f172a;
+}
+.detail-value-medium {
+    font-weight: 500;
+    color: #0f172a;
+}
+
+/* Badge */
+.identity-badge {
+    background-color: #dbeafe; /* blue-100 */
+    color: #1e40af; /* blue-800 */
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.25rem 0.625rem;
+    border-radius: 9999px;
+    display: inline-block;
+}
+.identity-badge.active {
+    background-color: #d1fae5; /* green-100 */
+    color: #065f46; /* green-800 */
+}
+
+/* Footer / JWT Toggle */
+.identity-footer {
+    background-color: #f8fafc; /* slate-50 */
+    padding: 1.5rem;
+    border-top: 1px solid #f1f5f9; /* slate-100 */
+}
+.jwt-toggle-btn {
+    width: 100%;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0; /* slate-200 */
+    border-radius: 0.5rem;
+    padding: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+    transition: background-color 0.2s ease;
+    cursor: pointer;
+}
+.jwt-toggle-btn:hover {
+    background-color: #f8fafc; /* slate-50 */
+}
+.jwt-toggle-text {
+    color: #334155; /* slate-700 */
+    font-size: 0.875rem;
+    font-weight: 500;
+}
+.jwt-toggle-icon {
+    transition: transform 0.3s ease;
+    color: #94a3b8;
+}
+.jwt-toggle-icon.expanded {
+    transform: rotate(180deg);
+}
+
+/* Expanded content area */
+.jwt-content {
+    margin-top: 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+.jwt-block {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+.jwt-label {
+    font-size: 0.75rem;
+    color: #64748b;
+}
+.jwt-value {
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 0.375rem;
+    padding: 0.75rem;
+    font-family: "JetBrains Mono", monospace;
+    font-size: 0.7rem;
+    color: #475569;
+    word-break: break-all;
+}
+
+/* Top bar actions placement (so we can keep refresh/signout on the same page visually) */
+.profile-actions-bar {
+    display: flex;
+    justify-content: flex-end;
+    margin-bottom: 1rem;
+    width: 80%;
+    max-width: 100%;
+}

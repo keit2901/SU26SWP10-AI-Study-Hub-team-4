@@ -3,7 +3,7 @@
 @inject NavigationManager Nav
 
 <header class="community-topbar teammate-topbar">
-    <div class="community-topbar-inner teammate-topbar-inner" style="@(IsDashboard ? "width: 100%; max-width: none;" : "")">
+    <div class="community-topbar-inner teammate-topbar-inner">
         <a class="brand-link teammate-brand" href="">
             <span class="brand-orb teammate-brand-mark"><MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Small" /></span>
             <span class="brand-name">AI Study Hub</span>
@@ -26,8 +26,8 @@
                 else
                 {
                     <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
-                    <NavLink class="nav-pill" href="login">Sign In</NavLink>
-                    <NavLink class="nav-pill" href="register">Get Started</NavLink>
+                    <NavLink class="nav-pill" href="register">Sign In</NavLink>
+                    <NavLink class="nav-pill" href="login">Get Started</NavLink>
                 }
             </nav>
         }
@@ -48,8 +48,8 @@
             }
             else
             {
-                <a class="login-link" href="login">Sign In</a>
-                <a class="join-button" href="register">Get Started</a>
+                <a class="login-link" href="register">Sign In</a>
+                <a class="join-button" href="login">Get Started</a>
             }
         </div>
     </div>
