@@ -1,31 +1,138 @@
 @page "/dashboard/subjects"
 @layout AI_Study_Hub_v2.Components.Layout.DashboardLayout
-@using AI_Study_Hub_v2.Components.Layout
+@using AI_Study_Hub_v2.Data
+@using AI_Study_Hub_v2.Data.Entities
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject AI_Study_Hub_v2.Services.AuthSessionState Session
+@inject NavigationManager Nav
 
-<PageTitle>Subjects - AI Study Hub</PageTitle>
+<PageTitle>Subjects Overview - AI Study Hub</PageTitle>
 
-<div style="display: flex; flex-direction: column; flex: 1; height: 100%;">
-    <!-- Header -->
-    <div style="display: flex; height: 4rem; align-items: center; justify-content: flex-end; border-bottom: 1px solid rgba(199,196,215,0.3); background: #faf9fe; padding: 0 1.5rem; gap: 1rem;">
-        <button style="display: flex; align-items: center; justify-content: center; border-radius: 9999px; padding: 0.5rem; background: transparent; border: none; cursor: pointer;">
-            <MudIcon Icon="@Icons.Material.Filled.Notifications" Style="font-size: 1.25rem; color: #464554;" />
-        </button>
-        <div style="display: flex; height: 2rem; width: 2rem; align-items: center; justify-content: center; border-radius: 9999px; background: #5e5ce6;">
-            <span style="font-size: 0.8125rem; font-weight: 600; color: #fff; letter-spacing: 0.39px;">AD</span>
-        </div>
-    </div>
-
-    <!-- Content -->
-    <div style="flex: 1; overflow-y: auto; padding: 2rem 1.5rem;">
-        <div style="margin-bottom: 2rem; display: flex; flex-direction: column; gap: 0.5rem;">
-            <h1 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">Subjects Management</h1>
-            <p style="font-size: 1rem; color: #464554; margin: 0;">View and manage registered academic subjects.</p>
+<div style="display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
+    <div style="padding: 2rem 2.5rem 2.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
+        <div>
+            <h1 style="font-size: 1.9rem; font-weight: 800; letter-spacing: -0.04em; color: #111827; margin: 0;">Subjects Overview</h1>
+            <p style="font-size: 0.95rem; color: #6b7280; margin: 0.45rem 0 0;">See how your notes are distributed across subjects and where your study material is still thin.</p>
         </div>
 
-        <div style="background: white; border-radius: 0.75rem; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); padding: 2rem; text-align: center; border: 1px solid rgba(199,196,215,0.3);">
-            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Style="font-size: 3rem; color: #5e5ce6; margin-bottom: 1rem;" />
-            <h3 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin-bottom: 0.5rem;">No Custom Subjects</h3>
-            <p style="color: #6b7280; max-width: 24rem; margin: 0 auto 1.5rem;">Subjects are synchronized directly from your academic curriculum database.</p>
-        </div>
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        }
+        else if (subjects.Count == 0)
+        {
+            <div style="background: #fff; border-radius: 1rem; border: 1px solid #eef2f7; padding: 2.5rem; text-align: center;">
+                <MudIcon Icon="@Icons.Material.Filled.MenuBook" Style="font-size: 3rem; color: #818cf8; margin-bottom: 1rem;" />
+                <h2 style="font-size: 1.2rem; color: #111827; margin: 0 0 0.5rem;">No subject data yet</h2>
+                <p style="font-size: 0.9rem; color: #6b7280; margin: 0;">Upload documents with subject codes so your dashboard can organize study coverage automatically.</p>
+            </div>
+        }
+        else
+        {
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem;">
+                <StatCard Icon="@Icons.Material.Filled.MenuBook" Title="Subjects" Count="@subjects.Count.ToString()" Description="Distinct subject codes found" BgColor="rgba(238,242,255,0.8)" IconColor="#4f46e5" />
+                <StatCard Icon="@Icons.Material.Filled.Description" Title="Documents" Count="@totalDocuments.ToString()" Description="Files tagged to subjects" BgColor="rgba(236,253,245,0.9)" IconColor="#059669" />
+                <StatCard Icon="@Icons.Material.Filled.CheckCircle" Title="Ready Content" Count="@readyDocuments.ToString()" Description="Prepared for retrieval" BgColor="rgba(255,247,237,0.95)" IconColor="#ea580c" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem;">
+                @foreach (var subject in subjects)
+                {
+                    <article style="background: #fff; border: 1px solid #eef2f7; border-radius: 1rem; padding: 1.25rem 1.35rem; box-shadow: 0 12px 24px rgba(15,23,42,0.04); display: flex; flex-direction: column; gap: 1rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem;">
+                            <div>
+                                <div style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.65rem; border-radius: 9999px; background: #eef2ff; color: #4338ca; font-size: 0.72rem; font-weight: 700;">@subject.Code</div>
+                                <h2 style="font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0.7rem 0 0;">@subject.DisplayTitle</h2>
+                            </div>
+                            <span style="font-size: 0.78rem; color: #6b7280;">Updated @subject.LastUpdatedText</span>
+                        </div>
+
+                        <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem;">
+                            <div style="padding: 0.85rem; border-radius: 0.9rem; background: #f8fafc;">
+                                <div style="font-size: 0.72rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Documents</div>
+                                <strong style="display: block; font-size: 1.3rem; color: #111827; margin-top: 0.3rem;">@subject.DocumentCount</strong>
+                            </div>
+                            <div style="padding: 0.85rem; border-radius: 0.9rem; background: #f8fafc;">
+                                <div style="font-size: 0.72rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Ready</div>
+                                <strong style="display: block; font-size: 1.3rem; color: #111827; margin-top: 0.3rem;">@subject.ReadyCount</strong>
+                            </div>
+                            <div style="padding: 0.85rem; border-radius: 0.9rem; background: #f8fafc;">
+                                <div style="font-size: 0.72rem; color: #64748b; text-transform: uppercase; font-weight: 700;">Semesters</div>
+                                <strong style="display: block; font-size: 1.3rem; color: #111827; margin-top: 0.3rem;">@subject.SemesterCount</strong>
+                            </div>
+                        </div>
+
+                        <div style="display: flex; flex-wrap: wrap; gap: 0.45rem;">
+                            @foreach (var semester in subject.Semesters)
+                            {
+                                <span style="display: inline-flex; align-items: center; padding: 0.3rem 0.65rem; border-radius: 9999px; background: #f8fafc; color: #475569; font-size: 0.76rem; font-weight: 600; border: 1px solid #eef2f7;">@semester</span>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        }
     </div>
 </div>
+
+@code {
+    private sealed record SubjectCardVm(
+        string Code,
+        string DisplayTitle,
+        int DocumentCount,
+        int ReadyCount,
+        int SemesterCount,
+        IReadOnlyList<string> Semesters,
+        string LastUpdatedText);
+
+    private bool isLoading = true;
+    private int totalDocuments;
+    private int readyDocuments;
+    private List<SubjectCardVm> subjects = new();
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated || Session.CurrentUser == null)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        var documents = await DbContext.Documents
+            .Where(d => d.UserId == Session.CurrentUser.Id && !string.IsNullOrWhiteSpace(d.SubjectCode))
+            .OrderByDescending(d => d.UpdatedAt)
+            .ToListAsync();
+
+        totalDocuments = documents.Count;
+        readyDocuments = documents.Count(d => d.Status == DocumentStatus.Ready);
+
+        subjects = documents
+            .GroupBy(d => d.SubjectCode.Trim().ToUpperInvariant())
+            .OrderBy(g => g.Key)
+            .Select(g =>
+            {
+                var items = g.ToList();
+                var semesters = items
+                    .Select(d => d.Semester)
+                    .Where(s => !string.IsNullOrWhiteSpace(s))
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .OrderBy(s => s)
+                    .ToList();
+
+                return new SubjectCardVm(
+                    g.Key,
+                    $"{g.Key} study collection",
+                    items.Count,
+                    items.Count(d => d.Status == DocumentStatus.Ready),
+                    semesters.Count,
+                    semesters,
+                    items.Max(d => d.UpdatedAt).ToLocalTime().ToString("dd MMM yyyy"));
+            })
+            .ToList();
+
+        isLoading = false;
+    }
+}

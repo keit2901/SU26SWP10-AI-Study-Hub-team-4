@@ -10,7 +10,7 @@
 
 @if (!Session.IsAuthenticated)
 {
-    <MudStack Class="workspace-shell pa-4" Spacing="3">
+    <MudStack Class="workspace-shell profile-shell pa-4" Spacing="3">
         <MudPaper Class="pa-6 glass-card" Elevation="0">
             <MudStack AlignItems="AlignItems.Center" Spacing="2">
                 <MudAlert Severity="Severity.Warning">You are not signed in.</MudAlert>
@@ -24,7 +24,7 @@ else
     var u = Session.CurrentUser!;
     var s = Session.Session!;
 
-    <MudStack Class="workspace-shell" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Style="min-height: calc(100vh - 4rem); padding: 1.5rem 1.5rem;">
+    <MudStack Class="workspace-shell profile-shell" AlignItems="AlignItems.Stretch" Justify="Justify.FlexStart">
         <div class="profile-actions-bar">
             <MudStack Row="true" Spacing="2">
                 <MudButton Variant="Variant.Outlined"

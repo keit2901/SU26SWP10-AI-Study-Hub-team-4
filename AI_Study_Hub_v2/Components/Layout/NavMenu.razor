@@ -1,6 +1,7 @@
 @implements IDisposable
 @inject AuthSessionState Session
 @inject NavigationManager Nav
+@using AI_Study_Hub_v2.Services
 
 <header class="community-topbar teammate-topbar">
     <div class="community-topbar-inner teammate-topbar-inner">
@@ -17,7 +18,7 @@
             <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
                 @if (Session.IsAuthenticated)
                 {
-                    <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                    <a class="nav-pill @(IsDashboardActive ? "active" : "")" href="@DashboardHref">Dashboard</a>
                     <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
                     <a class="nav-pill @NavClass("community")" href="community">Community</a>
                     <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
@@ -71,6 +72,17 @@
         ?? Session.CurrentUser?.Username
         ?? Session.CurrentUser?.Email
         ?? "Student";
+
+    private string DashboardHref => AppRouteResolver.GetDashboardRoute(Session.CurrentUser?.Role);
+
+    private bool IsDashboardActive
+    {
+        get
+        {
+            var rel = "/" + Nav.ToBaseRelativePath(Nav.Uri).Trim('/');
+            return string.Equals(rel, DashboardHref, StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     protected override void OnInitialized()
     {

@@ -138,7 +138,7 @@
 
     private void RedirectByRole()
     {
-        var target = Session.CurrentUser?.Role == "Admin" ? "/admin/dashboard" : "/profile";
+        var target = AppRouteResolver.GetDashboardRoute(Session.CurrentUser?.Role);
         Nav.NavigateTo(target, replace: true);
     }
 
@@ -165,7 +165,7 @@
             Session.Set(resp);
             await AuthPersistence.SaveAsync(resp);
             Snackbar.Add($"Welcome back, {resp.User.FullName}!", Severity.Success);
-            var target = resp.User.Role == "Admin" ? "/admin/dashboard" : "/profile";
+            var target = AppRouteResolver.GetDashboardRoute(resp.User.Role);
             Nav.NavigateTo(target);
         }
         catch (AuthApiException ex)

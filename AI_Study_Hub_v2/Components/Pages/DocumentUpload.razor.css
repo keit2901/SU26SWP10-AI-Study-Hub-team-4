@@ -1,11 +1,11 @@
 .document-upload-shell {
-    max-width: 1200px;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
     width: 100%;
-    padding: 2rem 1.5rem;
+    padding: clamp(1.5rem, 2.8vw, 2.5rem);
     display: flex;
     flex-direction: column;
-    gap: 1.5rem;
+    gap: 1.75rem;
     background: #f5f6fb;
     min-height: 100%;
 }
@@ -32,8 +32,8 @@
 /* ── Hero + Steps grid ── */
 .hero-steps-grid {
     display: grid;
-    grid-template-columns: 1fr 280px;
-    gap: 1.25rem;
+    grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.72fr);
+    gap: 1.5rem;
 }
 
 /* ── Hero ── */
@@ -200,7 +200,7 @@
 /* ── Stats grid ── */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 1rem;
 }
 
@@ -251,8 +251,8 @@
 /* ── Main grid ── */
 .main-grid {
     display: grid;
-    grid-template-columns: 240px 1fr 240px;
-    gap: 1.25rem;
+    grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.55fr) minmax(260px, 1fr);
+    gap: 1.5rem;
 }
 
 /* ── Panel shared ── */
@@ -714,6 +714,12 @@
 }
 
 /* ── Responsive ── */
+@media (max-width: 1200px) {
+    .stats-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
 @media (max-width: 1000px) {
     .hero-steps-grid {
         grid-template-columns: 1fr;

@@ -25,11 +25,45 @@
             </nav>
         </div>
 
+        <div style="padding: 0 1.5rem;">
+            <div style="border-top: 1px solid rgba(199,196,215,0.3); padding-top: 1rem; display: flex; flex-direction: column; gap: 0.9rem;">
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    <div style="width: 2.5rem; height: 2.5rem; border-radius: 9999px; background: linear-gradient(135deg, #5e5ce6, #7c3aed); color: #fff; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; font-weight: 700; box-shadow: 0 8px 24px rgba(94,92,230,0.22);">
+                        @UserInitials
+                    </div>
+                    <div style="min-width: 0; display: flex; flex-direction: column; gap: 0.1rem;">
+                        <span style="font-size: 0.875rem; font-weight: 700; color: #1a1b1f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@DisplayName</span>
+                        <span style="font-size: 0.75rem; color: #6b7280; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@SecondaryInfo</span>
+                    </div>
+                </div>
+
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;">
+                    <span style="display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.35rem 0.65rem; border-radius: 9999px; background: rgba(94,92,230,0.1); color: #5e5ce6; font-size: 0.6875rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em;">
+                        <span style="width: 0.45rem; height: 0.45rem; border-radius: 9999px; background: #5e5ce6;"></span>
+                        @UserRole
+                    </span>
+
+                    <button type="button"
+                            @onclick="Logout"
+                            style="display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; border: 1px solid rgba(199,196,215,0.5); background: #faf9fe; color: #464554; border-radius: 0.5rem; padding: 0.45rem 0.75rem; font-size: 0.75rem; font-weight: 600; cursor: pointer;">
+                        <MudIcon Icon="@Icons.Material.Filled.Logout" Style="font-size: 0.95rem;" />
+                        Log out
+                    </button>
+                </div>
+            </div>
+        </div>
     </aside>
 
     <!-- Main Content inside Dashboard Layout -->
-    <div style="flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #faf9fe;">
-        @Body
+    <div style="flex: 1; display: flex; flex-direction: column; min-width: 0; background: #faf9fe;">
+        <div style="flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden;">
+            @Body
+        </div>
+
+        <footer style="border-top: 1px solid rgba(199,196,215,0.28); background: rgba(255,255,255,0.82); padding: 0.9rem 2rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; color: #6b7280; font-size: 0.75rem;">
+            <span>AI Study Hub Dashboard</span>
+            <span>@CurrentYear • Built for academic document workflows</span>
+        </footer>
     </div>
 </div>
 
@@ -57,6 +91,44 @@
         var bg = active ? "#e9e7ed" : "transparent";
         var color = active ? "#5e5ce6" : "#464554";
         return $"display: flex; align-items: center; padding: 0.625rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; color: {color}; background: {bg}; text-decoration: none; transition: background 0.15s, color 0.15s;";
+    }
+
+    private int CurrentYear => DateTime.Now.Year;
+
+    private string DisplayName =>
+        Session.CurrentUser?.FullName
+        ?? Session.CurrentUser?.Username
+        ?? Session.CurrentUser?.Email
+        ?? "Student";
+
+    private string SecondaryInfo =>
+        !string.IsNullOrWhiteSpace(Session.CurrentUser?.Email)
+            ? Session.CurrentUser!.Email
+            : Session.CurrentUser?.Username ?? "Signed in";
+
+    private string UserRole =>
+        string.IsNullOrWhiteSpace(Session.CurrentUser?.Role)
+            ? "Member"
+            : Session.CurrentUser!.Role;
+
+    private string UserInitials
+    {
+        get
+        {
+            var source = DisplayName.Trim();
+            if (string.IsNullOrWhiteSpace(source))
+            {
+                return "AS";
+            }
+
+            var parts = source.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length == 1)
+            {
+                return parts[0][0].ToString().ToUpperInvariant();
+            }
+
+            return string.Concat(parts[0][0], parts[^1][0]).ToUpperInvariant();
+        }
     }
 
     private void Logout()

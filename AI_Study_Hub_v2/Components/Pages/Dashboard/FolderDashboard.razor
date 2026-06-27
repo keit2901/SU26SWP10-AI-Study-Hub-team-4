@@ -1,21 +1,48 @@
 @page "/dashboard"
 @layout DashboardLayout
+@using AI_Study_Hub_v2.Components.Layout
 @using AI_Study_Hub_v2.Data
 @using AI_Study_Hub_v2.Data.Entities
-@using AI_Study_Hub_v2.Components.Layout
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
 
-<PageTitle>Dashboard Overview - AI Study Hub</PageTitle>
+<PageTitle>Student Dashboard - AI Study Hub</PageTitle>
 
 <main style="flex: 1; overflow-y: auto;">
-    <div style="padding: 2rem; max-width: 72rem; margin: 0 auto;">
-        <header style="margin-bottom: 2rem;">
-            <h1 style="font-size: 1.6rem; font-weight: 700; color: #111827; letter-spacing: -0.025em; margin: 0;">Dashboard Overview</h1>
-            <p style="font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem;">Track status and manage your academic document workload.</p>
-        </header>
+    <div style="padding: 2rem 2.5rem 2.5rem; width: 100%; min-width: 0; display: flex; flex-direction: column; gap: 1.5rem;">
+        <section style="border: 1px solid rgba(199,196,215,0.28); border-radius: 1.25rem; background: linear-gradient(135deg, rgba(94,92,230,0.12), rgba(6,182,212,0.08)); padding: 1.75rem 1.9rem; display: flex; justify-content: space-between; gap: 1.5rem; flex-wrap: wrap;">
+            <div style="display: flex; flex-direction: column; gap: 0.65rem; max-width: 42rem;">
+                <span style="display: inline-flex; width: fit-content; align-items: center; gap: 0.45rem; padding: 0.35rem 0.7rem; border-radius: 9999px; background: rgba(255,255,255,0.72); color: #4f46e5; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;">
+                    <MudIcon Icon="@Icons.Material.Filled.School" Style="font-size: 0.95rem;" />
+                    Student Workspace
+                </span>
+                <div>
+                    <h1 style="font-size: clamp(1.8rem, 2.8vw, 2.45rem); font-weight: 800; letter-spacing: -0.04em; color: #111827; margin: 0;">Welcome back, @DisplayName.</h1>
+                    <p style="font-size: 0.98rem; line-height: 1.7; color: #4b5563; margin: 0.5rem 0 0;">Keep your folders tidy, upload new class material, and jump back into grounded AI study sessions from one place.</p>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.85rem; min-width: min(100%, 21rem);">
+                <a href="/documents/upload" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; border-radius: 0.9rem; background: #4f46e5; color: #fff; text-decoration: none; font-size: 0.9rem; font-weight: 700; box-shadow: 0 14px 30px rgba(79,70,229,0.18);">
+                    <MudIcon Icon="@Icons.Material.Filled.UploadFile" Style="font-size: 1.05rem;" />
+                    Upload Notes
+                </a>
+                <a href="/documents" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; border-radius: 0.9rem; background: rgba(255,255,255,0.86); color: #111827; text-decoration: none; font-size: 0.9rem; font-weight: 700; border: 1px solid rgba(199,196,215,0.45);">
+                    <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size: 1.05rem;" />
+                    Open Library
+                </a>
+                <a href="/community" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; border-radius: 0.9rem; background: rgba(255,255,255,0.86); color: #111827; text-decoration: none; font-size: 0.9rem; font-weight: 700; border: 1px solid rgba(199,196,215,0.45);">
+                    <MudIcon Icon="@Icons.Material.Filled.Groups" Style="font-size: 1.05rem;" />
+                    Explore Community
+                </a>
+                <a href="/ai/chat" style="display: flex; align-items: center; justify-content: center; gap: 0.5rem; min-height: 3rem; border-radius: 0.9rem; background: rgba(255,255,255,0.86); color: #111827; text-decoration: none; font-size: 0.9rem; font-weight: 700; border: 1px solid rgba(199,196,215,0.45);">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size: 1.05rem;" />
+                    Ask AI
+                </a>
+            </div>
+        </section>
 
         @if (isLoading)
         {
@@ -25,28 +52,64 @@
         }
         else
         {
-            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
-                <StatCard
-                    Icon="@Icons.Material.Filled.CheckCircle"
-                    Title="Approved"
-                    Count="@approvedCount.ToString()"
-                    Description="Complete documents"
-                    BgColor="rgba(238,242,255,0.8)"
-                    IconColor="#4f46e5" />
-                <StatCard
-                    Icon="@Icons.Material.Filled.Assignment"
-                    Title="Pending"
-                    Count="@pendingCount.ToString()"
-                    Description="Currently processing by AI"
-                    BgColor="#faf5ff"
-                    IconColor="#9333ea" />
-                <StatCard
-                    Icon="@Icons.Material.Filled.ErrorOutline"
-                    Title="Action Required / Rejected"
-                    Count="@rejectedCount.ToString()"
-                    Description="Requires additional information"
-                    BgColor="#fef2f2"
-                    IconColor="#ef4444" />
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem;">
+                <StatCard Icon="@Icons.Material.Filled.FolderCopy" Title="Folders" Count="@totalFolders.ToString()" Description="Active study spaces" BgColor="rgba(238,242,255,0.8)" IconColor="#4f46e5" />
+                <StatCard Icon="@Icons.Material.Filled.Description" Title="Documents" Count="@totalDocuments.ToString()" Description="Files across your library" BgColor="rgba(236,253,245,0.9)" IconColor="#059669" />
+                <StatCard Icon="@Icons.Material.Filled.IosShare" Title="Shared Folders" Count="@sharedFolders.ToString()" Description="Visible in community space" BgColor="rgba(255,247,237,0.95)" IconColor="#ea580c" />
+                <StatCard Icon="@Icons.Material.Filled.ErrorOutline" Title="Needs Attention" Count="@attentionDocuments.ToString()" Description="Files that need another pass" BgColor="rgba(254,242,242,0.95)" IconColor="#dc2626" />
+            </div>
+
+            <div style="display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(320px, 0.85fr); gap: 1rem;">
+                <section style="background: #fff; border: 1px solid #eef2f7; border-radius: 1rem; padding: 1.35rem 1.5rem; box-shadow: 0 12px 24px rgba(15,23,42,0.04);">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; margin-bottom: 1rem;">
+                        <div>
+                            <h2 style="font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0;">Study Rhythm</h2>
+                            <p style="font-size: 0.85rem; color: #6b7280; margin: 0.35rem 0 0;">A simple health check for your current learning workspace.</p>
+                        </div>
+                        <span style="display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.35rem 0.7rem; border-radius: 9999px; background: #eef2ff; color: #4338ca; font-size: 0.72rem; font-weight: 700;">
+                            <span style="width: 0.45rem; height: 0.45rem; border-radius: 9999px; background: #4338ca;"></span>
+                            @readyDocuments ready
+                        </span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.85rem;">
+                        <div style="padding: 1rem; border-radius: 0.9rem; background: #f8fafc; border: 1px solid #eef2f7;">
+                            <p style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.4rem;">Ready Files</p>
+                            <strong style="font-size: 1.45rem; color: #111827;">@readyDocuments</strong>
+                            <p style="font-size: 0.82rem; color: #6b7280; margin: 0.45rem 0 0;">Prepared for study, search, and AI chat.</p>
+                        </div>
+                        <div style="padding: 1rem; border-radius: 0.9rem; background: #f8fafc; border: 1px solid #eef2f7;">
+                            <p style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.4rem;">Processing</p>
+                            <strong style="font-size: 1.45rem; color: #111827;">@processingDocuments</strong>
+                            <p style="font-size: 0.82rem; color: #6b7280; margin: 0.45rem 0 0;">Still being indexed into your study vault.</p>
+                        </div>
+                        <div style="padding: 1rem; border-radius: 0.9rem; background: #f8fafc; border: 1px solid #eef2f7;">
+                            <p style="font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; margin: 0 0 0.4rem;">Semesters</p>
+                            <strong style="font-size: 1.45rem; color: #111827;">@semesterCount</strong>
+                            <p style="font-size: 0.82rem; color: #6b7280; margin: 0.45rem 0 0;">Distinct academic terms in your library.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <section style="background: #fff; border: 1px solid #eef2f7; border-radius: 1rem; padding: 1.35rem 1.5rem; box-shadow: 0 12px 24px rgba(15,23,42,0.04); display: flex; flex-direction: column; gap: 0.9rem;">
+                    <div>
+                        <h2 style="font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0;">Quick Guidance</h2>
+                        <p style="font-size: 0.85rem; color: #6b7280; margin: 0.35rem 0 0;">What to do next based on the current state of your study space.</p>
+                    </div>
+
+                    @foreach (var item in quickGuidance)
+                    {
+                        <div style="display: flex; gap: 0.85rem; align-items: flex-start; padding: 0.95rem 1rem; border-radius: 0.95rem; background: #fafbff; border: 1px solid #eef2f7;">
+                            <div style="@($"width: 2.4rem; height: 2.4rem; border-radius: 0.8rem; background: {item.BadgeBackground}; color: {item.BadgeColor}; display: flex; align-items: center; justify-content: center; flex-shrink: 0;")">
+                                <MudIcon Icon="@item.Icon" Style="font-size: 1.1rem;" />
+                            </div>
+                            <div style="min-width: 0;">
+                                <h3 style="font-size: 0.92rem; font-weight: 700; color: #111827; margin: 0;">@item.Title</h3>
+                                <p style="font-size: 0.82rem; color: #6b7280; line-height: 1.55; margin: 0.3rem 0 0;">@item.Description</p>
+                            </div>
+                        </div>
+                    }
+                </section>
             </div>
 
             <FolderTable Folders="@viewModels" />
@@ -54,18 +117,24 @@
     </div>
 </main>
 
-<style>
-    .dashboard-row:hover {
-        background: rgba(249,250,251,0.5);
-    }
-</style>
-
 @code {
+    private sealed record GuidanceItem(string Icon, string Title, string Description, string BadgeBackground, string BadgeColor);
+
     private bool isLoading = true;
-    private int approvedCount;
-    private int pendingCount;
-    private int rejectedCount;
+    private int totalFolders;
+    private int totalDocuments;
+    private int sharedFolders;
+    private int readyDocuments;
+    private int processingDocuments;
+    private int attentionDocuments;
+    private int semesterCount;
     private List<FolderViewModel> viewModels = new();
+    private List<GuidanceItem> quickGuidance = new();
+
+    private string DisplayName =>
+        Session.CurrentUser?.FullName
+        ?? Session.CurrentUser?.Username
+        ?? "Student";
 
     protected override async Task OnInitializedAsync()
     {
@@ -81,35 +150,82 @@
             .OrderByDescending(f => f.UpdatedAt)
             .ToListAsync();
 
-        foreach (var f in folders)
+        totalFolders = folders.Count;
+        totalDocuments = folders.Sum(f => f.Documents.Count);
+        sharedFolders = folders.Count(f => f.IsShared);
+        readyDocuments = folders.Sum(f => f.Documents.Count(d => d.Status == DocumentStatus.Ready));
+        processingDocuments = folders.Sum(f => f.Documents.Count(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing));
+        attentionDocuments = folders.Sum(f => f.Documents.Count(d => d.Status == DocumentStatus.Failed));
+        semesterCount = folders
+            .SelectMany(f => f.Documents)
+            .Select(d => d.Semester)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .Count();
+
+        foreach (var folder in folders)
         {
-            var firstDoc = f.Documents.FirstOrDefault();
-            var subject = firstDoc?.SubjectCode ?? "N/A";
-            var semester = firstDoc?.Semester ?? "N/A";
-
-            string status;
-            if (f.Documents.Any(d => d.Status == DocumentStatus.Failed))
-                status = "Rejected";
-            else if (f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing))
-                status = "Pending";
-            else if (f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready))
-                status = "Approved";
-            else
-                status = "Pending";
-
-            if (status == "Approved") approvedCount++;
-            else if (status == "Pending") pendingCount++;
-            else rejectedCount++;
+            var firstDoc = folder.Documents.FirstOrDefault();
+            var status = ResolveFolderStatus(folder.Documents);
 
             viewModels.Add(new FolderViewModel
             {
-                Name = f.Name,
-                SubjectCode = subject,
-                Semester = semester,
+                Name = folder.Name,
+                SubjectCode = firstDoc?.SubjectCode ?? "Not tagged",
+                Semester = firstDoc?.Semester ?? "Unassigned",
                 Status = status
             });
         }
 
+        quickGuidance =
+        [
+            new GuidanceItem(
+                Icons.Material.Filled.UploadFile,
+                totalDocuments == 0 ? "Add your first study source" : "Keep new lecture notes flowing in",
+                totalDocuments == 0
+                    ? "Your dashboard is ready. Start by uploading PDFs, slides, or notes so AI Study Hub can build grounded answers."
+                    : "Fresh material helps your summaries and quizzes stay aligned with the current course week.",
+                "rgba(79,70,229,0.12)",
+                "#4f46e5"),
+            new GuidanceItem(
+                Icons.Material.Filled.AutoAwesome,
+                readyDocuments > 0 ? "Use AI on your ready documents" : "Wait for indexing to finish",
+                readyDocuments > 0
+                    ? "Jump into Workspace and ask questions against the files that are already prepared for retrieval."
+                    : "As soon as processing completes, those files will become available for grounded chat and quiz generation.",
+                "rgba(6,182,212,0.12)",
+                "#0891b2"),
+            new GuidanceItem(
+                Icons.Material.Filled.Groups,
+                sharedFolders > 0 ? "Review what you shared publicly" : "Share only your cleanest folders",
+                sharedFolders > 0
+                    ? "Check whether your public folders still reflect the right subject, semester, and document quality."
+                    : "When a folder is tidy and complete, sharing it in Community can help classmates learn faster.",
+                "rgba(234,88,12,0.12)",
+                "#ea580c")
+        ];
+
         isLoading = false;
+    }
+
+    private static string ResolveFolderStatus(IEnumerable<Document> documents)
+    {
+        var items = documents.ToList();
+        if (items.Count == 0)
+        {
+            return "In Progress";
+        }
+
+        if (items.Any(d => d.Status == DocumentStatus.Failed))
+        {
+            return "Needs Attention";
+        }
+
+        if (items.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing))
+        {
+            return "In Progress";
+        }
+
+        return "Ready";
     }
 }

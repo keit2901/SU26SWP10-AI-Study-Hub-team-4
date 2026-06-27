@@ -1,0 +1,243 @@
+@page "/moderator"
+@page "/moderator/dashboard"
+@using AI_Study_Hub_v2.Data
+@using AI_Study_Hub_v2.Data.Entities
+@using AI_Study_Hub_v2.Services
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject AuthSessionState Session
+@inject NavigationManager Nav
+
+<PageTitle>Moderator Workspace - AI Study Hub</PageTitle>
+
+<main class="moderator-page">
+    <section class="moderator-hero">
+        <div class="moderator-hero-copy">
+            <span class="moderator-kicker">
+                <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" />
+                Content Moderator Workspace
+            </span>
+            <h1>Review public study content with calm, consistent triage.</h1>
+            <p>
+                This frontend workspace separates moderation from the student dashboard. It focuses on pending community reports,
+                recently shared folders, and policy-sensitive content that may need a closer look.
+            </p>
+        </div>
+
+        <div class="moderator-hero-note">
+            <div class="moderator-hero-note-title">Current role routing</div>
+            <p>@RoleMessage</p>
+        </div>
+    </section>
+
+    @if (isLoading)
+    {
+        <div class="moderator-loading">
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        </div>
+    }
+    else
+    {
+        <section class="moderator-stats">
+            <article class="moderator-stat-card">
+                <div class="moderator-stat-icon indigo"><MudIcon Icon="@Icons.Material.Filled.ReportProblem" /></div>
+                <div>
+                    <div class="moderator-stat-value">@pendingReports</div>
+                    <div class="moderator-stat-label">Pending reports</div>
+                </div>
+            </article>
+            <article class="moderator-stat-card">
+                <div class="moderator-stat-icon amber"><MudIcon Icon="@Icons.Material.Filled.IosShare" /></div>
+                <div>
+                    <div class="moderator-stat-value">@sharedFolders</div>
+                    <div class="moderator-stat-label">Public folders</div>
+                </div>
+            </article>
+            <article class="moderator-stat-card">
+                <div class="moderator-stat-icon rose"><MudIcon Icon="@Icons.Material.Filled.Schedule" /></div>
+                <div>
+                    <div class="moderator-stat-value">@staleReports</div>
+                    <div class="moderator-stat-label">Older than 48h</div>
+                </div>
+            </article>
+            <article class="moderator-stat-card">
+                <div class="moderator-stat-icon emerald"><MudIcon Icon="@Icons.Material.Filled.Groups" /></div>
+                <div>
+                    <div class="moderator-stat-value">@distinctReporters</div>
+                    <div class="moderator-stat-label">Unique reporters</div>
+                </div>
+            </article>
+        </section>
+
+        <section class="moderator-grid">
+            <article class="moderator-panel moderator-panel-wide">
+                <div class="moderator-panel-head">
+                    <div>
+                        <h2>Pending Community Reports</h2>
+                        <p>These are the items that currently need moderation attention.</p>
+                    </div>
+                    <span class="moderator-chip">@pendingRows.Count open</span>
+                </div>
+
+                @if (pendingRows.Count == 0)
+                {
+                    <div class="moderator-empty">
+                        <MudIcon Icon="@Icons.Material.Filled.Verified" />
+                        <p>No pending reports right now.</p>
+                    </div>
+                }
+                else
+                {
+                    <div class="moderator-table-wrap">
+                        <table class="moderator-table">
+                            <thead>
+                                <tr>
+                                    <th>Folder</th>
+                                    <th>Reported by</th>
+                                    <th>Reason</th>
+                                    <th>Submitted</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in pendingRows)
+                                {
+                                    <tr>
+                                        <td>
+                                            <div class="moderator-folder-cell">
+                                                <span class="moderator-folder-mark">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" />
+                                                </span>
+                                                <div>
+                                                    <strong>@row.FolderName</strong>
+                                                    <span>@row.Status</span>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td>@row.ReportedBy</td>
+                                        <td>@row.Reason</td>
+                                        <td>@row.CreatedAtText</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </article>
+
+            <article class="moderator-panel">
+                <div class="moderator-panel-head">
+                    <div>
+                        <h2>Recently Shared Folders</h2>
+                        <p>A quick watchlist for newly public material.</p>
+                    </div>
+                </div>
+
+                <div class="moderator-list">
+                    @foreach (var folder in sharedRows)
+                    {
+                        <div class="moderator-list-item">
+                            <div>
+                                <strong>@folder.Name</strong>
+                                <span>@folder.OwnerName • @folder.DocumentCount document(s)</span>
+                            </div>
+                            <small>@folder.SharedAtText</small>
+                        </div>
+                    }
+                </div>
+            </article>
+
+            <article class="moderator-panel">
+                <div class="moderator-panel-head">
+                    <div>
+                        <h2>Moderation Notes</h2>
+                        <p>Suggested review posture for this actor page.</p>
+                    </div>
+                </div>
+
+                <div class="moderator-notes">
+                    <div>
+                        <strong>Signal over speed</strong>
+                        <p>Look first at repeated reports, stale queue items, and folders that keep getting re-shared without cleanup.</p>
+                    </div>
+                    <div>
+                        <strong>Student dashboard stays separate</strong>
+                        <p>This page is intentionally isolated so students no longer land on moderation-style screens inside their own dashboard flow.</p>
+                    </div>
+                    <div>
+                        <strong>Backend status today</strong>
+                        <p>The database currently seeds only `Admin` and `Student`; this moderator page is a frontend workspace ready for a future dedicated role.</p>
+                    </div>
+                </div>
+            </article>
+        </section>
+    }
+</main>
+
+@code {
+    private sealed record PendingReportRow(string FolderName, string ReportedBy, string Reason, string Status, string CreatedAtText);
+    private sealed record SharedFolderRow(string Name, string OwnerName, int DocumentCount, string SharedAtText);
+
+    private bool isLoading = true;
+    private int pendingReports;
+    private int sharedFolders;
+    private int staleReports;
+    private int distinctReporters;
+    private List<PendingReportRow> pendingRows = new();
+    private List<SharedFolderRow> sharedRows = new();
+
+    private string RoleMessage =>
+        AppRouteResolver.IsModeratorRole(Session.CurrentUser?.Role)
+            ? "Your account is already mapped to the moderator workspace."
+            : "The current backend still seeds only Admin and Student. This page is a frontend-ready moderator workspace for when a dedicated role is introduced.";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        var pending = await DbContext.CommunityReports
+            .AsNoTracking()
+            .Where(r => r.Status == "Pending")
+            .Include(r => r.Folder)
+            .Include(r => r.ReportedBy)
+            .OrderByDescending(r => r.CreatedAt)
+            .ToListAsync();
+
+        var shared = await DbContext.Folders
+            .AsNoTracking()
+            .Where(f => f.IsShared)
+            .Include(f => f.User)
+            .Include(f => f.Documents)
+            .OrderByDescending(f => f.SharedAt)
+            .Take(8)
+            .ToListAsync();
+
+        pendingReports = pending.Count;
+        sharedFolders = await DbContext.Folders.CountAsync(f => f.IsShared);
+        staleReports = pending.Count(r => r.CreatedAt <= DateTimeOffset.UtcNow.AddHours(-48));
+        distinctReporters = pending.Select(r => r.ReportedByUserId).Distinct().Count();
+
+        pendingRows = pending
+            .Take(10)
+            .Select(r => new PendingReportRow(
+                r.Folder.Name,
+                r.ReportedBy.FullName ?? r.ReportedBy.Username,
+                r.Reason,
+                r.Status,
+                r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy • HH:mm")))
+            .ToList();
+
+        sharedRows = shared
+            .Select(f => new SharedFolderRow(
+                f.Name,
+                f.User.FullName ?? f.User.Username,
+                f.Documents.Count,
+                (f.SharedAt ?? f.UpdatedAt).ToLocalTime().ToString("dd MMM yyyy")))
+            .ToList();
+
+        isLoading = false;
+    }
+}

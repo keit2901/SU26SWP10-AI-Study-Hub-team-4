@@ -68,7 +68,7 @@
 }
 
 .content {
-    width: min(1180px, calc(100vw - 2rem));
+    width: min(1400px, calc(100vw - 1.5rem));
     min-height: calc(100vh - 72px);
     margin: 0 auto;
     animation: contentFadeIn 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
@@ -105,6 +105,13 @@
     animation: none !important;
 }
 
+.content-edge-to-edge {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 #blazor-error-ui {
     display: none;
     position: fixed;
@@ -138,7 +145,7 @@
 
 @media (max-width: 720px) {
     .content {
-        width: min(100% - 1rem, 1180px);
+        width: min(100% - 0.75rem, 1400px);
         padding-top: 0.75rem;
     }
 }

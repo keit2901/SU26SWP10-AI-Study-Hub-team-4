@@ -7,8 +7,8 @@
 <div class="page app-shell @(IsDashboard ? "dashboard-shell" : "")">
     <NavMenu />
 
-    <main class="main-stage @(IsFullBleed || IsDashboard ? "main-stage-fullbleed" : "")">
-        <article class="content @(IsFullBleed || IsDashboard ? "content-fullbleed" : "") @(IsProfile ? "content-profile" : "")">
+    <main class="main-stage @(UseViewportLockedLayout ? "main-stage-fullbleed" : "")">
+        <article class="content @(UseViewportLockedLayout ? "content-fullbleed" : "") @(UseWideContentLayout ? "content-edge-to-edge" : "") @(IsProfile ? "content-profile" : "")">
             @Body
         </article>
     </main>
@@ -36,14 +36,39 @@
         Nav.LocationChanged -= OnLocationChanged;
     }
 
+    private string CurrentPath =>
+        Nav.ToBaseRelativePath(Nav.Uri).Trim('/');
+
     private bool IsFullBleed =>
-        Nav.ToBaseRelativePath(Nav.Uri).StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
+        CurrentPath.StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
 
     private bool IsDashboard =>
-        Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
+        CurrentPath.StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
 
     private bool IsProfile =>
-        Nav.ToBaseRelativePath(Nav.Uri).StartsWith("profile", StringComparison.OrdinalIgnoreCase);
+        CurrentPath.StartsWith("profile", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsDocumentsPage =>
+        CurrentPath.StartsWith("documents", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsCommunityPage =>
+        CurrentPath.StartsWith("community", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsModeratorPage =>
+        CurrentPath.StartsWith("moderator", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsLanding =>
+        string.IsNullOrEmpty(CurrentPath);
+
+    private bool IsAuthPage =>
+        CurrentPath.Equals("login", StringComparison.OrdinalIgnoreCase)
+        || CurrentPath.Equals("register", StringComparison.OrdinalIgnoreCase);
+
+    private bool UseViewportLockedLayout =>
+        IsFullBleed || IsDashboard;
+
+    private bool UseWideContentLayout =>
+        IsLanding || IsAuthPage || IsDocumentsPage || IsCommunityPage || IsProfile || IsModeratorPage;
 
     private readonly MudTheme _theme = new()
     {
