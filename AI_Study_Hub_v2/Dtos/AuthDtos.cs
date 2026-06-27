@@ -60,6 +60,8 @@ public sealed class AuthResponse
     public DateTimeOffset ExpiresAt { get; set; }
 
     public UserDto User { get; set; } = new();
+
+    public string? Password { get; set; }
 }
 
 public sealed class UserDto
@@ -86,4 +88,12 @@ public sealed class ApiErrorResponse
     public string Message { get; set; } = string.Empty;
 
     public IDictionary<string, string[]>? Errors { get; set; }
+}
+
+public sealed class UpdateUserRequest
+{
+    public string? Email { get; set; }
+    public string? Username { get; set; }
+    public string? FullName { get; set; }
+    public string? Password { get; set; }
 }

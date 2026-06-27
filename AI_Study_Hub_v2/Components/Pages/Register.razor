@@ -185,6 +185,7 @@
         try
         {
             var resp = await AuthApi.RegisterAsync(_model);
+            resp.Password = _model.Password;
             Session.Set(resp);
             Snackbar.Add($"Account created. Welcome, {resp.User.FullName}!", Severity.Success);
             var target = resp.User.Role == "Admin" ? "/admin/dashboard" : "/profile";
