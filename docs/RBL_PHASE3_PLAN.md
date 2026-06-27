@@ -224,6 +224,26 @@ Bảo:   Hybrid Search
 
 ---
 
+## Test Plan
+
+> **⚠️ P3 không có test plan riêng như P1/P2 vì các component P3 là wrapper/decorator mở rộng service hiện có. Tuy nhiên cần test tối thiểu sau:**
+
+| Component | Unit test | Integration test |
+|-----------|-----------|-----------------|
+| Embedding Cache | Mock inner `IEmbeddingService`, verify cache hit/miss, TTL expiry, LRU eviction | Gọi search 2 lần cùng query → verify Ollama chỉ bị gọi 1 lần |
+| Re-ranking | Mock re-rank API response, verify top-N được chọn đúng | Upload 1 PDF, search 3 queries → verify kết quả sau re-rank khác trước re-rank |
+| Hybrid Search | Mock search results, verify fusion score tính đúng | Upload 1 PDF, search keyword → verify kết quả khác pure vector search |
+| Benchmark Auto | Verify `BenchmarkResult` entity lưu đúng vào DB | Chạy `POST /api/benchmark/run` → verify kết quả xuất hiện trong DB |
+| Observability | Verify log output có latency + model version | Gọi embedding → check structured log có `latency_ms` và `model` fields |
+
+### Cross-phase regression test
+
+Sau khi P3 deploy, chạy lại smoke test của P1 và benchmark của P2 để đảm bảo:
+- P1: upload PDF → chat → verify cite đúng source (không regression)
+- P2: recall@5 trên dataset tiếng Việt không giảm >10% so với baseline
+
+---
+
 ## Rollback
 
 Tất cả feature đều toggle qua config:

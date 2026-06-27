@@ -30,6 +30,8 @@ Thay `FakeEmbeddingService` (FNV-1a hash) bằng `OllamaEmbeddingService` (embed
 | 1.1 | Query DB: `SELECT COUNT(*) FROM document_chunks WHERE embedding IS NOT NULL` | Dev 1 | Quyết định xem có cần migration không |
 | 1.2 | Đảm bảo Docker Desktop chạy trên máy dev | Cả team | Ai không có Docker → không test được embedding |
 | 1.3 | Hạ `ChunkSizeChars` từ 1000 → **500** trong `appsettings.json` | Dev 1 | 500 an toàn cho 256-token model kể cả tiếng Việt có dấu; `FindChunkBoundary()` overshoot nên cần margin |
+| 1.4 | **Tạo dataset benchmark tiếng Việt:** 10 câu hỏi + 3 PDF mẫu tiếng Việt, ghi nhận expected relevant chunks | Phước | Làm baseline recall@5 trước/sau. Không có dataset → không đo được cải thiện |
+| 1.5 | **Pin model version:** ghi nhận image tag `ollama/ollama:0.3.14` + model `all-minilm:l6-v2` vào config | Sơn | Tránh auto-update làm thay đổi embedding âm thầm |
 
 ---
 
@@ -61,7 +63,9 @@ services:
       - |
         ollama serve &
         sleep 5
+        echo "Pulling all-minilm:l6-v2 (pinned to 0.3.14 tag for reproducible embeddings)..."
         ollama pull all-minilm:l6-v2
+        echo "Model ready."
         wait
     networks:
       - aistudy-net

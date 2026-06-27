@@ -7,7 +7,7 @@
 | Phase | Tên | Mục tiêu | Effort | File |
 |-------|-----|----------|--------|------|
 | **P1** | Real Embedding | Thay FakeEmbeddingService bằng Ollama `all-minilm:l6-v2` | 7-9h | [RBL_PHASE1_PLAN.md](RBL_PHASE1_PLAN.md) |
-| **P2** | Semantic Chunking | Thay chunking cố định bằng chunking theo ngữ nghĩa (sentence/paragraph/section) | ~9h | [RBL_PHASE2_PLAN.md](RBL_PHASE2_PLAN.md) |
+| **P2** | Semantic Chunking | Thay chunking cố định bằng chunking theo ngữ nghĩa (sentence/paragraph/section) | ~12h | [RBL_PHASE2_PLAN.md](RBL_PHASE2_PLAN.md) |
 | **P3** | Quality & Performance | Embedding cache, re-ranking, hybrid search, benchmark auto, observability | ~18h | [RBL_PHASE3_PLAN.md](RBL_PHASE3_PLAN.md) |
 
 ---
@@ -23,7 +23,7 @@ P2 phụ thuộc P1. P3 phụ thuộc P1 + P2.
 
 ---
 
-## Tổng effort: 34-36h (~5 ngày, 3 người)
+## Tổng effort: 37-39h (~5-6 ngày, 3 người)
 
 ---
 
@@ -33,7 +33,7 @@ P2 phụ thuộc P1. P3 phụ thuộc P1 + P2.
 |-------|--------|-----------|----------|----------|-------------|
 | **Sơn** | `@ThShadow` | OllamaEmbeddingService + migration + DI swap | SentenceSplitter | Re-ranking + Observability | ~11h |
 | **Bảo** | `@TranGiaBao2005` | Health check + transaction refactor (Design B) | BlockParser | Hybrid Search | ~11h |
-| **Phước** | `@ChickMann` | Unit test + benchmark baseline | ChunkMerger + integrate into ChunkingService | Embedding Cache + Benchmark Automation | ~11h |
+| **Phước** | `@ChickMann` | Unit test + benchmark baseline + Vietnamese dataset | ChunkMerger + integrate into ChunkingService | Embedding Cache + Benchmark Automation | ~12h |
 
 ### Phân công chi tiết theo từng phase
 

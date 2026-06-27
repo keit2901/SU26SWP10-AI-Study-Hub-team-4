@@ -48,14 +48,16 @@ Document
 | **Paragraph** | 2+ sentence liên tiếp, tổng ≤ 500 ký tự | 100-500 ký tự | Gộp câu ngắn thành đoạn |
 | **Section** | Heading + các paragraph con, tổng ≤ 1000 ký tự | 200-1000 ký tự | Khi phát hiện heading (chữ in hoa, đánh số, bold) |
 
-### Merge rules
+### Merge rules (có thứ tự ưu tiên)
 
-| Rule | Mô tả |
-|------|-------|
-| **MR1** | Nếu chunk < 100 ký tự → merge với chunk tiếp theo (tránh chunk quá nhỏ) |
-| **MR2** | Nếu merge vượt 800 ký tự → tách tại ranh giới sentence gần nhất |
-| **MR3** | Heading luôn được giữ làm section title, không merge với nội dung |
-| **MR4** | List items (bullet points) được merge thành 1 chunk nếu tổng ≤ 500 ký tự |
+| Rule | Mô tả | Ưu tiên |
+|------|-------|--------|
+| **MR3** | Heading luôn được giữ làm section title, **không merge** với nội dung | 🔴 Cao nhất |
+| **MR1** | Nếu chunk < 100 ký tự → merge với chunk tiếp theo (tránh chunk quá nhỏ) | 🟡 Sau MR3 |
+| **MR4** | List items (bullet points) được merge thành 1 chunk nếu tổng ≤ 500 ký tự | 🟡 Sau MR3 |
+| **MR2** | Nếu merge vượt 800 ký tự → tách tại ranh giới sentence gần nhất | 🟢 Cuối cùng |
+
+> **Ví dụ xung đột:** Chunk 90 ký tự (MR1 trigger merge) + chunk kế là heading (MR3 cấm merge) → **MR3 thắng**, giữ heading riêng, không merge.
 
 ### Overlap
 
@@ -153,3 +155,13 @@ if (ragOptions.ChunkingStrategy == "semantic")
 else
     services.AddScoped<IChunkingService, FixedSizeChunkingService>();
 ```
+
+---
+
+## Lưu ý quan trọng
+
+### Re-ingestion sau khi bật semantic chunking
+Khi chuyển từ `fixed` sang `semantic`, **tất cả tài liệu hiện có phải được re-ingest** để tạo chunk mới theo ranh giới ngữ nghĩa. Chunk cũ (fixed-size) vẫn tồn tại nhưng có ranh giới suboptimal → nếu không re-ingest, benchmark và hybrid search (P3) sẽ chạy trên dữ liệu cũ, kết quả sai lệch.
+
+### Config compatibility P1 → P2
+Khi `ChunkingStrategy = "semantic"`, các config `ChunkSizeChars` và `ChunkOverlapChars` được **bỏ qua**. `SemanticChunkingService` dùng `MinChunkChars`, `MaxSectionChars` và các merge rules thay thế. Không trộn lẫn 2 bộ config trong cùng 1 service.
