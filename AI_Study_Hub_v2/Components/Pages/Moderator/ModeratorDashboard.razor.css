@@ -1,0 +1,315 @@
+.moderator-page {
+    width: 100%;
+    min-height: calc(100vh - 4rem);
+    padding: clamp(1.5rem, 2.8vw, 2.5rem);
+    background:
+        radial-gradient(circle at top left, rgba(79, 70, 229, 0.08), transparent 26rem),
+        radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.08), transparent 30rem),
+        #f8fafc;
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+}
+
+.moderator-hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.8fr);
+    gap: 1rem;
+    align-items: stretch;
+}
+
+.moderator-hero-copy,
+.moderator-hero-note,
+.moderator-stat-card,
+.moderator-panel {
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #e5e7eb;
+    border-radius: 1.15rem;
+    box-shadow: 0 18px 38px rgba(15, 23, 42, 0.05);
+}
+
+.moderator-hero-copy {
+    padding: 1.6rem 1.75rem;
+}
+
+.moderator-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.35rem 0.7rem;
+    border-radius: 9999px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: 0.74rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.moderator-hero-copy h1 {
+    margin: 0.9rem 0 0;
+    color: #111827;
+    font-size: clamp(1.8rem, 4vw, 2.8rem);
+    line-height: 1.05;
+    letter-spacing: -0.055em;
+}
+
+.moderator-hero-copy p,
+.moderator-hero-note p,
+.moderator-panel-head p,
+.moderator-notes p,
+.moderator-list-item span,
+.moderator-list-item small,
+.moderator-folder-cell span,
+.moderator-empty p {
+    margin: 0;
+    color: #6b7280;
+    line-height: 1.65;
+}
+
+.moderator-hero-copy p {
+    margin-top: 0.85rem;
+    font-size: 0.95rem;
+}
+
+.moderator-hero-note {
+    padding: 1.4rem 1.5rem;
+    background: linear-gradient(145deg, rgba(79, 70, 229, 0.08), rgba(14, 165, 233, 0.04));
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.moderator-hero-note-title {
+    color: #111827;
+    font-size: 0.95rem;
+    font-weight: 800;
+}
+
+.moderator-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 16rem;
+}
+
+.moderator-stats {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1rem;
+}
+
+.moderator-stat-card {
+    padding: 1.2rem 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+}
+
+.moderator-stat-icon {
+    width: 3rem;
+    height: 3rem;
+    border-radius: 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+}
+
+.moderator-stat-icon.indigo {
+    background: #eef2ff;
+    color: #4f46e5;
+}
+
+.moderator-stat-icon.amber {
+    background: #fff7ed;
+    color: #ea580c;
+}
+
+.moderator-stat-icon.rose {
+    background: #fff1f2;
+    color: #e11d48;
+}
+
+.moderator-stat-icon.emerald {
+    background: #ecfdf5;
+    color: #059669;
+}
+
+.moderator-stat-value {
+    color: #111827;
+    font-size: 1.6rem;
+    font-weight: 800;
+    letter-spacing: -0.04em;
+}
+
+.moderator-stat-label {
+    color: #6b7280;
+    font-size: 0.85rem;
+    margin-top: 0.2rem;
+}
+
+.moderator-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(300px, 0.9fr);
+    gap: 1rem;
+}
+
+.moderator-panel {
+    padding: 1.3rem 1.4rem;
+}
+
+.moderator-panel-wide {
+    grid-row: span 2;
+}
+
+.moderator-panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.moderator-panel-head h2 {
+    margin: 0;
+    color: #111827;
+    font-size: 1.02rem;
+    font-weight: 800;
+}
+
+.moderator-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.35rem 0.7rem;
+    border-radius: 9999px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-size: 0.72rem;
+    font-weight: 800;
+}
+
+.moderator-table-wrap {
+    overflow-x: auto;
+}
+
+.moderator-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.moderator-table th,
+.moderator-table td {
+    padding: 0.85rem 0.4rem;
+    text-align: left;
+    vertical-align: top;
+    border-top: 1px solid #eef2f7;
+}
+
+.moderator-table th {
+    border-top: 0;
+    color: #64748b;
+    font-size: 0.72rem;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+}
+
+.moderator-table td {
+    color: #475569;
+    font-size: 0.85rem;
+}
+
+.moderator-folder-cell {
+    display: flex;
+    gap: 0.75rem;
+    min-width: 14rem;
+}
+
+.moderator-folder-cell strong,
+.moderator-list-item strong,
+.moderator-notes strong {
+    display: block;
+    color: #111827;
+}
+
+.moderator-folder-mark {
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 0.8rem;
+    background: #eef2ff;
+    color: #4f46e5;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+}
+
+.moderator-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+}
+
+.moderator-list-item {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.95rem 1rem;
+    border-radius: 0.95rem;
+    background: #fafbff;
+    border: 1px solid #eef2f7;
+}
+
+.moderator-notes {
+    display: flex;
+    flex-direction: column;
+    gap: 0.9rem;
+}
+
+.moderator-notes > div {
+    padding: 1rem;
+    border-radius: 0.95rem;
+    background: #fafbff;
+    border: 1px solid #eef2f7;
+}
+
+.moderator-empty {
+    min-height: 14rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    color: #818cf8;
+}
+
+.moderator-empty .mud-icon-root {
+    font-size: 2rem;
+}
+
+@media (max-width: 1100px) {
+    .moderator-hero,
+    .moderator-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .moderator-panel-wide {
+        grid-row: auto;
+    }
+
+    .moderator-stats {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+}
+
+@media (max-width: 720px) {
+    .moderator-stats {
+        grid-template-columns: 1fr;
+    }
+
+    .moderator-list-item {
+        flex-direction: column;
+    }
+}

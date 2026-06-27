@@ -132,7 +132,7 @@
                 }
             </MudButton>
 
-            <div class="auth-divider"><span>Private account • Real Supabase auth</span></div>
+            <div class="auth-divider"><span>Private account - Real Supabase auth</span></div>
 
             <MudStack Row="true" Justify="Justify.Center" Spacing="1" Style="flex-wrap: wrap;">
                 <MudText Typo="Typo.body2" Color="Color.Secondary">Already have an account?</MudText>
@@ -195,7 +195,7 @@
             if (ex.Errors is { Count: > 0 })
             {
                 var details = string.Join("; ", ex.Errors.SelectMany(kv => kv.Value.Select(v => $"{kv.Key}: {v}")));
-                _error = $"{ex.Message} — {details}";
+                _error = $"{ex.Message} - {details}";
             }
             else
             {

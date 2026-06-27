@@ -182,7 +182,7 @@
     private static string ToUpdatedText(DateTimeOffset updatedAt)
     {
         var local = updatedAt.ToLocalTime();
-        return $"{local:dd MMM yyyy} • {local:HH:mm}";
+        return $"{local:dd MMM yyyy} - {local:HH:mm}";
     }
 
     private static string GetStatusChipStyle(string status)

@@ -1,3 +1,4 @@
+@page "/dashboard"
 @page "/moderator"
 @page "/moderator/dashboard"
 @using AI_Study_Hub_v2.Data
@@ -138,7 +139,7 @@
                         <div class="moderator-list-item">
                             <div>
                                 <strong>@folder.Name</strong>
-                                <span>@folder.OwnerName • @folder.DocumentCount document(s)</span>
+                                <span>@folder.OwnerName - @folder.DocumentCount document(s)</span>
                             </div>
                             <small>@folder.SharedAtText</small>
                         </div>
@@ -227,7 +228,7 @@
                 r.ReportedBy.FullName ?? r.ReportedBy.Username,
                 r.Reason,
                 r.Status,
-                r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy • HH:mm")))
+                r.CreatedAt.ToLocalTime().ToString("dd MMM yyyy - HH:mm")))
             .ToList();
 
         sharedRows = shared

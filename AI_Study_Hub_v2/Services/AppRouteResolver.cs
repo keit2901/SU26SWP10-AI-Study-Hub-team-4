@@ -11,10 +11,10 @@ public static class AppRouteResolver
 
         if (IsModeratorRole(role))
         {
-            return "/moderator/dashboard";
+            return "/dashboard";
         }
 
-        return "/dashboard";
+        return "/documents";
     }
 
     public static bool IsAdminRole(string? role) =>
