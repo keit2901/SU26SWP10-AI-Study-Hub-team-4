@@ -36,7 +36,7 @@ public sealed class CommunityApiClient
     }
 
     /// <summary>
-    /// Admin: list all pending community reports.
+    /// Admin or Moderator: list all pending community reports.
     /// GET /api/community/reports/pending
     /// </summary>
     public async Task<IReadOnlyList<CommunityReportDto>> GetPendingReportsAsync(
@@ -59,7 +59,7 @@ public sealed class CommunityApiClient
     }
 
     /// <summary>
-    /// Admin: resolve or dismiss a pending community report.
+    /// Admin or Moderator: resolve or dismiss a pending community report.
     /// PATCH /api/community/reports/{reportId}/resolve
     /// </summary>
     public async Task ResolveReportAsync(
