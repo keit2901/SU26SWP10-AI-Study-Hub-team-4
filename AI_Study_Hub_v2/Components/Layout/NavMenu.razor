@@ -29,7 +29,6 @@
                         <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
                     }
                 }
-            }
             else
             {
                 <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
@@ -38,6 +37,7 @@
                 <NavLink class="nav-pill" href="register">Get Started</NavLink>
             }
         </nav>
+        }
 
         <div class="community-actions teammate-actions">
             @if (Session.IsAuthenticated)
