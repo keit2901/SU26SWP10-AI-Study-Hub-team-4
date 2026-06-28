@@ -21,6 +21,8 @@ public interface IGoTrueClient
 
     Task<GoTrueUser> GetUserAsync(string accessToken, CancellationToken cancellationToken = default);
 
+    Task<GoTrueUser> UpdateUserAsync(string accessToken, string? email, string? password, Dictionary<string, object?>? metadata, CancellationToken cancellationToken = default);
+
     /// <summary>Admin endpoint — requires service-role key. Creates an already-confirmed user.</summary>
     Task<GoTrueUser> AdminCreateUserAsync(string email, string password, Dictionary<string, object?>? userMetadata, Dictionary<string, object?>? appMetadata, CancellationToken cancellationToken = default);
 
