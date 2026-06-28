@@ -79,9 +79,15 @@ public sealed class FolderApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
-    public async Task<IReadOnlyList<FolderDto>> ListSharedAsync(CancellationToken ct = default)
+    public async Task<IReadOnlyList<FolderDto>> ListSharedAsync(
+        string? accessToken = null,
+        CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Get, "api/folders/shared");
+        if (!string.IsNullOrWhiteSpace(accessToken))
+        {
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        }
 
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)
