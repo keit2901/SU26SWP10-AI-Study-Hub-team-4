@@ -2,7 +2,6 @@
 @implements IDisposable
 @inject AuthSessionState Session
 @inject FolderApiClient FoldersApi
-@inject CommunityApiClient CommunityApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 
@@ -182,7 +181,7 @@
                                             {
                                                 <div class="card-menu-dropdown">
                                                     <button class="menu-item" @onclick="() => { var id = folder.Id; _openMenuFolderId = null; CopyToLibrary(id); }">Copy to Library</button>
-                                                    <button class="menu-item" @onclick="() => OpenReportDialog(folder.Id)">Report</button>
+                                                    <button class="menu-item" @onclick="() => { _openMenuFolderId = null; ShowComingSoon(); }">Report</button>
                                                 </div>
                                             }
                                         </div>
@@ -283,16 +282,6 @@
     </div>
 </div>
 
-<MudDialog @bind-IsVisible="_reportDialogOpen" Title="Report Folder" Options="new DialogOptions { MaxWidth = MaxWidth.Small }">
-    <DialogContent>
-        <MudTextField T="string" Label="Reason" @bind-Value="_reportReason" Lines="3" Variant="Variant.Outlined" />
-    </DialogContent>
-    <DialogActions>
-        <MudButton OnClick="() => _reportDialogOpen = false" Disabled="_reporting">Cancel</MudButton>
-        <MudButton OnClick="SubmitReportAsync" Color="Color.Primary" Disabled="_reporting">Submit</MudButton>
-    </DialogActions>
-</MudDialog>
-
 @code {
     private string _activeTab = "community";
     private string _searchQuery = "";
@@ -304,11 +293,6 @@
     private Dictionary<Guid, bool?> _votes = new();
     private Guid? _openMenuFolderId = null;
     private Guid? _selectedFolderId = null;
-
-    private Guid? _reportFolderId;
-    private string _reportReason = string.Empty;
-    private bool _reportDialogOpen;
-    private bool _reporting;
 
     private List<FolderDto> _currentFolders =>
         _activeTab == "community" ? _allCommunityFolders : _personalFolders;
@@ -412,43 +396,6 @@
     private void ShowComingSoon()
     {
         Snackbar.Add("Coming soon", Severity.Info);
-    }
-
-    private void OpenReportDialog(Guid folderId)
-    {
-        _openMenuFolderId = null;
-        _reportFolderId = folderId;
-        _reportReason = string.Empty;
-        _reportDialogOpen = true;
-    }
-
-    private async Task SubmitReportAsync()
-    {
-        if (!Session.IsAuthenticated || Session.AccessToken is null)
-        {
-            Snackbar.Add("Sign in to report", Severity.Warning);
-            return;
-        }
-        if (string.IsNullOrWhiteSpace(_reportReason))
-        {
-            Snackbar.Add("Please enter a reason", Severity.Warning);
-            return;
-        }
-        _reporting = true;
-        try
-        {
-            await CommunityApi.ReportFolderAsync(Session.AccessToken, _reportFolderId!.Value, _reportReason);
-            Snackbar.Add("Report submitted", Severity.Success);
-            _reportDialogOpen = false;
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            _reporting = false;
-        }
     }
 
     private async Task CopyToLibrary(Guid folderId)
