@@ -25,6 +25,7 @@ public interface IFolderService
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<FolderDto>> ListSharedAsync(
+        Guid? supabaseUserId = null,
         CancellationToken cancellationToken = default);
 
     Task<IReadOnlyList<FolderDto>> ListPersonalSharedAsync(
