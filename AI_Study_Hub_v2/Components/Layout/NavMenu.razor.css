@@ -15,7 +15,7 @@
 }
 
 .community-topbar-inner {
-    width: min(80rem, 100%);
+    width: 100%;
     min-height: 4rem;
     margin: 0 auto;
     display: grid;

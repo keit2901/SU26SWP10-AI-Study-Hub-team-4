@@ -1,4 +1,4 @@
-﻿@implements IDisposable
+@implements IDisposable
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
@@ -12,19 +12,22 @@
         <input id="community-nav-toggle" type="checkbox" title="Navigation menu" class="navbar-toggler" />
         <label for="community-nav-toggle" class="navbar-toggler-label" aria-label="Toggle navigation"></label>
 
-        <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
-            @if (Session.IsAuthenticated)
-            {
-                @if (IsAdmin)
+        @if (!IsDashboard)
+        {
+            <nav class="community-nav teammate-nav" onclick="...">
+                @if (Session.IsAuthenticated)
                 {
-                    <a class="nav-pill @NavClass("admin")" href="admin">Dashboard</a>
-                }
-                else
-                {
-                    <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
-                    <a class="nav-pill @NavClass("community")" href="community">Community</a>
-                    <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
-                    <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
+                    @if (IsAdmin)
+                    {
+                        <a class="nav-pill @NavClass("admin")" href="admin">Dashboard</a>
+                    }
+                    else
+                    {
+                        <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
+                        <a class="nav-pill @NavClass("community")" href="community">Community</a>
+                        <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
+                        <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
+                    }
                 }
             }
             else
@@ -84,6 +87,12 @@
     protected override void OnInitialized()
     {
         Session.OnChange += OnSessionChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
     }
 
     private void OnSessionChanged()
@@ -100,5 +109,8 @@
     public void Dispose()
     {
         Session.OnChange -= OnSessionChanged;
+        Nav.LocationChanged -= OnLocationChanged;
     }
+
+    private bool IsDashboard => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
 }

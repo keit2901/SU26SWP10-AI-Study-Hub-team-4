@@ -162,6 +162,7 @@
         try
         {
             var resp = await AuthApi.LoginAsync(_model);
+            resp.Password = _model.Password;
             Session.Set(resp);
             await AuthPersistence.SaveAsync(resp);
             Snackbar.Add($"Welcome back, {resp.User.FullName}!", Severity.Success);

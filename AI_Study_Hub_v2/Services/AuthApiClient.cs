@@ -51,6 +51,9 @@ public sealed class AuthApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public Task<UserDto> UpdateUserAsync(string accessToken, UpdateUserRequest request, CancellationToken ct = default)
+        => PostAsync<UpdateUserRequest, UserDto>("api/auth/update", request, accessToken, ct);
+
     private async Task<TResp> PostAsync<TReq, TResp>(string path, TReq body, string? accessToken, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, path)
