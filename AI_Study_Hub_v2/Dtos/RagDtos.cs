@@ -17,4 +17,5 @@ public sealed record RagSearchResultDto(
     int ChunkIndex,
     int? PageNumber,
     string ContentExcerpt,
-    double? Score);
+    double? Score,
+    string? SectionTitle = null);

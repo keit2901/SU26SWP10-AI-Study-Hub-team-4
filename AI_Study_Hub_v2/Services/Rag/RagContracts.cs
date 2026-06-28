@@ -45,7 +45,7 @@ public interface IChunkingService
     IReadOnlyList<DocumentChunkDraft> Chunk(Guid documentId, IReadOnlyList<ExtractedPage> pages);
 }
 
-public sealed record DocumentChunkDraft(Guid DocumentId, int ChunkIndex, int? PageNumber, string Content);
+public sealed record DocumentChunkDraft(Guid DocumentId, int ChunkIndex, int? PageNumber, string Content, string? SectionTitle = null);
 
 public interface IEmbeddingService
 {

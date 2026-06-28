@@ -27,6 +27,9 @@ public sealed class DocumentChunk
     /// <summary>Rough estimate (~chars / 4) for prompt budget accounting.</summary>
     public int? TokenCount { get; set; }
 
+    /// <summary>Section/topic heading for this chunk; <c>null</c> for recursive (character-based) chunks.</summary>
+    public string? SectionTitle { get; set; }
+
     /// <summary>Cosine-similarity vector. Null only briefly during pipeline.</summary>
     public Vector Embedding { get; set; } = null!;
 

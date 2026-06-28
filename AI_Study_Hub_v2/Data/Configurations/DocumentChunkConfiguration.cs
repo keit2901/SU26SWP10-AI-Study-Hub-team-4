@@ -34,6 +34,9 @@ public sealed class DocumentChunkConfiguration : IEntityTypeConfiguration<Docume
         builder.Property(c => c.TokenCount)
             .HasColumnName("token_count");
 
+        builder.Property(c => c.SectionTitle)
+            .HasColumnName("section_title");
+
         // Embedding dimension is locked at 384 (BGE-small-en-v1.5).
         // Pgvector.EntityFrameworkCore maps Pgvector.Vector to the pgvector "vector(N)" type.
         builder.Property(c => c.Embedding)

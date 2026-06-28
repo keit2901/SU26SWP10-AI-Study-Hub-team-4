@@ -86,7 +86,8 @@ public sealed class RagSearchService : IRagSearchService
                 c.ChunkIndex,
                 c.PageNumber,
                 c.Content,
-                c.Embedding.CosineDistance(queryVector)))
+                c.Embedding.CosineDistance(queryVector),
+                c.SectionTitle))
             .Take(topK)
             .ToListAsync(cancellationToken);
 
@@ -110,7 +111,8 @@ public sealed class RagSearchService : IRagSearchService
                 c.ChunkIndex,
                 c.PageNumber,
                 c.Content,
-                CosineDistance(c.Embedding.ToArray(), queryEmbedding)))
+                CosineDistance(c.Embedding.ToArray(), queryEmbedding),
+                c.SectionTitle))
             .OrderBy(r => r.Distance)
             .Take(topK)
             .Select(ToDto)
@@ -171,7 +173,8 @@ public sealed class RagSearchService : IRagSearchService
             ChunkIndex: row.ChunkIndex,
             PageNumber: row.PageNumber,
             ContentExcerpt: BuildExcerpt(row.Content),
-            Score: 1d - row.Distance);
+            Score: 1d - row.Distance,
+            SectionTitle: row.SectionTitle);
     }
 
     private int ResolveTopK(int requestedTopK)
@@ -254,5 +257,6 @@ public sealed class RagSearchService : IRagSearchService
         int ChunkIndex,
         int? PageNumber,
         string Content,
-        double Distance);
+        double Distance,
+        string? SectionTitle);
 }

@@ -153,6 +153,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
                     ChunkIndex = draft.ChunkIndex,
                     PageNumber = draft.PageNumber,
                     Content = draft.Content,
+                    SectionTitle = draft.SectionTitle,
                     TokenCount = EstimateTokenCount(draft.Content),
                     Embedding = new Vector(embedding),
                     CreatedAt = now,
