@@ -1,5 +1,6 @@
 @page "/profile"
 @using AI_Study_Hub_v2.Services
+@using AI_Study_Hub_v2.Dtos
 @inject AuthApiClient AuthApi
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
@@ -31,83 +32,376 @@ else
         return;
     }
 
-    if (u.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
-    {
-        Nav.NavigateTo("/admin", replace: true);
-        return;
-    }
+    <div class="profile-container">
+        <!-- Top Toolbar with Actions -->
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4">
+            <div>
+                <MudText Typo="Typo.h5" Style="font-weight: 700; color: #1e293b;">My Profile</MudText>
+            </div>
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Default"
+                           OnClick="ReloadAsync"
+                           Disabled="_busy"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Refresh">
+                    Refresh
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Error"
+                           OnClick="LogoutAsync"
+                           Disabled="_busy"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Logout">
+                    @(_busy ? "Signing out..." : "Sign out")
+                </MudButton>
+            </MudStack>
+        </MudStack>
 
-    <MudStack Class="workspace-shell pa-4" Spacing="3">
-        <section class="workspace-hero">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 1rem; flex-wrap: wrap;">
-                <div>
-                    <span class="section-kicker">Account control</span>
-                    <MudText Typo="Typo.h4" Class="mt-3">@u.FullName</MudText>
-                    <MudText Typo="Typo.body1" Class="workspace-copy">@u.Email</MudText>
+        <!-- Main Identity Snapshot Card -->
+        <div class="glass-card">
+            <!-- Header -->
+            <div class="profile-header">
+                <div class="profile-avatar">
+                    @(string.IsNullOrEmpty(u.FullName) ? "?" : u.FullName[0].ToString().ToUpperInvariant())
                 </div>
-                <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
-                    <MudButton Variant="Variant.Outlined"
-                               Class="ghost-button"
-                               OnClick="ReloadAsync"
-                               Disabled="_busy"
-                               StartIcon="@Icons.Material.Filled.Refresh">
-                        Refresh /me
-                    </MudButton>
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Error"
-                               OnClick="LogoutAsync"
-                               Disabled="_busy"
-                               StartIcon="@Icons.Material.Filled.Logout">
-                        @(_busy ? "Signing out..." : "Sign out")
-                    </MudButton>
-                </MudStack>
-            </MudStack>
-        </section>
+                <div class="profile-header-title">
+                    <h1>Identity Snapshot</h1>
+                    <p>In-memory demo session, scoped to this browser circuit.</p>
+                </div>
+            </div>
 
-        <MudPaper Class="pa-5 glass-card" Elevation="0">
-            <MudStack Spacing="3">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
-                    <MudAvatar Color="Color.Primary" Size="Size.Large" Variant="Variant.Filled">
-                        @(string.IsNullOrEmpty(u.FullName) ? "?" : u.FullName[0].ToString().ToUpperInvariant())
-                    </MudAvatar>
-                    <MudStack Spacing="0">
-                        <MudText Typo="Typo.h5">Identity snapshot</MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">In-memory demo session, scoped to this browser circuit.</MudText>
-                    </MudStack>
-                </MudStack>
+            <!-- Details List -->
+            <div class="profile-details-list">
+                <!-- User ID (Readonly) -->
+                <div class="profile-row">
+                    <div class="profile-row-left">
+                        <span class="profile-row-icon"><MudIcon Icon="@Icons.Material.Filled.Key" Size="Size.Small" /></span>
+                        <div class="profile-text-stack">
+                            <span class="profile-label">User ID</span>
+                            <span class="profile-value profile-value-mono">@u.Id</span>
+                        </div>
+                    </div>
+                </div>
 
-                <MudDivider />
+                <!-- Username (Editable inline) -->
+                <div class="profile-row">
+                    <div class="profile-row-left">
+                        <span class="profile-row-icon"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
+                        @if (_editingUsername)
+                        {
+                            <div class="inline-edit-wrapper">
+                                <MudTextField @bind-Value="_editUsernameValue"
+                                              Label="Username"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Class="inline-edit-input" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" OnClick="SaveUsernameAsync" Disabled="_busy" Size="Size.Small" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" OnClick="CancelEdit" Disabled="_busy" Size="Size.Small" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="profile-text-stack">
+                                <span class="profile-label">Username</span>
+                                <span class="profile-value">@u.Username</span>
+                            </div>
+                        }
+                    </div>
+                    @if (!_editingUsername && !_busy)
+                    {
+                        <div class="profile-row-right">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="change-button" Size="Size.Small" OnClick="StartEditUsername">Change</MudButton>
+                        </div>
+                    }
+                </div>
 
-                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Striped="true">
-                    <tbody>
-                        <tr><td><b>User Id</b></td><td><code>@u.Id</code></td></tr>
-                        <tr><td><b>Username</b></td><td>@u.Username</td></tr>
-                        <tr><td><b>Role</b></td><td><MudChip T="string" Color="Color.Info" Size="Size.Small">@u.Role</MudChip></td></tr>
-                        <tr><td><b>Active</b></td><td>@(u.IsActive ? "Yes" : "No")</td></tr>
-                        <tr><td><b>Created</b></td><td>@u.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td></tr>
-                        <tr><td><b>Token expires</b></td><td>@s.ExpiresAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
-                    </tbody>
-                </MudSimpleTable>
+                <!-- Email (Editable inline) -->
+                <div class="profile-row">
+                    <div class="profile-row-left">
+                        <span class="profile-row-icon"><MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" /></span>
+                        @if (_editingEmail)
+                        {
+                            <div class="inline-edit-wrapper">
+                                <MudTextField @bind-Value="_editEmailValue"
+                                              Label="Email address"
+                                              InputType="InputType.Email"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Class="inline-edit-input" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" OnClick="SaveEmailAsync" Disabled="_busy" Size="Size.Small" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" OnClick="CancelEdit" Disabled="_busy" Size="Size.Small" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="profile-text-stack">
+                                <span class="profile-label">Gmail</span>
+                                <span class="profile-value">@u.Email</span>
+                            </div>
+                        }
+                    </div>
+                    @if (!_editingEmail && !_busy)
+                    {
+                        <div class="profile-row-right">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="change-button" Size="Size.Small" OnClick="StartEditEmail">Change</MudButton>
+                        </div>
+                    }
+                </div>
 
-                <MudExpansionPanels>
-                    <MudExpansionPanel Text="Show JWT (for demo)">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Access token (Bearer):</MudText>
-                        <MudPaper Class="pa-2 mt-1 glass-card-soft" Elevation="0" Style="word-break: break-all; font-family: monospace; font-size: 11px;">
-                            @s.AccessToken
-                        </MudPaper>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">Refresh token:</MudText>
-                        <MudPaper Class="pa-2 mt-1 glass-card-soft" Elevation="0" Style="word-break: break-all; font-family: monospace; font-size: 11px;">
-                            @s.RefreshToken
-                        </MudPaper>
-                    </MudExpansionPanel>
-                </MudExpansionPanels>
-            </MudStack>
-        </MudPaper>
-    </MudStack>
+                <!-- Password (Editable inline + Show/Hide Toggle) -->
+                <div class="profile-row">
+                    <div class="profile-row-left">
+                        <span class="profile-row-icon"><MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" /></span>
+                        @if (_editingPassword)
+                        {
+                            <div class="inline-edit-wrapper">
+                                <MudTextField @bind-Value="_editPasswordValue"
+                                              Label="New Password"
+                                              InputType="_showPassword ? InputType.Text : InputType.Password"
+                                              Variant="Variant.Outlined"
+                                              Margin="Margin.Dense"
+                                              Class="inline-edit-input" />
+                                <MudIconButton Icon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)" OnClick="ToggleShowPassword" Size="Size.Small" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" OnClick="SavePasswordAsync" Disabled="_busy" Size="Size.Small" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" OnClick="CancelEdit" Disabled="_busy" Size="Size.Small" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="profile-text-stack">
+                                <span class="profile-label">Password</span>
+                                <div class="password-display-wrapper">
+                                    <span class="profile-value profile-value-mono">
+                                        @(_showPassword ? (string.IsNullOrEmpty(Session.CurrentPassword) ? "••••••••" : Session.CurrentPassword) : "••••••••")
+                                    </span>
+                                    <span class="password-toggle-icon" @onclick="ToggleShowPassword">
+                                        <MudIcon Icon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)" Size="Size.Small" />
+                                    </span>
+                                </div>
+                            </div>
+                        }
+                    </div>
+                    @if (!_editingPassword && !_busy)
+                    {
+                        <div class="profile-row-right">
+                            <MudButton Variant="Variant.Outlined" Color="Color.Primary" Class="change-button" Size="Size.Small" OnClick="StartEditPassword">Change</MudButton>
+                        </div>
+                    }
+                </div>
+
+                <!-- Role (Readonly) -->
+                <div class="profile-row">
+                    <div class="profile-row-left">
+                        <span class="profile-row-icon"><MudIcon Icon="@Icons.Material.Filled.Badge" Size="Size.Small" /></span>
+                        <div class="profile-text-stack">
+                            <span class="profile-label">Role</span>
+                            <span class="profile-value"><MudChip T="string" Color="Color.Info" Size="Size.Small" Style="margin: 0;">@u.Role</MudChip></span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active (Readonly) -->
+                <div class="profile-row">
+                    <div class="profile-row-left">
+                        <span class="profile-row-icon"><MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" /></span>
+                        <div class="profile-text-stack">
+                            <span class="profile-label">Active</span>
+                            <span class="profile-value">@(u.IsActive ? "Yes" : "No")</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Created (Readonly) -->
+                <div class="profile-row">
+                    <div class="profile-row-left">
+                        <span class="profile-row-icon"><MudIcon Icon="@Icons.Material.Filled.CalendarToday" Size="Size.Small" /></span>
+                        <div class="profile-text-stack">
+                            <span class="profile-label">Created</span>
+                            <span class="profile-value profile-value-mono">@u.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Token expires (Readonly) -->
+                <div class="profile-row">
+                    <div class="profile-row-left">
+                        <span class="profile-row-icon"><MudIcon Icon="@Icons.Material.Filled.AccessTime" Size="Size.Small" /></span>
+                        <div class="profile-text-stack">
+                            <span class="profile-label">Token expires</span>
+                            <span class="profile-value profile-value-mono">@s.ExpiresAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Footer for JWT -->
+            <div class="profile-footer">
+                <button class="jwt-toggle-btn" @onclick="ToggleJwtPanel">
+                    <span>Show JWT (for demo)</span>
+                    <MudIcon Icon="@(_showJwt ? Icons.Material.Filled.KeyboardArrowUp : Icons.Material.Filled.KeyboardArrowDown)" Size="Size.Small" />
+                </button>
+                @if (_showJwt)
+                {
+                    <div class="jwt-content">
+                        <strong>Access Token:</strong>
+                        <div class="mt-1 mb-2 text-wrap" style="word-break: break-all;">@s.AccessToken</div>
+                        <strong>Refresh Token:</strong>
+                        <div class="text-wrap" style="word-break: break-all;">@s.RefreshToken</div>
+                    </div>
+                }
+            </div>
+        </div>
+    </div>
 }
 
 @code {
     private bool _busy;
+    private bool _showJwt;
+    private bool _showPassword;
+
+    private bool _editingUsername;
+    private string _editUsernameValue = string.Empty;
+
+    private bool _editingEmail;
+    private string _editEmailValue = string.Empty;
+
+    private bool _editingPassword;
+    private string _editPasswordValue = string.Empty;
+
+    private void ToggleJwtPanel() => _showJwt = !_showJwt;
+    private void ToggleShowPassword() => _showPassword = !_showPassword;
+
+    private void CancelEdit()
+    {
+        _editingUsername = false;
+        _editingEmail = false;
+        _editingPassword = false;
+        _editUsernameValue = string.Empty;
+        _editEmailValue = string.Empty;
+        _editPasswordValue = string.Empty;
+    }
+
+    private void StartEditUsername()
+    {
+        CancelEdit();
+        _editUsernameValue = Session.CurrentUser?.Username ?? string.Empty;
+        _editingUsername = true;
+    }
+
+    private void StartEditEmail()
+    {
+        CancelEdit();
+        _editEmailValue = Session.CurrentUser?.Email ?? string.Empty;
+        _editingEmail = true;
+    }
+
+    private void StartEditPassword()
+    {
+        CancelEdit();
+        _editPasswordValue = Session.CurrentPassword ?? string.Empty;
+        _editingPassword = true;
+    }
+
+    private async Task SaveUsernameAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editUsernameValue))
+        {
+            Snackbar.Add("Username cannot be empty.", Severity.Warning);
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var updated = await AuthApi.UpdateUserAsync(Session.AccessToken!, new UpdateUserRequest { Username = _editUsernameValue });
+            Session.Session!.User = updated;
+            await AuthPersistence.SaveAsync(Session.Session);
+            _editingUsername = false;
+            Snackbar.Add("Username updated successfully.", Severity.Success);
+        }
+        catch (AuthApiException ex)
+        {
+            Snackbar.Add($"Update failed: {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Network error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SaveEmailAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editEmailValue))
+        {
+            Snackbar.Add("Email cannot be empty.", Severity.Warning);
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var updated = await AuthApi.UpdateUserAsync(Session.AccessToken!, new UpdateUserRequest { Email = _editEmailValue });
+            Session.Session!.User = updated;
+            await AuthPersistence.SaveAsync(Session.Session);
+            _editingEmail = false;
+            Snackbar.Add("Email updated successfully.", Severity.Success);
+        }
+        catch (AuthApiException ex)
+        {
+            Snackbar.Add($"Update failed: {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Network error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SavePasswordAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_editPasswordValue) || _editPasswordValue.Length < 6)
+        {
+            Snackbar.Add("Password must be at least 6 characters.", Severity.Warning);
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+        try
+        {
+            var updated = await AuthApi.UpdateUserAsync(Session.AccessToken!, new UpdateUserRequest { Password = _editPasswordValue });
+            Session.Session!.User = updated;
+            Session.CurrentPassword = _editPasswordValue;
+            await AuthPersistence.SaveAsync(Session.Session);
+            _editingPassword = false;
+            Snackbar.Add("Password updated successfully.", Severity.Success);
+        }
+        catch (AuthApiException ex)
+        {
+            Snackbar.Add($"Update failed: {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Network error: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            StateHasChanged();
+        }
+    }
 
     private async Task LogoutAsync()
     {
@@ -144,7 +438,6 @@ else
         try
         {
             var me = await AuthApi.GetMeAsync(Session.AccessToken);
-            // Patch the current session's user without losing the tokens.
             if (Session.Session is not null)
             {
                 Session.Session.User = me;

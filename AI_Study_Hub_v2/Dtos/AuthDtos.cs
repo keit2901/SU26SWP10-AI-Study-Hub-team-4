@@ -87,3 +87,12 @@ public sealed class ApiErrorResponse
 
     public IDictionary<string, string[]>? Errors { get; set; }
 }
+
+public sealed class UpdateUserRequest
+{
+    public string? Username { get; set; }
+
+    public string? Email { get; set; }
+
+    public string? Password { get; set; }
+}

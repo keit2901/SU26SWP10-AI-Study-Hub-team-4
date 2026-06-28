@@ -26,4 +26,6 @@ public interface IGoTrueClient
 
     /// <summary>Admin endpoint — fetch a user by email. Returns null when not found.</summary>
     Task<GoTrueUser?> AdminGetUserByEmailAsync(string email, CancellationToken cancellationToken = default);
+
+    Task<GoTrueUser> UpdateUserAsync(string accessToken, string? email, string? password, Dictionary<string, object?>? userMetadata, CancellationToken cancellationToken = default);
 }

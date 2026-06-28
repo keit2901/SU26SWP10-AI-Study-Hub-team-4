@@ -51,6 +51,23 @@ public sealed class AuthApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public async Task<UserDto> UpdateUserAsync(string accessToken, UpdateUserRequest request, CancellationToken ct = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Put, "api/auth/update")
+        {
+            Content = JsonContent.Create(request)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<UserDto>(cancellationToken: ct);
+            return dto ?? throw new AuthApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     private async Task<TResp> PostAsync<TReq, TResp>(string path, TReq body, string? accessToken, CancellationToken ct)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, path)

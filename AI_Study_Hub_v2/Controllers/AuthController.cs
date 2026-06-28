@@ -130,6 +130,23 @@ public sealed class AuthController : ControllerBase
         });
     }
 
+    [HttpPut("update")]
+    [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
+    [ProducesResponseType(typeof(UserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<UserDto>> Update([FromBody] UpdateUserRequest request, CancellationToken cancellationToken)
+    {
+        return await ExecuteAsync(async () =>
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var accessToken = await GetAccessTokenAsync()
+                ?? throw new AuthException(401, "missing_access_token", "Access token is required for updating profile.");
+            return await _authService.UpdateUserAsync(supabaseUserId, accessToken, request.Username, request.Email, request.Password, cancellationToken);
+        });
+    }
+
     private async Task<ActionResult<AuthResponse>?> VerifyRecaptchaAsync(
         string? token,
         string action,

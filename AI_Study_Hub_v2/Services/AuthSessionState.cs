@@ -19,6 +19,8 @@ public sealed class AuthSessionState
 
     public string? AccessToken => Session?.AccessToken;
 
+    public string? CurrentPassword { get; set; }
+
     public event Action? OnChange;
 
     public void Set(AuthResponse session)
@@ -30,6 +32,7 @@ public sealed class AuthSessionState
     public void Clear()
     {
         Session = null;
+        CurrentPassword = null;
         NotifyChanged();
     }
 
