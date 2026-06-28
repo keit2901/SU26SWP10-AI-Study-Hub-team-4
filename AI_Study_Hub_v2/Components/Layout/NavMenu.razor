@@ -18,6 +18,12 @@
                 @if (IsAdmin)
                 {
                     <a class="nav-pill @NavClass("admin")" href="admin">Dashboard</a>
+                    <a class="nav-pill @NavClass("admin/community-reports")" href="admin/community-reports">Reports</a>
+                }
+                else if (IsModerator)
+                {
+                    <a class="nav-pill @NavClass("moderator/community-reports")" href="moderator/community-reports">Reports</a>
+                    <a class="nav-pill @NavClass("community")" href="community">Community</a>
                 }
                 else
                 {
@@ -43,7 +49,7 @@
                     <span>@DisplayName</span>
                     <small>Pro Plan</small>
                 </div>
-                <a class="user-chip teammate-user-chip" href="@(IsAdmin ? "admin" : "profile")">
+                <a class="user-chip teammate-user-chip" href="@ProfileHref">
                     <span class="user-avatar"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
                 </a>
                 <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
@@ -74,6 +80,15 @@
 
     private bool IsAdmin =>
         Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsModerator =>
+        Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
+
+    private string ProfileHref => IsAdmin
+        ? "admin"
+        : IsModerator
+            ? "moderator/community-reports"
+            : "profile";
 
     private string DisplayName =>
         Session.CurrentUser?.FullName

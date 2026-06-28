@@ -39,7 +39,7 @@ public sealed class CommunityController : ControllerBase
                 request.FolderId,
                 request.Reason,
                 cancellationToken);
-            return Ok(id);
+            return StatusCode(StatusCodes.Status201Created, id);
         }
         catch (CommunityException ex)
         {
@@ -66,7 +66,9 @@ public sealed class CommunityController : ControllerBase
     {
         try
         {
-            return Ok(await _communityService.GetPendingReportsAsync(cancellationToken));
+            return Ok(await _communityService.GetPendingReportsAsync(
+                GetSupabaseUserIdFromClaims(),
+                cancellationToken));
         }
         catch (CommunityException ex)
         {
