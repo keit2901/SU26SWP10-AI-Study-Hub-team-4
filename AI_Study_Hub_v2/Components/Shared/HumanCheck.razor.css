@@ -1,0 +1,14 @@
+.recaptcha-check {
+    overflow: hidden;
+}
+
+.g-recaptcha {
+    transform: scale(0.92);
+    transform-origin: 0 0;
+}
+
+@media (max-width: 400px) {
+    .g-recaptcha {
+        transform: scale(0.85);
+    }
+}

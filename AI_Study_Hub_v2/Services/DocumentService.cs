@@ -149,8 +149,19 @@ public sealed class DocumentService : IDocumentService
 
         // 5. Upload bytes to Supabase Storage. If anything below fails, we attempt
         // a best-effort cleanup so we don't leak orphan objects.
-        await _storage.UploadAsync(BucketName, storagePath, content, canonicalContentType,
-            upsert: false, cancellationToken: cancellationToken);
+        try
+        {
+            await _storage.UploadAsync(BucketName, storagePath, content, canonicalContentType,
+                upsert: false, cancellationToken: cancellationToken);
+        }
+        catch (SupabaseStorageException ex)
+        {
+            _logger.LogWarning(ex,
+                "Supabase Storage upload failed for {Path}. Is the local storage service running?",
+                storagePath);
+            throw new DocumentException(503, "storage_unavailable",
+                "Document storage is unavailable. Start Supabase Storage and retry the upload.");
+        }
 
         // 6. Insert metadata row. Status = Ready (file stored OK; chunking happens in D6).
         var now = DateTimeOffset.UtcNow;
