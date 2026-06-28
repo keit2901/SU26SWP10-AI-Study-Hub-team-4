@@ -5,6 +5,19 @@
 @using Microsoft.AspNetCore.Components.Routing
 @using MudBlazor
 @inject NavigationManager Navigation
+@inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
+@inject AuthApiClient AuthApi
+
+@if (_checkingAccess)
+{
+    <MudStack AlignItems="AlignItems.Center" Justify="Justify.Center" Style="min-height: 100vh;">
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+        <MudText Typo="Typo.body2">Verifying administrator access…</MudText>
+    </MudStack>
+}
+else if (_authorized)
+{
 
 <MudThemeProvider Theme="@_theme" IsDarkMode="@_isDarkMode" />
 
@@ -41,8 +54,9 @@
                 </MudButton>
             </ActivatorContent>
             <ChildContent>
-                <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Signed in as admin@aistudyhub.edu</MudMenuItem>
-                <MudMenuItem Icon="@Icons.Material.Filled.Security">Access: Super Admin</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Signed in as @AdminIdentity</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.Security">Access: @AdminRole</MudMenuItem>
+                <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="SignOutAsync">Sign out</MudMenuItem>
             </ChildContent>
         </MudMenu>
     </MudAppBar>
@@ -99,13 +113,24 @@
         </MudContainer>
     </MudMainContent>
 </MudLayout>
+}
 
 @code {
     private bool _drawerOpen = true;
     private bool _isDarkMode;
+    private bool _checkingAccess = true;
+    private bool _authorized;
     private List<BreadcrumbItem> _breadcrumbs = new();
 
     private string ThemeIcon => _isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode;
+
+    private string AdminIdentity =>
+        Session.CurrentUser?.Email
+        ?? Session.CurrentUser?.Username
+        ?? Session.CurrentUser?.FullName
+        ?? "Administrator";
+
+    private string AdminRole => Session.CurrentUser?.Role ?? "Admin";
 
     private readonly MudTheme _theme = new()
     {
@@ -166,6 +191,77 @@
     {
         Navigation.LocationChanged += OnLocationChanged;
         BuildBreadcrumbs();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!firstRender)
+        {
+            return;
+        }
+
+        await VerifyAccessAsync();
+    }
+
+    private async Task VerifyAccessAsync()
+    {
+        try
+        {
+            if (!Session.IsAuthenticated)
+            {
+                var restored = await AuthPersistence.TryRestoreAsync();
+                if (restored is not null && restored.ExpiresAt > DateTimeOffset.UtcNow)
+                {
+                    Session.Set(restored);
+                }
+            }
+
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                await RedirectToLoginAsync();
+                return;
+            }
+
+            var verifiedUser = await AuthApi.GetMeAsync(Session.AccessToken);
+            if (Session.Session is not null)
+            {
+                Session.Session.User = verifiedUser;
+                Session.Set(Session.Session);
+                await AuthPersistence.SaveAsync(Session.Session);
+            }
+
+            if (!AdminAccessPolicy.IsAdmin(verifiedUser.Role))
+            {
+                _checkingAccess = false;
+                Navigation.NavigateTo("/documents", replace: true);
+                return;
+            }
+
+            _authorized = true;
+            _checkingAccess = false;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch
+        {
+            Session.Clear();
+            await AuthPersistence.ClearAsync();
+            await RedirectToLoginAsync();
+        }
+    }
+
+    private async Task RedirectToLoginAsync()
+    {
+        _authorized = false;
+        _checkingAccess = false;
+        await InvokeAsync(StateHasChanged);
+        Navigation.NavigateTo("/login", replace: true);
+    }
+
+    private async Task SignOutAsync()
+    {
+        Session.Clear();
+        await AuthPersistence.ClearAsync();
+        Navigation.NavigateTo("/login", replace: true);
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;

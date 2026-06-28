@@ -138,14 +138,9 @@
 
     private void RedirectByRole()
     {
-        var role = Session.CurrentUser?.Role;
-        var target = role switch
-        {
-            "Admin" => "/admin",
-            "Moderator" => "/dashboard",
-            _ => "/profile"
-        };
-        Nav.NavigateTo(target, replace: true);
+        Nav.NavigateTo(
+            AdminAccessPolicy.GetAuthenticatedLandingPage(Session.CurrentUser?.Role),
+            replace: true);
     }
 
     private Task OnHumanCheckChanged(bool valid)
@@ -193,12 +188,6 @@
 
     private void RedirectAuthenticatedUser(string? role)
     {
-        var target = role switch
-        {
-            "Admin" => "/admin",
-            "Moderator" => "/dashboard",
-            _ => "/profile"
-        };
-        Nav.NavigateTo(target, replace: true);
+        Nav.NavigateTo(AdminAccessPolicy.GetAuthenticatedLandingPage(role), replace: true);
     }
 }

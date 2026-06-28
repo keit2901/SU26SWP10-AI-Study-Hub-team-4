@@ -24,14 +24,8 @@ else
     var u = Session.CurrentUser!;
     var s = Session.Session!;
     
-    // Redirect admin users to admin dashboard
-    if (u.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
-    {
-        Nav.NavigateTo("/admin", replace: true);
-        return;
-    }
-
-    if (u.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
+    // Administrators use the protected admin workspace rather than the student profile.
+    if (AdminAccessPolicy.IsAdmin(u.Role))
     {
         Nav.NavigateTo("/admin", replace: true);
         return;

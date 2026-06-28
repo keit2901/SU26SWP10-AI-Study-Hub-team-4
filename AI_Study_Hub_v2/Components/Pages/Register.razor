@@ -161,14 +161,9 @@
 
     private void RedirectByRole()
     {
-        var role = Session.CurrentUser?.Role;
-        var target = role switch
-        {
-            "Admin" => "/admin/dashboard",
-            "Moderator" => "/dashboard",
-            _ => "/profile"
-        };
-        Nav.NavigateTo(target, replace: true);
+        Nav.NavigateTo(
+            AdminAccessPolicy.GetAuthenticatedLandingPage(Session.CurrentUser?.Role),
+            replace: true);
     }
 
     private Task OnHumanCheckChanged(bool valid)
@@ -194,13 +189,7 @@
             resp.Password = _model.Password;
             Session.Set(resp);
             Snackbar.Add($"Account created. Welcome, {resp.User.FullName}!", Severity.Success);
-            var target = resp.User.Role switch
-            {
-                "Admin" => "/admin/dashboard",
-                "Moderator" => "/dashboard",
-                _ => "/profile"
-            };
-            Nav.NavigateTo(target);
+            Nav.NavigateTo(AdminAccessPolicy.GetAuthenticatedLandingPage(resp.User.Role));
         }
         catch (AuthApiException ex)
         {
