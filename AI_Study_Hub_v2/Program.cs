@@ -270,10 +270,11 @@ using (var scope = app.Services.CreateScope())
         startupLogger.LogInformation("Database migrations applied.");
 
         await SeedDefaultAdminAsync(db, goTrue, seedOptions, startupLogger);
+        await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
     }
     catch (Exception ex)
     {
-        startupLogger.LogError(ex, "Failed to apply migrations or seed default admin.");
+        startupLogger.LogError(ex, "Failed to apply migrations or seed default accounts.");
         throw;
     }
 }
@@ -387,4 +388,96 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
     db.Users.Add(admin);
     await db.SaveChangesAsync();
     logger.LogInformation("Default admin profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
+}
+
+static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotrue, SeedOptions seedOptions, ILogger logger)
+{
+    var existingModerator = await db.Users
+        .Include(u => u.Role)
+        .AnyAsync(u => u.Role.RoleName == Role.ModeratorRoleName);
+
+    if (existingModerator)
+    {
+        logger.LogInformation("Default moderator seed skipped: at least one moderator already exists.");
+        return;
+    }
+
+    var cfg = seedOptions.DefaultModerator;
+    if (cfg is null
+        || string.IsNullOrWhiteSpace(cfg.Email)
+        || string.IsNullOrWhiteSpace(cfg.Username)
+        || string.IsNullOrWhiteSpace(cfg.FullName)
+        || string.IsNullOrWhiteSpace(cfg.Password))
+    {
+        logger.LogWarning("Default moderator seed skipped: Seed:DefaultModerator is not fully configured (Email/Username/FullName/Password). Set Seed:DefaultModerator:Password via dotnet user-secrets.");
+        return;
+    }
+
+    var moderatorRole = await db.Roles.FirstOrDefaultAsync(r => r.RoleName == Role.ModeratorRoleName);
+    if (moderatorRole is null)
+    {
+        logger.LogError("Default moderator seed failed: Moderator role is not present in database.");
+        return;
+    }
+
+    var emailLower = cfg.Email.Trim().ToLowerInvariant();
+    var usernameTrim = cfg.Username.Trim();
+
+    // Avoid duplicate insert into public.users when GoTrue already has the identity but EF was reset.
+    var existing = await gotrue.AdminGetUserByEmailAsync(emailLower);
+    Guid supabaseUserId;
+    if (existing is not null && existing.Id != Guid.Empty)
+    {
+        supabaseUserId = existing.Id;
+        logger.LogInformation("Default moderator already exists in GoTrue: {Email}. Will reuse identity.", emailLower);
+    }
+    else
+    {
+        var created = await gotrue.AdminCreateUserAsync(
+            emailLower,
+            cfg.Password,
+            userMetadata: new Dictionary<string, object?>
+            {
+                ["username"] = usernameTrim,
+                ["full_name"] = cfg.FullName.Trim(),
+            },
+            appMetadata: new Dictionary<string, object?>
+            {
+                ["role"] = Role.ModeratorRoleName,
+            });
+        supabaseUserId = created.Id;
+        logger.LogInformation("Default moderator created in GoTrue: {Email}", emailLower);
+    }
+
+    var profileExists = await db.Users.AnyAsync(u => u.SupabaseUserId == supabaseUserId);
+    if (profileExists)
+    {
+        logger.LogInformation("Default moderator profile already exists in public.users — skip insert.");
+        return;
+    }
+
+    var clash = await db.Users.AnyAsync(u => u.Username == usernameTrim);
+    if (clash)
+    {
+        logger.LogWarning("Default moderator seed skipped: a user already exists with the same username.");
+        return;
+    }
+
+    var now = DateTimeOffset.UtcNow;
+    var moderator = new User
+    {
+        Id = Guid.NewGuid(),
+        RoleId = moderatorRole.Id,
+        SupabaseUserId = supabaseUserId,
+        Username = usernameTrim,
+        FullName = cfg.FullName.Trim(),
+        TotalTokensUsed = 0,
+        IsActive = true,
+        CreatedAt = now,
+        UpdatedAt = now,
+    };
+
+    db.Users.Add(moderator);
+    await db.SaveChangesAsync();
+    logger.LogInformation("Default moderator profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
 }

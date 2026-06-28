@@ -23,6 +23,10 @@
                     }
                     else
                     {
+                        @if (IsModerator)
+                        {
+                            <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                        }
                         <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
                         <a class="nav-pill @NavClass("community")" href="community">Community</a>
                         <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
@@ -46,7 +50,7 @@
                     <span>@DisplayName</span>
                     <small>Pro Plan</small>
                 </div>
-                <a class="user-chip teammate-user-chip" href="@(IsAdmin ? "admin" : "profile")">
+                <a class="user-chip teammate-user-chip" href="@(IsAdmin ? "admin" : IsModerator ? "dashboard" : "profile")">
                     <span class="user-avatar"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
                 </a>
                 <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
@@ -72,11 +76,16 @@
             return rel == "documents/upload" ? "active" : "";
         if (href == "admin")
             return rel == "admin" ? "active" : "";
+        if (href == "dashboard")
+            return rel == "dashboard" || rel.StartsWith("dashboard/") ? "active" : "";
         return rel == href ? "active" : "";
     }
 
     private bool IsAdmin =>
         Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsModerator =>
+        Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
 
     private string DisplayName =>
         Session.CurrentUser?.FullName

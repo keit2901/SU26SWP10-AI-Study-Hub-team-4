@@ -138,7 +138,13 @@
 
     private void RedirectByRole()
     {
-        var target = Session.CurrentUser?.Role == "Admin" ? "/admin" : "/profile";
+        var role = Session.CurrentUser?.Role;
+        var target = role switch
+        {
+            "Admin" => "/admin",
+            "Moderator" => "/dashboard",
+            _ => "/profile"
+        };
         Nav.NavigateTo(target, replace: true);
     }
 
@@ -187,9 +193,12 @@
 
     private void RedirectAuthenticatedUser(string? role)
     {
-        var target = role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true
-            ? "/admin"
-            : "/profile";
+        var target = role switch
+        {
+            "Admin" => "/admin",
+            "Moderator" => "/dashboard",
+            _ => "/profile"
+        };
         Nav.NavigateTo(target, replace: true);
     }
 }
