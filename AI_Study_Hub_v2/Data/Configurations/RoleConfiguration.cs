@@ -44,6 +44,13 @@ public sealed class RoleConfiguration : IEntityTypeConfiguration<Role>
                 RoleName = Role.StudentRoleName,
                 Description = "Sinh viên khai thác tài nguyên học tập cá nhân, thực hiện hội thoại RAG và tham gia kiểm tra ôn tập",
                 CreatedAt = new DateTimeOffset(2026, 5, 23, 0, 0, 0, TimeSpan.Zero)
+            },
+            new Role
+            {
+                Id = 3,
+                RoleName = Role.ModeratorRoleName,
+                Description = "Kiểm duyệt viên cộng đồng, có quyền xem và xử lý báo cáo vi phạm nhưng không thể thay đổi cấu hình hệ thống hoặc quản lý người dùng",
+                CreatedAt = new DateTimeOffset(2026, 6, 27, 0, 0, 0, TimeSpan.Zero)
             });
     }
 }

@@ -124,6 +124,10 @@ builder.Services.AddHttpClient<GroqChatCompletionClient>();
 builder.Services.AddHttpClient<GeminiChatCompletionClient>();
 builder.Services.AddHttpClient<IImageDescriptionService, GroqVisionDescriptionService>();
 
+// Sprint 3 services ----------------------------------------------------------
+builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
+builder.Services.AddScoped<IQuizService, QuizService>();
+
 // Benchmarking services ------------------------------------------------------
 builder.Services.AddSingleton<BenchmarkEvaluator>();
 builder.Services.AddScoped<BenchmarkRunner>();
@@ -165,6 +169,11 @@ builder.Services.AddHttpClient<CommunityApiClient>((sp, http) =>
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
 builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+    http.Timeout = TimeSpan.FromMinutes(2);
+});
+builder.Services.AddHttpClient<QuizApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
     http.Timeout = TimeSpan.FromMinutes(2);

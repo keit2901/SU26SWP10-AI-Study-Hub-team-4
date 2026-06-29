@@ -138,7 +138,7 @@
 
     private void RedirectByRole()
     {
-        var target = Session.CurrentUser?.Role == "Admin" ? "/admin/dashboard" : "/profile";
+        var target = Session.CurrentUser?.Role == "Admin" ? "/admin" : "/profile";
         Nav.NavigateTo(target, replace: true);
     }
 
@@ -166,8 +166,7 @@
             Session.Set(resp);
             await AuthPersistence.SaveAsync(resp);
             Snackbar.Add($"Welcome back, {resp.User.FullName}!", Severity.Success);
-            var target = resp.User.Role == "Admin" ? "/admin/dashboard" : "/profile";
-            Nav.NavigateTo(target);
+            RedirectAuthenticatedUser(resp.User.Role);
         }
         catch (AuthApiException ex)
         {
@@ -184,5 +183,13 @@
             _busy = false;
             StateHasChanged();
         }
+    }
+
+    private void RedirectAuthenticatedUser(string? role)
+    {
+        var target = role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true
+            ? "/admin"
+            : "/profile";
+        Nav.NavigateTo(target, replace: true);
     }
 }

@@ -13,7 +13,7 @@ public sealed class Quiz
 
     public Guid SessionId { get; set; }
 
-    public string UserId { get; set; } = string.Empty;
+    public Guid UserId { get; set; }
 
     public string Title { get; set; } = "Quiz";
 
@@ -31,6 +31,8 @@ public sealed class Quiz
 
     public string SubmittedJson { get; set; } = "{}";
 
+    public string ScopeJson { get; set; } = "{}";
+
     public int? Score { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
@@ -38,4 +40,8 @@ public sealed class Quiz
     public DateTimeOffset UpdatedAt { get; set; }
 
     public ChatSession Session { get; set; } = null!;
+
+    public User User { get; set; } = null!;
+
+    public ICollection<QuizAttempt> Attempts { get; set; } = new List<QuizAttempt>();
 }

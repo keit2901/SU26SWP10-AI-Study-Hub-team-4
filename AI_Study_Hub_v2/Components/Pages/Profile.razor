@@ -23,6 +23,19 @@ else
 {
     var u = Session.CurrentUser!;
     var s = Session.Session!;
+    
+    // Redirect admin users to admin dashboard
+    if (u.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        Nav.NavigateTo("/admin", replace: true);
+        return;
+    }
+
+    if (u.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
+    {
+        Nav.NavigateTo("/admin", replace: true);
+        return;
+    }
 
     <MudStack Class="workspace-shell" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Style="min-height: calc(100vh - 4rem); padding: 1.5rem 1.5rem;">
         <div class="profile-actions-bar">

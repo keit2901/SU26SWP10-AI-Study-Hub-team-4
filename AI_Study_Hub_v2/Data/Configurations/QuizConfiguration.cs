@@ -51,6 +51,7 @@ public sealed class QuizConfiguration : IEntityTypeConfiguration<Quiz>
         builder.Property(q => q.QuestionsJson)
             .HasColumnName("questions_json")
             .HasColumnType("jsonb")
+            .HasDefaultValueSql("'[]'::jsonb")
             .IsRequired();
 
         builder.Property(q => q.AnswersJson)
@@ -61,6 +62,12 @@ public sealed class QuizConfiguration : IEntityTypeConfiguration<Quiz>
 
         builder.Property(q => q.SubmittedJson)
             .HasColumnName("submitted_json")
+            .HasColumnType("jsonb")
+            .HasDefaultValueSql("'{}'::jsonb")
+            .IsRequired();
+
+        builder.Property(q => q.ScopeJson)
+            .HasColumnName("scope_json")
             .HasColumnType("jsonb")
             .HasDefaultValueSql("'{}'::jsonb")
             .IsRequired();
@@ -83,6 +90,11 @@ public sealed class QuizConfiguration : IEntityTypeConfiguration<Quiz>
         builder.HasOne(q => q.Session)
             .WithMany()
             .HasForeignKey(q => q.SessionId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasOne(q => q.User)
+            .WithMany()
+            .HasForeignKey(q => q.UserId)
             .OnDelete(DeleteBehavior.Cascade);
     }
 }
