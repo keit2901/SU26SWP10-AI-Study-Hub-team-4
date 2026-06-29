@@ -2,8 +2,10 @@
 @implements IDisposable
 @inject AuthSessionState Session
 @inject FolderApiClient FoldersApi
+@inject CommunityApiClient CommunityApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <PageTitle>Community - AI Study Hub v2</PageTitle>
 
@@ -180,8 +182,8 @@
                                             @if (_openMenuFolderId == folder.Id)
                                             {
                                                 <div class="card-menu-dropdown">
-                                                    <button class="menu-item" @onclick="() => { var id = folder.Id; _openMenuFolderId = null; CopyToLibrary(id); }">Copy to Library</button>
-                                                    <button class="menu-item" @onclick="() => { _openMenuFolderId = null; ShowComingSoon(); }">Report</button>
+                                                    <button class="menu-item" @onclick="async () => { var id = folder.Id; _openMenuFolderId = null; await CopyToLibrary(id); }">Copy to Library</button>
+                                                    <button class="menu-item" @onclick="async () => await OpenReportDialogAsync(folder)">Report</button>
                                                 </div>
                                             }
                                         </div>
@@ -325,15 +327,24 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Session.OnChange += HandleSessionChanged;
         await LoadAsync();
+    }
+
+    private void HandleSessionChanged()
+    {
+        _ = InvokeAsync(LoadAsync);
     }
 
     private async Task LoadAsync()
     {
         _loading = true;
+        _personalFolders.Clear();
+        _votes.Clear();
         try
         {
-            var shared = await FoldersApi.ListSharedAsync();
+            var accessToken = Session.IsAuthenticated ? Session.AccessToken : null;
+            var shared = await FoldersApi.ListSharedAsync(accessToken);
             _allCommunityFolders = shared.ToList();
 
             if (Session.IsAuthenticated && Session.AccessToken is not null)
@@ -398,6 +409,44 @@
         Snackbar.Add("Coming soon", Severity.Info);
     }
 
+    private async Task OpenReportDialogAsync(FolderDto folder)
+    {
+        _openMenuFolderId = null;
+        if (!Session.IsAuthenticated || Session.AccessToken is null)
+        {
+            Snackbar.Add("Sign in to report", Severity.Warning);
+            return;
+        }
+
+        var dialog = await DialogService.ShowAsync<ReportFolderDialog>(
+            "Report shared folder",
+            new DialogParameters<ReportFolderDialog>
+            {
+                { item => item.FolderName, folder.Name }
+            },
+            new DialogOptions
+            {
+                MaxWidth = MaxWidth.Small,
+                FullWidth = true,
+                CloseButton = true,
+            });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string reason)
+        {
+            return;
+        }
+
+        try
+        {
+            await CommunityApi.ReportFolderAsync(Session.AccessToken, folder.Id, reason);
+            Snackbar.Add("Report submitted", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
     private async Task CopyToLibrary(Guid folderId)
     {
         if (!Session.IsAuthenticated || Session.AccessToken is null)
@@ -433,11 +482,14 @@
         {
             var result = await FoldersApi.VoteAsync(Session.AccessToken, folderId, isLike);
 
-            var existing = _votes.GetValueOrDefault(folderId);
-            if (existing == isLike)
-                _votes.Remove(folderId);
+            if (result.CurrentUserVote.HasValue)
+            {
+                _votes[folderId] = result.CurrentUserVote.Value;
+            }
             else
-                _votes[folderId] = isLike;
+            {
+                _votes.Remove(folderId);
+            }
 
             var folder = _allCommunityFolders.FirstOrDefault(f => f.Id == folderId);
             if (folder is not null)
@@ -517,5 +569,6 @@
 
     public void Dispose()
     {
+        Session.OnChange -= HandleSessionChanged;
     }
 }

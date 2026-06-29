@@ -66,6 +66,45 @@ public class FoldersControllerTests
     }
 
     [Test]
+    public async Task ListShared_AnonymousRequest_ForwardsNullViewer()
+    {
+        var rows = new List<FolderDto> { SampleFolder() };
+        Guid? captured = Guid.NewGuid();
+        var svc = new Mock<IFolderService>();
+        svc.Setup(service => service.ListSharedAsync(
+                It.IsAny<Guid?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Guid?, CancellationToken>((viewerId, _) => captured = viewerId)
+            .ReturnsAsync(rows);
+        var sut = BuildSut(svc.Object);
+
+        var result = await sut.ListShared(CancellationToken.None);
+
+        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
+        ok.Value.Should().BeSameAs(rows);
+        captured.Should().BeNull();
+    }
+
+    [Test]
+    public async Task ListShared_AuthenticatedRequest_ForwardsViewerClaim()
+    {
+        var viewerId = Guid.NewGuid();
+        Guid? captured = null;
+        var svc = new Mock<IFolderService>();
+        svc.Setup(service => service.ListSharedAsync(
+                It.IsAny<Guid?>(),
+                It.IsAny<CancellationToken>()))
+            .Callback<Guid?, CancellationToken>((id, _) => captured = id)
+            .ReturnsAsync(new List<FolderDto>());
+        var sut = BuildSut(svc.Object, Principal(viewerId));
+
+        var result = await sut.ListShared(CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        captured.Should().Be(viewerId);
+    }
+
+    [Test]
     public async Task Create_HappyPath_Returns201_CreatedAtAction()
     {
         var dto = SampleFolder();

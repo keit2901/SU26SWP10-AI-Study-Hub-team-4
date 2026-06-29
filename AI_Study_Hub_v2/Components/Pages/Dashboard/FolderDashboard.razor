@@ -10,8 +10,8 @@
 <main style="flex: 1; overflow-y: auto;">
     <div style="padding: 2rem; max-width: 72rem; margin: 0 auto;">
         <header style="margin-bottom: 2rem;">
-            <h1 style="font-size: 1.6rem; font-weight: 700; color: #111827; letter-spacing: -0.025em; margin: 0;">Dashboard Overview</h1>
-            <p style="font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem;">Track status and manage your academic document workload.</p>
+            <h1 style="font-size: 1.6rem; font-weight: 700; color: #111827; letter-spacing: -0.025em; margin: 0;">Content Moderation</h1>
+            <p style="font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem;">Review folders pending community share approval and track your personal documents.</p>
         </header>
 
         @if (isLoading)
@@ -63,11 +63,34 @@
 
     protected override async Task OnInitializedAsync()
     {
-        if (!Session.IsAuthenticated || Session.CurrentUser == null)
+        var userId = Session.CurrentUser?.Id;
+        if (userId is null) return;
+
+        // Pending share: folders across ALL users whose docs are all Ready but not yet shared
+        // Exclude current user's own folders (they appear in the personal query below)
+        var pendingShareFolders = await DbContext.Folders
+            .Include(f => f.Documents)
+            .Include(f => f.User)
+            .Where(f => f.UserId != userId
+                && !f.IsShared
+                && f.Documents.Any()
+                && f.Documents.All(d => d.Status == DocumentStatus.Ready))
+            .OrderByDescending(f => f.UpdatedAt)
+            .ToListAsync();
+
+        foreach (var f in pendingShareFolders)
         {
-            Nav.NavigateTo("/login");
-            return;
+            var firstDoc = f.Documents.FirstOrDefault();
+            viewModels.Add(new FolderViewModel
+            {
+                Name = f.Name,
+                SubjectCode = firstDoc?.SubjectCode ?? "N/A",
+                Semester = firstDoc?.Semester ?? "N/A",
+                Status = "Pending Share",
+                OwnerName = f.User?.FullName ?? f.User?.Username ?? "Unknown",
+            });
         }
+        pendingShareCount = pendingShareFolders.Count;
 
         try
         {

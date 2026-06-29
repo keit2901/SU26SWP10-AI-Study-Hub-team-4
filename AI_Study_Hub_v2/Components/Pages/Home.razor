@@ -1,5 +1,6 @@
 ﻿@page "/"
 @inject AuthSessionState Session
+@inject NavigationManager Nav
 
 <PageTitle>AI Study Hub - Academic AI Workspace</PageTitle>
 
@@ -152,3 +153,18 @@
         <div class="landing-footer-bottom">© @DateTime.Now.Year AI Study Hub. Built with care for lifelong learners.</div>
     </footer>
 </main>
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        var target = AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role)
+            ? "/admin"
+            : "/documents";
+        Nav.NavigateTo(target, replace: true);
+    }
+}

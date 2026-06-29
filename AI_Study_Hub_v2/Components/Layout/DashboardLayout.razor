@@ -34,6 +34,22 @@
 </div>
 
 @code {
+    protected override void OnInitialized()
+    {
+        if (!Session.IsAuthenticated || Session.CurrentUser == null)
+        {
+            Nav.NavigateTo("/login");
+            return;
+        }
+
+        var role = Session.CurrentUser.Role;
+        if (role != "Moderator" && role != "Admin")
+        {
+            Nav.NavigateTo("/profile");
+            return;
+        }
+    }
+
     private record SidebarItem(string Icon, string Label, string Href);
 
     private readonly SidebarItem[] sidebarItems = new[]

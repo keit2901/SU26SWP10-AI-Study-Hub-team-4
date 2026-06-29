@@ -6,4 +6,5 @@ public class FolderViewModel
     public string SubjectCode { get; set; } = string.Empty;
     public string Semester { get; set; } = string.Empty;
     public string Status { get; set; } = string.Empty;
+    public string OwnerName { get; set; } = string.Empty;
 }
