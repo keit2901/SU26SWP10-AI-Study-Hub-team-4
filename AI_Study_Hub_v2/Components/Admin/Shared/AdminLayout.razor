@@ -47,15 +47,21 @@ else if (_authorized)
                 <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Navigation.NavigateTo("/admin/settings"))">2 critical config drafts</MudMenuItem>
             </ChildContent>
         </MudMenu>
-        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true"
+                 ActivatorStyle="@("cursor:pointer;")">
             <ActivatorContent>
-                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="admin-profile-button" StartIcon="@Icons.Material.Filled.AdminPanelSettings">
-                    <MudHidden Breakpoint="Breakpoint.SmAndDown">System Admin</MudHidden>
-                </MudButton>
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="admin-user-menu-trigger">
+                    <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Size="Size.Small" Color="Color.Inherit" />
+                    <MudHidden Breakpoint="Breakpoint.SmAndDown">
+                        <MudText Typo="Typo.body2" Color="Color.Inherit" Class="ms-1">System Admin</MudText>
+                    </MudHidden>
+                    <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" Color="Color.Inherit" />
+                </MudStack>
             </ActivatorContent>
             <ChildContent>
                 <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Signed in as @AdminIdentity</MudMenuItem>
                 <MudMenuItem Icon="@Icons.Material.Filled.Security">Access: @AdminRole</MudMenuItem>
+                <MudDivider />
                 <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="SignOutAsync">Sign out</MudMenuItem>
             </ChildContent>
         </MudMenu>
@@ -322,9 +328,15 @@ else if (_authorized)
         backdrop-filter: blur(16px);
     }
 
-    .admin-profile-button {
-        text-transform: none;
-        letter-spacing: 0;
+    .admin-user-menu-trigger {
+        cursor: pointer;
+        padding: 0.25rem 0.5rem;
+        border-radius: 8px;
+        transition: background .15s;
+    }
+
+    .admin-user-menu-trigger:hover {
+        background: rgba(255,255,255,.1);
     }
 
     .admin-sidebar {
