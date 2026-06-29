@@ -32,8 +32,11 @@ commit;
 alter publication supabase_realtime add table profiles;
 
 -- Set up Storage
-insert into storage.buckets (id, name)
-values ('avatars', 'avatars');
+insert into storage.buckets (id, name, public)
+values 
+  ('avatars', 'avatars', true),
+  ('documents', 'documents', false)
+on conflict (id) do nothing;
 
 create policy "Avatar images are publicly accessible."
   on storage.objects for select

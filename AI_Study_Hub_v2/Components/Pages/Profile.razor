@@ -24,90 +24,400 @@ else
     var u = Session.CurrentUser!;
     var s = Session.Session!;
     
-    // Redirect admin users to admin dashboard
-    if (u.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
+    // Administrators use the protected admin workspace rather than the student profile.
+    if (AdminAccessPolicy.IsAdmin(u.Role))
     {
         Nav.NavigateTo("/admin", replace: true);
         return;
     }
 
-    if (u.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
-    {
-        Nav.NavigateTo("/admin", replace: true);
-        return;
-    }
+    <MudStack Class="workspace-shell" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Style="min-height: calc(100vh - 4rem); padding: 1.5rem 1.5rem;">
+        <div class="profile-actions-bar">
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Outlined"
+                           Class="ghost-button"
+                           OnClick="ReloadAsync"
+                           Disabled="_busy"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Refresh">
+                    Refresh /me
+                </MudButton>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Error"
+                           OnClick="LogoutAsync"
+                           Disabled="_busy"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.Logout">
+                    @(_busy ? "Signing out..." : "Sign out")
+                </MudButton>
+            </MudStack>
+        </div>
 
-    <MudStack Class="workspace-shell pa-4" Spacing="3">
-        <section class="workspace-hero">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="gap: 1rem; flex-wrap: wrap;">
-                <div>
-                    <span class="section-kicker">Account control</span>
-                    <MudText Typo="Typo.h4" Class="mt-3">@u.FullName</MudText>
-                    <MudText Typo="Typo.body1" Class="workspace-copy">@u.Email</MudText>
+        <div class="identity-card">
+            
+            <div class="identity-card-header">
+                <div class="identity-header-wave">
+                    <div class="identity-header-wave-inner"></div>
                 </div>
-                <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
-                    <MudButton Variant="Variant.Outlined"
-                               Class="ghost-button"
-                               OnClick="ReloadAsync"
-                               Disabled="_busy"
-                               StartIcon="@Icons.Material.Filled.Refresh">
-                        Refresh /me
-                    </MudButton>
-                    <MudButton Variant="Variant.Filled"
-                               Color="Color.Error"
-                               OnClick="LogoutAsync"
-                               Disabled="_busy"
-                               StartIcon="@Icons.Material.Filled.Logout">
-                        @(_busy ? "Signing out..." : "Sign out")
-                    </MudButton>
-                </MudStack>
-            </MudStack>
-        </section>
+                
+                <div class="identity-avatar">
+                    @(string.IsNullOrEmpty(u.FullName) ? "?" : u.FullName[0].ToString().ToUpperInvariant())
+                </div>
+                
+                <div class="identity-title-container">
+                    <h1 class="identity-title">@u.FullName</h1>
+                    <p class="identity-subtitle">@u.Email</p>
+                </div>
+            </div>
 
-        <MudPaper Class="pa-5 glass-card" Elevation="0">
-            <MudStack Spacing="3">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="3">
-                    <MudAvatar Color="Color.Primary" Size="Size.Large" Variant="Variant.Filled">
-                        @(string.IsNullOrEmpty(u.FullName) ? "?" : u.FullName[0].ToString().ToUpperInvariant())
-                    </MudAvatar>
-                    <MudStack Spacing="0">
-                        <MudText Typo="Typo.h5">Identity snapshot</MudText>
-                        <MudText Typo="Typo.body2" Color="Color.Secondary">In-memory demo session, scoped to this browser circuit.</MudText>
-                    </MudStack>
-                </MudStack>
+            <div class="identity-details">
+                <div class="identity-detail-item">
+                    <div class="detail-content-wrap">
+                        <div class="detail-label-col">
+                            <MudIcon Icon="@Icons.Material.Filled.Badge" Class="detail-icon" Size="Size.Small" />
+                            <span class="detail-label">User ID</span>
+                        </div>
+                        <div class="detail-value-col detail-value-mono">@u.Id</div>
+                    </div>
+                </div>
 
-                <MudDivider />
+                <div class="identity-detail-item border-top">
+                    <div class="detail-content-wrap">
+                        <div class="detail-label-col">
+                            <MudIcon Icon="@Icons.Material.Filled.Person" Class="detail-icon" Size="Size.Small" />
+                            <span class="detail-label">Username</span>
+                        </div>
+                        <div class="detail-value-col">
+                            @if (_editingUsername)
+                            {
+                                <MudTextField @bind-Value="_newUsername" Margin="Margin.Dense" Style="max-width: 250px; margin-top: 0;" />
+                            }
+                            else
+                            {
+                                <span class="detail-value-semibold">@u.Username</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="detail-action-col">
+                        @if (_editingUsername)
+                        {
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="SaveUsername" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" OnClick="CancelEditUsername" />
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="StartEditUsername">Change</MudButton>
+                        }
+                    </div>
+                </div>
 
-                <MudSimpleTable Dense="true" Hover="true" Bordered="false" Striped="true">
-                    <tbody>
-                        <tr><td><b>User Id</b></td><td><code>@u.Id</code></td></tr>
-                        <tr><td><b>Username</b></td><td>@u.Username</td></tr>
-                        <tr><td><b>Role</b></td><td><MudChip T="string" Color="Color.Info" Size="Size.Small">@u.Role</MudChip></td></tr>
-                        <tr><td><b>Active</b></td><td>@(u.IsActive ? "Yes" : "No")</td></tr>
-                        <tr><td><b>Created</b></td><td>@u.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td></tr>
-                        <tr><td><b>Token expires</b></td><td>@s.ExpiresAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td></tr>
-                    </tbody>
-                </MudSimpleTable>
+                <div class="identity-detail-item border-top">
+                    <div class="detail-content-wrap">
+                        <div class="detail-label-col">
+                            <MudIcon Icon="@Icons.Material.Filled.Email" Class="detail-icon" Size="Size.Small" />
+                            <span class="detail-label">Email</span>
+                        </div>
+                        <div class="detail-value-col">
+                            @if (_editingEmail)
+                            {
+                                <MudTextField @bind-Value="_newEmail" Margin="Margin.Dense" Style="max-width: 250px; margin-top: 0;" />
+                            }
+                            else
+                            {
+                                <span class="detail-value-medium">@u.Email</span>
+                            }
+                        </div>
+                    </div>
+                    <div class="detail-action-col">
+                        @if (_editingEmail)
+                        {
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="SaveEmail" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" OnClick="CancelEditEmail" />
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="StartEditEmail">Change</MudButton>
+                        }
+                    </div>
+                </div>
 
-                <MudExpansionPanels>
-                    <MudExpansionPanel Text="Show JWT (for demo)">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Access token (Bearer):</MudText>
-                        <MudPaper Class="pa-2 mt-1 glass-card-soft" Elevation="0" Style="word-break: break-all; font-family: monospace; font-size: 11px;">
-                            @s.AccessToken
-                        </MudPaper>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">Refresh token:</MudText>
-                        <MudPaper Class="pa-2 mt-1 glass-card-soft" Elevation="0" Style="word-break: break-all; font-family: monospace; font-size: 11px;">
-                            @s.RefreshToken
-                        </MudPaper>
-                    </MudExpansionPanel>
-                </MudExpansionPanels>
-            </MudStack>
-        </MudPaper>
+                <div class="identity-detail-item border-top">
+                    <div class="detail-content-wrap">
+                        <div class="detail-label-col">
+                            <MudIcon Icon="@Icons.Material.Filled.Lock" Class="detail-icon" Size="Size.Small" />
+                            <span class="detail-label">Password</span>
+                        </div>
+                        <div class="detail-value-col detail-value-mono" style="align-items: center; gap: 0.5rem;">
+                            @if (_editingPassword)
+                            {
+                                <MudTextField @bind-Value="_newPassword" 
+                                              InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                              Margin="Margin.Dense" 
+                                              Style="max-width: 250px; margin-top: 0;" />
+                            }
+                            else
+                            {
+                                <span>@(_showPassword ? _passwordVal : "••••••••")</span>
+                            }
+                            <MudIconButton Icon="@(_showPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                           Size="Size.Small"
+                                           OnClick="TogglePassword"
+                                           Style="padding: 2px; color: #64748b;" />
+                        </div>
+                    </div>
+                    <div class="detail-action-col">
+                        @if (_editingPassword)
+                        {
+                            <MudStack Row="true" Spacing="1">
+                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="SavePassword" />
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" OnClick="CancelEditPassword" />
+                            </MudStack>
+                        }
+                        else
+                        {
+                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="StartEditPassword">Change</MudButton>
+                        }
+                    </div>
+                </div>
+
+                <div class="identity-detail-item border-top">
+                    <div class="detail-content-wrap">
+                        <div class="detail-label-col">
+                            <MudIcon Icon="@Icons.Material.Filled.Shield" Class="detail-icon" Size="Size.Small" />
+                            <span class="detail-label">Role</span>
+                        </div>
+                        <div class="detail-value-col">
+                            <div class="identity-badge">@u.Role</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="identity-detail-item border-top">
+                    <div class="detail-content-wrap">
+                        <div class="detail-label-col">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="detail-icon" Size="Size.Small" />
+                            <span class="detail-label">Active</span>
+                        </div>
+                        <div class="detail-value-col detail-value-medium">
+                            @(u.IsActive ? "Yes" : "No")
+                        </div>
+                    </div>
+                </div>
+
+                <div class="identity-detail-item border-top">
+                    <div class="detail-content-wrap">
+                        <div class="detail-label-col">
+                            <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Class="detail-icon" Size="Size.Small" />
+                            <span class="detail-label">Created</span>
+                        </div>
+                        <div class="detail-value-col detail-value-mono">
+                            @u.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
+                        </div>
+                    </div>
+                </div>
+
+                <div class="identity-detail-item border-top">
+                    <div class="detail-content-wrap">
+                        <div class="detail-label-col">
+                            <MudIcon Icon="@Icons.Material.Filled.AccessTime" Class="detail-icon" Size="Size.Small" />
+                            <span class="detail-label">Token expires</span>
+                        </div>
+                        <div class="detail-value-col detail-value-mono">
+                            @s.ExpiresAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="identity-footer">
+                <div class="jwt-toggle-btn" @onclick="ToggleJwt">
+                    <span class="jwt-toggle-text">Show JWT (for demo)</span>
+                    <MudIcon Icon="@Icons.Material.Filled.KeyboardArrowDown" 
+                             Class="@($"jwt-toggle-icon {(_showJwt ? "expanded" : "")}")" 
+                             Size="Size.Small" />
+                </div>
+                
+                @if (_showJwt)
+                {
+                    <div class="jwt-content">
+                        <div class="jwt-block">
+                            <span class="jwt-label">Access token (Bearer):</span>
+                            <div class="jwt-value">@s.AccessToken</div>
+                        </div>
+                        <div class="jwt-block">
+                            <span class="jwt-label">Refresh token:</span>
+                            <div class="jwt-value">@s.RefreshToken</div>
+                        </div>
+                    </div>
+                }
+            </div>
+            
+        </div>
+
     </MudStack>
 }
 
 @code {
     private bool _busy;
+    private bool _showJwt;
+    private bool _showPassword;
+
+    private bool _editingUsername;
+    private string _newUsername = string.Empty;
+
+    private bool _editingEmail;
+    private string _newEmail = string.Empty;
+
+    private bool _editingPassword;
+    private string _newPassword = string.Empty;
+    private string _passwordVal = "demo12345";
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+            {
+                Session.Set(restored);
+            }
+        }
+
+        if (Session.IsAuthenticated && Session.Session is not null)
+        {
+            _passwordVal = Session.Session.Password ?? "demo12345";
+        }
+    }
+
+    private void ToggleJwt()
+    {
+        _showJwt = !_showJwt;
+    }
+
+    private void TogglePassword()
+    {
+        _showPassword = !_showPassword;
+    }
+
+    private void StartEditUsername()
+    {
+        _newUsername = Session.CurrentUser?.Username ?? string.Empty;
+        _editingUsername = true;
+    }
+
+    private void CancelEditUsername()
+    {
+        _editingUsername = false;
+    }
+
+    private async Task SaveUsername()
+    {
+        if (Session.Session is not null && !string.IsNullOrWhiteSpace(_newUsername))
+        {
+            _busy = true;
+            StateHasChanged();
+            try
+            {
+                var updatedUser = await AuthApi.UpdateUserAsync(Session.AccessToken, new UpdateUserRequest { Username = _newUsername });
+                Session.Session.User = updatedUser;
+                Session.Set(Session.Session);
+                await AuthPersistence.SaveAsync(Session.Session);
+                Snackbar.Add("Username updated successfully.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update username: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                _busy = false;
+                StateHasChanged();
+            }
+        }
+        _editingUsername = false;
+    }
+
+    private void StartEditEmail()
+    {
+        _newEmail = Session.CurrentUser?.Email ?? string.Empty;
+        _editingEmail = true;
+    }
+
+    private void CancelEditEmail()
+    {
+        _editingEmail = false;
+    }
+
+    private async Task SaveEmail()
+    {
+        if (Session.Session is not null && !string.IsNullOrWhiteSpace(_newEmail))
+        {
+            _busy = true;
+            StateHasChanged();
+            try
+            {
+                var updatedUser = await AuthApi.UpdateUserAsync(Session.AccessToken, new UpdateUserRequest { Email = _newEmail });
+                Session.Session.User = updatedUser;
+                Session.Set(Session.Session);
+                await AuthPersistence.SaveAsync(Session.Session);
+                Snackbar.Add("Email updated successfully.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update email: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                _busy = false;
+                StateHasChanged();
+            }
+        }
+        _editingEmail = false;
+    }
+
+    private void StartEditPassword()
+    {
+        _newPassword = _passwordVal;
+        _editingPassword = true;
+    }
+
+    private void CancelEditPassword()
+    {
+        _editingPassword = false;
+    }
+
+    private async Task SavePassword()
+    {
+        if (Session.Session is not null && !string.IsNullOrWhiteSpace(_newPassword))
+        {
+            _busy = true;
+            StateHasChanged();
+            try
+            {
+                var updatedUser = await AuthApi.UpdateUserAsync(Session.AccessToken, new UpdateUserRequest { Password = _newPassword });
+                _passwordVal = _newPassword;
+                Session.Session.User = updatedUser;
+                Session.Session.Password = _newPassword;
+                Session.Set(Session.Session);
+                await AuthPersistence.SaveAsync(Session.Session);
+                Snackbar.Add("Password updated successfully.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to update password: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                _busy = false;
+                StateHasChanged();
+            }
+        }
+        _editingPassword = false;
+    }
 
     private async Task LogoutAsync()
     {

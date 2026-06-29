@@ -33,6 +33,9 @@ public sealed class Document
 
     public DocumentStatus Status { get; set; } = DocumentStatus.Uploading;
 
+    /// <summary>Moderator review outcome. <c>None</c> until the moderator explicitly acts.</summary>
+    public DocumentReviewStatus ReviewStatus { get; set; }
+
     /// <summary>Populated when <see cref="Status"/> = <c>Failed</c>.</summary>
     public string? ErrorMessage { get; set; }
 

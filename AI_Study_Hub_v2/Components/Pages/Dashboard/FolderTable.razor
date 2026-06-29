@@ -1,0 +1,125 @@
+@inject NavigationManager Nav
+
+<div style="background: #fff; border-radius: 1rem; box-shadow: 0 2px 10px -4px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: hidden; margin-top: 2rem;">
+    <div style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start;">
+        <div>
+            <h2 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">Folder Management</h2>
+            <p style="font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem; margin-bottom: 0;">Your current academic structure.</p>
+        </div>
+        <button style="padding: 0.5rem; color: #4f46e5; background: transparent; border: none; border-radius: 0.5rem; cursor: pointer;" title="Filter">
+            <MudIcon Icon="@Icons.Material.Filled.FilterList" Style="font-size: 1.25rem;" />
+        </button>
+    </div>
+
+    <div style="overflow-x: auto;">
+        <table style="width: 100%; text-align: left; border-collapse: collapse;">
+            <thead>
+                <tr style="background: rgba(249,250,251,0.8); border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;">
+                    <th style="padding: 0.75rem 1.5rem; font-size: 0.6875rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Folder Name</th>
+                    <th style="padding: 0.75rem 1.5rem; font-size: 0.6875rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Owner</th>
+                    <th style="padding: 0.75rem 1.5rem; font-size: 0.6875rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Subject Code</th>
+                    <th style="padding: 0.75rem 1.5rem; font-size: 0.6875rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Semester</th>
+                    <th style="padding: 0.75rem 1.5rem; font-size: 0.6875rem; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.05em;">Status</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var folder in Folders)
+                {
+                    <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" class="dashboard-row" @onclick="() => HandleRowClick(folder.Id)">
+                        <td style="padding: 1rem 1.5rem;">
+                            <div style="display: flex; align-items: center;">
+                                <MudIcon Icon="@Icons.Material.Filled.Folder" Style="font-size: 1rem; color: #9ca3af; margin-right: 0.75rem;" />
+                                <span style="font-weight: 500; color: #1f2937; font-size: 0.875rem;">@folder.Name</span>
+                            </div>
+                        </td>
+                        <td style="padding: 1rem 1.5rem; font-size: 0.85rem; color: #6b7280; font-weight: 500;">
+                            @folder.OwnerName
+                        </td>
+                        <td style="padding: 1rem 1.5rem;">
+                            <span style="@GetSubjectStyle(folder.Status)">@folder.SubjectCode</span>
+                        </td>
+                        <td style="padding: 1rem 1.5rem; font-size: 0.875rem; color: #6b7280; font-weight: 500;">
+                            @folder.Semester
+                        </td>
+                        <td style="padding: 1rem 1.5rem;">
+                            <span style="@GetStatusStyle(folder.Status)">
+                                <span style="@GetDotStyle(folder.Status)"></span>
+                                @folder.Status
+                            </span>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+
+    <div style="padding: 1rem; border-top: 1px solid #f1f5f9; text-align: center;">
+        <a href="community" style="display: inline-flex; align-items: center; font-size: 0.875rem; font-weight: 500; color: #4f46e5; text-decoration: none;">
+            View all folders
+            <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Style="font-size: 1rem; margin-left: 0.375rem;" />
+        </a>
+    </div>
+</div>
+
+@code {
+    [Parameter]
+    public IEnumerable<FolderViewModel> Folders { get; set; } = new List<FolderViewModel>();
+
+    [Parameter]
+    public EventCallback<FolderViewModel> OnFolderClick { get; set; }
+
+    private string GetSubjectStyle(string status)
+    {
+        var bg = status switch
+        {
+            "Pending Share" => "#fefce8",
+            "Shared" => "#eef2ff",
+            "Ready" => "#ecfdf5",
+            "Failed" => "#fef2f2",
+            _ => "rgba(243,244,246,0.8)"
+        };
+        var color = status switch
+        {
+            "Pending Share" => "#a16207",
+            "Shared" => "#4338ca",
+            "Ready" => "#047857",
+            "Failed" => "#b91c1c",
+            _ => "#4b5563"
+        };
+        return $"display: inline-flex; align-items: center; padding: 0.125rem 0.5rem; border-radius: 0.375rem; font-size: 0.6875rem; font-weight: 600; background: {bg}; color: {color};";
+    }
+
+    private string GetStatusStyle(string status)
+    {
+        var (bg, color) = status switch
+        {
+            "Pending Share" => ("#fefce8", "#a16207"),
+            "Shared" => ("#eef2ff", "#4338ca"),
+            "Ready" => ("#ecfdf5", "#047857"),
+            "Processing" => ("rgba(243,232,255,0.8)", "#7e22ce"),
+            "Rejected" => ("#fef2f2", "#b91c1c"),
+            "Failed" => ("#fef2f2", "#b91c1c"),
+            _ => ("#f9fafb", "#6b7280")
+        };
+        return $"display: inline-flex; align-items: center; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.6875rem; font-weight: 600; background: {bg}; color: {color};";
+    }
+
+    private string GetDotStyle(string status)
+    {
+        var dotColor = status switch
+        {
+            "Pending Share" => "#ca8a04",
+            "Shared" => "#4f46e5",
+            "Ready" => "#059669",
+            "Processing" => "#9333ea",
+            "Rejected" => "#ef4444",
+            "Failed" => "#ef4444",
+            _ => "#9ca3af"
+        };
+        return $"display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 9999px; margin-right: 0.375rem; background: {dotColor};";
+    }
+    private void HandleRowClick(Guid folderId)
+    {
+        Nav.NavigateTo($"/dashboard/analytics?folderId={folderId}");
+    }
+}

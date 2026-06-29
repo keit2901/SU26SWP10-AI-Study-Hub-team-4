@@ -32,7 +32,8 @@ public sealed class FoldersController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(IReadOnlyList<FolderDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<FolderDto>>> ListShared(CancellationToken cancellationToken)
-        => Ok(await _service.ListSharedAsync(cancellationToken));
+        => await ExecuteAsync(() =>
+            _service.ListSharedAsync(TryGetSupabaseUserIdFromClaims(), cancellationToken));
 
     [HttpPost]
     [ProducesResponseType(typeof(FolderDto), StatusCodes.Status201Created)]
@@ -109,8 +110,8 @@ public sealed class FoldersController : ControllerBase
     [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<FolderDto>> ToggleShare(Guid id, CancellationToken cancellationToken)
-        => await ExecuteAsync(() => _service.ToggleShareAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
+    public async Task<ActionResult<FolderDto>> RequestShare(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.RequestShareAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -178,5 +179,12 @@ public sealed class FoldersController : ControllerBase
 
         throw new DocumentException(401, "missing_user_id",
             "Authenticated Supabase user id is missing or invalid.");
+    }
+
+    private Guid? TryGetSupabaseUserIdFromClaims()
+    {
+        var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? User.FindFirstValue("sub");
+        return Guid.TryParse(sub, out var id) ? id : null;
     }
 }

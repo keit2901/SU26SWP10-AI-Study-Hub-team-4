@@ -1,0 +1,212 @@
+@page "/dashboard"
+@layout DashboardLayout
+@using AI_Study_Hub_v2.Data
+@using AI_Study_Hub_v2.Data.Entities
+@using AI_Study_Hub_v2.Components.Layout
+@using Microsoft.EntityFrameworkCore
+@inject AppDbContext DbContext
+@inject AI_Study_Hub_v2.Services.AuthSessionState Session
+@inject NavigationManager Nav
+
+<PageTitle>Dashboard Overview - AI Study Hub</PageTitle>
+
+<main style="flex: 1; overflow-y: auto;">
+    <div style="padding: 2rem; max-width: 72rem; margin: 0 auto;">
+        <header style="margin-bottom: 2rem;">
+            <h1 style="font-size: 1.6rem; font-weight: 700; color: #111827; letter-spacing: -0.025em; margin: 0;">
+                @(IsModeratorOrAdmin ? "Content Moderation" : "Academic Dashboard")
+            </h1>
+            <p style="font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem;">
+                @(IsModeratorOrAdmin 
+                    ? "Review folders pending community share approval and track your personal documents."
+                    : "Track your personal documents, processing files, and folder analytics.")
+            </p>
+        </header>
+
+        @if (isLoading)
+        {
+            <div style="text-align: center; padding: 3rem;">
+                <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
+            </div>
+        }
+        else
+        {
+            <div style="display: grid; grid-template-columns: repeat(@(IsModeratorOrAdmin ? 4 : 3), 1fr); gap: 1.5rem;">
+                <StatCard
+                    Icon="@(IsModeratorOrAdmin ? Icons.Material.Filled.Publish : Icons.Material.Filled.Share)"
+                    Title="@(IsModeratorOrAdmin ? "Pending Share" : "My Shared")"
+                    Count="@(IsModeratorOrAdmin ? pendingShareCount.ToString() : mySharedCount.ToString())"
+                    Description="@(IsModeratorOrAdmin ? "Folders ready for community review" : "Your folders shared with community")"
+                    BgColor="rgba(238,242,255,0.8)"
+                    IconColor="#4f46e5" />
+                @if (IsModeratorOrAdmin)
+                {
+                    <StatCard
+                        Icon="@Icons.Material.Filled.Share"
+                        Title="Shared"
+                        Count="@sharedCount.ToString()"
+                        Description="Folders already shared with community"
+                        BgColor="rgba(236,253,245,0.8)"
+                        IconColor="#059669" />
+                }
+                <StatCard
+                    Icon="@Icons.Material.Filled.Sync"
+                    Title="Processing"
+                    Count="@processingCount.ToString()"
+                    Description="Documents being processed by AI"
+                    BgColor="#faf5ff"
+                    IconColor="#9333ea" />
+                <StatCard
+                    Icon="@Icons.Material.Filled.ErrorOutline"
+                    Title="Issues"
+                    Count="@rejectedCount.ToString()"
+                    Description="Failed or action required"
+                    BgColor="#fef2f2"
+                    IconColor="#ef4444" />
+            </div>
+
+            <FolderTable Folders="@viewModels" />
+        }
+    </div>
+</main>
+
+<style>
+    .dashboard-row:hover {
+        background: rgba(249,250,251,0.5);
+    }
+</style>
+
+@code {
+    private bool isLoading = true;
+    private int pendingShareCount;
+    private int sharedCount;
+    private int mySharedCount;
+    private int processingCount;
+    private int rejectedCount;
+    private List<FolderViewModel> viewModels = new();
+
+    private bool IsModeratorOrAdmin =>
+        Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true
+        || Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var userId = Session.CurrentUser?.Id;
+        if (userId is null) return;
+
+        if (IsModeratorOrAdmin)
+        {
+            // All other users' folders — categorized by document status
+            var otherFolders = await DbContext.Folders
+                .Include(f => f.Documents)
+                .Include(f => f.User)
+                .Where(f => f.UserId != userId)
+                .OrderByDescending(f => f.UpdatedAt)
+                .ToListAsync();
+
+            foreach (var f in otherFolders)
+            {
+                var firstDoc = f.Documents.FirstOrDefault();
+                string status;
+
+                switch (f.ShareStatus)
+                {
+                    case FolderStatus.PendingShare:
+                        status = "Pending Share";
+                        pendingShareCount++;
+                        break;
+                    case FolderStatus.Approved:
+                        status = "Shared";
+                        sharedCount++;
+                        break;
+                    case FolderStatus.Rejected:
+                        status = "Rejected";
+                        rejectedCount++;
+                        break;
+                    case FolderStatus.None:
+                    default:
+                        continue; // Skip — not visible in dashboard
+                }
+
+                viewModels.Add(new FolderViewModel
+                {
+                    Id = f.Id,
+                    Name = f.Name,
+                    SubjectCode = firstDoc?.SubjectCode ?? "N/A",
+                    Semester = firstDoc?.Semester ?? "N/A",
+                    Status = status,
+                    OwnerName = f.User?.FullName ?? f.User?.Username ?? "Unknown",
+                });
+            }
+        }
+
+        // Own folders: show personal status breakdown
+        var myFolders = await DbContext.Folders
+            .Include(f => f.Documents)
+            .Where(f => f.UserId == userId)
+            .OrderByDescending(f => f.UpdatedAt)
+            .ToListAsync();
+
+        foreach (var f in myFolders)
+        {
+            var firstDoc = f.Documents.FirstOrDefault();
+            var subject = firstDoc?.SubjectCode ?? "N/A";
+            var semester = firstDoc?.Semester ?? "N/A";
+
+            // Show ShareStatus if it's set; otherwise fall back to document pipeline status
+            string status;
+            if (f.ShareStatus != FolderStatus.None)
+            {
+                switch (f.ShareStatus)
+                {
+                    case FolderStatus.PendingShare:
+                        status = "Pending Share";
+                        pendingShareCount++;
+                        break;
+                    case FolderStatus.Approved:
+                        status = "Shared";
+                        mySharedCount++;
+                        break;
+                    case FolderStatus.Rejected:
+                        status = "Rejected";
+                        rejectedCount++;
+                        break;
+                    default:
+                        status = "Empty";
+                        break;
+                }
+            }
+            else if (f.Documents.Any(d => d.Status == DocumentStatus.Failed))
+            {
+                status = "Failed";
+                rejectedCount++;
+            }
+            else if (f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing))
+            {
+                status = "Processing";
+                processingCount++;
+            }
+            else if (f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready))
+            {
+                status = "Ready";
+            }
+            else
+            {
+                status = "Empty";
+            }
+
+            viewModels.Add(new FolderViewModel
+            {
+                Id = f.Id,
+                Name = f.Name,
+                SubjectCode = subject,
+                Semester = semester,
+                Status = status,
+                OwnerName = "Me",
+            });
+        }
+
+        isLoading = false;
+    }
+}
+

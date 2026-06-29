@@ -1,12 +1,15 @@
 .page {
     position: relative;
+    display: flex;
+    flex-direction: column;
     min-height: 100vh;
     background: transparent;
 }
 
 .main-stage {
     position: relative;
-    min-height: calc(100vh - 72px);
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-x: hidden;
     overflow-y: visible;
 }
@@ -15,8 +18,9 @@
 .main-stage-fullbleed {
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
     min-height: 0;
-    height: calc(100vh - 4rem);
+    height: auto;
     overflow: hidden;
 }
 
@@ -72,6 +76,11 @@
     min-height: calc(100vh - 72px);
     margin: 0 auto;
     animation: contentFadeIn 0.45s cubic-bezier(0.25, 0.46, 0.45, 0.94) both;
+}
+
+.content-profile {
+    width: 100% !important;
+    max-width: 100% !important;
 }
 
 @keyframes contentFadeIn {

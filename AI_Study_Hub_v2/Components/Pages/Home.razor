@@ -1,128 +1,157 @@
-@page "/"
+﻿@page "/"
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
-<PageTitle>AI Study Workspace - AI Study Hub</PageTitle>
+<PageTitle>AI Study Hub - Academic AI Workspace</PageTitle>
 
-<main class="home-hub teammate-community-home">
-    <aside class="home-source-sidebar" aria-label="AI Study Hub navigation">
-        <section class="home-brand-block">
-            <div class="home-brand-mark"><MudIcon Icon="@Icons.Material.Filled.AutoStories" /></div>
-            <h1>AI Study<br />Hub</h1>
-        </section>
+<main class="landing-page teammate-landing-page">
+    <section class="landing-hero" aria-labelledby="landing-title">
+        <div class="landing-ambient landing-ambient-one" aria-hidden="true"></div>
+        <div class="landing-ambient landing-ambient-two" aria-hidden="true"></div>
 
-        <section class="home-ai-card">
-            <div class="home-ai-card-title">
-                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />
-                <span>AI Study</span>
-            </div>
-            <p>Build study series from your sources, open a focused workspace, ask grounded questions, and practice with citations.</p>
-            <a class="home-ai-button" href="@(Session.IsAuthenticated ? "/ai/chat" : "/login")">
-                Mở AI Chat
-                <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
-            </a>
-        </section>
+        <div class="landing-hero-inner">
+            <div class="landing-hero-copy">
+                <span class="landing-badge" id="gpt-powered-badge">
+                    <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />
+                    Gemini Inspired Academic Modes
+                </span>
 
-        <nav class="home-side-nav" aria-label="Library shortcuts">
-            <p>Thư viện học tập</p>
-            <a class="active" href="@(Session.IsAuthenticated ? "/documents" : "/login")">
-                <span><MudIcon Icon="@Icons.Material.Filled.Article" Size="Size.Small" /> Tất cả tài liệu</span>
-                <MudIcon Icon="@Icons.Material.Filled.ArrowForwardIos" Size="Size.Small" />
-            </a>
-            <a href="@(Session.IsAuthenticated ? "/documents/upload" : "/login")">
-                <span><MudIcon Icon="@Icons.Material.Filled.FolderOff" Size="Size.Small" /> Tài liệu chưa phân loại</span>
-                <MudIcon Icon="@Icons.Material.Filled.ArrowForwardIos" Size="Size.Small" />
-            </a>
-            <a href="#public-community">
-                <span><MudIcon Icon="@Icons.Material.Filled.Public" Size="Size.Small" /> Community Hub</span>
-                <MudIcon Icon="@Icons.Material.Filled.ArrowForwardIos" Size="Size.Small" />
-            </a>
-        </nav>
-
-        <footer class="home-sidebar-footer">
-            <a href="/profile"><MudIcon Icon="@Icons.Material.Filled.PersonOutline" Size="Size.Small" /> Profile</a>
-            <a href="#features"><MudIcon Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" /> Help</a>
-        </footer>
-    </aside>
-
-    <section class="home-hub-main">
-        <header class="home-hub-header">
-            <div class="home-search-box">
-                <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
-                <span>Search study series, sources, and shared notebooks…</span>
-            </div>
-            <div class="home-header-actions">
-                <a class="home-header-link" href="/documents">Library</a>
-                <a class="home-header-link" href="/ai/chat">Workspace</a>
-                <a class="home-header-primary" href="@(Session.IsAuthenticated ? "/documents/upload" : "/register")">New Series</a>
-            </div>
-        </header>
-
-        <section class="home-hero-panel" aria-labelledby="home-title">
-            <div>
-                <span class="home-kicker">Current Study Series</span>
-                <h2 id="home-title">AI Study Workspace</h2>
+                <h1 id="landing-title">Harness AI for <span>Academic Excellence.</span></h1>
                 <p>
-                    Turn your files into focused study series. Open a source sidebar, work in a wide AI canvas,
-                    and keep summaries, quizzes, and citations close to the material.
+                    AI Study Hub converts messy lectures, raw notes, and textbooks into structured,
+                    personalized study workspaces. Generate summaries, suggested Q&amp;As, and custom quizzes
+                    instantly with AI while preserving your real document library and RAG citations.
                 </p>
-            </div>
-            <div class="home-hero-actions">
-                <a class="home-primary-button" href="@(Session.IsAuthenticated ? "/documents/upload" : "/register")">New Notebook</a>
-                <a class="home-secondary-button" href="#public-community">Community Hub</a>
-            </div>
-        </section>
 
-        <section class="home-notebook-section" aria-labelledby="notebooks-title">
-            <div class="home-section-toolbar">
-                <div>
-                    <span class="home-kicker">Library board</span>
-                    <h2 id="notebooks-title">Current Study Series</h2>
+                <div class="landing-cta-row">
+                    <a id="btn-hero-start" class="landing-primary-button" href="@(Session.IsAuthenticated ? "/documents" : "/register")">
+                        Start My Study Session
+                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                    </a>
+                    <a id="btn-hero-demo" class="landing-secondary-button" href="@(Session.IsAuthenticated ? "/ai/chat" : "/login")">
+                        Try the Demo Room
+                    </a>
                 </div>
-                <div class="home-filter-tabs" aria-label="Notebook filters">
-                    <span class="active">All</span>
-                    <span>Recent</span>
-                    <span>Shared</span>
+
+                <div class="landing-quick-metrics" aria-label="AI Study Hub highlights">
+                    <div>
+                        <strong>100%</strong>
+                        <span>Source Grounded</span>
+                    </div>
+                    <div>
+                        <strong>24/7</strong>
+                        <span>Smart Feedback</span>
+                    </div>
                 </div>
             </div>
 
-            <div class="home-card-grid">
-                <a class="home-create-card" href="@(Session.IsAuthenticated ? "/documents/upload" : "/register")">
-                    <span><MudIcon Icon="@Icons.Material.Filled.Add" /></span>
-                    <strong>New Notebook</strong>
-                </a>
-
-                @foreach (var card in MyNotebooks)
-                {
-                    @NotebookCard(card)
-                }
-            </div>
-        </section>
-
-        <section id="public-community" class="home-notebook-section community" aria-labelledby="community-title">
-            <div class="home-section-toolbar">
-                <div>
-                    <span class="home-kicker">Community Hub</span>
-                    <h2 id="community-title">Shared study series</h2>
+            <div class="landing-hero-visual" aria-label="Students collaborating with AI Study Hub">
+                <div class="landing-visual-glow" aria-hidden="true"></div>
+                <div class="landing-image-frame">
+                    <img src="https://images.unsplash.com/photo-1523240795612-9a054b0db644?q=80&amp;w=1000&amp;auto=format&amp;fit=crop"
+                         alt="A group of students discussing study material together" />
                 </div>
-                <a class="home-view-all" href="@(Session.IsAuthenticated ? "/documents" : "/login")">Connect to Library</a>
             </div>
-
-            <div class="home-card-grid">
-                @foreach (var card in CommunityCards)
-                {
-                    @NotebookCard(card)
-                }
-            </div>
-        </section>
-
-        <section id="features" class="home-workflow-strip" aria-label="Integrated teammate UI sources">
-            <article><strong>Series</strong><span>source cards and folders</span></article>
-            <article><strong>Workspace</strong><span>wide AI canvas</span></article>
-            <article><strong>Tools</strong><span>summary, Q&amp;A, quiz</span></article>
-            <article><strong>Community</strong><span>shared study paths</span></article>
-        </section>
+        </div>
     </section>
+
+    <section id="features-container" class="landing-features" aria-labelledby="features-title">
+        <div class="landing-section-heading">
+            <h2 id="features-title">One Workspace. Endless Academic Leverage.</h2>
+            <p>
+                Say goodbye to scattered files and disjointed bookmarks. The app synthesizes standard academic
+                formats into interactive studying components while keeping the real Blazor document and chat flows.
+            </p>
+        </div>
+
+        <div class="landing-bento-grid">
+            <article class="landing-bento-card indigo compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.Psychology" /></span>
+                <div>
+                    <h3>AI Guided Study</h3>
+                    <p>Surgically extract structured learning materials from dense files and textbook segments.</p>
+                </div>
+            </article>
+
+            <article class="landing-bento-card emerald wide">
+                <div>
+                    <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.Article" /></span>
+                    <h3>Cornell Notes Summary</h3>
+                    <p>Convert long chapters into high-yield briefing outlines centered around examinable insights.</p>
+                </div>
+                <div class="bento-note-preview" aria-hidden="true">
+                    <span></span><span></span><span></span>
+                </div>
+            </article>
+
+            <article class="landing-bento-card violet compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.TipsAndUpdates" /></span>
+                <div>
+                    <h3>Smart Flashcards</h3>
+                    <p>Memory prompts designed to trigger targeted retention directly from source material.</p>
+                </div>
+            </article>
+
+            <article class="landing-bento-card amber compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.FactCheck" /></span>
+                <div>
+                    <h3>Practice Quiz Maker</h3>
+                    <p>Generate exam-style multiple-choice questions with immediate explanation paths.</p>
+                </div>
+            </article>
+
+            <article class="landing-bento-card navy compact">
+                <span class="bento-icon"><MudIcon Icon="@Icons.Material.Filled.AutoAwesome" /></span>
+                <div>
+                    <h3>Interactive Q&amp;A</h3>
+                    <p>Challenge your own documents with grounded answers and visible source citations.</p>
+                </div>
+            </article>
+        </div>
+    </section>
+
+    <section id="pricing-container" class="landing-final-cta" aria-labelledby="cta-title">
+        <span class="landing-badge soft"><MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" /> Empower Your Mind</span>
+        <h2 id="cta-title">Ready to Accelerate Your Learning?</h2>
+        <p>
+            Create your account today and gain immediate access to the specialized study engine. Build folders,
+            upload notes, generate summaries, and test your knowledge from one polished academic dashboard.
+        </p>
+        <a id="cta-get-started" class="landing-primary-button" href="@(Session.IsAuthenticated ? "/documents" : "/register")">
+            Get Started for Free
+        </a>
+    </section>
+
+    <footer class="landing-footer">
+        <div class="landing-footer-grid">
+            <div>
+                <div class="landing-footer-brand">
+                    <span><MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Small" /></span>
+                    <strong>AI Study Hub</strong>
+                </div>
+                <p>The next-generation, context-aware study intelligence designed to maximize academic recall.</p>
+            </div>
+            <div>
+                <h4>Product</h4>
+                <a href="#pricing-container">Pricing model</a>
+                <a href="/documents">Library</a>
+                <a href="/ai/chat">Workspace</a>
+            </div>
+            <div>
+                <h4>Resources</h4>
+                <a href="#features-container">Features</a>
+                <a href="/documents/upload">Upload center</a>
+                <a href="/profile">Profile</a>
+            </div>
+            <div>
+                <h4>Legal</h4>
+                <a href="#">Terms of Service</a>
+                <a href="#">Privacy Policy</a>
+                <a href="#">Guidelines</a>
+            </div>
+        </div>
+        <div class="landing-footer-bottom">© @DateTime.Now.Year AI Study Hub. Built with care for lifelong learners.</div>
+    </footer>
 </main>
 
 @code {
@@ -133,49 +162,9 @@
             return;
         }
 
-        var target = Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true
+        var target = AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role)
             ? "/admin"
             : "/documents";
         Nav.NavigateTo(target, replace: true);
     }
-
-    private static readonly HubCard[] MyNotebooks =
-    [
-        new("Large Language Models for Study", "May 29, 2026", 38, Icons.Material.Filled.Science, "red"),
-        new("Knowledge Matters: Project-Aware RAG", "May 27, 2026", 38, Icons.Material.Filled.Psychology, "violet"),
-        new("SciVal Quick Reference Guide", "May 16, 2026", 56, Icons.Material.Filled.Analytics, "blue"),
-        new("PixelLab Image Editing Tools", "May 22, 2026", 48, Icons.Material.Filled.Palette, "slate"),
-    ];
-
-    private static readonly HubCard[] CommunityCards =
-    [
-        new("Advanced Calculus II", "Dr. Sarah Miller", 124, Icons.Material.Filled.Functions, "indigo", "Dr. Sarah Miller"),
-        new("Organic Chemistry Notes", "James Wilson", 86, Icons.Material.Filled.Biotech, "red", "James Wilson"),
-        new("Modern World History", "Prof. Elena Rossi", 210, Icons.Material.Filled.School, "violet", "Prof. Elena Rossi"),
-        new("Structural Engineering Basics", "David Chen", 54, Icons.Material.Filled.Explore, "blue", "David Chen"),
-    ];
-
-    private RenderFragment NotebookCard(HubCard card) => @<article class="home-notebook-card @($"tone-{card.Tone}")">
-        <header>
-            <span class="home-card-icon"><MudIcon Icon="@card.Icon" /></span>
-            <span class="home-card-more" aria-hidden="true"><MudIcon Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" /></span>
-        </header>
-        <div class="home-card-copy">
-            <h3>@card.Title</h3>
-            <div class="home-card-meta">
-                @if (!string.IsNullOrWhiteSpace(card.Author))
-                {
-                    <span class="home-author-avatar"><MudIcon Icon="@Icons.Material.Filled.Group" Size="Size.Small" /></span>
-                    <span>@card.Author</span>
-                }
-                else
-                {
-                    <span>@card.Subtitle</span>
-                }
-                <span>@card.Sources sources</span>
-            </div>
-        </div>
-    </article>;
-
-    private sealed record HubCard(string Title, string Subtitle, int Sources, string Icon, string Tone, string? Author = null);
 }
