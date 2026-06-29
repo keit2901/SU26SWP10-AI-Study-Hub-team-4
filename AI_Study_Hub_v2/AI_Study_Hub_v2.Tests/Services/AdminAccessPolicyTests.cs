@@ -22,4 +22,13 @@ public sealed class AdminAccessPolicyTests
         AdminAccessPolicy.IsAdmin(role).Should().BeFalse();
         AdminAccessPolicy.GetAuthenticatedLandingPage(role).Should().Be("/profile");
     }
+
+    [TestCase("Moderator")]
+    [TestCase("moderator")]
+    [TestCase("MODERATOR")]
+    public void GetAuthenticatedLandingPage_ModeratorRole_ReturnsDashboard(string role)
+    {
+        AdminAccessPolicy.IsAdmin(role).Should().BeFalse();
+        AdminAccessPolicy.GetAuthenticatedLandingPage(role).Should().Be("/dashboard");
+    }
 }

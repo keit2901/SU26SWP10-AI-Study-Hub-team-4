@@ -11,6 +11,7 @@ public interface ICommunityService
         CancellationToken ct = default);
 
     Task<IReadOnlyList<CommunityReportDto>> GetPendingReportsAsync(
+        Guid reviewerSupabaseUserId,
         CancellationToken ct = default);
 
     Task ResolveReportAsync(

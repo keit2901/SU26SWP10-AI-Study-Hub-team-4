@@ -6,5 +6,13 @@ public static class AdminAccessPolicy
         => role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
 
     public static string GetAuthenticatedLandingPage(string? role)
-        => IsAdmin(role) ? "/admin" : "/profile";
+    {
+        if (string.IsNullOrWhiteSpace(role)) return "/profile";
+        return role.Trim().ToLowerInvariant() switch
+        {
+            "admin"     => "/admin",
+            "moderator" => "/dashboard",
+            _           => "/profile"
+        };
+    }
 }

@@ -39,7 +39,7 @@ public sealed class CommunityController : ControllerBase
                 request.FolderId,
                 request.Reason,
                 cancellationToken);
-            return Ok(id);
+            return StatusCode(StatusCodes.Status201Created, id);
         }
         catch (CommunityException ex)
         {
@@ -57,7 +57,7 @@ public sealed class CommunityController : ControllerBase
     }
 
     [HttpGet("reports/pending")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Moderator")]
     [ProducesResponseType(typeof(IReadOnlyList<CommunityReportDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
@@ -66,7 +66,9 @@ public sealed class CommunityController : ControllerBase
     {
         try
         {
-            return Ok(await _communityService.GetPendingReportsAsync(cancellationToken));
+            return Ok(await _communityService.GetPendingReportsAsync(
+                GetSupabaseUserIdFromClaims(),
+                cancellationToken));
         }
         catch (CommunityException ex)
         {
@@ -84,7 +86,7 @@ public sealed class CommunityController : ControllerBase
     }
 
     [HttpPatch("reports/{id:guid}/resolve")]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Moderator")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]

@@ -1,0 +1,50 @@
+@namespace AI_Study_Hub_v2.Components.Shared
+@using Microsoft.AspNetCore.Components
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAvatar Color="Color.Warning" Variant="Variant.Filled" Size="Size.Large">
+                <MudIcon Icon="@Icons.Material.Filled.Flag" />
+            </MudAvatar>
+            <div>
+                <MudText Typo="Typo.h5">Report shared folder</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">@FolderName</MudText>
+            </div>
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                Reports are reviewed by an administrator or moderator. Describe the content or ownership issue clearly.
+            </MudAlert>
+            <MudTextField T="string"
+                          @bind-Value="_reason"
+                          Label="Reason"
+                          Placeholder="Explain why this public folder should be reviewed"
+                          Lines="5"
+                          Immediate="true"
+                          Counter="2000"
+                          MaxLength="2000"
+                          Required="true"
+                          Variant="Variant.Outlined" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Warning"
+                   Variant="Variant.Filled"
+                   Disabled="@string.IsNullOrWhiteSpace(_reason)"
+                   OnClick="Submit">
+            Submit report
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string FolderName { get; set; } = string.Empty;
+
+    private string _reason = string.Empty;
+
+    private void Submit() => MudDialog.Close(DialogResult.Ok(_reason.Trim()));
+
+    private void Cancel() => MudDialog.Cancel();
+}

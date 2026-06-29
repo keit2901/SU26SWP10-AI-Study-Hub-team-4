@@ -1,0 +1,31 @@
+@page "/dashboard/subjects"
+@layout AI_Study_Hub_v2.Components.Layout.DashboardLayout
+@using AI_Study_Hub_v2.Components.Layout
+
+<PageTitle>Subjects - AI Study Hub</PageTitle>
+
+<div style="display: flex; flex-direction: column; flex: 1; height: 100%;">
+    <!-- Header -->
+    <div style="display: flex; height: 4rem; align-items: center; justify-content: flex-end; border-bottom: 1px solid rgba(199,196,215,0.3); background: #faf9fe; padding: 0 1.5rem; gap: 1rem;">
+        <button style="display: flex; align-items: center; justify-content: center; border-radius: 9999px; padding: 0.5rem; background: transparent; border: none; cursor: pointer;">
+            <MudIcon Icon="@Icons.Material.Filled.Notifications" Style="font-size: 1.25rem; color: #464554;" />
+        </button>
+        <div style="display: flex; height: 2rem; width: 2rem; align-items: center; justify-content: center; border-radius: 9999px; background: #5e5ce6;">
+            <span style="font-size: 0.8125rem; font-weight: 600; color: #fff; letter-spacing: 0.39px;">AD</span>
+        </div>
+    </div>
+
+    <!-- Content -->
+    <div style="flex: 1; overflow-y: auto; padding: 2rem 1.5rem;">
+        <div style="margin-bottom: 2rem; display: flex; flex-direction: column; gap: 0.5rem;">
+            <h1 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">Subjects Management</h1>
+            <p style="font-size: 1rem; color: #464554; margin: 0;">View and manage registered academic subjects.</p>
+        </div>
+
+        <div style="background: white; border-radius: 0.75rem; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); padding: 2rem; text-align: center; border: 1px solid rgba(199,196,215,0.3);">
+            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Style="font-size: 3rem; color: #5e5ce6; margin-bottom: 1rem;" />
+            <h3 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin-bottom: 0.5rem;">No Custom Subjects</h3>
+            <p style="color: #6b7280; max-width: 24rem; margin: 0 auto 1.5rem;">Subjects are synchronized directly from your academic curriculum database.</p>
+        </div>
+    </div>
+</div>

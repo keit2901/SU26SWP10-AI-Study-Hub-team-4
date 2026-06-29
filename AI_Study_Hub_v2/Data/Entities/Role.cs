@@ -13,5 +13,6 @@ public sealed class Role
     public ICollection<User> Users { get; set; } = new List<User>();
 
     public const string AdminRoleName = "Admin";
+    public const string ModeratorRoleName = "Moderator";
     public const string StudentRoleName = "Student";
 }
