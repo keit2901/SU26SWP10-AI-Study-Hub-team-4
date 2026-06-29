@@ -182,7 +182,7 @@
                                             @if (_openMenuFolderId == folder.Id)
                                             {
                                                 <div class="card-menu-dropdown">
-                                                    <button class="menu-item" @onclick="() => { var id = folder.Id; _openMenuFolderId = null; CopyToLibrary(id); }">Copy to Library</button>
+                                                    <button class="menu-item" @onclick="async () => { var id = folder.Id; _openMenuFolderId = null; await CopyToLibrary(id); }">Copy to Library</button>
                                                     <button class="menu-item" @onclick="async () => await OpenReportDialogAsync(folder)">Report</button>
                                                 </div>
                                             }

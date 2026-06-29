@@ -87,9 +87,6 @@
     private bool IsModerator =>
         Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
 
-    private bool IsModerator =>
-        Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
-
     private string ProfileHref => IsAdmin
         ? "admin"
         : IsModerator
