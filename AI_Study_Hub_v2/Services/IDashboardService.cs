@@ -27,4 +27,9 @@ public interface IDashboardService
     /// (or for a specific folder when folderId is set). Does not scope to a single user.
     /// </summary>
     Task<UserAnalyticsDto> GetAdminAnalyticsAsync(Guid? folderId = null, CancellationToken ct = default);
+
+    /// <summary>
+    /// Activity trends: document uploads/chats/failures by day, week, or month.
+    /// </summary>
+    Task<ActivityTrendsDto> GetActivityTrendsAsync(string period = "day", CancellationToken ct = default);
 }

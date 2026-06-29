@@ -6,6 +6,8 @@
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @inject NavigationManager Navigation
+@inject AuthSessionState Session
+@inject AdminDashboardApiClient DashboardApi
 
 <MudStack Spacing="4" Class="dashboard-page page-enter">
     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="dashboard-hero" Style="flex-wrap: wrap; gap: 1rem;">
@@ -21,7 +23,7 @@
                 Supabase connected
             </MudChip>
             <MudChip T="string" Color="Color.Warning" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Schedule">
-                Refreshed @DateTime.Now.ToString("HH:mm")
+                Refreshed @_lastRefreshed.ToString("HH:mm")
             </MudChip>
         </MudStack>
     </MudStack>
@@ -75,11 +77,15 @@
                     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4" Style="gap: 1rem; flex-wrap: wrap;">
                         <div>
                             <MudText Typo="Typo.h6">Activity trends</MudText>
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Uploads, active chat sessions, and token usage over the last seven days.</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Uploads, documents, and failed jobs over time.</MudText>
                         </div>
-                        <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">7 days</MudChip>
+                        <MudStack Row="true" Spacing="1">
+                            <MudChip T="string" Color="@(_selectedPeriod == "day" ? Color.Primary : Color.Default)" Variant="@(_selectedPeriod == "day" ? Variant.Filled : Variant.Outlined)" Size="Size.Small" OnClick="@(() => LoadTrendsAsync("day"))">Day</MudChip>
+                            <MudChip T="string" Color="@(_selectedPeriod == "week" ? Color.Primary : Color.Default)" Variant="@(_selectedPeriod == "week" ? Variant.Filled : Variant.Outlined)" Size="Size.Small" OnClick="@(() => LoadTrendsAsync("week"))">Week</MudChip>
+                            <MudChip T="string" Color="@(_selectedPeriod == "month" ? Color.Primary : Color.Default)" Variant="@(_selectedPeriod == "month" ? Variant.Filled : Variant.Outlined)" Size="Size.Small" OnClick="@(() => LoadTrendsAsync("month"))">Month</MudChip>
+                        </MudStack>
                     </MudStack>
-                    <MudChart T="double" ChartType="ChartType.Line" ChartSeries="@_activitySeries" ChartLabels="@_activityLabels" Width="100%" Height="305px" />
+                    <MudChart T="double" ChartType="ChartType.Line" ChartSeries="@_activitySeries" ChartLabels="@_activityLabels?.ToArray()" Width="100%" Height="305px" />
                 </MudPaper>
             </MudItem>
 
@@ -173,16 +179,25 @@
         <MudGrid>
             <MudItem xs="12" md="5">
                 <MudPaper Elevation="0" Class="dashboard-card quota-card">
-                    <MudText Typo="Typo.h6">Daily token usage</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Current consumption against the configured daily platform quota.</MudText>
-                    <MudProgressLinear Value="@_metrics.TokenUsagePercent" Color="@GetTokenProgressColor(_metrics.TokenUsagePercent)" Rounded="true" Size="Size.Large" />
+                    <MudText Typo="Typo.h6">Document pipeline health</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Processing status for indexed knowledge base documents.</MudText>
+                    <MudProgressLinear Value="@_retrievalReadiness" Color="@GetTokenProgressColor(_retrievalReadiness)" Rounded="true" Size="Size.Large" />
                     <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-2">
-                        <MudText Typo="Typo.subtitle2">@_metrics.DailyTokensUsed.ToString("N0") used</MudText>
-                        <MudText Typo="Typo.subtitle2">@_metrics.DailyTokenQuota.ToString("N0") quota</MudText>
+                        <MudText Typo="Typo.subtitle2">@_indexedCount indexed</MudText>
+                        <MudText Typo="Typo.subtitle2">@_metrics.TotalDocuments total</MudText>
                     </MudStack>
-                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-4">
-                        12 users are above 85% of their assigned quota. Review UC16 controls in Users & Permissions.
-                    </MudAlert>
+                    @if (_failedJobs > 0)
+                    {
+                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-4">
+                            @_failedCount document(s) failed processing. Review failed jobs in Document Moderation.
+                        </MudAlert>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mt-4">
+                            All documents processed successfully.
+                        </MudAlert>
+                    }
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" md="7">
@@ -204,6 +219,17 @@
 @code {
     private bool _isLoading = true;
     private string? _errorMessage;
+    private DateTime _lastRefreshed;
+    private string _selectedPeriod = "day";
+    private int _retrievalReadiness = 82;
+    private int _indexedCount = 126;
+    private int _awaitingCount = 7;
+    private int _failedCount = 4;
+    private int _indexedDocuments;
+    private int _awaitingReview;
+    private int _failedJobs;
+    private List<ChartSeries<double>> _activitySeries = new();
+    private List<string> _activityLabels = new();
     private DashboardMetrics _metrics = new();
     private readonly List<ActivityFeedItem> _recentActivities = new();
     private readonly List<AttentionDocument> _attentionDocuments = new();
@@ -211,53 +237,94 @@
 
     private IEnumerable<KpiCard> KpiCards => new[]
     {
-        new KpiCard("Total Users", _metrics.TotalUsers.ToString("N0"), $"+{_metrics.NewUsersThisWeek} this week", Icons.Material.Filled.People, "teal"),
-        new KpiCard("Total Documents", _metrics.TotalDocuments.ToString("N0"), $"{_metrics.ProcessingDocuments} processing now", Icons.Material.Filled.Description, "amber"),
-        new KpiCard("Active Sessions", _metrics.ActiveSessions.ToString("N0"), "Live study and chat sessions", Icons.Material.Filled.Forum, "blue"),
+        new KpiCard("Total Users", _metrics.TotalUsers.ToString("N0"), $"Storage: {_metrics.TotalStorageMb:N0} MB", Icons.Material.Filled.People, "teal"),
+        new KpiCard("Total Documents", _metrics.TotalDocuments.ToString("N0"), $"{_indexedDocuments} indexed", Icons.Material.Filled.Description, "amber"),
+        new KpiCard("Active Jobs", _metrics.ActiveJobs.ToString("N0"), "Processing or uploading", Icons.Material.Filled.Forum, "blue"),
         new KpiCard("Failed Jobs", _metrics.FailedJobs.ToString("N0"), "Embedding or indexing jobs", Icons.Material.Filled.ReportProblem, "coral"),
-        new KpiCard("Daily Tokens", _metrics.DailyTokensUsed.ToString("N0"), $"{_metrics.TokenUsagePercent:N0}% of quota", Icons.Material.Filled.Token, "slate")
+        new KpiCard("Storage Used", $"{_metrics.TotalStorageMb:N0} MB", $"~{_metrics.TotalDocuments} documents", Icons.Material.Filled.Storage, "slate")
     };
 
-    private readonly List<ChartSeries<double>> _activitySeries = new()
+    private async Task LoadTrendsAsync(string period)
     {
-        new ChartSeries<double> { Name = "Uploads", Data = new double[] { 12, 18, 10, 22, 27, 19, 34 } },
-        new ChartSeries<double> { Name = "Chat sessions", Data = new double[] { 44, 51, 49, 63, 70, 58, 86 } },
-        new ChartSeries<double> { Name = "Tokens (10k)", Data = new double[] { 18, 21, 17, 26, 31, 29, 36 } }
-    };
+        _selectedPeriod = period;
+        try
+        {
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+                return;
 
-    private readonly string[] _activityLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+            var trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken, period);
+
+            _activityLabels = trends.Points.Select(p => p.Label).ToList();
+            _activitySeries = new List<ChartSeries<double>>
+            {
+                new() { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToList() },
+                new() { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToList() },
+                new() { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToList() },
+            };
+        }
+        catch
+        {
+            // Keep previous data on error
+        }
+
+        await InvokeAsync(StateHasChanged);
+    }
+
     private readonly string[] _statusLabels = { "Pending", "Processing", "Indexed", "Failed" };
     private readonly List<ChartSeries<double>> _statusSeries = new()
     {
         new ChartSeries<double> { Name = "Documents", Data = new double[] { 7, 18, 126, 4 } }
     };
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         try
         {
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                _errorMessage = "Authentication required.";
+                return;
+            }
+
+            var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
+
             _metrics = new DashboardMetrics
             {
-                TotalUsers = 1248,
-                NewUsersThisWeek = 37,
-                TotalDocuments = 155,
-                ProcessingDocuments = 18,
-                ActiveSessions = 86,
-                FailedJobs = 4,
-                DailyTokensUsed = 356_800,
-                DailyTokenQuota = 500_000
+                TotalUsers = stats.TotalUsers,
+                TotalDocuments = stats.TotalDocuments,
+                TotalStorageMb = stats.TotalStorageUsedMb,
+                ActiveJobs = stats.TotalActiveSessions,
+                FailedJobs = stats.TotalFailedJobs
             };
 
-            _documentStatuses.AddRange(new[]
-            {
-                new DocumentStatusMetric("Pending", 7, "pending"),
-                new DocumentStatusMetric("Processing", 18, "processing"),
-                new DocumentStatusMetric("Indexed", 126, "indexed"),
-                new DocumentStatusMetric("Failed", 4, "failed")
-            });
+            // Calculate retrieval readiness
+            _indexedDocuments = stats.TotalDocuments - stats.TotalActiveSessions - stats.TotalFailedJobs;
+            _awaitingReview = stats.TotalActiveSessions;
+            _failedJobs = stats.TotalFailedJobs;
+            var readinessPercent = stats.TotalDocuments > 0
+                ? (int)Math.Round((double)_indexedDocuments / stats.TotalDocuments * 100)
+                : 0;
+
+            // Build document status metrics from real data
+            _documentStatuses.Clear();
+            _documentStatuses.Add(new DocumentStatusMetric("Indexed", _indexedDocuments, "indexed"));
+            _documentStatuses.Add(new DocumentStatusMetric("Processing", _awaitingReview, "processing"));
+            _documentStatuses.Add(new DocumentStatusMetric("Failed", _failedJobs, "failed"));
+            _documentStatuses.Add(new DocumentStatusMetric("Pending", stats.TotalDocuments - _indexedDocuments - _awaitingReview - _failedJobs, "pending"));
+
+            // Update sidebar readiness card values
+            _retrievalReadiness = Math.Max(0, readinessPercent);
+            _indexedCount = _indexedDocuments;
+            _awaitingCount = _awaitingReview;
+            _failedCount = _failedJobs;
 
             _attentionDocuments.AddRange(BuildAttentionDocuments());
             _recentActivities.AddRange(BuildRecentActivities());
+
+            _lastRefreshed = DateTime.Now;
+
+            // Load activity trends
+            await LoadTrendsAsync("day");
         }
         catch (Exception ex)
         {
@@ -327,14 +394,10 @@
     private sealed class DashboardMetrics
     {
         public int TotalUsers { get; set; }
-        public int NewUsersThisWeek { get; set; }
         public int TotalDocuments { get; set; }
-        public int ProcessingDocuments { get; set; }
-        public int ActiveSessions { get; set; }
+        public long TotalStorageMb { get; set; }
+        public int ActiveJobs { get; set; }
         public int FailedJobs { get; set; }
-        public int DailyTokensUsed { get; set; }
-        public int DailyTokenQuota { get; set; } = 1;
-        public double TokenUsagePercent => DailyTokenQuota == 0 ? 0 : DailyTokensUsed * 100d / DailyTokenQuota;
     }
 
     private sealed record KpiCard(string Label, string Value, string SupportingText, string Icon, string AccentClass);
