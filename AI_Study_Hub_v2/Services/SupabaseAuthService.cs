@@ -17,6 +17,8 @@ public interface IAuthService
     Task LogoutAsync(string accessToken, CancellationToken cancellationToken = default);
 
     Task<UserDto> GetCurrentUserAsync(Guid supabaseUserId, string? email = null, CancellationToken cancellationToken = default);
+
+    Task<UserDto> UpdateUserAsync(Guid supabaseUserId, string accessToken, string? email, string? username, string? fullName, string? password, CancellationToken cancellationToken = default);
 }
 
 /// <summary>
@@ -172,6 +174,50 @@ public sealed class SupabaseAuthService : IAuthService
         }
 
         return MapUser(user, email);
+    }
+
+    public async Task<UserDto> UpdateUserAsync(Guid supabaseUserId, string accessToken, string? email, string? username, string? fullName, string? password, CancellationToken cancellationToken = default)
+    {
+        var user = await _db.Users
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, cancellationToken);
+
+        if (user is null)
+        {
+            throw new AuthException(404, "user_not_found", "User profile not found.");
+        }
+
+        if (!string.IsNullOrEmpty(username) && username != user.Username)
+        {
+            var usernameTaken = await _db.Users.AnyAsync(u => u.Username == username, cancellationToken);
+            if (usernameTaken)
+            {
+                throw new AuthException(409, "username_taken", "Username is already taken.");
+            }
+            user.Username = username;
+            user.FullName = username;
+        }
+
+        if (!string.IsNullOrEmpty(fullName))
+        {
+            user.FullName = fullName;
+        }
+
+        var metadata = new Dictionary<string, object?>();
+        if (!string.IsNullOrEmpty(username)) metadata["username"] = username;
+        if (!string.IsNullOrEmpty(fullName ?? (username))) metadata["full_name"] = fullName ?? username;
+
+        var gotrueUser = await _gotrue.UpdateUserAsync(
+            accessToken,
+            email,
+            password,
+            metadata.Count > 0 ? metadata : null,
+            cancellationToken);
+
+        user.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(cancellationToken);
+
+        return MapUser(user, gotrueUser.Email);
     }
 
     private static AuthResponse BuildAuthResponse(User user, GoTrueSession session)

@@ -1,4 +1,4 @@
-﻿@implements IDisposable
+@implements IDisposable
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
@@ -12,27 +12,27 @@
         <input id="community-nav-toggle" type="checkbox" title="Navigation menu" class="navbar-toggler" />
         <label for="community-nav-toggle" class="navbar-toggler-label" aria-label="Toggle navigation"></label>
 
-        <nav class="community-nav teammate-nav" onclick="document.getElementById('community-nav-toggle').checked = false">
-            @if (Session.IsAuthenticated)
-            {
-                @if (IsAdmin)
+        @if (!IsDashboard)
+        {
+            <nav class="community-nav teammate-nav" onclick="...">
+                @if (Session.IsAuthenticated)
                 {
-                    <a class="nav-pill @NavClass("admin")" href="admin">Dashboard</a>
-                    <a class="nav-pill @NavClass("admin/community-reports")" href="admin/community-reports">Reports</a>
+                    @if (IsAdmin)
+                    {
+                        <a class="nav-pill @NavClass("admin")" href="admin">Dashboard</a>
+                    }
+                    else
+                    {
+                        @if (IsModerator)
+                        {
+                            <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                        }
+                        <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
+                        <a class="nav-pill @NavClass("community")" href="community">Community</a>
+                        <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
+                        <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
+                    }
                 }
-                else if (IsModerator)
-                {
-                    <a class="nav-pill @NavClass("moderator/community-reports")" href="moderator/community-reports">Reports</a>
-                    <a class="nav-pill @NavClass("community")" href="community">Community</a>
-                }
-                else
-                {
-                    <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
-                    <a class="nav-pill @NavClass("community")" href="community">Community</a>
-                    <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
-                    <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
-                }
-            }
             else
             {
                 <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
@@ -41,6 +41,7 @@
                 <NavLink class="nav-pill" href="register">Get Started</NavLink>
             }
         </nav>
+        }
 
         <div class="community-actions teammate-actions">
             @if (Session.IsAuthenticated)
@@ -75,11 +76,16 @@
             return rel == "documents/upload" ? "active" : "";
         if (href == "admin")
             return rel == "admin" ? "active" : "";
+        if (href == "dashboard")
+            return rel == "dashboard" || rel.StartsWith("dashboard/") ? "active" : "";
         return rel == href ? "active" : "";
     }
 
     private bool IsAdmin =>
-        Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+        AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role);
+
+    private bool IsModerator =>
+        Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
 
     private bool IsModerator =>
         Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
@@ -99,6 +105,12 @@
     protected override void OnInitialized()
     {
         Session.OnChange += OnSessionChanged;
+        Nav.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        InvokeAsync(StateHasChanged);
     }
 
     private void OnSessionChanged()
@@ -115,5 +127,8 @@
     public void Dispose()
     {
         Session.OnChange -= OnSessionChanged;
+        Nav.LocationChanged -= OnLocationChanged;
     }
+
+    private bool IsDashboard => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
 }

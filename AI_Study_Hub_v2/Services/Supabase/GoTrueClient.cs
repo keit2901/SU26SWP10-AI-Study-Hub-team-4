@@ -78,6 +78,27 @@ public sealed class GoTrueClient : IGoTrueClient
         return user ?? throw new AuthException(500, "gotrue_empty_response", "GoTrue returned empty user.");
     }
 
+    public async Task<GoTrueUser> UpdateUserAsync(string accessToken, string? email, string? password, Dictionary<string, object?>? metadata, CancellationToken cancellationToken = default)
+    {
+        using var req = new HttpRequestMessage(HttpMethod.Put, "user");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        var body = new Dictionary<string, object?>();
+        if (!string.IsNullOrEmpty(email)) body["email"] = email;
+        if (!string.IsNullOrEmpty(password)) body["password"] = password;
+        if (metadata is not null) body["data"] = metadata;
+
+        req.Content = JsonContent.Create(body);
+
+        using var resp = await _http.SendAsync(req, cancellationToken);
+        if (!resp.IsSuccessStatusCode)
+        {
+            await ThrowFromGoTrueAsync(resp, "update_user", cancellationToken);
+        }
+        var user = await resp.Content.ReadFromJsonAsync<GoTrueUser>(cancellationToken: cancellationToken);
+        return user ?? throw new AuthException(500, "gotrue_empty_response", "GoTrue returned empty user from update.");
+    }
+
     public async Task<GoTrueUser> AdminCreateUserAsync(string email, string password, Dictionary<string, object?>? userMetadata, Dictionary<string, object?>? appMetadata, CancellationToken cancellationToken = default)
     {
         using var req = BuildAdminRequest(HttpMethod.Post, "admin/users");

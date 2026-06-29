@@ -327,15 +327,24 @@
 
     protected override async Task OnInitializedAsync()
     {
+        Session.OnChange += HandleSessionChanged;
         await LoadAsync();
+    }
+
+    private void HandleSessionChanged()
+    {
+        _ = InvokeAsync(LoadAsync);
     }
 
     private async Task LoadAsync()
     {
         _loading = true;
+        _personalFolders.Clear();
+        _votes.Clear();
         try
         {
-            var shared = await FoldersApi.ListSharedAsync();
+            var accessToken = Session.IsAuthenticated ? Session.AccessToken : null;
+            var shared = await FoldersApi.ListSharedAsync(accessToken);
             _allCommunityFolders = shared.ToList();
 
             if (Session.IsAuthenticated && Session.AccessToken is not null)
@@ -473,11 +482,14 @@
         {
             var result = await FoldersApi.VoteAsync(Session.AccessToken, folderId, isLike);
 
-            var existing = _votes.GetValueOrDefault(folderId);
-            if (existing == isLike)
-                _votes.Remove(folderId);
+            if (result.CurrentUserVote.HasValue)
+            {
+                _votes[folderId] = result.CurrentUserVote.Value;
+            }
             else
-                _votes[folderId] = isLike;
+            {
+                _votes.Remove(folderId);
+            }
 
             var folder = _allCommunityFolders.FirstOrDefault(f => f.Id == folderId);
             if (folder is not null)
@@ -557,5 +569,6 @@
 
     public void Dispose()
     {
+        Session.OnChange -= HandleSessionChanged;
     }
 }
