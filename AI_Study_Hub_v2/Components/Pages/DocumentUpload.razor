@@ -177,20 +177,20 @@
                         Subject code <span class="field-hint">(e.g. SWP391)</span>
                         @if (!string.IsNullOrEmpty(_model.SubjectCode))
                         {
-                            <span class="field-validity @(Regex.IsMatch(_model.SubjectCode, @"^[A-Z]{2,4}\d{3,4}$") ? "valid" : "invalid")">
-                                @(Regex.IsMatch(_model.SubjectCode, @"^[A-Z]{2,4}\d{3,4}$") ? "✓" : "·")
+                            <span class="field-validity @(IsSubjectValid ? "valid" : "invalid")">
+                                @(IsSubjectValid ? "✓" : "·")
                             </span>
                         }
                     </label>
-                    <input class="field-input mono @(!string.IsNullOrEmpty(_model.SubjectCode) && !Regex.IsMatch(_model.SubjectCode, @"^[A-Z]{2,4}\d{3,4}$") ? "field-error" : "")"
+                    <input class="field-input mono @(!string.IsNullOrEmpty(_model.SubjectCode) && !IsSubjectValid ? "field-error" : "")"
                            @bind="_model.SubjectCode"
                            @bind:event="oninput"
                            placeholder="SWP391"
                            disabled="@_busy" />
-                    @if (!string.IsNullOrEmpty(_model.SubjectCode) && !Regex.IsMatch(_model.SubjectCode, @"^[A-Z]{2,4}\d{3,4}$"))
+                    @if (!string.IsNullOrEmpty(_model.SubjectCode) && !IsSubjectValid)
                     {
                         <p class="field-error-text">
-                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" /> Use format like SWP391 or SDN302
+                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" /> Use exactly 3 uppercase letters + 3 digits, like SWP391
                         </p>
                     }
                 </div>
@@ -200,20 +200,20 @@
                         Semester <span class="field-hint">(e.g. SU26)</span>
                         @if (!string.IsNullOrEmpty(_model.Semester))
                         {
-                            <span class="field-validity @(Regex.IsMatch(_model.Semester, @"^(SPR|SU|FA|M1)\d{2}$") ? "valid" : "invalid")">
-                                @(Regex.IsMatch(_model.Semester, @"^(SPR|SU|FA|M1)\d{2}$") ? "✓" : "·")
+                            <span class="field-validity @(IsSemesterValid ? "valid" : "invalid")">
+                                @(IsSemesterValid ? "✓" : "·")
                             </span>
                         }
                     </label>
-                    <input class="field-input mono @(!string.IsNullOrEmpty(_model.Semester) && !Regex.IsMatch(_model.Semester, @"^(SPR|SU|FA|M1)\d{2}$") ? "field-error" : "")"
+                    <input class="field-input mono @(!string.IsNullOrEmpty(_model.Semester) && !IsSemesterValid ? "field-error" : "")"
                            @bind="_model.Semester"
                            @bind:event="oninput"
                            placeholder="SU26"
                            disabled="@_busy" />
-                    @if (!string.IsNullOrEmpty(_model.Semester) && !Regex.IsMatch(_model.Semester, @"^(SPR|SU|FA|M1)\d{2}$"))
+                    @if (!string.IsNullOrEmpty(_model.Semester) && !IsSemesterValid)
                     {
                         <p class="field-error-text">
-                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" /> Use SPR/SU/FA/M1 + 2-digit year
+                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" /> Use SP, SU, FA, or WI + 2-digit year, like SU26
                         </p>
                     }
                 </div>
@@ -258,7 +258,7 @@
                        FullWidth="true"
                        Class="upload-btn"
                        OnClick="SubmitAsync"
-                       Disabled="@(_busy || !_isValid || !_humanCheckValid || _files.Count == 0)">
+                       Disabled="@(_busy || !CanSubmitUpload || !_humanCheckValid)">
                 @if (_busy)
                 {
                     <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-1" />
@@ -316,7 +316,7 @@
                     <div class="checklist-bullet @(IsSemesterValid ? "done" : "")">
                         @if (IsSemesterValid) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
                     </div>
-                    <span>Semester uses SPR/SU/FA/M1 + year</span>
+                    <span>Semester uses SP/SU/FA/WI + year</span>
                 </div>
                 <div class="checklist-item @(_files.Count > 0 ? "done" : "")">
                     <div class="checklist-bullet @(_files.Count > 0 ? "done" : "")">
@@ -410,8 +410,12 @@
         ("Index", "Ready for AI"),
     ];
 
-    private bool IsSubjectValid => Regex.IsMatch(_model.SubjectCode ?? "", @"^[A-Z]{2,4}\d{3,4}$");
-    private bool IsSemesterValid => Regex.IsMatch(_model.Semester ?? "", @"^(SPR|SU|FA|M1)\d{2}$");
+    private const string SubjectCodePattern = @"^[A-Z]{3}[0-9]{3}$";
+    private const string SemesterPattern = @"^(SP|SU|FA|WI)[0-9]{2}$";
+
+    private bool IsSubjectValid => Regex.IsMatch((_model.SubjectCode ?? string.Empty).Trim().ToUpperInvariant(), SubjectCodePattern);
+    private bool IsSemesterValid => Regex.IsMatch((_model.Semester ?? string.Empty).Trim().ToUpperInvariant(), SemesterPattern);
+    private bool CanSubmitUpload => _files.Count > 0 && IsSubjectValid && IsSemesterValid;
 
     protected override async Task OnInitializedAsync()
     {
@@ -582,9 +586,22 @@
     {
         _error = null;
         if (_form is null || _files.Count == 0) return;
+        NormalizeUploadMetadataInput();
         await _form.ValidateAsync();
         var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
-        if (!_isValid || !humanOk) return;
+        if (!humanOk) return;
+
+        if (!IsSubjectValid)
+        {
+            _error = "Subject code must use exactly 3 uppercase letters followed by 3 digits, for example SWP391.";
+            return;
+        }
+
+        if (!IsSemesterValid)
+        {
+            _error = "Semester must use SP, SU, FA, or WI followed by 2 digits, for example SU26.";
+            return;
+        }
 
         if (!Session.IsAuthenticated || string.IsNullOrEmpty(Session.AccessToken))
         {
@@ -691,6 +708,12 @@
         }
     }
 
+    private void NormalizeUploadMetadataInput()
+    {
+        _model.SubjectCode = (_model.SubjectCode ?? string.Empty).Trim().ToUpperInvariant();
+        _model.Semester = (_model.Semester ?? string.Empty).Trim().ToUpperInvariant();
+    }
+
     private void ResetForm()
     {
         _files.Clear();
@@ -715,6 +738,8 @@
         (400, "folder_name_required") => "Folder name is required.",
         (400, "empty_file") => ex.Message,
         (400, _) => $"The server rejected the request. Check that the subject code (e.g. SWP391) and semester (e.g. SU26) are correct.",
+        (500, "unexpected_error") => "The upload service failed on the server. This is not caused by your Student account or the file name. Please try again later or ask the team to check the upload/storage service.",
+        (500, "upload_persist_failed") => "The file reached the upload service, but saving the document record failed on the server. Please try again later.",
         _ => ex.Message,
     };
 

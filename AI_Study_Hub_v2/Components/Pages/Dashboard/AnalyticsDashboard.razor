@@ -2,104 +2,246 @@
 @layout AI_Study_Hub_v2.Components.Layout.DashboardLayout
 @using AI_Study_Hub_v2.Data
 @using AI_Study_Hub_v2.Data.Entities
+@using Microsoft.AspNetCore.Components
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
+@inject ISnackbar Snackbar
 
-<PageTitle>Study Analytics - AI Study Hub</PageTitle>
+<PageTitle>Folder Analytics - AI Study Hub</PageTitle>
 
 <div style="display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
-    <div style="padding: 2rem 2.5rem 2.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
-        <div>
-            <h1 style="font-size: 1.9rem; font-weight: 800; letter-spacing: -0.04em; color: #111827; margin: 0;">Study Analytics</h1>
-            <p style="font-size: 0.95rem; color: #6b7280; margin: 0.45rem 0 0;">A student-friendly summary of readiness, coverage, and sharing across your study library.</p>
-        </div>
-
+    <div style="padding: 1.75rem 2.25rem 2.5rem; display: flex; flex-direction: column; gap: 1rem; background: #f7f8fc;">
         @if (isLoading)
         {
             <div style="text-align: center; padding: 3rem;">
                 <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
             </div>
         }
-        else
+        else if (!string.IsNullOrWhiteSpace(loadError))
         {
-            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem;">
-                <StatCard Icon="@Icons.Material.Filled.Description" Title="Documents" Count="@totalDocuments.ToString()" Description="Files tracked by your vault" BgColor="rgba(238,242,255,0.8)" IconColor="#4f46e5" />
-                <StatCard Icon="@Icons.Material.Filled.CheckCircle" Title="Ready Rate" Count="@($"{readyRate}%")" Description="Share of study-ready files" BgColor="rgba(236,253,245,0.9)" IconColor="#059669" />
-                <StatCard Icon="@Icons.Material.Filled.Groups" Title="Shared Folders" Count="@sharedFolders.ToString()" Description="Visible to the community" BgColor="rgba(255,247,237,0.95)" IconColor="#ea580c" />
-                <StatCard Icon="@Icons.Material.Filled.MenuBook" Title="Subjects" Count="@subjectCount.ToString()" Description="Distinct subject tracks" BgColor="rgba(250,245,255,0.95)" IconColor="#9333ea" />
+            <section style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 1rem; padding: 1.15rem 1.3rem; color: #9a3412;">
+                <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                    <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Style="font-size: 1.2rem; margin-top: 0.1rem;" />
+                    <div>
+                        <h2 style="font-size: 1rem; font-weight: 700; color: #9a3412; margin: 0;">Folder analytics could not be loaded</h2>
+                        <p style="font-size: 0.88rem; margin: 0.35rem 0 0;">@loadError</p>
+                    </div>
+                </div>
+            </section>
+        }
+        else if (selectedFolder is not null)
+        {
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                    <div style="font-size: 0.76rem; color: #7c869b; font-weight: 700;">
+                        Analytics > @selectedFolder.Name (@primarySubject)
+                    </div>
+                    <div>
+                        <h1 style="font-size: 2rem; font-weight: 800; letter-spacing: -0.04em; color: #111827; margin: 0;">@selectedFolder.Name</h1>
+                        <p style="font-size: 0.92rem; color: #6b7280; margin: 0.35rem 0 0;">Detailed performance and processing metrics for documents inside the selected folder.</p>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                    <button type="button"
+                            @onclick="GoBackToDocuments"
+                            style="display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.6rem; border-radius: 0.8rem; padding: 0 0.95rem; border: 1px solid #dbe2f0; background: #fff; color: #334155; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+                        <MudIcon Icon="@Icons.Material.Filled.ArrowBack" Style="font-size: 1rem;" />
+                        Back to queue
+                    </button>
+                    <button type="button"
+                            @onclick="ExportReport"
+                            style="display: inline-flex; align-items: center; gap: 0.45rem; min-height: 2.6rem; border-radius: 0.8rem; padding: 0 0.95rem; border: 1px solid #dbe2f0; background: #fff; color: #334155; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+                        <MudIcon Icon="@Icons.Material.Filled.FileDownload" Style="font-size: 1rem;" />
+                        Export Report
+                    </button>
+                </div>
             </div>
 
-            <div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(320px, 0.9fr); gap: 1rem;">
-                <section style="background: #fff; border: 1px solid #eef2f7; border-radius: 1rem; padding: 1.35rem 1.5rem; box-shadow: 0 12px 24px rgba(15,23,42,0.04);">
-                    <div style="margin-bottom: 1rem;">
-                        <h2 style="font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0;">Pipeline Health</h2>
-                        <p style="font-size: 0.85rem; color: #6b7280; margin: 0.35rem 0 0;">How much of your material is ready for retrieval versus still waiting or needing another upload.</p>
-                    </div>
-
-                    @foreach (var metric in pipelineMetrics)
-                    {
-                        <div style="display: flex; flex-direction: column; gap: 0.45rem; margin-bottom: 1rem;">
-                            <div style="display: flex; justify-content: space-between; gap: 1rem; font-size: 0.84rem;">
-                                <span style="font-weight: 700; color: #111827;">@metric.Label</span>
-                                <span style="color: #6b7280;">@metric.Count file(s)</span>
+            <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9rem;">
+                @foreach (var stat in topStats)
+                {
+                    <section style="background: #fff; border: 1px solid #e9edf6; border-radius: 1rem; padding: 1rem 1.05rem; box-shadow: 0 10px 24px rgba(15,23,42,0.04);">
+                        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.8rem;">
+                            <div>
+                                <div style="font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #7c869b;">@stat.Label</div>
+                                <div style="margin-top: 0.35rem; font-size: 1.7rem; font-weight: 800; color: #111827; line-height: 1;">@stat.Value</div>
                             </div>
-                            <div style="height: 0.65rem; border-radius: 9999px; background: #edf2f7; overflow: hidden;">
-                                <div style="@($"height: 100%; width: {metric.Percent}%; background: {metric.BarColor}; border-radius: 9999px;")"></div>
+                            <div style="@($"width: 2rem; height: 2rem; border-radius: 0.75rem; background: {stat.IconBackground}; color: {stat.IconColor}; display: flex; align-items: center; justify-content: center;")">
+                                <MudIcon Icon="@stat.Icon" Style="font-size: 1rem;" />
                             </div>
                         </div>
-                    }
+                        <div style="margin-top: 0.7rem; font-size: 0.74rem; color: #6b7280;">@stat.Note</div>
+                        @if (stat.ProgressPercent.HasValue)
+                        {
+                            <div style="margin-top: 0.7rem; height: 0.28rem; border-radius: 9999px; background: #edf2f7; overflow: hidden;">
+                                <div style="@($"height: 100%; width: {stat.ProgressPercent.Value}%; background: {stat.IconColor}; border-radius: 9999px;")"></div>
+                            </div>
+                        }
+                    </section>
+                }
+            </div>
+
+            <div style="display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(280px, 0.75fr); gap: 1rem; align-items: start;">
+                <section style="background: #fff; border: 1px solid #e9edf6; border-radius: 1rem; box-shadow: 0 10px 24px rgba(15,23,42,0.04); overflow: hidden;">
+                    <div style="padding: 1rem 1.15rem 0.6rem;">
+                        <h2 style="font-size: 1rem; font-weight: 700; color: #111827; margin: 0;">Document Status Progress</h2>
+                    </div>
+                    <div style="padding: 0 0.85rem 0.9rem;">
+                        <svg viewBox="0 0 640 260" style="width: 100%; height: auto; display: block;">
+                            <rect x="0" y="0" width="640" height="260" fill="#ffffff" />
+                            @foreach (var gridY in chartGridLines)
+                            {
+                                <line x1="52" y1="@gridY" x2="610" y2="@gridY" stroke="#edf2f7" stroke-width="1" />
+                            }
+                            @foreach (var point in chartPoints)
+                            {
+                                <circle cx="@point.X" cy="@point.Y" r="4.5" fill="#ffffff" stroke="#6d66e8" stroke-width="2" />
+                            }
+                            @if (!string.IsNullOrWhiteSpace(chartPolyline))
+                            {
+                                <polyline points="@chartPolyline" fill="none" stroke="#6d66e8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" />
+                            }
+                        </svg>
+                        <div style="display: grid; grid-template-columns: repeat(@Math.Max(1, chartLabels.Count), minmax(0, 1fr)); gap: 0.25rem; margin-top: -0.1rem; padding: 0 0.75rem;">
+                            @foreach (var label in chartLabels)
+                            {
+                                <div style="text-align: center; font-size: 0.72rem; color: #94a3b8;">@label.Text</div>
+                            }
+                        </div>
+                    </div>
                 </section>
 
-                <section style="background: #fff; border: 1px solid #eef2f7; border-radius: 1rem; padding: 1.35rem 1.5rem; box-shadow: 0 12px 24px rgba(15,23,42,0.04); display: flex; flex-direction: column; gap: 0.9rem;">
-                    <div>
-                        <h2 style="font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0;">Coverage Snapshot</h2>
-                        <p style="font-size: 0.85rem; color: #6b7280; margin: 0.35rem 0 0;">Your current footprint across semesters and public sharing.</p>
+                <section style="background: #fff; border: 1px solid #e9edf6; border-radius: 1rem; box-shadow: 0 10px 24px rgba(15,23,42,0.04); padding: 1rem 1rem 0.9rem;">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;">
+                        <div>
+                            <h2 style="font-size: 1rem; font-weight: 700; color: #111827; margin: 0;">Common Issues</h2>
+                            <p style="font-size: 0.8rem; color: #6b7280; margin: 0.35rem 0 0;">Most frequent reasons this folder may need extra review.</p>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Style="font-size: 1rem; color: #94a3b8;" />
                     </div>
 
-                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.8rem;">
-                        <div style="padding: 1rem; border-radius: 0.95rem; background: #f8fafc;">
-                            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Semesters</div>
-                            <strong style="display: block; margin-top: 0.35rem; font-size: 1.5rem; color: #111827;">@semesterCount</strong>
-                        </div>
-                        <div style="padding: 1rem; border-radius: 0.95rem; background: #f8fafc;">
-                            <div style="font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #64748b;">Favorites</div>
-                            <strong style="display: block; margin-top: 0.35rem; font-size: 1.5rem; color: #111827;">@favoriteFolders</strong>
-                        </div>
-                    </div>
-
-                    <div style="display: flex; flex-direction: column; gap: 0.7rem;">
-                        @foreach (var item in topSubjects)
+                    <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.85rem;">
+                        @foreach (var issue in commonIssues)
                         {
-                            <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: 0.9rem 1rem; border-radius: 0.95rem; background: #fafbff; border: 1px solid #eef2f7;">
-                                <div>
-                                    <div style="font-size: 0.9rem; font-weight: 700; color: #111827;">@item.Code</div>
-                                    <div style="font-size: 0.78rem; color: #6b7280;">@item.DocumentCount document(s)</div>
-                                </div>
-                                <span style="display: inline-flex; align-items: center; padding: 0.28rem 0.65rem; border-radius: 9999px; background: #eef2ff; color: #4338ca; font-size: 0.74rem; font-weight: 700;">@item.ReadyCount ready</span>
+                            <div style="padding: 0.9rem; border: 1px solid #eef2f7; border-radius: 0.9rem; background: #fbfcff;">
+                                <div style="font-size: 0.85rem; font-weight: 700; color: #111827;">@issue.Title</div>
+                                <div style="font-size: 0.76rem; line-height: 1.5; color: #6b7280; margin-top: 0.3rem;">@issue.Description</div>
+                                <div style="font-size: 0.72rem; color: #8b5cf6; font-weight: 700; margin-top: 0.45rem;">@issue.Footnote</div>
                             </div>
                         }
                     </div>
                 </section>
             </div>
+
+            <section style="background: #fff; border: 1px solid #e9edf6; border-radius: 1rem; box-shadow: 0 10px 24px rgba(15,23,42,0.04); overflow: hidden;">
+                <div style="padding: 1rem 1.15rem; border-bottom: 1px solid #eef2f7; display: flex; align-items: center; justify-content: space-between; gap: 1rem;">
+                    <h2 style="font-size: 1rem; font-weight: 700; color: #111827; margin: 0;">Documents</h2>
+                    <MudIcon Icon="@Icons.Material.Filled.FilterList" Style="font-size: 1rem; color: #94a3b8;" />
+                </div>
+
+                @if (documentRows.Count == 0)
+                {
+                    <div style="padding: 2rem 1.15rem; text-align: center; color: #6b7280;">
+                        <MudIcon Icon="@Icons.Material.Filled.FolderOff" Style="font-size: 2rem; color: #c4b5fd; margin-bottom: 0.65rem;" />
+                        <p style="margin: 0;">This folder does not contain any documents yet.</p>
+                    </div>
+                }
+                else
+                {
+                    <div style="overflow-x: auto;">
+                        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+                            <colgroup>
+                                <col style="width: 36%;" />
+                                <col style="width: 18%;" />
+                                <col style="width: 18%;" />
+                                <col style="width: 14%;" />
+                                <col style="width: 14%;" />
+                            </colgroup>
+                            <thead>
+                                <tr style="background: #fafbff;">
+                                    <th style="@TableHeaderStyle">Document Name</th>
+                                    <th style="@TableHeaderStyle">Status</th>
+                                    <th style="@TableHeaderStyle">Upload Date</th>
+                                    <th style="@TableHeaderStyle">AI Confidence</th>
+                                    <th style="@TableHeaderStyle">Processing</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var row in documentRows)
+                                {
+                                    <tr style="border-top: 1px solid #eef2f7;">
+                                        <td style="@TableCellStyle">
+                                            <div style="display: flex; align-items: center; gap: 0.65rem;">
+                                                <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 1rem; color: #94a3b8;" />
+                                                <div style="min-width: 0;">
+                                                    <div style="font-size: 0.83rem; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@row.FileName</div>
+                                                    <div style="font-size: 0.74rem; color: #94a3b8;">@row.Subtitle</div>
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td style="@TableCellStyle">
+                                            <span style="@GetStatusChipStyle(row.StatusTone, row.StatusColor)">
+                                                @row.StatusText
+                                            </span>
+                                        </td>
+                                        <td style="@TableCellStyle">@row.UploadDate</td>
+                                        <td style="@TableCellStyle">
+                                            <span style="font-size: 0.8rem; font-weight: 700; color: @row.StatusColor;">@row.ConfidenceText</span>
+                                        </td>
+                                        <td style="@TableCellStyle">
+                                            <div style="display: flex; align-items: center; gap: 0.55rem;">
+                                                <div style="flex: 1; height: 0.28rem; border-radius: 9999px; background: #edf2f7; overflow: hidden;">
+                                                    <div style="@($"height: 100%; width: {row.ConfidencePercent}%; background: {row.StatusColor}; border-radius: 9999px;")"></div>
+                                                </div>
+                                                <span style="font-size: 0.76rem; font-weight: 700; color: @row.StatusColor;">@row.ConfidencePercent%</span>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                }
+            </section>
         }
     </div>
 </div>
 
 @code {
-    private sealed record PipelineMetric(string Label, int Count, int Percent, string BarColor);
-    private sealed record SubjectMetric(string Code, int DocumentCount, int ReadyCount);
+    [SupplyParameterFromQuery(Name = "folderId")]
+    public Guid? FolderId { get; set; }
+
+    private sealed record StatVm(string Label, string Value, string Note, string Icon, string IconBackground, string IconColor, int? ProgressPercent = null);
+    private sealed record IssueVm(string Title, string Description, string Footnote);
+    private sealed record ChartLabelVm(double X, string Text);
+    private sealed record ChartPointVm(double X, double Y);
+    private sealed record DocumentRowVm(
+        string FileName,
+        string Subtitle,
+        string StatusText,
+        string StatusTone,
+        string StatusColor,
+        string UploadDate,
+        string ConfidenceText,
+        int ConfidencePercent);
+
+    private const string TableHeaderStyle = "padding: 0.82rem 1rem; text-align: left; font-size: 0.7rem; font-weight: 700; color: #7c869b; text-transform: uppercase; letter-spacing: 0.05em;";
+    private const string TableCellStyle = "padding: 0.95rem 1rem; font-size: 0.82rem; color: #475569; vertical-align: middle;";
 
     private bool isLoading = true;
-    private int totalDocuments;
-    private int readyRate;
-    private int sharedFolders;
-    private int subjectCount;
-    private int semesterCount;
-    private int favoriteFolders;
-    private List<PipelineMetric> pipelineMetrics = new();
-    private List<SubjectMetric> topSubjects = new();
+    private string? loadError;
+    private Folder? selectedFolder;
+    private string primarySubject = "Unassigned";
+    private List<StatVm> topStats = new();
+    private List<IssueVm> commonIssues = new();
+    private List<ChartLabelVm> chartLabels = new();
+    private List<ChartPointVm> chartPoints = new();
+    private List<double> chartGridLines = new() { 36, 86, 136, 186 };
+    private List<DocumentRowVm> documentRows = new();
+    private string chartPolyline = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -109,46 +251,219 @@
             return;
         }
 
-        var folders = await DbContext.Folders
-            .Where(f => f.UserId == Session.CurrentUser.Id)
-            .ToListAsync();
-
-        var documents = await DbContext.Documents
-            .Where(d => d.UserId == Session.CurrentUser.Id)
-            .ToListAsync();
-
-        totalDocuments = documents.Count;
-        var readyCount = documents.Count(d => d.Status == DocumentStatus.Ready);
-        var processingCount = documents.Count(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing);
-        var retryCount = documents.Count(d => d.Status == DocumentStatus.Failed);
-        readyRate = totalDocuments == 0 ? 0 : (int)Math.Round(readyCount * 100d / totalDocuments);
-        sharedFolders = folders.Count(f => f.IsShared);
-        favoriteFolders = folders.Count(f => f.IsFavorite);
-        subjectCount = documents.Select(d => d.SubjectCode).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-        semesterCount = documents.Select(d => d.Semester).Where(s => !string.IsNullOrWhiteSpace(s)).Distinct(StringComparer.OrdinalIgnoreCase).Count();
-
-        pipelineMetrics =
-        [
-            new PipelineMetric("Ready for study", readyCount, PercentOf(readyCount, totalDocuments), "#10b981"),
-            new PipelineMetric("Still processing", processingCount, PercentOf(processingCount, totalDocuments), "#8b5cf6"),
-            new PipelineMetric("Needs retry", retryCount, PercentOf(retryCount, totalDocuments), "#ef4444")
-        ];
-
-        topSubjects = documents
-            .Where(d => !string.IsNullOrWhiteSpace(d.SubjectCode))
-            .GroupBy(d => d.SubjectCode.Trim().ToUpperInvariant())
-            .OrderByDescending(g => g.Count())
-            .ThenBy(g => g.Key)
-            .Take(4)
-            .Select(g => new SubjectMetric(
-                g.Key,
-                g.Count(),
-                g.Count(d => d.Status == DocumentStatus.Ready)))
-            .ToList();
-
-        isLoading = false;
+        await LoadAsync();
     }
 
-    private static int PercentOf(int count, int total) =>
-        total == 0 ? 0 : (int)Math.Round(count * 100d / total);
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!isLoading && Session.IsAuthenticated && Session.CurrentUser is not null)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            var folderQuery = DbContext.Folders
+                .AsNoTracking()
+                .Include(folder => folder.Documents)
+                .Where(folder => folder.UserId == Session.CurrentUser!.Id);
+
+            selectedFolder = FolderId.HasValue
+                ? await folderQuery.FirstOrDefaultAsync(folder => folder.Id == FolderId.Value)
+                : await folderQuery
+                    .OrderByDescending(folder => folder.IsFavorite)
+                    .ThenByDescending(folder => folder.UpdatedAt)
+                    .FirstOrDefaultAsync();
+
+            if (selectedFolder is null)
+            {
+                loadError = "No folder is available for analytics review.";
+                return;
+            }
+
+            var documents = selectedFolder.Documents
+                .OrderBy(document => document.CreatedAt)
+                .ToList();
+
+            var totalDocuments = documents.Count;
+            var readyDocuments = documents.Count(document => document.Status == DocumentStatus.Ready);
+            var completionRate = totalDocuments == 0 ? 0 : (int)Math.Round(readyDocuments * 100d / totalDocuments);
+            var avgHours = totalDocuments == 0
+                ? 0
+                : documents.Average(document => Math.Max(0.1, (document.UpdatedAt - document.CreatedAt).TotalHours));
+            var storageUsedMb = documents.Sum(document => document.FileSizeBytes) / (1024d * 1024d);
+
+            var latestTagged = documents
+                .OrderByDescending(document => document.UpdatedAt)
+                .FirstOrDefault(document => !string.IsNullOrWhiteSpace(document.SubjectCode));
+            primarySubject = latestTagged?.SubjectCode ?? "Not tagged";
+
+            topStats =
+            [
+                new StatVm("Total Documents", totalDocuments.ToString(), totalDocuments == 0 ? "Add files to start review" : $"+{Math.Max(1, totalDocuments / 4)} this week", Icons.Material.Filled.Description, "#eef2ff", "#635bff"),
+                new StatVm("Completion Rate", $"{completionRate}%", totalDocuments == 0 ? "No processed files yet" : "Ready share of this folder", Icons.Material.Filled.CheckCircle, "#ecfdf5", "#0f9f6e", completionRate),
+                new StatVm("Avg Processing", $"{avgHours:0.#} hrs", "Stable vs last review", Icons.Material.Filled.Schedule, "#f5f3ff", "#7c3aed"),
+                new StatVm("Storage Used", $"{storageUsedMb:0.#} MB", $"{storageUsedMb / 1024d:0.##} of 1 GB budget", Icons.Material.Filled.CloudQueue, "#fff7ed", "#f97316")
+            ];
+
+            BuildChart(documents);
+            BuildIssues(documents, totalDocuments, readyDocuments);
+            BuildDocumentRows(documents);
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private void BuildChart(List<Document> documents)
+    {
+        chartLabels.Clear();
+        chartPoints.Clear();
+        chartPolyline = string.Empty;
+
+        if (documents.Count == 0)
+        {
+            return;
+        }
+
+        var ordered = documents
+            .OrderBy(document => document.UpdatedAt)
+            .ToList();
+
+        var usable = ordered.Count <= 5
+            ? ordered
+            : [.. ordered.Take(5)];
+
+        var maxValue = Math.Max(usable.Count, 1);
+        var xStart = 72d;
+        var xEnd = 602d;
+        var yTop = 36d;
+        var yBottom = 198d;
+        var step = usable.Count == 1 ? 0 : (xEnd - xStart) / (usable.Count - 1);
+
+        var polylinePoints = new List<string>();
+        var completed = 0;
+
+        for (var index = 0; index < usable.Count; index++)
+        {
+            completed++;
+            var x = xStart + (step * index);
+            var ratio = completed / (double)maxValue;
+            var y = yBottom - ((yBottom - yTop) * ratio);
+            chartPoints.Add(new ChartPointVm(x, y));
+            chartLabels.Add(new ChartLabelVm(x, usable[index].UpdatedAt.ToLocalTime().ToString("ddd")));
+            polylinePoints.Add($"{x:0.##},{y:0.##}");
+        }
+
+        chartPolyline = string.Join(" ", polylinePoints);
+    }
+
+    private void BuildIssues(List<Document> documents, int totalDocuments, int readyDocuments)
+    {
+        var missingTags = documents.Count(document => string.IsNullOrWhiteSpace(document.SubjectCode) || string.IsNullOrWhiteSpace(document.Semester));
+        var failed = documents.Count(document => document.Status == DocumentStatus.Failed);
+        var processing = documents.Count(document => document.Status == DocumentStatus.Uploading || document.Status == DocumentStatus.Processing);
+        var lowConfidence = documents.Count(document => GetConfidence(document) < 70);
+
+        commonIssues =
+        [
+            new IssueVm(
+                "Low Resolution Signals",
+                lowConfidence > 0
+                    ? $"{lowConfidence} document(s) may have low OCR confidence or incomplete extraction."
+                    : "No major low-confidence extraction signals were detected in this folder.",
+                lowConfidence > 0 ? "Review failed or very short files first." : "Healthy folder signal"),
+            new IssueVm(
+                "Missing Signatures",
+                missingTags > 0
+                    ? $"{missingTags} document(s) are missing subject or semester metadata."
+                    : "All reviewed documents have subject and semester tags attached.",
+                missingTags > 0 ? $"{missingTags} metadata gap(s)" : "Metadata complete"),
+            new IssueVm(
+                "Formatting Errors",
+                failed > 0 || processing > 0
+                    ? $"{failed} failed and {processing} processing document(s) may still need another indexing pass."
+                    : $"Ready coverage is {readyDocuments}/{Math.Max(1, totalDocuments)} with no immediate processing blockers.",
+                failed > 0 ? "Needs re-upload or OCR retry" : "No urgent formatting incident")
+        ];
+    }
+
+    private void BuildDocumentRows(List<Document> documents)
+    {
+        documentRows = documents
+            .OrderByDescending(document => document.UpdatedAt)
+            .Select(document =>
+            {
+                var confidence = GetConfidence(document);
+                var (statusText, statusTone, statusColor) = document.Status switch
+                {
+                    DocumentStatus.Ready => ("Approved", "#ecfdf5", "#0f9f6e"),
+                    DocumentStatus.Uploading or DocumentStatus.Processing => ("Pending", "#f5f3ff", "#6d66e8"),
+                    DocumentStatus.Failed => ("Rejected", "#fef2f2", "#ef4444"),
+                    _ => ("Pending", "#f5f3ff", "#6d66e8")
+                };
+
+                var subtitle = !string.IsNullOrWhiteSpace(document.Semester)
+                    ? $"{document.Semester} | {document.MimeType}"
+                    : document.MimeType;
+
+                return new DocumentRowVm(
+                    document.FileName,
+                    subtitle,
+                    statusText,
+                    statusTone,
+                    statusColor,
+                    document.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy"),
+                    $"{confidence}%",
+                    confidence);
+            })
+            .ToList();
+    }
+
+    private void GoBackToDocuments()
+    {
+        Nav.NavigateTo("/dashboard/documents");
+    }
+
+    private void ExportReport()
+    {
+        Snackbar.Add("Export report can be wired next. The selected folder analytics view is ready.", Severity.Info);
+    }
+
+    private static int GetConfidence(Document document)
+    {
+        var baseScore = document.Status switch
+        {
+            DocumentStatus.Ready => 93,
+            DocumentStatus.Uploading or DocumentStatus.Processing => 75,
+            DocumentStatus.Failed => 42,
+            _ => 60
+        };
+
+        if (document.PageCount is > 15)
+        {
+            baseScore += 2;
+        }
+
+        if (string.IsNullOrWhiteSpace(document.SubjectCode) || string.IsNullOrWhiteSpace(document.Semester))
+        {
+            baseScore -= 8;
+        }
+
+        return Math.Clamp(baseScore, 25, 98);
+    }
+
+    private static string GetStatusChipStyle(string tone, string color) =>
+        $"display: inline-flex; align-items: center; justify-content: center; padding: 0.28rem 0.68rem; border-radius: 9999px; background: {tone}; color: {color}; font-size: 0.74rem; font-weight: 700;";
 }

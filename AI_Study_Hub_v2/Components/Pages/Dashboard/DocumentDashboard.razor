@@ -6,19 +6,20 @@
 @inject AppDbContext DbContext
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
+@inject ISnackbar Snackbar
 
-<PageTitle>My Documents - AI Study Hub</PageTitle>
+<PageTitle>Review Pending Folders - AI Study Hub</PageTitle>
 
 <div style="display: flex; flex-direction: column; flex: 1; overflow-y: auto;">
     <div style="padding: 2rem 2.5rem 2.5rem; display: flex; flex-direction: column; gap: 1.25rem;">
         <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
             <div>
-                <h1 style="font-size: 1.9rem; font-weight: 800; letter-spacing: -0.04em; color: #111827; margin: 0;">My Documents</h1>
-                <p style="font-size: 0.95rem; color: #6b7280; margin: 0.45rem 0 0;">Track what is ready for AI study, what is still indexing, and what needs another upload pass.</p>
+                <h1 style="font-size: 1.9rem; font-weight: 800; letter-spacing: -0.04em; color: #111827; margin: 0;">Review Pending Folders</h1>
+                <p style="font-size: 0.95rem; color: #6b7280; margin: 0.45rem 0 0;">This queue is now sourced from the same `My Folders` collection shown on the Documents page, with pending folders shown first.</p>
             </div>
-            <a href="/documents/upload" style="display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.95rem; padding: 0 1rem; border-radius: 0.9rem; background: #4f46e5; color: #fff; text-decoration: none; font-size: 0.9rem; font-weight: 700;">
-                <MudIcon Icon="@Icons.Material.Filled.UploadFile" Style="font-size: 1rem;" />
-                Add document
+            <a href="/documents" style="display: inline-flex; align-items: center; gap: 0.5rem; min-height: 2.95rem; padding: 0 1rem; border-radius: 0.9rem; background: #4f46e5; color: #fff; text-decoration: none; font-size: 0.9rem; font-weight: 700;">
+                <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size: 1rem;" />
+                Open My Folders
             </a>
         </div>
 
@@ -28,43 +29,68 @@
                 <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
             </div>
         }
+        else if (!string.IsNullOrWhiteSpace(loadError))
+        {
+            <section style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 1rem; padding: 1.15rem 1.3rem; color: #9a3412;">
+                <div style="display: flex; align-items: flex-start; gap: 0.75rem;">
+                    <MudIcon Icon="@Icons.Material.Filled.WarningAmber" Style="font-size: 1.2rem; margin-top: 0.1rem;" />
+                    <div>
+                        <h2 style="font-size: 1rem; font-weight: 700; color: #9a3412; margin: 0;">Could not load My Folders review queue</h2>
+                        <p style="font-size: 0.88rem; margin: 0.35rem 0 0;">@loadError</p>
+                    </div>
+                </div>
+            </section>
+        }
         else
         {
             <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem;">
-                <StatCard Icon="@Icons.Material.Filled.Description" Title="All Files" Count="@allDocuments.ToString()" Description="Documents in your vault" BgColor="rgba(238,242,255,0.8)" IconColor="#4f46e5" />
-                <StatCard Icon="@Icons.Material.Filled.CheckCircle" Title="Ready" Count="@readyDocuments.ToString()" Description="Prepared for AI chat" BgColor="rgba(236,253,245,0.9)" IconColor="#059669" />
-                <StatCard Icon="@Icons.Material.Filled.HourglassTop" Title="Processing" Count="@processingDocuments.ToString()" Description="Still being indexed" BgColor="rgba(250,245,255,0.95)" IconColor="#9333ea" />
-                <StatCard Icon="@Icons.Material.Filled.ReportProblem" Title="Needs Retry" Count="@failedDocuments.ToString()" Description="Upload or OCR issue" BgColor="rgba(254,242,242,0.95)" IconColor="#dc2626" />
+                <StatCard Icon="@Icons.Material.Filled.Inventory2" Title="All My Folders" Count="@totalFolders.ToString()" Description="Same collection as Documents > My Folders" BgColor="rgba(238,242,255,0.8)" IconColor="#4f46e5" />
+                <StatCard Icon="@Icons.Material.Filled.HourglassTop" Title="Pending" Count="@pendingFolders.ToString()" Description="Folders still waiting for approval" BgColor="rgba(255,247,237,0.95)" IconColor="#ea580c" />
+                <StatCard Icon="@Icons.Material.Filled.CheckCircle" Title="Approved" Count="@approvedFolders.ToString()" Description="Folders already shared publicly" BgColor="rgba(236,253,245,0.9)" IconColor="#059669" />
+                <StatCard Icon="@Icons.Material.Filled.Description" Title="Documents" Count="@totalDocuments.ToString()" Description="Files across your My Folders list" BgColor="rgba(245,243,255,0.95)" IconColor="#7c3aed" />
             </div>
 
             <section style="background: #fff; border: 1px solid #eef2f7; border-radius: 1rem; overflow: hidden; box-shadow: 0 12px 24px rgba(15,23,42,0.04);">
                 <div style="padding: 1.25rem 1.5rem; border-bottom: 1px solid #eef2f7; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap;">
                     <div>
-                        <h2 style="font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0;">Recent Library Activity</h2>
-                        <p style="font-size: 0.85rem; color: #6b7280; margin: 0.35rem 0 0;">Your newest uploads and their current study-readiness.</p>
+                        <h2 style="font-size: 1.05rem; font-weight: 700; color: #111827; margin: 0;">My Folder Review Queue</h2>
+                        <p style="font-size: 0.85rem; color: #6b7280; margin: 0.35rem 0 0;">Pending folders are shown first. Approve will share a folder to the community, reject will move it back to private.</p>
                     </div>
-                    <a href="/documents" style="font-size: 0.85rem; font-weight: 700; color: #4f46e5; text-decoration: none;">Open full library</a>
+                    <button type="button"
+                            @onclick="LoadRowsAsync"
+                            disabled="@isBusy"
+                            style="display: inline-flex; align-items: center; gap: 0.45rem; border: 1px solid #dbe2f0; background: #f8fafc; color: #374151; min-height: 2.35rem; border-radius: 0.75rem; padding: 0 0.85rem; font-size: 0.82rem; font-weight: 700; cursor: pointer;">
+                        <MudIcon Icon="@Icons.Material.Filled.Refresh" Style="font-size: 1rem;" />
+                        Refresh queue
+                    </button>
                 </div>
 
                 @if (rows.Count == 0)
                 {
                     <div style="padding: 2.4rem 1.5rem; text-align: center; color: #6b7280;">
                         <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size: 2rem; color: #a5b4fc; margin-bottom: 0.75rem;" />
-                        <p style="margin: 0; font-size: 0.95rem;">No documents yet. Upload a file to start building your study vault.</p>
+                        <p style="margin: 0; font-size: 0.95rem;">No folders were found in My Folders yet.</p>
                     </div>
                 }
                 else
                 {
                     <div style="overflow-x: auto;">
-                        <table style="width: 100%; border-collapse: collapse;">
+                        <table style="width: 100%; border-collapse: collapse; table-layout: fixed;">
+                            <colgroup>
+                                <col style="width: 16.66%;" />
+                                <col style="width: 16.66%;" />
+                                <col style="width: 16.66%;" />
+                                <col style="width: 16.66%;" />
+                                <col style="width: 16.66%;" />
+                                <col style="width: 16.66%;" />
+                            </colgroup>
                             <thead>
                                 <tr style="background: #f8fafc;">
-                                    <th style="@HeaderCellStyle">Document</th>
-                                    <th style="@HeaderCellStyle">Folder</th>
+                                    <th style="@HeaderCellStyle">Folder Name</th>
                                     <th style="@HeaderCellStyle">Subject</th>
                                     <th style="@HeaderCellStyle">Semester</th>
+                                    <th style="@HeaderCellStyle">Updated Date</th>
                                     <th style="@HeaderCellStyle">Status</th>
-                                    <th style="@HeaderCellStyle">Updated</th>
                                     <th style="@HeaderCellStyle">Actions</th>
                                 </tr>
                             </thead>
@@ -74,29 +100,47 @@
                                     <tr style="border-top: 1px solid #eef2f7;">
                                         <td style="@BodyCellStyle">
                                             <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                                <div style="width: 2.2rem; height: 2.2rem; border-radius: 0.8rem; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                                    <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 1rem;" />
+                                                <div style="width: 2.45rem; height: 2.45rem; border-radius: 0.85rem; background: #eef2ff; color: #4f46e5; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                                    <MudIcon Icon="@(row.IsFavorite ? Icons.Material.Filled.FolderSpecial : Icons.Material.Filled.Folder)" Style="font-size: 1rem;" />
                                                 </div>
                                                 <div style="min-width: 0;">
-                                                    <div style="font-size: 0.9rem; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@row.FileName</div>
-                                                    <div style="font-size: 0.78rem; color: #6b7280;">@row.MimeType</div>
+                                                    <div style="font-size: 0.9rem; font-weight: 700; color: #111827; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@row.FolderName</div>
+                                                    <div style="font-size: 0.78rem; color: #6b7280;">@row.DocumentCount document(s) | @(row.IsFavorite ? "Favorite" : "Standard")</div>
                                                 </div>
                                             </div>
                                         </td>
-                                        <td style="@BodyCellStyle">@row.FolderName</td>
                                         <td style="@BodyCellStyle">@row.SubjectCode</td>
                                         <td style="@BodyCellStyle">@row.Semester</td>
+                                        <td style="@BodyCellStyle">@row.UpdatedDateText</td>
                                         <td style="@BodyCellStyle">
-                                            <span style="@GetStatusChipStyle(row.StatusLabel)">
-                                                <span style="@GetStatusDotStyle(row.StatusLabel)"></span>
-                                                @row.StatusLabel
+                                            <span style="@GetStatusChipStyle(row.IsApproved)">
+                                                <span style="@GetStatusDotStyle(row.IsApproved)"></span>
+                                                @(row.IsApproved ? "Approved" : "Pending")
                                             </span>
                                         </td>
-                                        <td style="@BodyCellStyle">@row.UpdatedText</td>
                                         <td style="@BodyCellStyle">
                                             <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-                                                <a href="/documents/@row.Id" style="@GhostActionStyle">Open</a>
-                                                <a href="@row.ChatHref" style="@PrimaryActionStyle">Ask AI</a>
+                                                <button type="button"
+                                                        @onclick="() => SetApprovalAsync(row, true)"
+                                                        disabled="@IsRowBusy(row.FolderId) || row.IsApproved"
+                                                        style="@ApproveActionStyle">
+                                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 0.95rem;" />
+                                                    Approve
+                                                </button>
+                                                <button type="button"
+                                                        @onclick="() => SetApprovalAsync(row, false)"
+                                                        disabled="@IsRowBusy(row.FolderId) || !row.IsApproved"
+                                                        style="@RejectActionStyle">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Cancel" Style="font-size: 0.95rem;" />
+                                                    Reject
+                                                </button>
+                                                <button type="button"
+                                                        @onclick="() => OpenReview(row.FolderId)"
+                                                        disabled="@IsRowBusy(row.FolderId)"
+                                                        style="@ViewActionStyle"
+                                                        title="Open folder review">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Search" Style="font-size: 1rem;" />
+                                                </button>
                                             </div>
                                         </td>
                                     </tr>
@@ -111,28 +155,34 @@
 </div>
 
 @code {
-    private sealed record DocumentRowVm(
-        Guid Id,
-        string FileName,
-        string FolderName,
-        string SubjectCode,
-        string Semester,
-        string MimeType,
-        string StatusLabel,
-        string UpdatedText,
-        string ChatHref);
-
-    private bool isLoading = true;
-    private int allDocuments;
-    private int readyDocuments;
-    private int processingDocuments;
-    private int failedDocuments;
-    private List<DocumentRowVm> rows = new();
+    private sealed class FolderQueueRowVm
+    {
+        public Guid FolderId { get; init; }
+        public string FolderName { get; init; } = string.Empty;
+        public string SubjectCode { get; init; } = string.Empty;
+        public string Semester { get; init; } = string.Empty;
+        public int DocumentCount { get; init; }
+        public bool IsFavorite { get; init; }
+        public bool IsApproved { get; init; }
+        public DateTimeOffset UpdatedAt { get; init; }
+        public string UpdatedDateText { get; init; } = string.Empty;
+    }
 
     private const string HeaderCellStyle = "padding: 0.85rem 1.25rem; text-align: left; font-size: 0.72rem; font-weight: 700; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em;";
     private const string BodyCellStyle = "padding: 1rem 1.25rem; font-size: 0.86rem; color: #475569; vertical-align: middle;";
-    private const string GhostActionStyle = "display: inline-flex; align-items: center; justify-content: center; min-height: 2.2rem; padding: 0 0.8rem; border-radius: 0.7rem; text-decoration: none; font-size: 0.78rem; font-weight: 700; color: #374151; background: #f8fafc; border: 1px solid #e5e7eb;";
-    private const string PrimaryActionStyle = "display: inline-flex; align-items: center; justify-content: center; min-height: 2.2rem; padding: 0 0.8rem; border-radius: 0.7rem; text-decoration: none; font-size: 0.78rem; font-weight: 700; color: #ffffff; background: #4f46e5; border: 1px solid #4f46e5;";
+    private const string ApproveActionStyle = "display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-height: 2.2rem; padding: 0 0.8rem; border-radius: 0.7rem; font-size: 0.78rem; font-weight: 700; color: #047857; background: #ecfdf5; border: 1px solid #a7f3d0; cursor: pointer;";
+    private const string RejectActionStyle = "display: inline-flex; align-items: center; justify-content: center; gap: 0.35rem; min-height: 2.2rem; padding: 0 0.8rem; border-radius: 0.7rem; font-size: 0.78rem; font-weight: 700; color: #b91c1c; background: #fef2f2; border: 1px solid #fecaca; cursor: pointer;";
+    private const string ViewActionStyle = "display: inline-flex; align-items: center; justify-content: center; width: 2.2rem; min-height: 2.2rem; border-radius: 0.7rem; font-size: 0.78rem; font-weight: 700; color: #374151; background: #f8fafc; border: 1px solid #e5e7eb; cursor: pointer;";
+
+    private bool isLoading = true;
+    private bool isBusy;
+    private Guid? busyFolderId;
+    private string? loadError;
+    private int totalFolders;
+    private int pendingFolders;
+    private int approvedFolders;
+    private int totalDocuments;
+    private List<FolderQueueRowVm> rows = new();
 
     protected override async Task OnInitializedAsync()
     {
@@ -142,70 +192,127 @@
             return;
         }
 
-        var documents = await DbContext.Documents
-            .Include(d => d.Folder)
-            .Where(d => d.UserId == Session.CurrentUser.Id)
-            .OrderByDescending(d => d.UpdatedAt)
-            .ToListAsync();
-
-        allDocuments = documents.Count;
-        readyDocuments = documents.Count(d => d.Status == DocumentStatus.Ready);
-        processingDocuments = documents.Count(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing);
-        failedDocuments = documents.Count(d => d.Status == DocumentStatus.Failed);
-
-        rows = documents
-            .Take(12)
-            .Select(d => new DocumentRowVm(
-                d.Id,
-                d.FileName,
-                d.Folder?.Name ?? "Unassigned",
-                string.IsNullOrWhiteSpace(d.SubjectCode) ? "Not tagged" : d.SubjectCode,
-                string.IsNullOrWhiteSpace(d.Semester) ? "Unassigned" : d.Semester,
-                d.MimeType,
-                ToStatusLabel(d.Status),
-                ToUpdatedText(d.UpdatedAt),
-                d.Status == DocumentStatus.Ready ? $"/ai/chat?documentId={d.Id}" : $"/documents/{d.Id}"))
-            .ToList();
-
-        isLoading = false;
+        await LoadRowsAsync();
     }
 
-    private static string ToStatusLabel(DocumentStatus status) =>
-        status switch
-        {
-            DocumentStatus.Ready => "Ready",
-            DocumentStatus.Uploading or DocumentStatus.Processing => "Processing",
-            DocumentStatus.Failed => "Needs Retry",
-            _ => "Processing"
-        };
-
-    private static string ToUpdatedText(DateTimeOffset updatedAt)
+    private async Task LoadRowsAsync()
     {
-        var local = updatedAt.ToLocalTime();
-        return $"{local:dd MMM yyyy} - {local:HH:mm}";
+        isLoading = true;
+        loadError = null;
+
+        try
+        {
+            var folders = await DbContext.Folders
+                .AsNoTracking()
+                .Include(folder => folder.Documents)
+                .Where(folder => folder.UserId == Session.CurrentUser!.Id)
+                .OrderByDescending(folder => folder.IsFavorite)
+                .ThenBy(folder => folder.IsShared)
+                .ThenByDescending(folder => folder.UpdatedAt)
+                .ToListAsync();
+
+            rows = folders
+                .Select(folder =>
+                {
+                    var firstDocument = folder.Documents
+                        .OrderByDescending(document => document.UpdatedAt)
+                        .FirstOrDefault();
+
+                    return new FolderQueueRowVm
+                    {
+                        FolderId = folder.Id,
+                        FolderName = folder.Name,
+                        SubjectCode = firstDocument?.SubjectCode ?? "Not tagged",
+                        Semester = firstDocument?.Semester ?? "Unassigned",
+                        DocumentCount = folder.Documents.Count,
+                        IsFavorite = folder.IsFavorite,
+                        IsApproved = folder.IsShared,
+                        UpdatedAt = folder.UpdatedAt,
+                        UpdatedDateText = folder.UpdatedAt.ToLocalTime().ToString("dd MMM yyyy")
+                    };
+                })
+                .OrderBy(row => row.IsApproved)
+                .ThenByDescending(row => row.IsFavorite)
+                .ThenByDescending(row => row.UpdatedAt)
+                .ToList();
+
+            totalFolders = rows.Count;
+            pendingFolders = rows.Count(row => !row.IsApproved);
+            approvedFolders = rows.Count(row => row.IsApproved);
+            totalDocuments = rows.Sum(row => row.DocumentCount);
+        }
+        catch (Exception ex)
+        {
+            loadError = ex.Message;
+            rows = new List<FolderQueueRowVm>();
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
-    private static string GetStatusChipStyle(string status)
+    private async Task SetApprovalAsync(FolderQueueRowVm row, bool approve)
     {
-        var (bg, color) = status switch
+        if (Session.CurrentUser == null)
         {
-            "Ready" => ("#eefbf3", "#047857"),
-            "Processing" => ("#f5f3ff", "#7c3aed"),
-            _ => ("#fef2f2", "#dc2626")
-        };
+            Nav.NavigateTo("/login");
+            return;
+        }
 
-        return $"display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.28rem 0.68rem; border-radius: 9999px; background: {bg}; color: {color}; font-size: 0.74rem; font-weight: 700;";
+        busyFolderId = row.FolderId;
+        isBusy = true;
+
+        try
+        {
+            var folder = await DbContext.Folders.FirstOrDefaultAsync(item => item.Id == row.FolderId && item.UserId == Session.CurrentUser.Id);
+            if (folder is null)
+            {
+                Snackbar.Add("This folder no longer exists in My Folders.", Severity.Warning);
+                await LoadRowsAsync();
+                return;
+            }
+
+            folder.IsShared = approve;
+            folder.SharedAt = approve ? DateTimeOffset.UtcNow : null;
+
+            await DbContext.SaveChangesAsync();
+            Snackbar.Add(
+                approve
+                    ? $"Approved \"{row.FolderName}\" and shared it to the community."
+                    : $"Rejected \"{row.FolderName}\" and moved it back to private.",
+                Severity.Success);
+
+            await LoadRowsAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not update folder status: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            busyFolderId = null;
+            isBusy = false;
+        }
     }
 
-    private static string GetStatusDotStyle(string status)
+    private void OpenReview(Guid folderId)
     {
-        var color = status switch
-        {
-            "Ready" => "#10b981",
-            "Processing" => "#8b5cf6",
-            _ => "#ef4444"
-        };
+        Nav.NavigateTo($"/dashboard/analytics?folderId={folderId}");
+    }
 
+    private bool IsRowBusy(Guid folderId) => isBusy && busyFolderId == folderId;
+
+    private static string GetStatusChipStyle(bool isApproved)
+    {
+        var background = isApproved ? "#ecfdf5" : "rgba(243,232,255,0.86)";
+        var color = isApproved ? "#047857" : "#7e22ce";
+        return $"display: inline-flex; align-items: center; gap: 0.4rem; padding: 0.28rem 0.68rem; border-radius: 9999px; background: {background}; color: {color}; font-size: 0.74rem; font-weight: 700;";
+    }
+
+    private static string GetStatusDotStyle(bool isApproved)
+    {
+        var color = isApproved ? "#10b981" : "#9333ea";
         return $"width: 0.42rem; height: 0.42rem; border-radius: 9999px; background: {color};";
     }
 }
