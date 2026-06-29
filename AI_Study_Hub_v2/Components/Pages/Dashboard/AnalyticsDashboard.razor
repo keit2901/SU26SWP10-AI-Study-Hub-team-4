@@ -3,6 +3,7 @@
 @using AI_Study_Hub_v2.Components.Layout
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Data
+@using Microsoft.EntityFrameworkCore
 @inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
@@ -304,6 +305,14 @@
     private double storageUsedMb;
     private List<AnalyticsIssueDto>? issuesList;
     private List<AnalyticsDocumentDto>? documentsList;
+
+    [SupplyParameterFromQuery]
+    public Guid? folderId { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? folderName { get; set; }
+
+    private string _folderName = "";
 
     protected override async Task OnInitializedAsync()
     {
