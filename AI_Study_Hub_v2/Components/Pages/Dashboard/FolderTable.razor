@@ -1,5 +1,3 @@
-@inject NavigationManager Nav
-
 <div style="background: #fff; border-radius: 1rem; box-shadow: 0 2px 10px -4px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: hidden; margin-top: 2rem;">
     <div style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start;">
         <div>
@@ -25,7 +23,7 @@
             <tbody>
                 @foreach (var folder in Folders)
                 {
-                    <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" class="dashboard-row" @onclick="() => HandleRowClick(folder.Id)">
+                    <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" class="dashboard-row" @onclick="() => OnFolderClick.InvokeAsync(folder)">
                         <td style="padding: 1rem 1.5rem;">
                             <div style="display: flex; align-items: center;">
                                 <MudIcon Icon="@Icons.Material.Filled.Folder" Style="font-size: 1rem; color: #9ca3af; margin-right: 0.75rem;" />
@@ -113,9 +111,5 @@
             _ => "#9ca3af"
         };
         return $"display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 9999px; margin-right: 0.375rem; background: {dotColor};";
-    }
-    private void HandleRowClick(Guid folderId)
-    {
-        Nav.NavigateTo($"/dashboard/analytics?folderId={folderId}");
     }
 }

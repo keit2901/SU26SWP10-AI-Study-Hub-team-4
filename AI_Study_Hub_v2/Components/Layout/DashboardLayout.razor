@@ -2,7 +2,6 @@
 @layout MainLayout
 @inject NavigationManager Nav
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
-@inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
 
 <div style="display: flex; min-height: calc(100vh - 4.5rem); background: #faf9fe; overflow: hidden; font-family: 'Inter', sans-serif;">
     <!-- Sidebar -->
@@ -35,20 +34,18 @@
 </div>
 
 @code {
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
-        if (!Session.IsAuthenticated)
-        {
-            var restored = await AuthPersistence.TryRestoreAsync();
-            if (restored is not null)
-            {
-                Session.Set(restored);
-            }
-        }
-
         if (!Session.IsAuthenticated || Session.CurrentUser == null)
         {
             Nav.NavigateTo("/login");
+            return;
+        }
+
+        var role = Session.CurrentUser.Role;
+        if (role != "Moderator" && role != "Admin")
+        {
+            Nav.NavigateTo("/profile");
             return;
         }
     }
