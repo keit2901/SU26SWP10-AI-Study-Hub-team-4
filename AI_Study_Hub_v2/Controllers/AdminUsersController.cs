@@ -63,6 +63,42 @@ public sealed class AdminUsersController : ControllerBase
         }
     }
 
+    [HttpPatch("{id:guid}/role")]
+    [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminUserDto>> UpdateRole(
+        Guid id,
+        [FromBody] UpdateUserRoleRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _users.UpdateRoleAsync(
+                GetSupabaseUserId(),
+                id,
+                request.Role,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.TraceIdentifier,
+                cancellationToken);
+            return Ok(result);
+        }
+        catch (AdminException ex)
+        {
+            return StatusCode(ex.StatusCode, new ApiErrorResponse { Code = ex.Code, Message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected admin role change failure for user {UserId} to {Role}.", id, request.Role);
+            return StatusCode(500, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while changing the role."
+            });
+        }
+    }
+
     private Guid GetSupabaseUserId()
     {
         var value = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");

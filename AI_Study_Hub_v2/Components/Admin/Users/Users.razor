@@ -170,6 +170,10 @@
                         </ActivatorContent>
                         <ChildContent>
                             <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => OpenQuotaSheet(cell.Item))">Edit quota</MudMenuItem>
+                            @if (GetAssignableRoles(cell.Item).Any())
+                            {
+                                <MudMenuItem Icon="@Icons.Material.Filled.AdminPanelSettings" OnClick="@(() => OpenRoleSheet(cell.Item))">Change role</MudMenuItem>
+                            }
                         </ChildContent>
                     </MudMenu>
                 </CellTemplate>
@@ -221,27 +225,74 @@
     </FooterContent>
 </EntitySheet>
 
+<EntitySheet Open="@_roleSheetOpen"
+             OpenChanged="@(value => _roleSheetOpen = value)"
+             Title="Change role"
+             Subtitle="Assign a new role to this user. Their sessions will be reset after role change."
+             Width="480px">
+    <ChildContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                Role changes are permanent, logged to audit trail, and the user will be signed out on all devices.
+            </MudAlert>
+            <MudTextField Value="@_roleEdit.UserName" Label="User" Variant="Variant.Outlined" ReadOnly="true" />
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                <MudText Typo="Typo.caption">Current role:</MudText>
+                <MudChip T="string" Color="@GetRoleColor(_roleEdit.CurrentRole)" Variant="Variant.Outlined" Size="Size.Small">@_roleEdit.CurrentRole</MudChip>
+            </MudStack>
+            <MudSelect T="string" Value="@_roleEdit.SelectedRole" ValueChanged="OnRoleSelectedAsync" Label="New role" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var role in GetAssignableRoles(_roleEdit.UserRow))
+                {
+                    <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
+                }
+            </MudSelect>
+            @if (!string.IsNullOrWhiteSpace(_roleEdit.SelectedRole)
+                 && !_roleEdit.SelectedRole.Equals(_roleEdit.CurrentRole, StringComparison.OrdinalIgnoreCase))
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                    Changing @_roleEdit.UserName from <b>@_roleEdit.CurrentRole</b> to <b>@_roleEdit.SelectedRole</b>.
+                </MudAlert>
+            }
+        </MudStack>
+    </ChildContent>
+    <FooterContent>
+        <MudButton Variant="Variant.Text" OnClick="CloseRoleSheet">Cancel</MudButton>
+        <MudButton Color="Color.Warning" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.AdminPanelSettings" OnClick="SaveRoleAsync" Disabled="@(_isSavingRole)">
+            Change role
+        </MudButton>
+    </FooterContent>
+</EntitySheet>
+
 @code {
     private const string StudentRole = "Student";
     private const string AdminRole = "Admin";
+    private const string ModeratorRole = "Moderator";
     private const string ActiveStatus = "Active";
     private const string InactiveStatus = "Inactive";
     private const string QuotaNormal = "Normal";
     private const string QuotaWarning = "Warning";
     private const string QuotaExceeded = "Exceeded";
 
+    private static readonly HashSet<string> AssignableRoleNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ModeratorRole, StudentRole,
+    };
+
     private readonly List<UserRow> _users = new();
     private readonly List<RoleOption> _roles = new();
     private bool _isLoading = true;
     private bool _inviteSheetOpen;
     private bool _quotaSheetOpen;
+    private bool _roleSheetOpen;
     private bool _isInviting;
+    private bool _isSavingRole;
     private string? _searchText;
     private string? _selectedRole;
     private string? _selectedStatus;
     private string? _selectedQuotaRisk;
     private string? _errorMessage;
     private QuotaEditModel _quotaEdit = new();
+    private RoleEditModel _roleEdit = new();
     private bool _loadStarted;
 
     private IEnumerable<UserRow> FilteredUsers => _users
@@ -400,19 +451,6 @@
             || user.Role.Equals(_selectedRole, StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool IsRoleChangeDisabled(UserRow user, string targetRole)
-    {
-        return user.Role.Equals(targetRole, StringComparison.OrdinalIgnoreCase)
-            || (IsCurrentAdmin(user) && !targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string GetRoleIcon(string role)
-    {
-        return role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase)
-            ? Icons.Material.Filled.AdminPanelSettings
-            : Icons.Material.Filled.Badge;
-    }
-
     private bool MatchesStatus(UserRow user)
     {
         return _selectedStatus switch
@@ -477,51 +515,6 @@
     private void OpenDetails(UserRow user)
     {
         Navigation.NavigateTo($"/admin/users/{user.Id}");
-    }
-
-    private async Task ChangeRoleAsync(UserRow user, string targetRole)
-    {
-        if (!AvailableRoleNames.Contains(targetRole, StringComparer.OrdinalIgnoreCase))
-        {
-            Snackbar.Add($"Role '{targetRole}' is not present in the database roles list.", Severity.Error);
-            return;
-        }
-
-        if (IsCurrentAdmin(user) && !targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase))
-        {
-            Snackbar.Add("You cannot demote your own administrator account.", Severity.Error);
-            return;
-        }
-
-        if (user.Role.Equals(targetRole, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        var parameters = new DialogParameters
-        {
-            ["Title"] = "Change user role",
-            ["Message"] = $"Change {user.FullName} from {user.Role} to {targetRole}? This affects authorization claims and should be audited.",
-            ["ConfirmText"] = "Change role",
-            ["ConfirmColor"] = Color.Warning,
-            ["IconColor"] = Color.Warning,
-            ["Icon"] = Icons.Material.Filled.AdminPanelSettings
-        };
-
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Change user role", parameters);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false })
-        {
-            var previousRole = user.Role;
-            user.Role = targetRole;
-            if (targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase) && user.DailyTokenQuota < 75_000)
-            {
-                user.DailyTokenQuota = 75_000;
-            }
-
-            Snackbar.Add($"{user.FullName} changed from {previousRole} to {targetRole}. Audit log entry queued.", Severity.Success);
-        }
     }
 
     private async Task ToggleActiveAsync(UserRow user)
@@ -635,6 +628,87 @@
 
     private bool IsCurrentAdmin(UserRow user) => user.Id == Session.CurrentUser?.Id;
 
+    private IReadOnlyList<string> GetAssignableRoles(UserRow user)
+    {
+        if (IsCurrentAdmin(user))
+        {
+            return Array.Empty<string>();
+        }
+
+        if (user.Role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase))
+        {
+            return Array.Empty<string>();
+        }
+
+        return AssignableRoleNames
+            .Where(role => !role.Equals(user.Role, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(role => role.Equals(ModeratorRole, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ToList();
+    }
+
+    private void OpenRoleSheet(UserRow user)
+    {
+        _roleEdit = RoleEditModel.FromUser(user);
+        _roleSheetOpen = true;
+    }
+
+    private Task CloseRoleSheet()
+    {
+        _roleSheetOpen = false;
+        _roleEdit = new RoleEditModel();
+        return Task.CompletedTask;
+    }
+
+    private Task OnRoleSelectedAsync(string value)
+    {
+        _roleEdit.SelectedRole = value;
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveRoleAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_roleEdit.SelectedRole))
+        {
+            Snackbar.Add("Please select a role.", Severity.Error);
+            return;
+        }
+
+        if (_roleEdit.SelectedRole.Equals(_roleEdit.CurrentRole, StringComparison.OrdinalIgnoreCase))
+        {
+            Snackbar.Add("The selected role is the same as the current role.", Severity.Info);
+            return;
+        }
+
+        var user = _users.FirstOrDefault(item => item.Id == _roleEdit.UserId);
+        if (user is null)
+        {
+            Snackbar.Add("User no longer exists in the current result set.", Severity.Error);
+            return;
+        }
+
+        _isSavingRole = true;
+        try
+        {
+            var updated = await AdminApi.UpdateRoleAsync(
+                Session.AccessToken!,
+                user.Id,
+                _roleEdit.SelectedRole);
+
+            var previousRole = user.Role;
+            user.Role = updated.Role;
+            _roleSheetOpen = false;
+            Snackbar.Add($"{user.FullName} changed from {previousRole} to {updated.Role}. User sessions revoked.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Role change failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSavingRole = false;
+        }
+    }
+
     private static string GetQuotaLabel(UserRow user)
     {
         return user.TokenUsagePercent >= 100 ? QuotaExceeded : user.TokenUsagePercent >= 85 ? QuotaWarning : QuotaNormal;
@@ -727,6 +801,26 @@
                 UserName = $"{user.FullName} ({user.Email})",
                 DailyTokenQuota = user.DailyTokenQuota,
                 TokensUsedToday = user.TokensUsedToday
+            };
+        }
+    }
+
+    private sealed class RoleEditModel
+    {
+        public Guid UserId { get; set; }
+        public string UserName { get; set; } = string.Empty;
+        public string CurrentRole { get; set; } = string.Empty;
+        public string SelectedRole { get; set; } = string.Empty;
+        public UserRow? UserRow { get; set; }
+
+        public static RoleEditModel FromUser(UserRow user)
+        {
+            return new RoleEditModel
+            {
+                UserId = user.Id,
+                UserName = $"{user.FullName} ({user.Email})",
+                CurrentRole = user.Role,
+                UserRow = user,
             };
         }
     }

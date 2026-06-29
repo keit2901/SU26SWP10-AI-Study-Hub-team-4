@@ -153,6 +153,38 @@ public sealed class GoTrueClient : IGoTrueClient
         return null;
     }
 
+    public async Task<GoTrueUser> AdminUpdateUserByIdAsync(Guid userId, Dictionary<string, object?>? appMetadata, CancellationToken cancellationToken = default)
+    {
+        var path = $"admin/users/{userId}";
+        using var req = BuildAdminRequest(HttpMethod.Put, path);
+
+        var body = new Dictionary<string, object?>();
+        if (appMetadata is not null)
+        {
+            body["app_metadata"] = appMetadata;
+        }
+
+        req.Content = JsonContent.Create(body);
+        using var resp = await _http.SendAsync(req, cancellationToken);
+        if (!resp.IsSuccessStatusCode)
+        {
+            await ThrowFromGoTrueAsync(resp, "admin_update_user", cancellationToken);
+        }
+        var user = await resp.Content.ReadFromJsonAsync<GoTrueUser>(cancellationToken: cancellationToken);
+        return user ?? throw new AuthException(500, "gotrue_empty_response", "GoTrue returned empty user from admin update.");
+    }
+
+    public async Task AdminSignOutUserAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        var path = $"admin/users/{userId}/logout";
+        using var req = BuildAdminRequest(HttpMethod.Post, path);
+        using var resp = await _http.SendAsync(req, cancellationToken);
+        if (resp.StatusCode != HttpStatusCode.NoContent && !resp.IsSuccessStatusCode)
+        {
+            await ThrowFromGoTrueAsync(resp, "admin_logout_user", cancellationToken);
+        }
+    }
+
     private HttpRequestMessage BuildAdminRequest(HttpMethod method, string path)
     {
         var req = new HttpRequestMessage(method, path);
@@ -244,6 +276,8 @@ public sealed class GoTrueClient : IGoTrueClient
         ("get_user", _) => "get_user_failed",
         ("admin_create_user", _) => "admin_create_failed",
         ("admin_list_users", _) => "admin_list_failed",
+        ("admin_update_user", _) => "admin_update_failed",
+        ("admin_logout_user", _) => "admin_logout_failed",
         _ => "gotrue_request_failed",
     };
 }

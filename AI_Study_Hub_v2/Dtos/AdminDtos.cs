@@ -22,6 +22,13 @@ public sealed class UpdateUserQuotaRequest
     public long DailyTokenQuota { get; set; }
 }
 
+public sealed class UpdateUserRoleRequest
+{
+    [Required]
+    [StringLength(50)]
+    public string Role { get; set; } = string.Empty;
+}
+
 public sealed record AuditLogDto(
     Guid Id,
     Guid? ActorUserId,

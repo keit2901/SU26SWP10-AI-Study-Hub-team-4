@@ -43,6 +43,31 @@ public sealed class AdminApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public async Task<AdminUserDto> UpdateRoleAsync(
+        string accessToken,
+        Guid userId,
+        string roleName,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Patch,
+            $"api/admin/users/{userId}/role",
+            accessToken);
+        request.Content = JsonContent.Create(new UpdateUserRoleRequest
+        {
+            Role = roleName,
+        });
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return await response.Content.ReadFromJsonAsync<AdminUserDto>(cancellationToken: cancellationToken)
+                ?? throw new DocumentApiException(500, "empty_response", "Server returned an empty response.");
+        }
+        await ThrowFromResponseAsync(response, cancellationToken);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     public Task<IReadOnlyList<AuditLogDto>> ListAuditLogsAsync(
         string accessToken,
         int limit = 200,
