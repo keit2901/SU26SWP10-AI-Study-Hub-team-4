@@ -2,9 +2,12 @@
 @layout AI_Study_Hub_v2.Components.Layout.DashboardLayout
 @using AI_Study_Hub_v2.Components.Layout
 @using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Data
+@using Microsoft.EntityFrameworkCore
 @inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
+@inject AppDbContext DbContext
 
 <PageTitle>Analytics - AI Study Hub</PageTitle>
 
@@ -14,7 +17,9 @@
         <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem;">
             <span style="font-weight: 600; color: #464554;">Analytics</span>
             <span style="color: #c7c4d7;">›</span>
-            <span style="font-weight: 700; color: #1a1b1f;">Overall Account Analytics</span>
+            <span style="font-weight: 700; color: #1a1b1f;">
+                @(folderId.HasValue ? $"Folder: {_folderName}" : "Overall Account Analytics")
+            </span>
         </div>
 
         <div style="display: flex; align-items: center; gap: 1.5rem;">
@@ -286,6 +291,14 @@
     private List<AnalyticsIssueDto>? issuesList;
     private List<AnalyticsDocumentDto>? documentsList;
 
+    [SupplyParameterFromQuery]
+    public Guid? folderId { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? folderName { get; set; }
+
+    private string _folderName = "";
+
     protected override async Task OnInitializedAsync()
     {
         if (!Session.IsAuthenticated || Session.CurrentUser == null)
@@ -296,6 +309,16 @@
 
         try
         {
+            // Resolve folder name from query or database
+            _folderName = folderName ?? "";
+            if (folderId.HasValue && string.IsNullOrWhiteSpace(_folderName))
+            {
+                var folder = await DbContext.Folders
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(f => f.Id == folderId.Value);
+                _folderName = folder?.Name ?? "Unknown Folder";
+            }
+
             var analytics = await DashboardService.GetUserAnalyticsAsync(Session.CurrentUser.Id);
             
             totalDocuments = analytics.TotalDocuments;

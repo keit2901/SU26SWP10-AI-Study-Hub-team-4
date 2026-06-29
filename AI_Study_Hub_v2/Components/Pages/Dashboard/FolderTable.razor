@@ -23,7 +23,7 @@
             <tbody>
                 @foreach (var folder in Folders)
                 {
-                    <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" class="dashboard-row">
+                    <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" class="dashboard-row" @onclick="() => OnFolderClick.InvokeAsync(folder)">
                         <td style="padding: 1rem 1.5rem;">
                             <div style="display: flex; align-items: center;">
                                 <MudIcon Icon="@Icons.Material.Filled.Folder" Style="font-size: 1rem; color: #9ca3af; margin-right: 0.75rem;" />
@@ -62,6 +62,9 @@
 @code {
     [Parameter]
     public IEnumerable<FolderViewModel> Folders { get; set; } = new List<FolderViewModel>();
+
+    [Parameter]
+    public EventCallback<FolderViewModel> OnFolderClick { get; set; }
 
     private string GetSubjectStyle(string status)
     {
