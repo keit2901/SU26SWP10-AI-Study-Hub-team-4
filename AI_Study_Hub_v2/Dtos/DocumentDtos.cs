@@ -50,6 +50,8 @@ public sealed class DocumentDto
 
     public DocumentStatus Status { get; set; }
 
+    public AI_Study_Hub_v2.Data.Entities.DocumentReviewStatus ReviewStatus { get; set; }
+
     public string? ErrorMessage { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
@@ -58,6 +60,9 @@ public sealed class DocumentDto
 
     /// <summary>Optional Supabase Storage signed URL (5 min TTL). Only set on detail endpoint.</summary>
     public string? DownloadUrl { get; set; }
+
+    /// <summary>Folder display name (populated by admin dashboard queries).</summary>
+    public string? FolderName { get; set; }
 }
 
 /// <summary>
@@ -124,7 +129,7 @@ public sealed class FolderDto
 
     public bool IsFavorite { get; set; }
 
-    public bool IsShared { get; set; }
+    public AI_Study_Hub_v2.Data.Entities.FolderStatus ShareStatus { get; set; }
 
     public DateTimeOffset? SharedAt { get; set; }
 
@@ -173,8 +178,6 @@ public sealed class UpdateFolderRequest
     public string? Icon { get; set; }
 
     public bool? IsFavorite { get; set; }
-
-    public bool? IsShared { get; set; }
 }
 
 public sealed class VoteRequest

@@ -110,8 +110,8 @@ public sealed class FoldersController : ControllerBase
     [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<FolderDto>> ToggleShare(Guid id, CancellationToken cancellationToken)
-        => await ExecuteAsync(() => _service.ToggleShareAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
+    public async Task<ActionResult<FolderDto>> RequestShare(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.RequestShareAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]

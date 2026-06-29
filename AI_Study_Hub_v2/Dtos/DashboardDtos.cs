@@ -42,6 +42,8 @@ public record UserAnalyticsDto(
     double StorageUsedMb,
     System.Collections.Generic.List<double> DailyUploadCounts,
     System.Collections.Generic.List<string> DailyUploadLabels,
+    System.Collections.Generic.List<double> DailyApprovedCounts,
+    System.Collections.Generic.List<double> DailyRejectedCounts,
     System.Collections.Generic.List<AnalyticsIssueDto> CommonIssues,
     System.Collections.Generic.List<AnalyticsDocumentDto> RecentDocuments
 );

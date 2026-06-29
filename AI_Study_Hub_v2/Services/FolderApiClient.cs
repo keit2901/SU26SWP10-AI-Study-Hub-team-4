@@ -170,7 +170,7 @@ public sealed class FolderApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
-    public async Task<FolderDto> ToggleShareAsync(string accessToken, Guid id, CancellationToken ct = default)
+    public async Task<FolderDto> RequestShareAsync(string accessToken, Guid id, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
 

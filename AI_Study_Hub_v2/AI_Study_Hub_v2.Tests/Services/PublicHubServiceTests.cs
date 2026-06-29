@@ -79,10 +79,9 @@ public sealed class PublicHubServiceTests
         var folder = SeedFolder(db, owner.Id, isShared: false);
         var sut = BuildSut(db);
 
-        var result = await sut.ToggleShareAsync(owner.SupabaseUserId, folder.Id);
+        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
 
-        result.IsShared.Should().BeTrue();
-        result.SharedAt.Should().NotBeNull();
+        result.ShareStatus.Should().Be(FolderStatus.PendingShare);
     }
 
     [Test]
@@ -144,7 +143,7 @@ public sealed class PublicHubServiceTests
         var saved = await sut.CopySharedFolderAsync(viewer.SupabaseUserId, folder.Id);
 
         saved.DocumentCount.Should().Be(1);
-        saved.IsShared.Should().BeFalse();
+        saved.ShareStatus.Should().Be(FolderStatus.None);
         var copiedDocument = db.Documents.Single(document => document.FolderId == saved.Id);
         copiedDocument.UserId.Should().Be(viewer.Id);
         copiedDocument.StoragePath.Should().NotBe(sourceDocument.StoragePath);
@@ -168,7 +167,7 @@ public sealed class PublicHubServiceTests
         var saved = await sut.CopySharedFolderAsync(viewer.SupabaseUserId, source.Id);
 
         saved.Name.Should().Be($"{source.Name} (2)");
-        saved.IsShared.Should().BeFalse();
+        saved.ShareStatus.Should().Be(FolderStatus.None);
     }
 
     [Test]
@@ -329,7 +328,7 @@ public sealed class PublicHubServiceTests
             Id = Guid.NewGuid(),
             UserId = userId,
             Name = $"Folder {Guid.NewGuid():N}"[..20],
-            IsShared = isShared,
+            ShareStatus = isShared ? FolderStatus.Approved : FolderStatus.None,
             SharedAt = isShared ? DateTimeOffset.UtcNow : null,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,

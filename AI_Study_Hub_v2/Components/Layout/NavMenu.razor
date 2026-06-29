@@ -19,7 +19,10 @@
                 {
                     <a class="nav-pill @NavClass("admin")" href="admin">Admin Panel</a>
                 }
-                <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                @if (IsModeratorOrAdmin)
+                {
+                    <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                }
                 <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
                 <a class="nav-pill @NavClass("community")" href="community">Community</a>
                 <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
@@ -77,6 +80,8 @@
 
     private bool IsModerator =>
         Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsModeratorOrAdmin => IsAdmin || IsModerator;
 
     private string ProfileHref => IsAdmin
         ? "admin"

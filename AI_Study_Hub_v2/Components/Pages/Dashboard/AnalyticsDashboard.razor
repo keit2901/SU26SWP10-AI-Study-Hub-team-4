@@ -8,6 +8,8 @@
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
 @inject AppDbContext DbContext
+@inject ISnackbar Snackbar
+@using AI_Study_Hub_v2.Data.Entities
 
 <PageTitle>Analytics - AI Study Hub</PageTitle>
 
@@ -29,11 +31,6 @@
                 <button style="padding: 0.25rem; border-radius: 9999px; background: transparent; border: none; cursor: pointer;">
                     <MudIcon Icon="@Icons.Material.Filled.Notifications" Style="font-size: 1.25rem; color: #464554;" />
                 </button>
-                <div style="width: 2rem; height: 2rem; border-radius: 9999px; background: #5e5ce6; border: 2px solid #c2c1ff; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                    <span style="font-size: 0.75rem; color: white; font-weight: bold;">
-                        @(Session.CurrentUser?.Username?.Substring(0, Math.Min(2, Session.CurrentUser.Username.Length)).ToUpper() ?? "US")
-                    </span>
-                </div>
             </div>
         </div>
     </div>
@@ -49,12 +46,52 @@
             </div>
             @if (FolderId.HasValue)
             {
-                <button @onclick="NavigateToFolderDocuments" style="display: inline-flex; align-items: center; gap: 0.5rem; background: #5e5ce6; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(94, 92, 230, 0.25);"
-                        onmouseover="this.style.background='#4a48cc'; this.style.transform='translateY(-1px)';"
-                        onmouseout="this.style.background='#5e5ce6'; this.style.transform='none';">
-                    <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size: 1.25rem; color: white;" />
-                    Inspect Documents
-                </button>
+                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                    @if (_folderShareStatus == FolderStatus.PendingShare)
+                    {
+                        @if (!_allDocumentsReviewed)
+                        {
+                            <span style="display: inline-flex; align-items: center; gap: 0.5rem; background: #e3e2e7; color: #6b7280; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.8125rem; font-weight: 600;">
+                                <MudIcon Icon="@Icons.Material.Filled.Lock" Style="font-size: 1rem;" />
+                                Review all documents before approving folder
+                            </span>
+                        }
+                        else if (_hasRejectedDocument)
+                        {
+                            <button @onclick="ApproveFolderShare" disabled
+                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #d1d5db; color: #9ca3af; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: not-allowed; box-shadow: none;">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 1.25rem;" />
+                                Approve
+                            </button>
+                            <button @onclick="RejectFolderShare"
+                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(220,38,38,0.2);"
+                                    onmouseover="this.style.background='#b91c1c'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#dc2626'; this.style.transform='none';">
+                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Style="font-size: 1.25rem; color: white;" />
+                                Reject
+                            </button>
+                        }
+                        else
+                        {
+                            <button @onclick="ApproveFolderShare"
+                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #059669; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(5,150,105,0.25);"
+                                    onmouseover="this.style.background='#047857'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#059669'; this.style.transform='none';">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 1.25rem; color: white;" />
+                                Approve
+                            </button>
+                            <button @onclick="RejectFolderShare"
+                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(220,38,38,0.2);"
+                                    onmouseover="this.style.background='#b91c1c'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#dc2626'; this.style.transform='none';">
+                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Style="font-size: 1.25rem; color: white;" />
+                                Reject
+                            </button>
+                        }
+                    }
+                    <button @onclick="NavigateToFolderDocuments" style="display: inline-flex; align-items: center; gap: 0.5rem; background: #5e5ce6; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(94, 92, 230, 0.25);"
+                            onmouseover="this.style.background='#4a48cc'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#5e5ce6'; this.style.transform='none';">
+                        <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size: 1.25rem; color: white;" />
+                        Inspect Documents
+                    </button>
+                </div>
             }
         </div>
 
@@ -151,21 +188,21 @@
                 <!-- Chart Container -->
                 <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
-                        <h3 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Document Upload Progress</h3>
+                        <h3 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Document Moderation Progress</h3>
                         <div style="background: #1a1b1f; color: white; font-size: 0.6875rem; font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 0.25rem; display: flex; align-items: center; gap: 0.375rem;">
-                            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #5e5ce6;"></span>
+                            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #059669;"></span>
                             Last 7 Days Activity
                         </div>
                     </div>
                     
-                    @if (Series.Any())
+                    @if (SeriesApproved.Any() || SeriesRejected.Any())
                     {
-                        <MudChart ChartType="ChartType.Line" ChartSeries="@Series" XAxisLabels="@XAxisLabels" Width="100%" Height="320px" ChartOptions="options" />
+                        <MudChart ChartType="ChartType.Line" ChartSeries="@SeriesAll" XAxisLabels="@XAxisLabels" Width="100%" Height="320px" ChartOptions="@_chartOptions" />
                     }
                     else
                     {
                         <div style="height: 320px; display: flex; align-items: center; justify-content: center; color: #6b7280;">
-                            No upload activity data available.
+                            No moderation activity data available.
                         </div>
                     }
                 </div>
@@ -247,12 +284,12 @@
                                         </td>
                                         <td style="padding: 1rem 1.5rem;">
                                             @{
-                                                var isReady = string.Equals(doc.Status, "Ready", StringComparison.OrdinalIgnoreCase);
-                                                var isPending = string.Equals(doc.Status, "Uploading", StringComparison.OrdinalIgnoreCase) || string.Equals(doc.Status, "Processing", StringComparison.OrdinalIgnoreCase);
+                                                var isApproved = string.Equals(doc.Status, "Approved", StringComparison.OrdinalIgnoreCase);
+                                                var isRejected = string.Equals(doc.Status, "Rejected", StringComparison.OrdinalIgnoreCase);
                                                 
-                                                var bg = isReady ? "rgba(0,100,36,0.1)" : isPending ? "rgba(94,92,230,0.1)" : "rgba(194,60,33,0.1)";
-                                                var color = isReady ? "#006424" : isPending ? "#5e5ce6" : "#c23c21";
-                                                var text = isReady ? "Approved" : isPending ? "Pending" : "Rejected";
+                                                var bg = isApproved ? "rgba(0,100,36,0.1)" : isRejected ? "rgba(194,60,33,0.1)" : "rgba(94,92,230,0.08)";
+                                                var color = isApproved ? "#006424" : isRejected ? "#c23c21" : "#5e5ce6";
+                                                var text = isApproved ? "Approved" : isRejected ? "Rejected" : "Pending";
                                             }
                                             <span style="padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.375rem; background: @bg; color: @color;">
                                                 <span style="width: 0.375rem; height: 0.375rem; border-radius: 9999px; background: @color;"></span>
@@ -283,11 +320,17 @@
 </div>
 
 @code {
-    private ChartOptions options = new ChartOptions
+    private ChartOptions _chartOptions = new ChartOptions
     {
-        ChartPalette = new[] { "#5e5ce6" }
+        ChartPalette = new[] { "#059669", "#dc2626" }
     };
-    public List<ChartSeries<double>> Series = new List<ChartSeries<double>>();
+    public List<ChartSeries<double>> SeriesAll => new()
+    {
+        new ChartSeries<double> { Name = "Approved", Data = SeriesApproved.ToArray() },
+        new ChartSeries<double> { Name = "Rejected", Data = SeriesRejected.ToArray() }
+    };
+    public List<double> SeriesApproved = new();
+    public List<double> SeriesRejected = new();
     public string[] XAxisLabels = Array.Empty<string>();
 
     [Parameter]
@@ -305,14 +348,10 @@
     private double storageUsedMb;
     private List<AnalyticsIssueDto>? issuesList;
     private List<AnalyticsDocumentDto>? documentsList;
-
-    [SupplyParameterFromQuery]
-    public Guid? folderId { get; set; }
-
-    [SupplyParameterFromQuery]
-    public string? folderName { get; set; }
-
-    private string _folderName = "";
+    private Guid? _previousFolderId;
+    private FolderStatus _folderShareStatus = FolderStatus.None;
+    private bool _allDocumentsReviewed;   // all docs in the folder have ReviewStatus != None
+    private bool _hasRejectedDocument;    // at least one doc in the folder has ReviewStatus == Rejected
 
     protected override async Task OnInitializedAsync()
     {
@@ -322,28 +361,65 @@
             return;
         }
 
+        await LoadAnalyticsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_previousFolderId != FolderId)
+        {
+            _previousFolderId = FolderId;
+            await LoadAnalyticsAsync();
+        }
+    }
+
+    private async Task LoadAnalyticsAsync()
+    {
+        isLoading = true;
         try
         {
             if (FolderId.HasValue)
             {
-                var folder = await DbContext.Folders.FindAsync(FolderId.Value);
+                var folder = await DbContext.Folders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == FolderId.Value);
                 FolderName = folder?.Name ?? string.Empty;
+                _folderShareStatus = folder?.ShareStatus ?? FolderStatus.None;
+            }
+            else
+            {
+                FolderName = string.Empty;
+                _folderShareStatus = FolderStatus.None;
             }
 
-            var analytics = await DashboardService.GetUserAnalyticsAsync(Session.CurrentUser.Id, FolderId);
+            var analytics = await DashboardService.GetAdminAnalyticsAsync(FolderId);
             
             totalDocuments = analytics.TotalDocuments;
             completionRate = analytics.CompletionRate;
             avgProcessingTimeHrs = analytics.AvgProcessingTimeHrs;
             storageUsedMb = analytics.StorageUsedMb;
 
-            Series = new List<ChartSeries<double>>
-            {
-                new ChartSeries<double> { Name = "Uploads", Data = analytics.DailyUploadCounts.ToArray() }
-            };
+            SeriesApproved = analytics.DailyApprovedCounts;
+            SeriesRejected = analytics.DailyRejectedCounts;
             XAxisLabels = analytics.DailyUploadLabels.ToArray();
             issuesList = analytics.CommonIssues;
             documentsList = analytics.RecentDocuments;
+
+            // Compute folder-level document review status for button locking
+            if (FolderId.HasValue)
+            {
+                var statuses = await DbContext.Documents
+                    .AsNoTracking()
+                    .Where(d => d.FolderId == FolderId.Value)
+                    .Select(d => d.ReviewStatus)
+                    .ToListAsync();
+
+                _allDocumentsReviewed = statuses.All(s => s != Data.Entities.DocumentReviewStatus.None);
+                _hasRejectedDocument = statuses.Any(s => s == Data.Entities.DocumentReviewStatus.Rejected);
+            }
+            else
+            {
+                _allDocumentsReviewed = false;
+                _hasRejectedDocument = false;
+            }
         }
         finally
         {
@@ -355,7 +431,53 @@
     {
         if (FolderId.HasValue)
         {
-            Nav.NavigateTo($"/documents?folderId={FolderId.Value}");
+            Nav.NavigateTo($"/dashboard/documents?folderId={FolderId.Value}");
+        }
+    }
+
+    private async Task ApproveFolderShare()
+    {
+        if (!FolderId.HasValue) return;
+        try
+        {
+            var folder = await DbContext.Folders.FindAsync(FolderId.Value);
+            if (folder == null) return;
+
+            folder.ShareStatus = FolderStatus.Approved;
+            folder.SharedAt = DateTimeOffset.UtcNow;
+            folder.UpdatedAt = DateTimeOffset.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            _folderShareStatus = FolderStatus.Approved;
+            Snackbar.Add("Folder approved and shared to community.", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error approving folder: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RejectFolderShare()
+    {
+        if (!FolderId.HasValue) return;
+        try
+        {
+            var folder = await DbContext.Folders.FindAsync(FolderId.Value);
+            if (folder == null) return;
+
+            folder.ShareStatus = FolderStatus.Rejected;
+            folder.SharedAt = null;
+            folder.UpdatedAt = DateTimeOffset.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            _folderShareStatus = FolderStatus.Rejected;
+            Snackbar.Add("Folder share request rejected.", Severity.Warning);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error rejecting folder: {ex.Message}", Severity.Error);
         }
     }
 }
