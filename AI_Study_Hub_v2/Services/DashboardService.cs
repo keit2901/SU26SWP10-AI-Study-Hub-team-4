@@ -91,7 +91,6 @@ public class DashboardService : IDashboardService
 
             return new FolderViewModel
             {
-                Id = f.Id,
                 Name = f.Name,
                 SubjectCode = subject,
                 Semester = semester,
@@ -199,19 +198,13 @@ public class DashboardService : IDashboardService
         return true;
     }
 
-    public async Task<UserAnalyticsDto> GetUserAnalyticsAsync(System.Guid userId, System.Guid? folderId = null, CancellationToken ct = default)
+    public async Task<UserAnalyticsDto> GetUserAnalyticsAsync(System.Guid userId, CancellationToken ct = default)
     {
-        var query = _context.Documents.AsNoTracking().Where(d => d.UserId == userId);
-        if (folderId.HasValue)
-        {
-            query = query.Where(d => d.FolderId == folderId.Value);
-        }
-
-        var totalDocuments = await query.CountAsync(ct);
-        var approvedDocuments = await query.Where(d => d.Status == DocumentStatus.Ready).CountAsync(ct);
+        var totalDocuments = await _context.Documents.AsNoTracking().Where(d => d.UserId == userId).CountAsync(ct);
+        var approvedDocuments = await _context.Documents.AsNoTracking().Where(d => d.UserId == userId && d.Status == DocumentStatus.Ready).CountAsync(ct);
         double completionRate = totalDocuments > 0 ? System.Math.Round((double)approvedDocuments * 100 / totalDocuments, 1) : 0;
         
-        var totalBytes = await query.SumAsync(d => d.FileSizeBytes, ct);
+        var totalBytes = await _context.Documents.AsNoTracking().Where(d => d.UserId == userId).SumAsync(d => d.FileSizeBytes, ct);
         double storageUsedMb = System.Math.Round((double)totalBytes / (1024 * 1024), 2);
 
         // Daily upload counts for last 7 days
@@ -227,23 +220,24 @@ public class DashboardService : IDashboardService
         foreach (var date in last7Days)
         {
             var nextDate = date.AddDays(1);
-            var count = await query
-                .Where(d => d.CreatedAt >= date && d.CreatedAt < nextDate)
+            var count = await _context.Documents.AsNoTracking()
+                .Where(d => d.UserId == userId && d.CreatedAt >= date && d.CreatedAt < nextDate)
                 .CountAsync(ct);
             dailyCounts.Add(count);
             dailyLabels.Add(date.ToString("ddd"));
         }
 
         // Common issues (Failed documents error messages)
-        var issues = await query
-            .Where(d => d.Status == DocumentStatus.Failed && d.ErrorMessage != null)
+        var issues = await _context.Documents.AsNoTracking()
+            .Where(d => d.UserId == userId && d.Status == DocumentStatus.Failed && d.ErrorMessage != null)
             .GroupBy(d => d.ErrorMessage)
             .Select(g => new AnalyticsIssueDto(g.Key ?? "Unknown Error", g.Count()))
             .ToListAsync(ct);
 
         // Recent documents
-        var docs = await query
+        var docs = await _context.Documents.AsNoTracking()
             .Include(d => d.Chunks)
+            .Where(d => d.UserId == userId)
             .OrderByDescending(d => d.CreatedAt)
             .Take(10)
             .Select(d => new AnalyticsDocumentDto(
