@@ -665,6 +665,18 @@ else
 }
 
 @code {
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "folderId")]
+    public Guid? FolderId { get; set; }
+
+    protected override void OnParametersSet()
+    {
+        if (FolderId.HasValue)
+        {
+            _filterFolderId = FolderId.Value;
+        }
+    }
+
     private bool _loading;
     private bool _foldersBusy;
     private string? _error;
