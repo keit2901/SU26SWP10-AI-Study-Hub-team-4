@@ -47,24 +47,9 @@ else if (_authorized)
                 <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Navigation.NavigateTo("/admin/settings"))">2 critical config drafts</MudMenuItem>
             </ChildContent>
         </MudMenu>
-        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true"
-                 ActivatorStyle="@("cursor:pointer;")">
-            <ActivatorContent>
-                <MudStack Row="true" AlignItems="AlignItems.Center" Class="admin-user-menu-trigger">
-                    <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Size="Size.Small" Color="Color.Inherit" />
-                    <MudHidden Breakpoint="Breakpoint.SmAndDown">
-                        <MudText Typo="Typo.body2" Color="Color.Inherit" Class="ms-1">System Admin</MudText>
-                    </MudHidden>
-                    <MudIcon Icon="@Icons.Material.Filled.ArrowDropDown" Size="Size.Small" Color="Color.Inherit" />
-                </MudStack>
-            </ActivatorContent>
-            <ChildContent>
-                <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Signed in as @AdminIdentity</MudMenuItem>
-                <MudMenuItem Icon="@Icons.Material.Filled.Security">Access: @AdminRole</MudMenuItem>
-                <MudDivider />
-                <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="SignOutAsync">Sign out</MudMenuItem>
-            </ChildContent>
-        </MudMenu>
+        <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="SignOutAsync" StartIcon="@Icons.Material.Filled.Logout" Class="admin-logout-btn">
+            <MudHidden Breakpoint="Breakpoint.SmAndDown">Logout</MudHidden>
+        </MudButton>
     </MudAppBar>
 
     <MudDrawer @bind-Open="_drawerOpen"
@@ -131,52 +116,55 @@ else if (_authorized)
 
     private string ThemeIcon => _isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode;
 
-    private string AdminIdentity =>
-        Session.CurrentUser?.Email
-        ?? Session.CurrentUser?.Username
-        ?? Session.CurrentUser?.FullName
-        ?? "Administrator";
-
-    private string AdminRole => Session.CurrentUser?.Role ?? "Admin";
-
     private readonly MudTheme _theme = new()
     {
         PaletteLight = new PaletteLight
         {
             Primary = "#0F766E",
-            Secondary = "#B45309",
+            PrimaryDarken = "#115E59",
+            Secondary = "#D97706",
             Tertiary = "#334155",
-            Background = "#F5F0E8",
-            Surface = "#FFFCF6",
-            AppbarBackground = "#173B33",
-            AppbarText = "#FFF7ED",
-            DrawerBackground = "#102A2A",
-            DrawerText = "#E7F0EA",
+            Background = "#F5F7F4",
+            Surface = "#FFFFFF",
+            AppbarBackground = "#07483F",
+            AppbarText = "#E6F4F1",
+            DrawerBackground = "#063B34",
+            DrawerText = "#E6F4F1",
             DrawerIcon = "#A7F3D0",
-            TextPrimary = "#16231F",
-            TextSecondary = "#53615B",
-            LinesDefault = "#E5DED2",
+            TextPrimary = "#102A27",
+            TextSecondary = "#5F6F6A",
+            LinesDefault = "#D9E2DE",
             Info = "#2563EB",
-            Success = "#15803D",
-            Warning = "#B45309",
+            Success = "#16A34A",
+            Warning = "#D97706",
             Error = "#DC2626"
         },
         PaletteDark = new PaletteDark
         {
             Primary = "#2DD4BF",
+            PrimaryDarken = "#14B8A6",
             Secondary = "#FDBA74",
-            Background = "#0D1B1B",
-            Surface = "#142423",
-            AppbarBackground = "#0A1616",
-            DrawerBackground = "#091313",
-            DrawerText = "#DAF4EC",
-            DrawerIcon = "#99F6E4"
+            Tertiary = "#94A3B8",
+            Background = "#071B1A",
+            Surface = "#0F2A27",
+            AppbarBackground = "#052E2B",
+            AppbarText = "#F3FFFC",
+            DrawerBackground = "#042F2E",
+            DrawerText = "#EAF7F4",
+            DrawerIcon = "#99F6E4",
+            TextPrimary = "#EAF7F4",
+            TextSecondary = "#A8C7C0",
+            LinesDefault = "#25514B",
+            Info = "#60A5FA",
+            Success = "#4ADE80",
+            Warning = "#F59E0B",
+            Error = "#F87171"
         },
         Typography = new Typography
         {
             Default = new DefaultTypography
             {
-                FontFamily = new[] { "Aptos", "Trebuchet MS", "sans-serif" },
+                FontFamily = new[] { "Inter", "Aptos", "Segoe UI", "sans-serif" },
                 FontSize = ".95rem"
             },
             H4 = new H4Typography
@@ -317,30 +305,16 @@ else if (_authorized)
 <style>
     .admin-layout-shell {
         min-height: 100vh;
-        background:
-            radial-gradient(circle at top left, rgba(20, 184, 166, .14), transparent 32rem),
-            radial-gradient(circle at bottom right, rgba(180, 83, 9, .1), transparent 28rem),
-            linear-gradient(135deg, #f8f1e7 0%, #eef7f3 47%, #fffaf0 100%);
+        background: var(--mud-palette-background);
     }
 
     .admin-topbar {
-        border-bottom: 1px solid rgba(255, 255, 255, .14);
+        border-bottom: 1px solid var(--mud-palette-lines-default);
         backdrop-filter: blur(16px);
     }
 
-    .admin-user-menu-trigger {
-        cursor: pointer;
-        padding: 0.25rem 0.5rem;
-        border-radius: 8px;
-        transition: background .15s;
-    }
-
-    .admin-user-menu-trigger:hover {
-        background: rgba(255,255,255,.1);
-    }
-
     .admin-sidebar {
-        border-right: 1px solid rgba(255, 255, 255, .08);
+        border-right: 1px solid var(--mud-palette-lines-default);
     }
 
     .admin-sidebar-header {
@@ -349,29 +323,58 @@ else if (_authorized)
     }
 
     .admin-brand {
-        color: #fff7ed;
+        color: var(--mud-palette-drawer-text);
         font-family: Georgia, Aptos, serif;
         letter-spacing: -.03em;
     }
 
     .admin-brand-subtitle {
-        color: rgba(231, 240, 234, .72);
+        color: var(--mud-palette-text-secondary);
         text-transform: uppercase;
         letter-spacing: .14em;
     }
 
     .admin-nav-menu .mud-nav-group .mud-navmenu {
         margin-left: .25rem;
-        border-left: 1px solid rgba(167, 243, 208, .16);
+        border-left: 1px solid var(--mud-palette-lines-default);
     }
 
     .admin-sidebar-card {
         margin: 1rem;
         padding: 1rem;
         border-radius: 18px;
-        color: #e7f0ea;
-        background: linear-gradient(145deg, rgba(45, 212, 191, .16), rgba(180, 83, 9, .14));
-        border: 1px solid rgba(255, 255, 255, .1);
+        background: rgba(255,255,255,.06);
+        border: 1px solid rgba(255,255,255,.16);
+    }
+
+    .admin-sidebar-card .mud-typography-subtitle2 {
+        color: #EAF7F4;
+    }
+
+    .admin-sidebar-card .mud-typography-caption {
+        color: #CDEBE5;
+    }
+
+    .admin-sidebar-card .mud-progress-linear-bar {
+        background-color: rgba(255,255,255,.16);
+    }
+
+    .admin-sidebar-card .mud-progress-linear-fill {
+        background-color: #14B8A6;
+    }
+
+    /* Dark mode: keep sidebar card readable */
+    .mud-theme-dark .admin-sidebar-card {
+        background: rgba(255,255,255,.04);
+        border: 1px solid #25514B;
+    }
+
+    .mud-theme-dark .admin-sidebar-card .mud-typography-subtitle2 {
+        color: #F3FFFC;
+    }
+
+    .mud-theme-dark .admin-sidebar-card .mud-typography-caption {
+        color: #A8C7C0;
     }
 
     .admin-main-content {
@@ -384,7 +387,29 @@ else if (_authorized)
 
     .admin-breadcrumbs .mud-breadcrumb-item,
     .admin-breadcrumbs .mud-breadcrumb-separator {
-        color: rgba(255, 247, 237, .82) !important;
+        color: var(--mud-palette-appbar-text) !important;
+    }
+
+    /* Dark mode component fixes */
+    .mud-theme-dark .mud-card {
+        background-color: #0F2A27 !important;
+        border: 1px solid #25514B !important;
+    }
+
+    .mud-theme-dark .mud-table-root {
+        background-color: #0B2421;
+    }
+
+    .mud-theme-dark .mud-table-root .mud-table-head {
+        background-color: #143A35;
+    }
+
+    .mud-theme-dark .mud-table-root td {
+        color: #EAF7F4 !important;
+    }
+
+    .mud-theme-dark .mud-table-root th {
+        color: #F3FFFC !important;
     }
 
     @@media (min-width: 960px) {

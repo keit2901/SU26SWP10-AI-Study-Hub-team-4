@@ -435,4 +435,84 @@
             transform: translateY(0);
         }
     }
+
+    /* ─── Dark mode overrides ─── */
+    .mud-theme-dark .dashboard-hero,
+    .mud-theme-dark .dashboard-card,
+    .mud-theme-dark .kpi-card {
+        border: 1px solid #27534D;
+        box-shadow: 0 20px 70px rgba(0,0,0,.25);
+    }
+
+    .mud-theme-dark .dashboard-hero {
+        background: #0F2A27;
+        color: #E6F4F1;
+    }
+
+    .mud-theme-dark .dashboard-card {
+        background: #102E2A;
+    }
+
+    .mud-theme-dark .kpi-card {
+        background: #102E2A;
+        color: #E6F4F1;
+    }
+
+    .mud-theme-dark .kpi-card::after {
+        opacity: .10;
+    }
+
+    .mud-theme-dark .operations-card,
+    .mud-theme-dark .quota-card {
+        background: #102E2A;
+    }
+
+    .mud-theme-dark .status-row {
+        background: rgba(45,212,191,.08);
+    }
+
+    .mud-theme-dark .attention-table .mud-table-head {
+        background: #143A35;
+    }
+
+    .mud-theme-dark .attention-table .mud-table-root {
+        background: #0B2421;
+    }
+
+    .mud-theme-dark .attention-table td {
+        color: #E6F4F1;
+    }
+
+    .mud-theme-dark .attention-table th {
+        color: #F3FFFC;
+    }
+
+    .mud-theme-dark .dashboard-hero .mud-typography-h4,
+    .mud-theme-dark .dashboard-card .mud-typography-h6 {
+        color: #F3FFFC;
+    }
+
+    .mud-theme-dark .mud-typography-body1[color="Secondary"],
+    .mud-theme-dark .mud-typography-body2[color="Secondary"],
+    .mud-theme-dark .mud-typography-caption[color="Secondary"] {
+        color: #A8C7C0 !important;
+    }
+
+    .mud-theme-dark .mud-alert-outlined-warning {
+        background: rgba(245,158,11,.12);
+        border-color: rgba(245,158,11,.45);
+        color: #FCD34D;
+    }
+
+    .mud-theme-dark .mud-list-item-text {
+        color: #A8C7C0;
+    }
+
+    .mud-theme-dark .mud-timeline-item-content .mud-typography-subtitle2 {
+        color: #E6F4F1;
+    }
+
+    .mud-theme-dark .mud-timeline-item-content .mud-typography-body2 {
+        color: #A8C7C0;
+    }
 </style>
