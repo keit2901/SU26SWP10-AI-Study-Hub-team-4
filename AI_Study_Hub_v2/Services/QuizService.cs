@@ -16,6 +16,7 @@ public sealed class QuizService : IQuizService
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
     private const int MaxRetries = 2;
@@ -28,6 +29,7 @@ public sealed class QuizService : IQuizService
     private readonly IAiChatCompletionClientFactory _clientFactory;
     private readonly GroqOptions _groqOptions;
     private readonly IChatPersistenceService _chatPersistence;
+    private readonly IAiQuotaService _quotaService;
     private readonly ILogger<QuizService> _logger;
 
     public QuizService(
@@ -36,6 +38,7 @@ public sealed class QuizService : IQuizService
         IAiChatCompletionClientFactory clientFactory,
         IOptions<GroqOptions> groqOptions,
         IChatPersistenceService chatPersistence,
+        IAiQuotaService quotaService,
         ILogger<QuizService> logger)
     {
         _db = db;
@@ -43,6 +46,7 @@ public sealed class QuizService : IQuizService
         _clientFactory = clientFactory;
         _groqOptions = groqOptions.Value;
         _chatPersistence = chatPersistence;
+        _quotaService = quotaService;
         _logger = logger;
     }
 
@@ -142,7 +146,7 @@ public sealed class QuizService : IQuizService
         var userPrompt = $"Generate {count} quiz questions based on the source excerpts above. Difficulty: {request.Difficulty}.";
 
         var activeModel = request.Model;
-        var altModel = activeModel.StartsWith("gemini", StringComparison.OrdinalIgnoreCase)
+        var altModel = activeModel?.StartsWith("gemini", StringComparison.OrdinalIgnoreCase) == true
             ? "llama-3.3-70b-versatile"
             : "gemini-2.5-flash";
 
@@ -153,7 +157,11 @@ public sealed class QuizService : IQuizService
         try
         {
             var firstRequest = new AiChatCompletionRequest(systemPrompt, userPrompt, activeModel, MaxTokens: 8192);
-            rawJson = await _clientFactory.GetClient(activeModel).CompleteAsync(firstRequest, ct);
+            rawJson = await CompleteWithQuotaAsync(
+                supabaseUserId,
+                _clientFactory.GetClient(activeModel),
+                firstRequest,
+                ct);
         }
         catch (AiChatProviderException ex)
         {
@@ -164,7 +172,11 @@ public sealed class QuizService : IQuizService
             {
                 activeModel = altModel;
                 var fallbackRequest = new AiChatCompletionRequest(systemPrompt, userPrompt, altModel, MaxTokens: 8192);
-                rawJson = await _clientFactory.GetClient(altModel).CompleteAsync(fallbackRequest, ct);
+                rawJson = await CompleteWithQuotaAsync(
+                    supabaseUserId,
+                    _clientFactory.GetClient(altModel),
+                    fallbackRequest,
+                    ct);
                 fallbackError = null;
             }
             catch (AiChatProviderException ex2)
@@ -194,8 +206,11 @@ public sealed class QuizService : IQuizService
                 try
                 {
                     await Task.Delay(attempt * 500, ct);
-                    rawJson = await currentProvider.CompleteAsync(
-                        new AiChatCompletionRequest(retryPrompt, userPrompt, activeModel, MaxTokens: 8192), ct);
+                    rawJson = await CompleteWithQuotaAsync(
+                        supabaseUserId,
+                        currentProvider,
+                        new AiChatCompletionRequest(retryPrompt, userPrompt, activeModel, MaxTokens: 8192),
+                        ct);
                     (parsed, failReason) = TryParseAndValidateQuizJson(rawJson, count);
                     if (parsed is not null)
                     {
@@ -208,7 +223,7 @@ public sealed class QuizService : IQuizService
                 {
                     _logger.LogError(ex, "AI provider failed on retry {Attempt} (model: {Model}). Trying fallback model.", attempt, activeModel);
                     // Switch to the alternative model on provider failure
-                    activeModel = activeModel.StartsWith("gemini", StringComparison.OrdinalIgnoreCase)
+                    activeModel = activeModel?.StartsWith("gemini", StringComparison.OrdinalIgnoreCase) == true
                         ? "llama-3.3-70b-versatile"
                         : "gemini-2.5-flash";
                     currentProvider = _clientFactory.GetClient(activeModel);
@@ -281,6 +296,58 @@ public sealed class QuizService : IQuizService
         }
 
         return MapToDto(quiz);
+    }
+
+    private async Task<string> CompleteWithQuotaAsync(
+        Guid supabaseUserId,
+        IAiChatCompletionClient client,
+        AiChatCompletionRequest request,
+        CancellationToken cancellationToken)
+    {
+        AiQuotaReservation reservation;
+        try
+        {
+            reservation = await _quotaService.ReserveAsync(
+                supabaseUserId,
+                EstimateTokens(request.SystemPrompt, request.UserPrompt) + 1_024,
+                cancellationToken);
+        }
+        catch (AiQuotaException ex)
+        {
+            throw new QuizException(ex.StatusCode, ex.Code, ex.Message);
+        }
+
+        var completed = false;
+        try
+        {
+            var response = await client.CompleteAsync(request, cancellationToken);
+            await _quotaService.CompleteAsync(
+                reservation,
+                EstimateTokens(request.SystemPrompt, request.UserPrompt, response),
+                cancellationToken);
+            completed = true;
+            return response;
+        }
+        finally
+        {
+            if (!completed)
+            {
+                try
+                {
+                    await _quotaService.ReleaseAsync(reservation, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to release quiz AI quota reservation for user {UserId}.", supabaseUserId);
+                }
+            }
+        }
+    }
+
+    private static int EstimateTokens(params string[] values)
+    {
+        var characters = values.Sum(value => value?.Length ?? 0);
+        return Math.Max(1, (characters + 3) / 4);
     }
 
     public async Task<QuizDto> ResumeAsync(Guid supabaseUserId, Guid sessionId, CancellationToken ct = default)
@@ -791,7 +858,7 @@ Output exactly this JSON structure (no extra text):
             .FirstOrDefaultAsync(q => q.Id == quizId && q.UserId == user.Id, cancellationToken)
             ?? throw new QuizException(404, "quiz_not_found", "Quiz was not found for the authenticated user.");
 
-        var questions = JsonSerializer.Deserialize<List<QuizQuestionParsed>>(quiz.QuestionsJson, JsonOptions) ?? new();
+        var questions = JsonSerializer.Deserialize<List<StoredQuizQuestion>>(quiz.QuestionsJson, JsonOptions) ?? new();
         if (questions.Count == 0)
         {
             throw new QuizException(409, "quiz_has_no_questions", "Quiz has no questions to grade.");
@@ -806,7 +873,7 @@ Output exactly this JSON structure (no extra text):
         var score = 0;
         foreach (var question in questions)
         {
-            answerMap.TryGetValue(question.Index.ToString(), out var submittedOptionId);
+            answerMap.TryGetValue(question.Id, out var submittedOptionId);
             var isCorrect = string.Equals(submittedOptionId, question.CorrectOptionId, StringComparison.OrdinalIgnoreCase);
             if (isCorrect)
             {
@@ -814,7 +881,7 @@ Output exactly this JSON structure (no extra text):
             }
 
             results.Add(new QuizQuestionResultDto(
-                question.Index.ToString(),
+                question.Id,
                 isCorrect,
                 string.IsNullOrWhiteSpace(submittedOptionId) ? null : submittedOptionId,
                 question.CorrectOptionId,

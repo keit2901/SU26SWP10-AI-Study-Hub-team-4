@@ -109,6 +109,9 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<IAdminUserService, AdminUserService>();
+builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -165,6 +168,10 @@ builder.Services.AddHttpClient<FolderApiClient>((sp, http) =>
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
 builder.Services.AddHttpClient<CommunityApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
+builder.Services.AddHttpClient<AdminApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });

@@ -1,9 +1,12 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.AuditLogs
 @page "/admin/audit-logs"
 @layout AdminLayout
+@implements IDisposable
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @inject ISnackbar Snackbar
+@inject AuthSessionState Session
+@inject AdminApiClient AdminApi
 
 <MudStack Spacing="4" Class="audit-page page-enter">
     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
@@ -176,6 +179,7 @@
     private string? _selectedSeverity;
     private DateRange? _dateRange;
     private string? _errorMessage;
+    private bool _loadStarted;
 
     private IEnumerable<AuditLogRow> FilteredLogs => _logs
         .Where(MatchesAction)
@@ -213,18 +217,48 @@
 
     protected override void OnInitialized()
     {
-        Reload();
+        Session.OnChange += HandleSessionChanged;
+        if (Session.IsAuthenticated)
+        {
+            _ = Reload();
+        }
     }
 
-    private void Reload()
+    private void HandleSessionChanged()
     {
+        if (Session.IsAuthenticated && !_loadStarted)
+        {
+            _ = InvokeAsync(Reload);
+        }
+    }
+
+    private async Task Reload()
+    {
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            return;
+        }
+
+        _loadStarted = true;
         _isLoading = true;
         _errorMessage = null;
 
         try
         {
+            var rows = await AdminApi.ListAuditLogsAsync(Session.AccessToken);
             _logs.Clear();
-            _logs.AddRange(BuildSeedLogs());
+            _logs.AddRange(rows.Select(log => new AuditLogRow(
+                log.Action,
+                log.ActorName,
+                log.EntityType,
+                log.EntityId ?? "-",
+                log.Severity,
+                log.IpAddress ?? "-",
+                log.RequestId ?? "-",
+                log.CreatedAt.UtcDateTime,
+                log.BeforeJson ?? "{}",
+                log.AfterJson ?? "{}",
+                log.ContextJson ?? "{}")));
         }
         catch (Exception ex)
         {
@@ -233,6 +267,7 @@
         finally
         {
             _isLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -380,37 +415,6 @@
         };
     }
 
-    private static IEnumerable<AuditLogRow> BuildSeedLogs()
-    {
-        return new[]
-        {
-            new AuditLogRow("ROLE_CHANGE", "admin@aistudyhub.edu", "profiles", "1ae950de-3a70-4a3e-864b-9609d5a59c9d", MediumSeverity, "192.168.1.24", "req_8f29", DateTime.UtcNow.AddHours(-2),
-                "{\n  \"role\": \"Student\"\n}",
-                "{\n  \"role\": \"Admin\"\n}",
-                "{\n  \"guardrail\": \"self_lockout_checked\"\n}"),
-            new AuditLogRow("DOCUMENT_APPROVE", "admin@aistudyhub.edu", "documents", "1b412df3-8e7a-4e62-97c8-e3f72a977920", MediumSeverity, "192.168.1.24", "req_9ab4", DateTime.UtcNow.AddHours(-4),
-                "{\n  \"moderation_status\": \"Pending Review\",\n  \"processing_status\": \"Pending\"\n}",
-                "{\n  \"moderation_status\": \"Approved\",\n  \"processing_status\": \"Processing\"\n}",
-                "{\n  \"notification\": \"queued_to_owner\"\n}"),
-            new AuditLogRow("DOCUMENT_REJECT", "admin@aistudyhub.edu", "documents", "eb420566-9e06-4d16-a79f-6a1e96e943c8", HighSeverity, "192.168.1.24", "req_1fa1", DateTime.UtcNow.AddHours(-8),
-                "{\n  \"moderation_status\": \"Pending Review\"\n}",
-                "{\n  \"moderation_status\": \"Rejected\",\n  \"reason\": \"Wrong subject and outdated material\"\n}",
-                "{\n  \"notification\": \"queued_to_owner\",\n  \"requires_reason\": true\n}"),
-            new AuditLogRow(ConfigChangeAction, "admin@aistudyhub.edu", "system_configs", "rag.chunk_size", MediumSeverity, "192.168.1.24", "req_64bc", DateTime.UtcNow.AddDays(-1),
-                "{\n  \"value\": 800\n}",
-                "{\n  \"value\": 1000\n}",
-                "{\n  \"critical\": true,\n  \"confirmation\": \"rag.chunk_size\"\n}"),
-            new AuditLogRow("QUOTA_UPDATE", "admin@aistudyhub.edu", "user_token_quotas", "16d5b5b1-723e-44ab-8cd4-96010bdbe2c2", LowSeverity, "192.168.1.24", "req_0d91", DateTime.UtcNow.AddDays(-1).AddHours(-2),
-                "{\n  \"daily_token_quota\": 15000\n}",
-                "{\n  \"daily_token_quota\": 25000\n}",
-                "{\n  \"usage_today\": 18400,\n  \"warning_threshold\": 0.85\n}"),
-            new AuditLogRow("LOGIN_FAILED", "unknown@external.test", "auth", "auth_event_991", HighSeverity, "203.0.113.18", "req_f320", DateTime.UtcNow.AddDays(-2),
-                "{}",
-                "{\n  \"blocked\": true\n}",
-                "{\n  \"provider\": \"password\",\n  \"attempts\": 4\n}")
-        };
-    }
-
     private sealed record AuditLogRow(
         string Action,
         string ActorEmail,
@@ -423,6 +427,11 @@
         string BeforeJson,
         string AfterJson,
         string ContextJson);
+
+    public void Dispose()
+    {
+        Session.OnChange -= HandleSessionChanged;
+    }
 }
 
 <style>

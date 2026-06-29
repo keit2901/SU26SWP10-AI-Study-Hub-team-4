@@ -1,6 +1,7 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.Users
 @page "/admin/users"
 @layout AdminLayout
+@implements IDisposable
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
@@ -8,6 +9,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IRoleCatalogService Roles
+@inject AuthSessionState Session
+@inject AdminApiClient AdminApi
 
 <MudStack Spacing="4" Class="admin-users-page page-enter">
     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
@@ -15,14 +18,14 @@
             <MudText Typo="Typo.overline" Color="Color.Secondary">UC09 + UC16 - Profiles and quotas</MudText>
             <MudText Typo="Typo.h4">Users & Permissions</MudText>
             <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Search profiles, manage account access, switch roles from the database, and control daily token quotas.
+                Search profiles and control the daily AI token quotas enforced by the backend.
             </MudText>
         </div>
         <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.DataUsage" OnClick="ApplyQuotaRiskFilter">
                 Quota risks
             </MudButton>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="OpenInviteSheet">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd" Disabled="true">
                 Invite user
             </MudButton>
         </MudStack>
@@ -104,7 +107,7 @@
     </MudGrid>
 
     <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="guardrail-alert">
-        Guardrail: administrators cannot deactivate or demote their own account. Role, status, and quota changes should write audit_logs entries.
+        SCRUM-65: quota changes are persisted and written to audit_logs. Role and account-status editing are outside this ticket.
     </MudAlert>
 
     <AdminDataGrid TItem="UserRow"
@@ -166,20 +169,7 @@
                             <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" />
                         </ActivatorContent>
                         <ChildContent>
-                            <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(cell.Item))">View details</MudMenuItem>
                             <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => OpenQuotaSheet(cell.Item))">Edit quota</MudMenuItem>
-                            @foreach (var role in AvailableRoleNames.Where(role => !role.Equals(cell.Item.Role, StringComparison.OrdinalIgnoreCase)))
-                            {
-                                <MudMenuItem Icon="@GetRoleIcon(role)" Disabled="@IsRoleChangeDisabled(cell.Item, role)" OnClick="@(() => ChangeRoleAsync(cell.Item, role))">Change role to @role</MudMenuItem>
-                            }
-                            @if (cell.Item.IsActive)
-                            {
-                                <MudMenuItem Icon="@Icons.Material.Filled.Block" Disabled="@IsCurrentAdmin(cell.Item)" OnClick="@(() => ToggleActiveAsync(cell.Item))">Deactivate</MudMenuItem>
-                            }
-                            else
-                            {
-                                <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" OnClick="@(() => ToggleActiveAsync(cell.Item))">Activate</MudMenuItem>
-                            }
                         </ChildContent>
                     </MudMenu>
                 </CellTemplate>
@@ -202,7 +192,7 @@
     <ChildContent>
         <MudStack Spacing="3">
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                Quota updates should be persisted to user_quota_overrides or an equivalent Supabase table and written to audit_logs.
+                This limit is enforced before each AI chat request. Every administrator change is written to audit_logs.
             </MudAlert>
             <MudTextField Value="@_quotaEdit.UserName" Label="User" Variant="Variant.Outlined" ReadOnly="true" />
             <MudNumericField T="int" Value="@_quotaEdit.DailyTokenQuota" ValueChanged="OnQuotaValueChanged" Label="Daily token quota" Variant="Variant.Outlined" Min="1000" Step="1000" />
@@ -239,7 +229,6 @@
     private const string QuotaNormal = "Normal";
     private const string QuotaWarning = "Warning";
     private const string QuotaExceeded = "Exceeded";
-    private static readonly Guid CurrentAdminId = Guid.Parse("a8b3e2f7-1b99-401c-b558-1ba1ea5568e8");
 
     private readonly List<UserRow> _users = new();
     private readonly List<RoleOption> _roles = new();
@@ -253,6 +242,7 @@
     private string? _selectedQuotaRisk;
     private string? _errorMessage;
     private QuotaEditModel _quotaEdit = new();
+    private bool _loadStarted;
 
     private IEnumerable<UserRow> FilteredUsers => _users
         .Where(MatchesRole)
@@ -292,12 +282,39 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
+        Session.OnChange += HandleSessionChanged;
+        if (Session.IsAuthenticated)
+        {
+            _ = LoadAsync();
+        }
+    }
+
+    private void HandleSessionChanged()
+    {
+        if (Session.IsAuthenticated && !_loadStarted)
+        {
+            _ = InvokeAsync(LoadAsync);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            return;
+        }
+
+        _loadStarted = true;
+        _isLoading = true;
+        _errorMessage = null;
         try
         {
             await LoadRolesAsync();
-            _users.AddRange(BuildSeedUsers());
+            var users = await AdminApi.ListUsersAsync(Session.AccessToken);
+            _users.Clear();
+            _users.AddRange(users.Select(ToUserRow));
         }
         catch (Exception ex)
         {
@@ -306,6 +323,7 @@
         finally
         {
             _isLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -598,12 +616,24 @@
             }
         }
 
-        user.DailyTokenQuota = _quotaEdit.DailyTokenQuota;
-        _quotaSheetOpen = false;
-        Snackbar.Add($"Daily token quota updated for {user.FullName}. Audit log entry queued.", Severity.Success);
+        try
+        {
+            var updated = await AdminApi.UpdateQuotaAsync(
+                Session.AccessToken!,
+                user.Id,
+                _quotaEdit.DailyTokenQuota);
+            user.DailyTokenQuota = checked((int)updated.DailyTokenQuota);
+            user.TokensUsedToday = checked((int)updated.TokensUsedToday);
+            _quotaSheetOpen = false;
+            Snackbar.Add($"Daily token quota updated for {user.FullName}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Quota update failed: {ex.Message}", Severity.Error);
+        }
     }
 
-    private static bool IsCurrentAdmin(UserRow user) => user.Id == CurrentAdminId;
+    private bool IsCurrentAdmin(UserRow user) => user.Id == Session.CurrentUser?.Id;
 
     private static string GetQuotaLabel(UserRow user)
     {
@@ -636,15 +666,22 @@
         };
     }
 
-    private static IEnumerable<UserRow> BuildSeedUsers()
+    private static UserRow ToUserRow(AdminUserDto user)
     {
-        return new[]
+        return new UserRow
         {
-            new UserRow { Id = Guid.Parse("16d5b5b1-723e-44ab-8cd4-96010bdbe2c2"), FullName = "Mai Anh Tran", Email = "mai.tran@aistudyhub.edu", StudentCode = "SE201001", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-21), LastActiveAt = DateTime.UtcNow.AddMinutes(-18), IsActive = true, DailyTokenQuota = 25_000, TokensUsedToday = 18_400, DocumentCount = 8 },
-            new UserRow { Id = Guid.Parse("1ae950de-3a70-4a3e-864b-9609d5a59c9d"), FullName = "Kiet Ngo", Email = "kiet.ngo@aistudyhub.edu", StudentCode = "SE203943", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-12), LastActiveAt = DateTime.UtcNow.AddMinutes(-52), IsActive = true, DailyTokenQuota = 25_000, TokensUsedToday = 27_100, DocumentCount = 3 },
-            new UserRow { Id = Guid.Parse("2bdad67c-83d7-46ca-b67a-f01afecf41c1"), FullName = "Dr. Nguyen Minh", Email = "minh.nguyen@aistudyhub.edu", StudentCode = string.Empty, Role = AdminRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-48), LastActiveAt = DateTime.UtcNow.AddHours(-2), IsActive = true, DailyTokenQuota = 75_000, TokensUsedToday = 63_800, DocumentCount = 42 },
-            new UserRow { Id = CurrentAdminId, FullName = "System Administrator", Email = "admin@aistudyhub.edu", StudentCode = string.Empty, Role = AdminRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-90), LastActiveAt = DateTime.UtcNow.AddMinutes(-5), IsActive = true, DailyTokenQuota = 100_000, TokensUsedToday = 41_200, DocumentCount = 0 },
-            new UserRow { Id = Guid.Parse("e7d57d35-98a3-4774-a07c-331bb5665662"), FullName = "Linh Pham", Email = "linh.pham@aistudyhub.edu", StudentCode = "SE201220", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-3), LastActiveAt = DateTime.UtcNow.AddDays(-1), IsActive = false, DailyTokenQuota = 25_000, TokensUsedToday = 1_200, DocumentCount = 1 }
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Username,
+            StudentCode = user.Username,
+            Role = user.Role,
+            AvatarUrl = string.Empty,
+            CreatedAt = user.CreatedAt.UtcDateTime,
+            LastActiveAt = user.TokenUsageDate.ToDateTime(TimeOnly.MinValue),
+            IsActive = user.IsActive,
+            DailyTokenQuota = checked((int)user.DailyTokenQuota),
+            TokensUsedToday = checked((int)user.TokensUsedToday),
+            DocumentCount = user.DocumentCount,
         };
     }
 
@@ -692,6 +729,11 @@
                 TokensUsedToday = user.TokensUsedToday
             };
         }
+    }
+
+    public void Dispose()
+    {
+        Session.OnChange -= HandleSessionChanged;
     }
 }
 
