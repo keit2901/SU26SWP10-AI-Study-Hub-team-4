@@ -1,10 +1,7 @@
 @page "/dashboard"
 @layout DashboardLayout
-@using AI_Study_Hub_v2.Data
-@using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Components.Layout
-@using Microsoft.EntityFrameworkCore
-@inject AppDbContext DbContext
+@inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
 
@@ -23,33 +20,33 @@
                 <MudProgressCircular Color="Color.Primary" Indeterminate="true" />
             </div>
         }
-        else
+        else if (stats != null)
         {
             <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
                 <StatCard
-                    Icon="@Icons.Material.Filled.Publish"
-                    Title="Pending Share"
-                    Count="@pendingShareCount.ToString()"
-                    Description="Folders ready for community review"
+                    Icon="@Icons.Material.Filled.CheckCircle"
+                    Title="Approved"
+                    Count="@stats.ApprovedDocuments.ToString()"
+                    Description="Complete documents"
                     BgColor="rgba(238,242,255,0.8)"
                     IconColor="#4f46e5" />
                 <StatCard
-                    Icon="@Icons.Material.Filled.Sync"
-                    Title="Processing"
-                    Count="@processingCount.ToString()"
-                    Description="Documents being processed by AI"
+                    Icon="@Icons.Material.Filled.Assignment"
+                    Title="Pending"
+                    Count="@stats.PendingDocuments.ToString()"
+                    Description="Currently processing by AI"
                     BgColor="#faf5ff"
                     IconColor="#9333ea" />
                 <StatCard
                     Icon="@Icons.Material.Filled.ErrorOutline"
-                    Title="Issues"
-                    Count="@rejectedCount.ToString()"
-                    Description="Failed or action required"
+                    Title="Action Required / Rejected"
+                    Count="@stats.RejectedDocuments.ToString()"
+                    Description="Requires additional information"
                     BgColor="#fef2f2"
                     IconColor="#ef4444" />
             </div>
 
-            <FolderTable Folders="@viewModels" />
+            <FolderTable Folders="@stats.RecentFolders" />
         }
     </div>
 </main>
@@ -62,10 +59,7 @@
 
 @code {
     private bool isLoading = true;
-    private int pendingShareCount;
-    private int processingCount;
-    private int rejectedCount;
-    private List<FolderViewModel> viewModels = new();
+    private AI_Study_Hub_v2.Dtos.UserDashboardStatsDto? stats;
 
     protected override async Task OnInitializedAsync()
     {
@@ -98,49 +92,13 @@
         }
         pendingShareCount = pendingShareFolders.Count;
 
-        // Own folders: show personal status breakdown
-        var myFolders = await DbContext.Folders
-            .Include(f => f.Documents)
-            .Where(f => f.UserId == userId)
-            .OrderByDescending(f => f.UpdatedAt)
-            .ToListAsync();
-
-        foreach (var f in myFolders)
+        try
         {
-            var firstDoc = f.Documents.FirstOrDefault();
-            var subject = firstDoc?.SubjectCode ?? "N/A";
-            var semester = firstDoc?.Semester ?? "N/A";
-
-            string status;
-            if (f.Documents.Any(d => d.Status == DocumentStatus.Failed))
-            {
-                status = "Rejected";
-                rejectedCount++;
-            }
-            else if (f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing))
-            {
-                status = "Processing";
-                processingCount++;
-            }
-            else if (f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready))
-            {
-                status = f.IsShared ? "Shared" : "Ready";
-            }
-            else
-            {
-                status = "Empty";
-            }
-
-            viewModels.Add(new FolderViewModel
-            {
-                Name = f.Name,
-                SubjectCode = subject,
-                Semester = semester,
-                Status = status,
-                OwnerName = "Me",
-            });
+            stats = await DashboardService.GetUserStatsAsync(Session.CurrentUser.Id);
         }
-
-        isLoading = false;
+        finally
+        {
+            isLoading = false;
+        }
     }
 }
