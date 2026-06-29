@@ -179,6 +179,7 @@ builder.Services.AddScoped<AuthPersistenceService>();
 builder.Services.AddScoped<AiChatSessionState>();
 builder.Services.AddScoped<IChatPersistenceService, ChatPersistenceService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 // Authentication / Authorization ---------------------------------------------
 builder.Services
