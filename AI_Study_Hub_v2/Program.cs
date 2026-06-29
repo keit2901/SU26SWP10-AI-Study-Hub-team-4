@@ -186,6 +186,10 @@ builder.Services.AddHttpClient<QuizApiClient>((sp, http) =>
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
     http.Timeout = TimeSpan.FromMinutes(2);
 });
+builder.Services.AddHttpClient<AdminDashboardApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
 builder.Services.AddHttpClient<IRecaptchaVerificationService, RecaptchaVerificationService>(http =>
 {
     http.Timeout = TimeSpan.FromSeconds(10);

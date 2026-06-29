@@ -626,10 +626,11 @@
         }
     }
 
-    private bool IsCurrentAdmin(UserRow user) => user.Id == Session.CurrentUser?.Id;
+    private bool IsCurrentAdmin(UserRow user) => user?.Id == Session.CurrentUser?.Id;
 
     private IReadOnlyList<string> GetAssignableRoles(UserRow user)
     {
+        if (user is null || Session.CurrentUser is null) return Array.Empty<string>();
         if (IsCurrentAdmin(user))
         {
             return Array.Empty<string>();
