@@ -107,6 +107,7 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 });
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
+builder.Services.AddScoped<IDocumentModerationService, DocumentModerationService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
@@ -194,6 +195,8 @@ builder.Services.AddScoped<AuthSessionState>();
 builder.Services.AddScoped<AuthPersistenceService>();
 builder.Services.AddScoped<AiChatSessionState>();
 builder.Services.AddScoped<IChatPersistenceService, ChatPersistenceService>();
+builder.Services.AddScoped<IQuizService, QuizService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 // Authentication / Authorization ---------------------------------------------
 builder.Services

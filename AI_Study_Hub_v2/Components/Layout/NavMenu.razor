@@ -12,27 +12,22 @@
         <input id="community-nav-toggle" type="checkbox" title="Navigation menu" class="navbar-toggler" />
         <label for="community-nav-toggle" class="navbar-toggler-label" aria-label="Toggle navigation"></label>
 
-        @if (!IsDashboard)
-        {
-            <nav class="community-nav teammate-nav" onclick="...">
-                @if (Session.IsAuthenticated)
+        <nav class="community-nav teammate-nav" onclick="...">
+            @if (Session.IsAuthenticated)
+            {
+                @if (IsAdmin)
                 {
-                    @if (IsAdmin)
-                    {
-                        <a class="nav-pill @NavClass("admin")" href="admin">Dashboard</a>
-                    }
-                    else
-                    {
-                        @if (IsModerator)
-                        {
-                            <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
-                        }
-                        <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
-                        <a class="nav-pill @NavClass("community")" href="community">Community</a>
-                        <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
-                        <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
-                    }
+                    <a class="nav-pill @NavClass("admin")" href="admin">Admin Panel</a>
                 }
+                @if (IsModeratorOrAdmin)
+                {
+                    <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                }
+                <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
+                <a class="nav-pill @NavClass("community")" href="community">Community</a>
+                <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
+                <a class="nav-pill @NavClass("documents/upload")" href="documents/upload">Upload</a>
+            }
             else
             {
                 <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
@@ -41,7 +36,6 @@
                 <NavLink class="nav-pill" href="register">Get Started</NavLink>
             }
         </nav>
-        }
 
         <div class="community-actions teammate-actions">
             @if (Session.IsAuthenticated)
@@ -86,6 +80,8 @@
 
     private bool IsModerator =>
         Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsModeratorOrAdmin => IsAdmin || IsModerator;
 
     private string ProfileHref => IsAdmin
         ? "admin"

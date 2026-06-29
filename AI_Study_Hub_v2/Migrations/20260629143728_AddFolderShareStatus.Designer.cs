@@ -4,6 +4,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -13,9 +14,11 @@ using Pgvector;
 namespace AI_Study_Hub_v2.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260629143728_AddFolderShareStatus")]
+    partial class AddFolderShareStatus
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -306,12 +309,6 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Property<int?>("PageCount")
                         .HasColumnType("integer")
                         .HasColumnName("page_count");
-
-                    b.Property<int>("ReviewStatus")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("review_status");
 
                     b.Property<string>("Semester")
                         .IsRequired()

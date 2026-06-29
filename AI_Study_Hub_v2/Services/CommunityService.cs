@@ -48,10 +48,10 @@ public sealed class CommunityService : ICommunityService
             .FirstOrDefaultAsync(f => f.Id == folderId, ct)
             ?? throw new CommunityException(404, "folder_not_found", "Folder not found.");
 
-        if (!folder.IsShared)
+        if (folder.ShareStatus != FolderStatus.Approved)
         {
             throw new CommunityException(400, "folder_not_shared",
-                "Only shared folders can be reported.");
+                "Only approved folders can be reported.");
         }
 
         if (folder.UserId == profile.Id)
