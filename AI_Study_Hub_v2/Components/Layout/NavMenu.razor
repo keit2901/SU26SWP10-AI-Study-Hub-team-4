@@ -50,7 +50,7 @@
                     <span>@DisplayName</span>
                     <small>Pro Plan</small>
                 </div>
-                <a class="user-chip teammate-user-chip" href="@(IsAdmin ? "admin" : IsModerator ? "dashboard" : "profile")">
+                <a class="user-chip teammate-user-chip" href="@ProfileHref">
                     <span class="user-avatar"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
                 </a>
                 <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
@@ -86,6 +86,15 @@
 
     private bool IsModerator =>
         Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsModerator =>
+        Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
+
+    private string ProfileHref => IsAdmin
+        ? "admin"
+        : IsModerator
+            ? "moderator/community-reports"
+            : "profile";
 
     private string DisplayName =>
         Session.CurrentUser?.FullName

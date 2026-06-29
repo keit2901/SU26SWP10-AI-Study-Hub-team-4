@@ -48,6 +48,14 @@ public sealed class CommunityReportConfiguration : IEntityTypeConfiguration<Comm
         builder.Property(cr => cr.ResolvedAt)
             .HasColumnName("resolved_at");
 
+        builder.HasIndex(cr => cr.FolderId)
+            .HasDatabaseName("IX_community_reports_folder_id");
+
+        builder.HasIndex(cr => new { cr.FolderId, cr.ReportedByUserId })
+            .IsUnique()
+            .HasDatabaseName("ux_community_reports_pending_folder_reporter")
+            .HasFilter("status = 'Pending'");
+
         builder.HasOne(cr => cr.Folder)
             .WithMany()
             .HasForeignKey(cr => cr.FolderId)

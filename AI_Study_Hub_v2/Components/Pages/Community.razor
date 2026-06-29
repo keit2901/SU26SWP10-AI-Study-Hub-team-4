@@ -2,8 +2,10 @@
 @implements IDisposable
 @inject AuthSessionState Session
 @inject FolderApiClient FoldersApi
+@inject CommunityApiClient CommunityApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <PageTitle>Community - AI Study Hub v2</PageTitle>
 
@@ -180,8 +182,8 @@
                                             @if (_openMenuFolderId == folder.Id)
                                             {
                                                 <div class="card-menu-dropdown">
-                                                    <button class="menu-item" @onclick="async () => { var id = folder.Id; _openMenuFolderId = null; await CopyToLibrary(id); }">Copy to Library</button>
-                                                    <button class="menu-item" @onclick="() => { _openMenuFolderId = null; ShowComingSoon(); }">Report</button>
+                                                    <button class="menu-item" @onclick="() => { var id = folder.Id; _openMenuFolderId = null; CopyToLibrary(id); }">Copy to Library</button>
+                                                    <button class="menu-item" @onclick="async () => await OpenReportDialogAsync(folder)">Report</button>
                                                 </div>
                                             }
                                         </div>
@@ -405,6 +407,44 @@
     private void ShowComingSoon()
     {
         Snackbar.Add("Coming soon", Severity.Info);
+    }
+
+    private async Task OpenReportDialogAsync(FolderDto folder)
+    {
+        _openMenuFolderId = null;
+        if (!Session.IsAuthenticated || Session.AccessToken is null)
+        {
+            Snackbar.Add("Sign in to report", Severity.Warning);
+            return;
+        }
+
+        var dialog = await DialogService.ShowAsync<ReportFolderDialog>(
+            "Report shared folder",
+            new DialogParameters<ReportFolderDialog>
+            {
+                { item => item.FolderName, folder.Name }
+            },
+            new DialogOptions
+            {
+                MaxWidth = MaxWidth.Small,
+                FullWidth = true,
+                CloseButton = true,
+            });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string reason)
+        {
+            return;
+        }
+
+        try
+        {
+            await CommunityApi.ReportFolderAsync(Session.AccessToken, folder.Id, reason);
+            Snackbar.Add("Report submitted", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
     }
 
     private async Task CopyToLibrary(Guid folderId)
