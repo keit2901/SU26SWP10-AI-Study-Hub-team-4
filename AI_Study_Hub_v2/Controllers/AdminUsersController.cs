@@ -99,6 +99,76 @@ public sealed class AdminUsersController : ControllerBase
         }
     }
 
+    [HttpPatch("{id:guid}/activate")]
+    [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminUserDto>> ActivateUser(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _users.ToggleActiveAsync(
+                GetSupabaseUserId(),
+                id,
+                activate: true,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.TraceIdentifier,
+                cancellationToken);
+            return Ok(result);
+        }
+        catch (AdminException ex)
+        {
+            return StatusCode(ex.StatusCode, new ApiErrorResponse { Code = ex.Code, Message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected admin activate failure for user {UserId}.", id);
+            return StatusCode(500, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while activating the user."
+            });
+        }
+    }
+
+    [HttpPatch("{id:guid}/deactivate")]
+    [ProducesResponseType(typeof(AdminUserDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminUserDto>> DeactivateUser(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _users.ToggleActiveAsync(
+                GetSupabaseUserId(),
+                id,
+                activate: false,
+                HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.TraceIdentifier,
+                cancellationToken);
+            return Ok(result);
+        }
+        catch (AdminException ex)
+        {
+            return StatusCode(ex.StatusCode, new ApiErrorResponse { Code = ex.Code, Message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected admin deactivate failure for user {UserId}.", id);
+            return StatusCode(500, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while deactivating the user."
+            });
+        }
+    }
+
     private Guid GetSupabaseUserId()
     {
         var value = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");

@@ -26,6 +26,14 @@ public interface IAdminUserService
         string? ipAddress,
         string? requestId,
         CancellationToken cancellationToken = default);
+
+    Task<AdminUserDto> ToggleActiveAsync(
+        Guid adminSupabaseUserId,
+        Guid userId,
+        bool activate,
+        string? ipAddress,
+        string? requestId,
+        CancellationToken cancellationToken = default);
 }
 
 public sealed class AdminUserService : IAdminUserService
@@ -227,6 +235,89 @@ public sealed class AdminUserService : IAdminUserService
             document => document.UserId == user.Id,
             cancellationToken);
         return ToDto(user, docCount, newRoleName);
+    }
+
+    public async Task<AdminUserDto> ToggleActiveAsync(
+        Guid adminSupabaseUserId,
+        Guid userId,
+        bool activate,
+        string? ipAddress,
+        string? requestId,
+        CancellationToken cancellationToken = default)
+    {
+        var admin = await ResolveActiveAdminAsync(adminSupabaseUserId, cancellationToken);
+        var user = await _db.Users
+            .Include(item => item.Role)
+            .FirstOrDefaultAsync(item => item.Id == userId, cancellationToken)
+            ?? throw new AdminException(404, "user_not_found", "User not found.");
+
+        if (user.Id == admin.Id)
+        {
+            throw new AdminException(400, "cannot_toggle_self", "You cannot lock or unlock your own account.");
+        }
+
+        if (user.IsActive == activate)
+        {
+            var docCount = await _db.Documents.CountAsync(
+                document => document.UserId == user.Id,
+                cancellationToken);
+            return ToDto(user, docCount);
+        }
+
+        var action = activate ? "USER_UNLOCK" : "USER_LOCK";
+        user.IsActive = activate;
+
+        // If locking, also ban on GoTrue to prevent login
+        if (!activate)
+        {
+            try
+            {
+                await _goTrue.AdminUpdateUserByIdAsync(
+                    user.SupabaseUserId,
+                    new Dictionary<string, object?> { ["banned"] = true },
+                    cancellationToken);
+                await _goTrue.AdminSignOutUserAsync(user.SupabaseUserId, cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _audit.Add(admin.Id, "FORCE_LOGOUT_FAILED", "users", user.Id.ToString(), "Medium",
+                    null, null, JsonSerializer.Serialize(new { error = ex.Message }), ipAddress, requestId);
+            }
+        }
+        else
+        {
+            // Unlock: remove ban flag from GoTrue
+            try
+            {
+                await _goTrue.AdminUpdateUserByIdAsync(
+                    user.SupabaseUserId,
+                    new Dictionary<string, object?> { ["banned"] = false },
+                    cancellationToken);
+            }
+            catch
+            {
+                // GoTrue unlock failure is non-blocking; DB lock is already cleared
+            }
+        }
+
+        _audit.Add(
+            admin.Id,
+            action,
+            "users",
+            user.Id.ToString(),
+            "High",
+            JsonSerializer.Serialize(new { active = !activate }),
+            JsonSerializer.Serialize(new { active = activate }),
+            JsonSerializer.Serialize(new { adminRole = admin.Role.RoleName }),
+            ipAddress,
+            requestId);
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var documentCount = await _db.Documents.CountAsync(
+            document => document.UserId == user.Id,
+            cancellationToken);
+        return ToDto(user, documentCount);
     }
 
     private async Task<User> ResolveActiveAdminAsync(Guid supabaseUserId, CancellationToken cancellationToken)

@@ -527,8 +527,17 @@
 
         if (!user.IsActive)
         {
-            user.IsActive = true;
-            Snackbar.Add($"{user.FullName} has been activated.", Severity.Success);
+            // Activate directly - no confirmation needed
+            try
+            {
+                var updated = await AdminApi.ToggleActiveAsync(Session.AccessToken!, user.Id, activate: true);
+                user.IsActive = true;
+                Snackbar.Add($"{user.FullName} has been activated.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Activation failed: {ex.Message}", Severity.Error);
+            }
             return;
         }
 
@@ -546,8 +555,16 @@
 
         if (result is { Canceled: false })
         {
-            user.IsActive = false;
-            Snackbar.Add($"{user.FullName} has been deactivated and audit log entry queued.", Severity.Warning);
+            try
+            {
+                var updated = await AdminApi.ToggleActiveAsync(Session.AccessToken!, user.Id, activate: false);
+                user.IsActive = false;
+                Snackbar.Add($"{user.FullName} has been deactivated. All sessions revoked.", Severity.Warning);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Deactivation failed: {ex.Message}", Severity.Error);
+            }
         }
     }
 
@@ -626,10 +643,11 @@
         }
     }
 
-    private bool IsCurrentAdmin(UserRow user) => user.Id == Session.CurrentUser?.Id;
+    private bool IsCurrentAdmin(UserRow user) => user?.Id == Session.CurrentUser?.Id;
 
     private IReadOnlyList<string> GetAssignableRoles(UserRow user)
     {
+        if (user is null || Session.CurrentUser is null) return Array.Empty<string>();
         if (IsCurrentAdmin(user))
         {
             return Array.Empty<string>();
