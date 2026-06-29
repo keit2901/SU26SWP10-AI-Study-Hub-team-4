@@ -14,5 +14,5 @@ public interface IDashboardService
     Task<List<DocumentDto>> GetPendingDocumentsAsync(CancellationToken ct = default);
     Task<bool> ApproveDocumentAsync(Guid documentId, CancellationToken ct = default);
     Task<bool> RejectDocumentAsync(Guid documentId, CancellationToken ct = default);
-    Task<UserAnalyticsDto> GetUserAnalyticsAsync(Guid userId, CancellationToken ct = default);
+    Task<UserAnalyticsDto> GetUserAnalyticsAsync(Guid userId, Guid? folderId = null, CancellationToken ct = default);
 }
