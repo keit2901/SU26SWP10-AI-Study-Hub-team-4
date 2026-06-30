@@ -93,6 +93,28 @@ public sealed class AdminApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public async Task<AdminUserDto> ToggleActiveAsync(
+        string accessToken,
+        Guid userId,
+        bool activate,
+        CancellationToken cancellationToken = default)
+    {
+        var action = activate ? "activate" : "deactivate";
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Patch,
+            $"api/admin/users/{userId}/{action}",
+            accessToken);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return await response.Content.ReadFromJsonAsync<AdminUserDto>(cancellationToken: cancellationToken)
+                ?? throw new DocumentApiException(500, "empty_response", "Server returned an empty response.");
+        }
+        await ThrowFromResponseAsync(response, cancellationToken);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     private static HttpRequestMessage CreateAuthorizedRequest(
         HttpMethod method,
         string url,
