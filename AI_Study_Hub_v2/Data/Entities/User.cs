@@ -18,6 +18,12 @@ public sealed class User
 
     public long TotalTokensUsed { get; set; }
 
+    public long DailyTokenQuota { get; set; } = 25_000;
+
+    public long TokensUsedToday { get; set; }
+
+    public DateOnly TokenUsageDate { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow);
+
     public bool IsActive { get; set; } = true;
 
     public DateTimeOffset CreatedAt { get; set; }

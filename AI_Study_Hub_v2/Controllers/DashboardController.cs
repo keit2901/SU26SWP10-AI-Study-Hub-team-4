@@ -36,4 +36,14 @@ public class DashboardController : ControllerBase
         var stats = await _dashboardService.GetAdminStatsAsync(ct);
         return Ok(stats);
     }
+
+    [Authorize(Roles = "Admin")]
+    [HttpGet("admin/activity-trends")]
+    public async Task<ActionResult<ActivityTrendsDto>> GetActivityTrends(
+        [FromQuery] string period = "day",
+        CancellationToken ct = default)
+    {
+        var trends = await _dashboardService.GetActivityTrendsAsync(period, ct);
+        return Ok(trends);
+    }
 }

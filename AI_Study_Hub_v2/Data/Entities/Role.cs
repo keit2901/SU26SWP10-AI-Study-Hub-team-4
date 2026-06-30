@@ -15,4 +15,12 @@ public sealed class Role
     public const string AdminRoleName = "Admin";
     public const string ModeratorRoleName = "Moderator";
     public const string StudentRoleName = "Student";
+
+    /// <summary>
+    /// Roles that are allowed to assign roles to other users.
+    /// </summary>
+    public static readonly IReadOnlySet<string> RoleAssignerNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        AdminRoleName,
+    };
 }

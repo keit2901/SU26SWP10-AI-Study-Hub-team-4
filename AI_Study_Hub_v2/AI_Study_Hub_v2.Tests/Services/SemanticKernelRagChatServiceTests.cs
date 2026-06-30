@@ -15,17 +15,56 @@ public class SemanticKernelRagChatServiceTests
         IRagSearchService ragSearchService,
         IAiChatCompletionClient completionClient,
         RagOptions? options = null,
-        GroqOptions? groqOptions = null)
+        GroqOptions? groqOptions = null,
+        IAiQuotaService? quotaService = null)
     {
         var factoryMock = new Mock<IAiChatCompletionClientFactory>(MockBehavior.Strict);
         factoryMock.Setup(f => f.GetClient(It.IsAny<string?>())).Returns(completionClient);
         factoryMock.Setup(f => f.GetProviderName(It.IsAny<string?>())).Returns("groq");
+        var quotaMock = new Mock<IAiQuotaService>();
+        quotaMock
+            .Setup(q => q.ReserveAsync(It.IsAny<Guid>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Guid userId, int tokens, CancellationToken _) =>
+                new AiQuotaReservation(userId, tokens, DateOnly.FromDateTime(DateTime.UtcNow)));
+        quotaMock
+            .Setup(q => q.CompleteAsync(It.IsAny<AiQuotaReservation>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        quotaMock
+            .Setup(q => q.ReleaseAsync(It.IsAny<AiQuotaReservation>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
         return new(
             ragSearchService,
             factoryMock.Object,
             Microsoft.Extensions.Options.Options.Create(options ?? new RagOptions()),
             Microsoft.Extensions.Options.Options.Create(groqOptions ?? new GroqOptions()),
+            quotaService ?? quotaMock.Object,
             NullLogger<SemanticKernelRagChatService>.Instance);
+    }
+
+    [Test]
+    public async Task AskAsync_QuotaExceeded_Returns429AndSkipsProvider()
+    {
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        var completion = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        var quota = new Mock<IAiQuotaService>(MockBehavior.Strict);
+        quota
+            .Setup(service => service.ReserveAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiQuotaException(429, "ai_quota_exceeded", "Daily quota exceeded."));
+        var sut = BuildSut(rag.Object, completion.Object, quotaService: quota.Object);
+
+        var act = () => sut.AskAsync(
+            Guid.NewGuid(),
+            new AiChatAskRequest("Explain RAG", null, null, null, null));
+
+        var exception = await act.Should().ThrowAsync<AiChatException>();
+        exception.Which.StatusCode.Should().Be(429);
+        exception.Which.Code.Should().Be("ai_quota_exceeded");
+        completion.VerifyNoOtherCalls();
+        rag.VerifyNoOtherCalls();
+        quota.VerifyAll();
     }
 
     [Test]

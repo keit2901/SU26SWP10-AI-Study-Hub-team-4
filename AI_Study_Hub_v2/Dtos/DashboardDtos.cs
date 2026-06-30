@@ -61,3 +61,15 @@ public record AnalyticsDocumentDto(
     int? PageCount,
     int ChunkCount
 );
+
+public record ActivityTrendPoint(
+    string Label,
+    int Uploads,
+    int Documents,
+    int Failed
+);
+
+public record ActivityTrendsDto(
+    string Period,
+    System.Collections.Generic.List<ActivityTrendPoint> Points
+);

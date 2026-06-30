@@ -41,6 +41,13 @@ internal static class TestDb
                     RoleName = Role.StudentRoleName,
                     Description = "Student",
                     CreatedAt = new DateTimeOffset(2026, 5, 23, 0, 0, 0, TimeSpan.Zero)
+                },
+                new Role
+                {
+                    Id = 3,
+                    RoleName = Role.ModeratorRoleName,
+                    Description = "Moderator",
+                    CreatedAt = new DateTimeOffset(2026, 6, 27, 0, 0, 0, TimeSpan.Zero)
                 });
             ctx.SaveChanges();
         }
@@ -81,6 +88,13 @@ internal static class TestDb
                     RoleName = Role.StudentRoleName,
                     Description = "Student",
                     CreatedAt = new DateTimeOffset(2026, 5, 23, 0, 0, 0, TimeSpan.Zero)
+                },
+                new Role
+                {
+                    Id = 3,
+                    RoleName = Role.ModeratorRoleName,
+                    Description = "Moderator",
+                    CreatedAt = new DateTimeOffset(2026, 6, 27, 0, 0, 0, TimeSpan.Zero)
                 });
             ctx.SaveChanges();
         }

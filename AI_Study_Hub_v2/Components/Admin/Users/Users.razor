@@ -1,6 +1,7 @@
 ﻿@namespace AI_Study_Hub_v2.Components.Admin.Users
 @page "/admin/users"
 @layout AdminLayout
+@implements IDisposable
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
@@ -8,6 +9,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IRoleCatalogService Roles
+@inject AuthSessionState Session
+@inject AdminApiClient AdminApi
 
 <MudStack Spacing="4" Class="admin-users-page page-enter">
     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
@@ -15,14 +18,14 @@
             <MudText Typo="Typo.overline" Color="Color.Secondary">UC09 + UC16 - Profiles and quotas</MudText>
             <MudText Typo="Typo.h4">Users & Permissions</MudText>
             <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Search profiles, manage account access, switch roles from the database, and control daily token quotas.
+                Search profiles and control the daily AI token quotas enforced by the backend.
             </MudText>
         </div>
         <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
             <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.DataUsage" OnClick="ApplyQuotaRiskFilter">
                 Quota risks
             </MudButton>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd" OnClick="OpenInviteSheet">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.PersonAdd" Disabled="true">
                 Invite user
             </MudButton>
         </MudStack>
@@ -104,7 +107,7 @@
     </MudGrid>
 
     <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="guardrail-alert">
-        Guardrail: administrators cannot deactivate or demote their own account. Role, status, and quota changes should write audit_logs entries.
+        SCRUM-65: quota changes are persisted and written to audit_logs. Role and account-status editing are outside this ticket.
     </MudAlert>
 
     <AdminDataGrid TItem="UserRow"
@@ -166,19 +169,19 @@
                             <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" />
                         </ActivatorContent>
                         <ChildContent>
-                            <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(cell.Item))">View details</MudMenuItem>
                             <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => OpenQuotaSheet(cell.Item))">Edit quota</MudMenuItem>
-                            @foreach (var role in AvailableRoleNames.Where(role => !role.Equals(cell.Item.Role, StringComparison.OrdinalIgnoreCase)))
+                            @if (GetAssignableRoles(cell.Item).Any())
                             {
-                                <MudMenuItem Icon="@GetRoleIcon(role)" Disabled="@IsRoleChangeDisabled(cell.Item, role)" OnClick="@(() => ChangeRoleAsync(cell.Item, role))">Change role to @role</MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.AdminPanelSettings" OnClick="@(() => OpenRoleSheet(cell.Item))">Change role</MudMenuItem>
                             }
+                            <MudDivider />
                             @if (cell.Item.IsActive)
                             {
-                                <MudMenuItem Icon="@Icons.Material.Filled.Block" Disabled="@IsCurrentAdmin(cell.Item)" OnClick="@(() => ToggleActiveAsync(cell.Item))">Deactivate</MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.Block" OnClick="@(() => ToggleActiveAsync(cell.Item))">Deactivate</MudMenuItem>
                             }
                             else
                             {
-                                <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" OnClick="@(() => ToggleActiveAsync(cell.Item))">Activate</MudMenuItem>
+                                <MudMenuItem Icon="@Icons.Material.Filled.CheckCircleOutline" OnClick="@(() => ToggleActiveAsync(cell.Item))">Activate</MudMenuItem>
                             }
                         </ChildContent>
                     </MudMenu>
@@ -202,7 +205,7 @@
     <ChildContent>
         <MudStack Spacing="3">
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                Quota updates should be persisted to user_quota_overrides or an equivalent Supabase table and written to audit_logs.
+                This limit is enforced before each AI chat request. Every administrator change is written to audit_logs.
             </MudAlert>
             <MudTextField Value="@_quotaEdit.UserName" Label="User" Variant="Variant.Outlined" ReadOnly="true" />
             <MudNumericField T="int" Value="@_quotaEdit.DailyTokenQuota" ValueChanged="OnQuotaValueChanged" Label="Daily token quota" Variant="Variant.Outlined" Min="1000" Step="1000" />
@@ -231,28 +234,75 @@
     </FooterContent>
 </EntitySheet>
 
+<EntitySheet Open="@_roleSheetOpen"
+             OpenChanged="@(value => _roleSheetOpen = value)"
+             Title="Change role"
+             Subtitle="Assign a new role to this user. Their sessions will be reset after role change."
+             Width="480px">
+    <ChildContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                Role changes are permanent, logged to audit trail, and the user will be signed out on all devices.
+            </MudAlert>
+            <MudTextField Value="@_roleEdit.UserName" Label="User" Variant="Variant.Outlined" ReadOnly="true" />
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                <MudText Typo="Typo.caption">Current role:</MudText>
+                <MudChip T="string" Color="@GetRoleColor(_roleEdit.CurrentRole)" Variant="Variant.Outlined" Size="Size.Small">@_roleEdit.CurrentRole</MudChip>
+            </MudStack>
+            <MudSelect T="string" Value="@_roleEdit.SelectedRole" ValueChanged="OnRoleSelectedAsync" Label="New role" Variant="Variant.Outlined" Margin="Margin.Dense">
+                @foreach (var role in GetAssignableRoles(_roleEdit.UserRow))
+                {
+                    <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
+                }
+            </MudSelect>
+            @if (!string.IsNullOrWhiteSpace(_roleEdit.SelectedRole)
+                 && !_roleEdit.SelectedRole.Equals(_roleEdit.CurrentRole, StringComparison.OrdinalIgnoreCase))
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                    Changing @_roleEdit.UserName from <b>@_roleEdit.CurrentRole</b> to <b>@_roleEdit.SelectedRole</b>.
+                </MudAlert>
+            }
+        </MudStack>
+    </ChildContent>
+    <FooterContent>
+        <MudButton Variant="Variant.Text" OnClick="CloseRoleSheet">Cancel</MudButton>
+        <MudButton Color="Color.Warning" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.AdminPanelSettings" OnClick="SaveRoleAsync" Disabled="@(_isSavingRole)">
+            Change role
+        </MudButton>
+    </FooterContent>
+</EntitySheet>
+
 @code {
     private const string StudentRole = "Student";
     private const string AdminRole = "Admin";
+    private const string ModeratorRole = "Moderator";
     private const string ActiveStatus = "Active";
     private const string InactiveStatus = "Inactive";
     private const string QuotaNormal = "Normal";
     private const string QuotaWarning = "Warning";
     private const string QuotaExceeded = "Exceeded";
-    private static readonly Guid CurrentAdminId = Guid.Parse("a8b3e2f7-1b99-401c-b558-1ba1ea5568e8");
+
+    private static readonly HashSet<string> AssignableRoleNames = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ModeratorRole, StudentRole,
+    };
 
     private readonly List<UserRow> _users = new();
     private readonly List<RoleOption> _roles = new();
     private bool _isLoading = true;
     private bool _inviteSheetOpen;
     private bool _quotaSheetOpen;
+    private bool _roleSheetOpen;
     private bool _isInviting;
+    private bool _isSavingRole;
     private string? _searchText;
     private string? _selectedRole;
     private string? _selectedStatus;
     private string? _selectedQuotaRisk;
     private string? _errorMessage;
     private QuotaEditModel _quotaEdit = new();
+    private RoleEditModel _roleEdit = new();
+    private bool _loadStarted;
 
     private IEnumerable<UserRow> FilteredUsers => _users
         .Where(MatchesRole)
@@ -292,12 +342,39 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override void OnInitialized()
     {
+        Session.OnChange += HandleSessionChanged;
+        if (Session.IsAuthenticated)
+        {
+            _ = LoadAsync();
+        }
+    }
+
+    private void HandleSessionChanged()
+    {
+        if (Session.IsAuthenticated && !_loadStarted)
+        {
+            _ = InvokeAsync(LoadAsync);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            return;
+        }
+
+        _loadStarted = true;
+        _isLoading = true;
+        _errorMessage = null;
         try
         {
             await LoadRolesAsync();
-            _users.AddRange(BuildSeedUsers());
+            var users = await AdminApi.ListUsersAsync(Session.AccessToken);
+            _users.Clear();
+            _users.AddRange(users.Select(ToUserRow));
         }
         catch (Exception ex)
         {
@@ -306,6 +383,7 @@
         finally
         {
             _isLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -382,19 +460,6 @@
             || user.Role.Equals(_selectedRole, StringComparison.OrdinalIgnoreCase);
     }
 
-    private bool IsRoleChangeDisabled(UserRow user, string targetRole)
-    {
-        return user.Role.Equals(targetRole, StringComparison.OrdinalIgnoreCase)
-            || (IsCurrentAdmin(user) && !targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string GetRoleIcon(string role)
-    {
-        return role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase)
-            ? Icons.Material.Filled.AdminPanelSettings
-            : Icons.Material.Filled.Badge;
-    }
-
     private bool MatchesStatus(UserRow user)
     {
         return _selectedStatus switch
@@ -461,51 +526,6 @@
         Navigation.NavigateTo($"/admin/users/{user.Id}");
     }
 
-    private async Task ChangeRoleAsync(UserRow user, string targetRole)
-    {
-        if (!AvailableRoleNames.Contains(targetRole, StringComparer.OrdinalIgnoreCase))
-        {
-            Snackbar.Add($"Role '{targetRole}' is not present in the database roles list.", Severity.Error);
-            return;
-        }
-
-        if (IsCurrentAdmin(user) && !targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase))
-        {
-            Snackbar.Add("You cannot demote your own administrator account.", Severity.Error);
-            return;
-        }
-
-        if (user.Role.Equals(targetRole, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        var parameters = new DialogParameters
-        {
-            ["Title"] = "Change user role",
-            ["Message"] = $"Change {user.FullName} from {user.Role} to {targetRole}? This affects authorization claims and should be audited.",
-            ["ConfirmText"] = "Change role",
-            ["ConfirmColor"] = Color.Warning,
-            ["IconColor"] = Color.Warning,
-            ["Icon"] = Icons.Material.Filled.AdminPanelSettings
-        };
-
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Change user role", parameters);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false })
-        {
-            var previousRole = user.Role;
-            user.Role = targetRole;
-            if (targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase) && user.DailyTokenQuota < 75_000)
-            {
-                user.DailyTokenQuota = 75_000;
-            }
-
-            Snackbar.Add($"{user.FullName} changed from {previousRole} to {targetRole}. Audit log entry queued.", Severity.Success);
-        }
-    }
-
     private async Task ToggleActiveAsync(UserRow user)
     {
         if (IsCurrentAdmin(user) && user.IsActive)
@@ -516,8 +536,17 @@
 
         if (!user.IsActive)
         {
-            user.IsActive = true;
-            Snackbar.Add($"{user.FullName} has been activated.", Severity.Success);
+            // Activate directly - no confirmation needed
+            try
+            {
+                var updated = await AdminApi.ToggleActiveAsync(Session.AccessToken!, user.Id, activate: true);
+                user.IsActive = true;
+                Snackbar.Add($"{user.FullName} has been activated.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Activation failed: {ex.Message}", Severity.Error);
+            }
             return;
         }
 
@@ -535,8 +564,16 @@
 
         if (result is { Canceled: false })
         {
-            user.IsActive = false;
-            Snackbar.Add($"{user.FullName} has been deactivated and audit log entry queued.", Severity.Warning);
+            try
+            {
+                var updated = await AdminApi.ToggleActiveAsync(Session.AccessToken!, user.Id, activate: false);
+                user.IsActive = false;
+                Snackbar.Add($"{user.FullName} has been deactivated. All sessions revoked.", Severity.Warning);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Deactivation failed: {ex.Message}", Severity.Error);
+            }
         }
     }
 
@@ -598,12 +635,106 @@
             }
         }
 
-        user.DailyTokenQuota = _quotaEdit.DailyTokenQuota;
-        _quotaSheetOpen = false;
-        Snackbar.Add($"Daily token quota updated for {user.FullName}. Audit log entry queued.", Severity.Success);
+        try
+        {
+            var updated = await AdminApi.UpdateQuotaAsync(
+                Session.AccessToken!,
+                user.Id,
+                _quotaEdit.DailyTokenQuota);
+            user.DailyTokenQuota = checked((int)updated.DailyTokenQuota);
+            user.TokensUsedToday = checked((int)updated.TokensUsedToday);
+            _quotaSheetOpen = false;
+            Snackbar.Add($"Daily token quota updated for {user.FullName}.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Quota update failed: {ex.Message}", Severity.Error);
+        }
     }
 
-    private static bool IsCurrentAdmin(UserRow user) => user.Id == CurrentAdminId;
+    private bool IsCurrentAdmin(UserRow user) => user?.Id == Session.CurrentUser?.Id;
+
+    private IReadOnlyList<string> GetAssignableRoles(UserRow user)
+    {
+        if (user is null || Session.CurrentUser is null) return Array.Empty<string>();
+        if (IsCurrentAdmin(user))
+        {
+            return Array.Empty<string>();
+        }
+
+        if (user.Role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase))
+        {
+            return Array.Empty<string>();
+        }
+
+        return AssignableRoleNames
+            .Where(role => !role.Equals(user.Role, StringComparison.OrdinalIgnoreCase))
+            .OrderBy(role => role.Equals(ModeratorRole, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+            .ToList();
+    }
+
+    private void OpenRoleSheet(UserRow user)
+    {
+        _roleEdit = RoleEditModel.FromUser(user);
+        _roleSheetOpen = true;
+    }
+
+    private Task CloseRoleSheet()
+    {
+        _roleSheetOpen = false;
+        _roleEdit = new RoleEditModel();
+        return Task.CompletedTask;
+    }
+
+    private Task OnRoleSelectedAsync(string value)
+    {
+        _roleEdit.SelectedRole = value;
+        return Task.CompletedTask;
+    }
+
+    private async Task SaveRoleAsync()
+    {
+        if (string.IsNullOrWhiteSpace(_roleEdit.SelectedRole))
+        {
+            Snackbar.Add("Please select a role.", Severity.Error);
+            return;
+        }
+
+        if (_roleEdit.SelectedRole.Equals(_roleEdit.CurrentRole, StringComparison.OrdinalIgnoreCase))
+        {
+            Snackbar.Add("The selected role is the same as the current role.", Severity.Info);
+            return;
+        }
+
+        var user = _users.FirstOrDefault(item => item.Id == _roleEdit.UserId);
+        if (user is null)
+        {
+            Snackbar.Add("User no longer exists in the current result set.", Severity.Error);
+            return;
+        }
+
+        _isSavingRole = true;
+        try
+        {
+            var updated = await AdminApi.UpdateRoleAsync(
+                Session.AccessToken!,
+                user.Id,
+                _roleEdit.SelectedRole);
+
+            var previousRole = user.Role;
+            user.Role = updated.Role;
+            _roleSheetOpen = false;
+            Snackbar.Add($"{user.FullName} changed from {previousRole} to {updated.Role}. User sessions revoked.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Role change failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isSavingRole = false;
+        }
+    }
 
     private static string GetQuotaLabel(UserRow user)
     {
@@ -636,15 +767,22 @@
         };
     }
 
-    private static IEnumerable<UserRow> BuildSeedUsers()
+    private static UserRow ToUserRow(AdminUserDto user)
     {
-        return new[]
+        return new UserRow
         {
-            new UserRow { Id = Guid.Parse("16d5b5b1-723e-44ab-8cd4-96010bdbe2c2"), FullName = "Mai Anh Tran", Email = "mai.tran@aistudyhub.edu", StudentCode = "SE201001", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-21), LastActiveAt = DateTime.UtcNow.AddMinutes(-18), IsActive = true, DailyTokenQuota = 25_000, TokensUsedToday = 18_400, DocumentCount = 8 },
-            new UserRow { Id = Guid.Parse("1ae950de-3a70-4a3e-864b-9609d5a59c9d"), FullName = "Kiet Ngo", Email = "kiet.ngo@aistudyhub.edu", StudentCode = "SE203943", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-12), LastActiveAt = DateTime.UtcNow.AddMinutes(-52), IsActive = true, DailyTokenQuota = 25_000, TokensUsedToday = 27_100, DocumentCount = 3 },
-            new UserRow { Id = Guid.Parse("2bdad67c-83d7-46ca-b67a-f01afecf41c1"), FullName = "Dr. Nguyen Minh", Email = "minh.nguyen@aistudyhub.edu", StudentCode = string.Empty, Role = AdminRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-48), LastActiveAt = DateTime.UtcNow.AddHours(-2), IsActive = true, DailyTokenQuota = 75_000, TokensUsedToday = 63_800, DocumentCount = 42 },
-            new UserRow { Id = CurrentAdminId, FullName = "System Administrator", Email = "admin@aistudyhub.edu", StudentCode = string.Empty, Role = AdminRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-90), LastActiveAt = DateTime.UtcNow.AddMinutes(-5), IsActive = true, DailyTokenQuota = 100_000, TokensUsedToday = 41_200, DocumentCount = 0 },
-            new UserRow { Id = Guid.Parse("e7d57d35-98a3-4774-a07c-331bb5665662"), FullName = "Linh Pham", Email = "linh.pham@aistudyhub.edu", StudentCode = "SE201220", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-3), LastActiveAt = DateTime.UtcNow.AddDays(-1), IsActive = false, DailyTokenQuota = 25_000, TokensUsedToday = 1_200, DocumentCount = 1 }
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Username,
+            StudentCode = user.Username,
+            Role = user.Role,
+            AvatarUrl = string.Empty,
+            CreatedAt = user.CreatedAt.UtcDateTime,
+            LastActiveAt = user.TokenUsageDate.ToDateTime(TimeOnly.MinValue),
+            IsActive = user.IsActive,
+            DailyTokenQuota = checked((int)user.DailyTokenQuota),
+            TokensUsedToday = checked((int)user.TokensUsedToday),
+            DocumentCount = user.DocumentCount,
         };
     }
 
@@ -692,6 +830,31 @@
                 TokensUsedToday = user.TokensUsedToday
             };
         }
+    }
+
+    private sealed class RoleEditModel
+    {
+        public Guid UserId { get; set; }
+        public string UserName { get; set; } = string.Empty;
+        public string CurrentRole { get; set; } = string.Empty;
+        public string SelectedRole { get; set; } = string.Empty;
+        public UserRow? UserRow { get; set; }
+
+        public static RoleEditModel FromUser(UserRow user)
+        {
+            return new RoleEditModel
+            {
+                UserId = user.Id,
+                UserName = $"{user.FullName} ({user.Email})",
+                CurrentRole = user.Role,
+                UserRow = user,
+            };
+        }
+    }
+
+    public void Dispose()
+    {
+        Session.OnChange -= HandleSessionChanged;
     }
 }
 

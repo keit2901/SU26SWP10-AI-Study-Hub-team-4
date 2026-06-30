@@ -408,4 +408,66 @@ public class DashboardService : IDashboardService
             RecentDocuments: docs
         );
     }
+
+    public async Task<ActivityTrendsDto> GetActivityTrendsAsync(string period = "day", CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        int buckets;
+        Func<int, DateTime> bucketStart;
+        Func<DateTime, string> labelFormatter;
+
+        switch (period?.ToLowerInvariant())
+        {
+            case "week":
+                buckets = 8;
+                bucketStart = i => now.AddDays(-(i + 1) * 7).Date;
+                labelFormatter = dt => $"W{ISOWeek(dt)}";
+                break;
+            case "month":
+                buckets = 6;
+                bucketStart = i => new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-i);
+                labelFormatter = dt => dt.ToString("MMM");
+                break;
+            default:
+                period = "day";
+                buckets = 7;
+                bucketStart = i => now.AddDays(-i).Date;
+                labelFormatter = dt => dt.ToString("ddd");
+                break;
+        }
+
+        var points = new List<ActivityTrendPoint>();
+        for (var i = buckets - 1; i >= 0; i--)
+        {
+            var start = bucketStart(i);
+            var end = i == 0
+                ? now.AddDays(1).Date
+                : bucketStart(i - 1);
+
+            var allDocs = await _context.Documents
+                .AsNoTracking()
+                .Where(d => d.CreatedAt >= start && d.CreatedAt < end)
+                .CountAsync(ct);
+
+            var failed = await _context.Documents
+                .AsNoTracking()
+                .Where(d => d.CreatedAt >= start && d.CreatedAt < end && d.Status == DocumentStatus.Failed)
+                .CountAsync(ct);
+
+            points.Add(new ActivityTrendPoint(
+                Label: labelFormatter(start),
+                Uploads: allDocs,
+                Documents: allDocs,
+                Failed: failed
+            ));
+        }
+
+        return new ActivityTrendsDto(Period: period, Points: points);
+    }
+
+    private static int ISOWeek(DateTime dt)
+    {
+        var cal = System.Globalization.CultureInfo.InvariantCulture.Calendar;
+        return cal.GetWeekOfYear(dt, System.Globalization.CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
+    }
 }
