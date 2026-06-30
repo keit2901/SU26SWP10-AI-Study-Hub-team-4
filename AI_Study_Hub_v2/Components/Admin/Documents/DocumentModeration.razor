@@ -140,6 +140,12 @@
                                     <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" Disabled="@(!CanApprove(cell.Item))" OnClick="@(() => ModerateAsync(cell.Item, ApprovedStatus))">Approve</MudMenuItem>
                                     <MudMenuItem Icon="@Icons.Material.Filled.Cancel" Disabled="@(cell.Item.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(cell.Item, RejectedStatus))">Reject with reason</MudMenuItem>
                                     <MudMenuItem Icon="@Icons.Material.Filled.DeleteForever" Disabled="@(cell.Item.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(cell.Item, RemovedStatus))">Remove with reason</MudMenuItem>
+                                    <MudDivider />
+                                    <MudMenuItem Icon="@Icons.Material.Filled.Flag" Disabled="@(cell.Item.ModerationStatus is "Approved" or "Escalated" or "Removed")" OnClick="@(() => ModerateAsync(cell.Item, EscalatedStatus))">Escalate to Admin</MudMenuItem>
+                                    @if (cell.Item.ModerationStatus is RejectedStatus or "Escalated")
+                                    {
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Restore" OnClick="@(() => ModerateAsync(cell.Item, RestoredStatus))">Restore</MudMenuItem>
+                                    }
                                 </ChildContent>
                             </MudMenu>
                         </CellTemplate>
@@ -221,6 +227,8 @@
     private const string ApprovedStatus = "Approved";
     private const string RejectedStatus = "Rejected";
     private const string RemovedStatus = "Removed";
+    private const string EscalatedStatus = "Escalated";
+    private const string RestoredStatus = "Restored";
     private const string NotificationQueued = "Queued";
     private const string FailedProcessing = "Failed";
     private const string HighSeverity = "High";
@@ -417,6 +425,8 @@
             ApprovedStatus => await ModerationService.ApproveAsync(document.Id),
             RejectedStatus => await ModerationService.RejectAsync(document.Id, reason),
             RemovedStatus => await ModerationService.DeleteAsync(document.Id),
+            EscalatedStatus => await ModerationService.EscalateAsync(document.Id),
+            RestoredStatus => await ModerationService.RestoreAsync(document.Id),
             _ => false
         };
 
@@ -447,6 +457,25 @@
             }
 
             Snackbar.Add($"{document.Title} approved and removed from the moderation queue.", Severity.Success);
+            return;
+        }
+
+        if (decision == EscalatedStatus)
+        {
+            document.ModerationStatus = "Escalated";
+            document.ModerationReason = "Escalated to admin for final review.";
+            document.ReportReason = "Awaiting admin escalation review.";
+            Snackbar.Add($"{document.Title} escalated to admin review queue.", Severity.Warning);
+            return;
+        }
+
+        if (decision == RestoredStatus)
+        {
+            document.ModerationStatus = PendingStatus;
+            document.ModerationReason = string.Empty;
+            document.ReportReason = string.Empty;
+            document.ProcessingStatus = "Processing";
+            Snackbar.Add($"{document.Title} restored and re-entered processing.", Severity.Success);
             return;
         }
 
