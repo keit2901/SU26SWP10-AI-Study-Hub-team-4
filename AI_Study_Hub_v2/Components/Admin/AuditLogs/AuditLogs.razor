@@ -7,6 +7,7 @@
 @inject ISnackbar Snackbar
 @inject AuthSessionState Session
 @inject AdminApiClient AdminApi
+@inject NavigationManager Navigation
 
 <MudStack Spacing="4" Class="audit-page page-enter">
     <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
@@ -385,8 +386,19 @@
 
     private void ExportLogs()
     {
-        _errorMessage = null;
-        Snackbar.Add($"Prepared {FilteredLogs.Count()} audit logs for CSV/JSON export.", Severity.Info);
+        var url = "api/admin/audit-logs/export";
+        var queryParams = new List<string>();
+        if (!string.IsNullOrWhiteSpace(_selectedAction))
+            queryParams.Add($"action={Uri.EscapeDataString(_selectedAction)}");
+        if (_dateRange?.Start is not null)
+            queryParams.Add($"from={Uri.EscapeDataString(_dateRange.Start.Value.ToString("O"))}");
+        if (_dateRange?.End is not null)
+            queryParams.Add($"to={Uri.EscapeDataString(_dateRange.End.Value.ToString("O"))}");
+        if (queryParams.Count > 0)
+            url += "?" + string.Join("&", queryParams);
+
+        Navigation.NavigateTo(url, forceLoad: true);
+        Snackbar.Add($"Exporting {FilteredLogs.Count()} audit log entries as CSV.", Severity.Info);
     }
 
     private static string FormatDate(DateTime? value) => value?.ToString("MMM dd, yyyy") ?? "Any";

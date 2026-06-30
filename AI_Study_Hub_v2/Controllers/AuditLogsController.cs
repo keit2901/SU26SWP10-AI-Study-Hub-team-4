@@ -28,4 +28,26 @@ public sealed class AuditLogsController : ControllerBase
         [FromQuery] int limit = 200,
         CancellationToken cancellationToken = default)
         => Ok(await _auditLogs.ListAsync(action, from, to, limit, cancellationToken));
+
+    [HttpGet("export")]
+    [Produces("text/csv")]
+    public async Task<IActionResult> Export(
+        [FromQuery] string? action,
+        [FromQuery] DateTimeOffset? from,
+        [FromQuery] DateTimeOffset? to,
+        CancellationToken cancellationToken = default)
+    {
+        var logs = await _auditLogs.ListAsync(action, from, to, limit: 10_000, cancellationToken);
+        var csv = new System.Text.StringBuilder();
+        csv.AppendLine("Timestamp,Action,Actor,Entity,Severity,Before,After");
+        foreach (var log in logs)
+        {
+            csv.AppendLine($"\"{log.CreatedAt:O}\",\"{log.Action}\",\"{log.ActorName}\",\"{log.EntityType}/{log.EntityId}\",\"{log.Severity}\",\"{EscapeCsv(log.BeforeJson)}\",\"{EscapeCsv(log.AfterJson)}\"");
+        }
+        var fileName = $"audit-logs-{DateTimeOffset.UtcNow:yyyyMMdd-HHmmss}.csv";
+        return File(System.Text.Encoding.UTF8.GetBytes(csv.ToString()), "text/csv", fileName);
+    }
+
+    private static string EscapeCsv(string? value)
+        => value?.Replace("\"", "\"\"") ?? string.Empty;
 }

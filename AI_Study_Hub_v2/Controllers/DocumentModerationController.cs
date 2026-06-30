@@ -3,6 +3,8 @@ using AI_Study_Hub_v2.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using System.Security.Claims;
+using System.Text.Json;
 
 namespace AI_Study_Hub_v2.Controllers;
 
@@ -13,11 +15,16 @@ namespace AI_Study_Hub_v2.Controllers;
 public sealed class DocumentModerationController : ControllerBase
 {
     private readonly IDocumentModerationService _moderation;
+    private readonly IAuditLogService _audit;
     private readonly ILogger<DocumentModerationController> _logger;
 
-    public DocumentModerationController(IDocumentModerationService moderation, ILogger<DocumentModerationController> logger)
+    public DocumentModerationController(
+        IDocumentModerationService moderation,
+        IAuditLogService audit,
+        ILogger<DocumentModerationController> logger)
     {
         _moderation = moderation;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -40,6 +47,13 @@ public sealed class DocumentModerationController : ControllerBase
     public async Task<ActionResult> Approve(Guid id, CancellationToken ct)
     {
         var result = await _moderation.ApproveAsync(id, ct);
+        if (result)
+        {
+            _audit.Add(GetActorUserId(), "MODERATION_APPROVE", "documents", id.ToString(), "Medium",
+                null, JsonSerializer.Serialize(new { status = "Approved" }),
+                null, HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.TraceIdentifier);
+        }
         return result ? Ok() : NotFound();
     }
 
@@ -47,6 +61,13 @@ public sealed class DocumentModerationController : ControllerBase
     public async Task<ActionResult> Reject(Guid id, [FromBody] ModerationRejectRequest request, CancellationToken ct)
     {
         var result = await _moderation.RejectAsync(id, request.Reason, ct);
+        if (result)
+        {
+            _audit.Add(GetActorUserId(), "MODERATION_REJECT", "documents", id.ToString(), "Medium",
+                null, JsonSerializer.Serialize(new { reason = request.Reason }),
+                null, HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.TraceIdentifier);
+        }
         return result ? Ok() : NotFound();
     }
 
@@ -54,6 +75,12 @@ public sealed class DocumentModerationController : ControllerBase
     public async Task<ActionResult> Escalate(Guid id, CancellationToken ct)
     {
         var result = await _moderation.EscalateAsync(id, ct);
+        if (result)
+        {
+            _audit.Add(GetActorUserId(), "MODERATION_ESCALATE", "documents", id.ToString(), "High",
+                null, null, null, HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.TraceIdentifier);
+        }
         return result ? Ok() : NotFound();
     }
 
@@ -62,6 +89,12 @@ public sealed class DocumentModerationController : ControllerBase
     public async Task<ActionResult> Restore(Guid id, CancellationToken ct)
     {
         var result = await _moderation.RestoreAsync(id, ct);
+        if (result)
+        {
+            _audit.Add(GetActorUserId(), "MODERATION_RESTORE", "documents", id.ToString(), "Medium",
+                null, null, null, HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.TraceIdentifier);
+        }
         return result ? Ok() : NotFound();
     }
 
@@ -70,7 +103,19 @@ public sealed class DocumentModerationController : ControllerBase
     public async Task<ActionResult> Delete(Guid id, CancellationToken ct)
     {
         var result = await _moderation.DeleteAsync(id, ct);
+        if (result)
+        {
+            _audit.Add(GetActorUserId(), "MODERATION_DELETE", "documents", id.ToString(), "High",
+                null, null, null, HttpContext.Connection.RemoteIpAddress?.ToString(),
+                HttpContext.TraceIdentifier);
+        }
         return result ? NoContent() : NotFound();
+    }
+
+    private Guid GetActorUserId()
+    {
+        var value = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
+        return Guid.TryParse(value, out var id) ? id : Guid.Empty;
     }
 }
 

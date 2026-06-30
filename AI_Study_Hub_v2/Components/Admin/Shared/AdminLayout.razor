@@ -22,7 +22,7 @@ else if (_authorized)
 <MudThemeProvider Theme="@_theme" IsDarkMode="@_isDarkMode" />
 
 <MudLayout Class="admin-layout-shell">
-    <MudAppBar Elevation="0" Dense="true" Class="admin-topbar">
+    <MudAppBar Elevation="0" Dense="true" Class="admin-topbar" Color="Color.Surface">
         <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" />
         <MudBreadcrumbs Items="@_breadcrumbs" Separator="/" Class="admin-breadcrumbs" />
         <MudSpacer />
@@ -120,41 +120,41 @@ else if (_authorized)
     {
         PaletteLight = new PaletteLight
         {
-            Primary = "#0F766E",
-            PrimaryDarken = "#115E59",
-            Secondary = "#D97706",
-            Tertiary = "#334155",
-            Background = "#F5F7F4",
+            Primary = "#4F46E5",
+            PrimaryDarken = "#4338CA", // Slightly darker indigo for hover/active
+            Secondary = "#0F766E",
+            Tertiary = "#64748B", // TextSecondary
+            Background = "#F8FAFC",
             Surface = "#FFFFFF",
-            AppbarBackground = "#07483F",
-            AppbarText = "#E6F4F1",
-            DrawerBackground = "#063B34",
-            DrawerText = "#E6F4F1",
-            DrawerIcon = "#A7F3D0",
-            TextPrimary = "#102A27",
-            TextSecondary = "#5F6F6A",
-            LinesDefault = "#D9E2DE",
-            Info = "#2563EB",
-            Success = "#16A34A",
-            Warning = "#D97706",
-            Error = "#DC2626"
+            AppbarBackground = "#FFFFFF",
+            AppbarText = "#0F172A",
+            DrawerBackground = "#FFFFFF",
+            DrawerText = "#0F172A",
+            DrawerIcon = "#4F46E5",
+            TextPrimary = "#0F172A",
+            TextSecondary = "#64748B",
+            LinesDefault = "#E2E8F0",
+            Info = "#2563EB", // Keep existing info color or define a new one if needed
+            Success = "#10B981",
+            Warning = "#F59E0B",
+            Error = "#E11D48"
         },
-        PaletteDark = new PaletteDark
+        PaletteDark = new PaletteDark // Adjust dark palette to be consistent with the new light palette
         {
-            Primary = "#2DD4BF",
-            PrimaryDarken = "#14B8A6",
-            Secondary = "#FDBA74",
+            Primary = "#7C3AED", // A lighter purple for dark mode primary
+            PrimaryDarken = "#6D28D9",
+            Secondary = "#2DD4BF", // Lighter teal
             Tertiary = "#94A3B8",
-            Background = "#071B1A",
-            Surface = "#0F2A27",
-            AppbarBackground = "#052E2B",
-            AppbarText = "#F3FFFC",
-            DrawerBackground = "#042F2E",
-            DrawerText = "#EAF7F4",
-            DrawerIcon = "#99F6E4",
-            TextPrimary = "#EAF7F4",
-            TextSecondary = "#A8C7C0",
-            LinesDefault = "#25514B",
+            Background = "#1E293B", // Darker background
+            Surface = "#334155", // Darker surface
+            AppbarBackground = "#1E293B",
+            AppbarText = "#F8FAFC",
+            DrawerBackground = "#1E293B",
+            DrawerText = "#F8FAFC",
+            DrawerIcon = "#7C3AED",
+            TextPrimary = "#F8FAFC",
+            TextSecondary = "#94A3B8",
+            LinesDefault = "#475569",
             Info = "#60A5FA",
             Success = "#4ADE80",
             Warning = "#F59E0B",
@@ -164,18 +164,18 @@ else if (_authorized)
         {
             Default = new DefaultTypography
             {
-                FontFamily = new[] { "Inter", "Aptos", "Segoe UI", "sans-serif" },
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "Segoe UI", "sans-serif" },
                 FontSize = ".95rem"
             },
             H4 = new H4Typography
             {
-                FontFamily = new[] { "Georgia", "Aptos", "serif" },
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "sans-serif" },
                 FontWeight = "700",
                 LetterSpacing = "-.035em"
             },
             H5 = new H5Typography
             {
-                FontFamily = new[] { "Georgia", "Aptos", "serif" },
+                FontFamily = new[] { "Plus Jakarta Sans", "Inter", "sans-serif" },
                 FontWeight = "700",
                 LetterSpacing = "-.025em"
             }
@@ -324,7 +324,7 @@ else if (_authorized)
 
     .admin-brand {
         color: var(--mud-palette-drawer-text);
-        font-family: Georgia, Aptos, serif;
+        font-family: 'Plus Jakarta Sans', sans-serif;
         letter-spacing: -.03em;
     }
 
@@ -332,65 +332,51 @@ else if (_authorized)
         color: var(--mud-palette-text-secondary);
         text-transform: uppercase;
         letter-spacing: .14em;
-    }
-
-    .admin-nav-menu .mud-nav-group .mud-navmenu {
-        margin-left: .25rem;
-        border-left: 1px solid var(--mud-palette-lines-default);
+        font-size: 0.7rem; /* Make it a bit smaller */
     }
 
     .admin-sidebar-card {
         margin: 1rem;
         padding: 1rem;
         border-radius: 18px;
-        background: rgba(255,255,255,.06);
-        border: 1px solid rgba(255,255,255,.16);
+        background: var(--mud-palette-surface);
+        border: 1px solid var(--mud-palette-lines-default);
+        box-shadow: 0 1px 3px rgba(15,23,42,0.06), 0 8px 24px rgba(15,23,42,0.06);
     }
 
     .admin-sidebar-card .mud-typography-subtitle2 {
-        color: #EAF7F4;
+        color: var(--mud-palette-text-primary);
     }
 
     .admin-sidebar-card .mud-typography-caption {
-        color: #CDEBE5;
+        color: var(--mud-palette-text-secondary);
     }
 
     .admin-sidebar-card .mud-progress-linear-bar {
-        background-color: rgba(255,255,255,.16);
+        background-color: var(--mud-palette-lines-default); /* Lighter bar for light card */
     }
 
     .admin-sidebar-card .mud-progress-linear-fill {
-        background-color: #14B8A6;
+        background-color: var(--mud-palette-primary); /* Use primary color for fill */
     }
 
-    /* Dark mode: keep sidebar card readable */
-    .mud-theme-dark .admin-sidebar-card {
-        background: rgba(255,255,255,.04);
-        border: 1px solid #25514B;
+    /* Active NavLink styling */
+    .admin-nav-menu .mud-navlink.mud-navlink-active {
+        color: var(--mud-palette-primary) !important;
+        background-color: rgba(var(--mud-palette-primary-rgb), 0.1); /* Subtle background for active */
+        border-radius: 8px; /* Slightly rounded */
     }
 
-    .mud-theme-dark .admin-sidebar-card .mud-typography-subtitle2 {
-        color: #F3FFFC;
-    }
-
-    .mud-theme-dark .admin-sidebar-card .mud-typography-caption {
-        color: #A8C7C0;
-    }
-
-    .admin-main-content {
-        min-height: 100vh;
-    }
-
-    .admin-page-frame {
-        padding: 6rem 1rem 2.25rem;
+    .admin-nav-menu .mud-navlink.mud-navlink-active .mud-nav-link-icon {
+        color: var(--mud-palette-primary) !important;
     }
 
     .admin-breadcrumbs .mud-breadcrumb-item,
     .admin-breadcrumbs .mud-breadcrumb-separator {
-        color: var(--mud-palette-appbar-text) !important;
+        color: var(--mud-palette-text-secondary) !important; /* Use text secondary for breadcrumbs */
     }
 
-    /* Dark mode component fixes */
+    /* Remove dark mode component fixes as they will be handled by the general theme */
     .mud-theme-dark .mud-card {
         background-color: #0F2A27 !important;
         border: 1px solid #25514B !important;
@@ -411,6 +397,7 @@ else if (_authorized)
     .mud-theme-dark .mud-table-root th {
         color: #F3FFFC !important;
     }
+
 
     @@media (min-width: 960px) {
         .admin-page-frame {
