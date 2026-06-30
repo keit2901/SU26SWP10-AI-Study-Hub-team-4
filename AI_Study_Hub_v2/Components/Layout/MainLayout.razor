@@ -10,8 +10,8 @@
         <NavMenu />
     }
 
-    <main class="main-stage @(IsFullBleed || IsDashboard ? "main-stage-fullbleed" : "")">
-        <article class="content @(IsFullBleed || IsDashboard ? "content-fullbleed" : "") @(IsProfile ? "content-profile" : "")">
+    <main class="main-stage @(UsesFullBleedMainStage ? "main-stage-fullbleed" : "")">
+        <article class="content @(UsesFullBleedContent ? "content-fullbleed" : "") @(IsProfile ? "content-profile" : "")">
             @Body
         </article>
     </main>
@@ -42,11 +42,31 @@
     private bool IsFullBleed =>
         Nav.ToBaseRelativePath(Nav.Uri).StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
 
+    private bool IsHomePage =>
+        string.IsNullOrWhiteSpace(Nav.ToBaseRelativePath(Nav.Uri));
+
+    private bool IsAuthPage
+    {
+        get
+        {
+            var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+            return relativePath.StartsWith("login", StringComparison.OrdinalIgnoreCase)
+                || relativePath.StartsWith("register", StringComparison.OrdinalIgnoreCase);
+        }
+    }
+
+    private bool IsUploadPage =>
+        Nav.ToBaseRelativePath(Nav.Uri).StartsWith("documents/upload", StringComparison.OrdinalIgnoreCase);
+
     private bool IsDashboard =>
         Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
 
     private bool IsProfile =>
         Nav.ToBaseRelativePath(Nav.Uri).StartsWith("profile", StringComparison.OrdinalIgnoreCase);
+
+    private bool UsesFullBleedMainStage => IsFullBleed || IsDashboard;
+
+    private bool UsesFullBleedContent => IsFullBleed || IsDashboard || IsHomePage || IsAuthPage || IsUploadPage;
 
     private readonly MudTheme _theme = new()
     {

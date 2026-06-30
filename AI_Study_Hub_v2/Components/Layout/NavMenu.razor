@@ -30,10 +30,10 @@
             }
             else
             {
-                <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
-                <NavLink class="nav-pill" href="#public-community">Community</NavLink>
-                <NavLink class="nav-pill" href="login">Sign In</NavLink>
-                <NavLink class="nav-pill" href="register">Get Started</NavLink>
+                <a class="nav-pill @GuestNavClass(string.Empty)" href="">Dashboard</a>
+                <button type="button" class="nav-pill nav-pill-static">Community</button>
+                <a class="nav-pill @GuestNavClass("login")" href="login">Sign In</a>
+                <a class="nav-pill @GuestNavClass("register")" href="register">Get Started</a>
             }
         </nav>
 
@@ -73,6 +73,17 @@
         if (href == "dashboard")
             return rel == "dashboard" || rel.StartsWith("dashboard/") ? "active" : "";
         return rel == href ? "active" : "";
+    }
+
+    private string GuestNavClass(string href)
+    {
+        var rel = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(href))
+        {
+            return string.IsNullOrWhiteSpace(rel) ? "active" : "";
+        }
+
+        return rel.Equals(href, StringComparison.OrdinalIgnoreCase) ? "active" : "";
     }
 
     private bool IsAdmin =>
