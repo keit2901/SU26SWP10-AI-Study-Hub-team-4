@@ -1,0 +1,200 @@
+@namespace AI_Study_Hub_v2.Components.Admin.Community
+@page "/admin/community-reports"
+@layout AdminLayout
+@implements IDisposable
+@inject AuthSessionState Session
+@inject CommunityApiClient CommunityApi
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<MudStack Spacing="4" Class="page-enter">
+    <MudPaper Elevation="0" Class="report-header">
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap: wrap; gap: 1rem;">
+            <div>
+                <MudText Typo="Typo.overline" Color="Color.Secondary">SCRUM-62 · Community safety</MudText>
+                <MudText Typo="Typo.h4">Public Content Reports</MudText>
+                <MudText Typo="Typo.body1" Color="Color.Secondary">
+                    Review reports submitted against folders published to the Public Hub.
+                </MudText>
+            </div>
+            <MudButton Variant="Variant.Outlined"
+                       StartIcon="@Icons.Material.Filled.Refresh"
+                       Disabled="_loading"
+                       OnClick="LoadAsync">
+                Refresh
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+
+    @if (!string.IsNullOrWhiteSpace(_error))
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_error</MudAlert>
+    }
+
+    <MudPaper Elevation="0" Class="report-list">
+        @if (_loading)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (_reports.Count == 0)
+        {
+            <MudStack AlignItems="AlignItems.Center" Spacing="2" Class="pa-8">
+                <MudIcon Icon="@Icons.Material.Filled.Verified" Size="Size.Large" Color="Color.Success" />
+                <MudText Typo="Typo.h6">No pending reports</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">The Public Hub moderation queue is clear.</MudText>
+            </MudStack>
+        }
+        else
+        {
+            <MudTable Items="_reports" Hover="true" Breakpoint="Breakpoint.Sm">
+                <HeaderContent>
+                    <MudTh>Folder</MudTh>
+                    <MudTh>Reporter</MudTh>
+                    <MudTh>Reason</MudTh>
+                    <MudTh>Submitted</MudTh>
+                    <MudTh Style="text-align:right">Actions</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Folder">
+                        <MudText Typo="Typo.subtitle2">@context.FolderName</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">@context.FolderId</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Reporter">@context.ReportedByName</MudTd>
+                    <MudTd DataLabel="Reason">
+                        <MudText Typo="Typo.body2" Style="max-width: 28rem; white-space: normal;">@context.Reason</MudText>
+                    </MudTd>
+                    <MudTd DataLabel="Submitted">@context.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd DataLabel="Actions" Style="text-align:right">
+                        <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="1">
+                            <MudButton Size="Size.Small"
+                                       Color="Color.Success"
+                                       Variant="Variant.Filled"
+                                       Disabled="@(_busyReportId == context.Id)"
+                                       OnClick="@(() => ReviewAsync(context, "Resolved"))">
+                                Resolve
+                            </MudButton>
+                            <MudButton Size="Size.Small"
+                                       Color="Color.Warning"
+                                       Variant="Variant.Outlined"
+                                       Disabled="@(_busyReportId == context.Id)"
+                                       OnClick="@(() => ReviewAsync(context, "Dismissed"))">
+                                Dismiss
+                            </MudButton>
+                        </MudStack>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        }
+    </MudPaper>
+</MudStack>
+
+@code {
+    private readonly List<CommunityReportDto> _reports = new();
+    private bool _loading = true;
+    private string? _error;
+    private Guid? _busyReportId;
+    private bool _loadStarted;
+
+    protected override void OnInitialized()
+    {
+        Session.OnChange += HandleSessionChanged;
+        if (Session.IsAuthenticated)
+        {
+            _ = LoadAsync();
+        }
+    }
+
+    private void HandleSessionChanged()
+    {
+        if (Session.IsAuthenticated && !_loadStarted)
+        {
+            _ = InvokeAsync(LoadAsync);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            return;
+        }
+
+        _loadStarted = true;
+        _loading = true;
+        _error = null;
+        try
+        {
+            var rows = await CommunityApi.GetPendingReportsAsync(Session.AccessToken);
+            _reports.Clear();
+            _reports.AddRange(rows);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Unable to load community reports: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private async Task ReviewAsync(CommunityReportDto report, string decision)
+    {
+        var dialog = await DialogService.ShowAsync<ResolveReportDialog>(
+            $"{decision} report",
+            new DialogParameters<ResolveReportDialog>
+            {
+                { item => item.FolderName, report.FolderName },
+                { item => item.ReporterReason, report.Reason },
+                { item => item.Decision, decision },
+            },
+            new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true, CloseButton = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string resolution)
+        {
+            return;
+        }
+
+        _busyReportId = report.Id;
+        try
+        {
+            await CommunityApi.ResolveReportAsync(
+                Session.AccessToken!,
+                report.Id,
+                decision,
+                resolution);
+            _reports.Remove(report);
+            Snackbar.Add(
+                decision == "Resolved" ? "Report resolved." : "Report dismissed.",
+                decision == "Resolved" ? Severity.Success : Severity.Info);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Review failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busyReportId = null;
+        }
+    }
+
+    public void Dispose()
+    {
+        Session.OnChange -= HandleSessionChanged;
+    }
+}
+
+<style>
+    .report-header,
+    .report-list {
+        padding: 1.25rem;
+        border-radius: 26px;
+        border: 1px solid rgba(15, 118, 110, .12);
+        background: rgba(255, 252, 246, .9);
+    }
+
+    .report-header {
+        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+    }
+</style>

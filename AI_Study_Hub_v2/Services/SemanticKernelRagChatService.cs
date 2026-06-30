@@ -36,6 +36,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
     private readonly IAiChatCompletionClientFactory _clientFactory;
     private readonly RagOptions _ragOptions;
     private readonly GroqOptions _groqOptions;
+    private readonly IAiQuotaService _quotaService;
     private readonly ILogger<SemanticKernelRagChatService> _logger;
 
     public SemanticKernelRagChatService(
@@ -43,12 +44,14 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         IAiChatCompletionClientFactory clientFactory,
         IOptions<RagOptions> ragOptions,
         IOptions<GroqOptions> groqOptions,
+        IAiQuotaService quotaService,
         ILogger<SemanticKernelRagChatService> logger)
     {
         _ragSearchService = ragSearchService;
         _clientFactory = clientFactory;
         _ragOptions = ragOptions.Value;
         _groqOptions = groqOptions.Value;
+        _quotaService = quotaService;
         _logger = logger;
     }
 
@@ -102,47 +105,91 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         var completionRequest = new AiChatCompletionRequest(systemPrompt, userPrompt, request.Model);
         var client = _clientFactory.GetClient(request.Model);
 
-        string answer;
+        AiQuotaReservation reservation;
         try
         {
-            answer = await client.CompleteAsync(completionRequest, cancellationToken);
+            var estimatedTokens = EstimateTokens(systemPrompt, userPrompt) + 512;
+            reservation = await _quotaService.ReserveAsync(
+                supabaseUserId,
+                estimatedTokens,
+                cancellationToken);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (AiQuotaException ex)
         {
-            throw;
+            throw new AiChatException(ex.StatusCode, ex.Code, ex.Message);
         }
-        catch (Exception ex)
+
+        var quotaCompleted = false;
+        try
         {
-            if (_groqOptions.UseLocalDemoFallback && sources.Count > 0)
+            string answer;
+            try
             {
-                _logger.LogWarning(ex,
-                    "AI chat provider failed; using local demo fallback answer because Groq:UseLocalDemoFallback is enabled.");
-                answer = BuildLocalDemoFallbackAnswer(question, sources);
+                answer = await client.CompleteAsync(completionRequest, cancellationToken);
             }
-            else
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _logger.LogError(ex, "AI chat provider failed while answering question.");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                if (_groqOptions.UseLocalDemoFallback && sources.Count > 0)
+                {
+                    _logger.LogWarning(ex,
+                        "AI chat provider failed; using local demo fallback answer because Groq:UseLocalDemoFallback is enabled.");
+                    answer = BuildLocalDemoFallbackAnswer(question, sources);
+                }
+                else
+                {
+                    _logger.LogError(ex, "AI chat provider failed while answering question.");
+                    throw new AiChatException(
+                        StatusCodes.Status503ServiceUnavailable,
+                        "ai_provider_unavailable",
+                        "The AI provider is currently unavailable. Please try again later.");
+                }
+            }
+
+            if (string.IsNullOrWhiteSpace(answer))
+            {
                 throw new AiChatException(
                     StatusCodes.Status503ServiceUnavailable,
                     "ai_provider_unavailable",
-                    "The AI provider is currently unavailable. Please try again later.");
+                    "The AI provider returned an empty answer. Please try again later.");
+            }
+
+            await _quotaService.CompleteAsync(
+                reservation,
+                EstimateTokens(systemPrompt, userPrompt, answer),
+                cancellationToken);
+            quotaCompleted = true;
+
+            var hasSources = sources.Count > 0;
+            return new AiChatAnswerResponse(
+                answer.Trim(),
+                hasSources ? sources : Array.Empty<AiChatSourceDto>(),
+                RefusalReason: null,
+                DurationMs: stopwatch.ElapsedMilliseconds);
+        }
+        finally
+        {
+            if (!quotaCompleted)
+            {
+                try
+                {
+                    await _quotaService.ReleaseAsync(reservation, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to release AI quota reservation for user {UserId}.", supabaseUserId);
+                }
             }
         }
+    }
 
-        if (string.IsNullOrWhiteSpace(answer))
-        {
-            throw new AiChatException(
-                StatusCodes.Status503ServiceUnavailable,
-                "ai_provider_unavailable",
-                "The AI provider returned an empty answer. Please try again later.");
-        }
-
-        var hasSources = sources.Count > 0;
-        return new AiChatAnswerResponse(
-            answer.Trim(),
-            hasSources ? sources : Array.Empty<AiChatSourceDto>(),
-            RefusalReason: null,
-            DurationMs: stopwatch.ElapsedMilliseconds);
+    private static int EstimateTokens(params string[] values)
+    {
+        var characters = values.Sum(value => value?.Length ?? 0);
+        return Math.Max(1, (characters + 3) / 4);
     }
 
     private IReadOnlyList<AiChatSourceDto> MapSources(IReadOnlyList<RagSearchResultDto> searchResults)

@@ -110,6 +110,9 @@ builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentModerationService, DocumentModerationService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<IAdminUserService, AdminUserService>();
+builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -169,6 +172,10 @@ builder.Services.AddHttpClient<CommunityApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
+builder.Services.AddHttpClient<AdminApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
 builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
@@ -178,6 +185,10 @@ builder.Services.AddHttpClient<QuizApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
     http.Timeout = TimeSpan.FromMinutes(2);
+});
+builder.Services.AddHttpClient<AdminDashboardApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
 builder.Services.AddHttpClient<IRecaptchaVerificationService, RecaptchaVerificationService>(http =>
 {
