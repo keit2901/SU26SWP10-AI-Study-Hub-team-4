@@ -32,27 +32,6 @@ else
     }
 
     <MudStack Class="workspace-shell" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Style="min-height: calc(100vh - 4rem); padding: 1.5rem 1.5rem;">
-        <div class="profile-actions-bar">
-            <MudStack Row="true" Spacing="2">
-                <MudButton Variant="Variant.Outlined"
-                           Class="ghost-button"
-                           OnClick="ReloadAsync"
-                           Disabled="_busy"
-                           Size="Size.Small"
-                           StartIcon="@Icons.Material.Filled.Refresh">
-                    Refresh /me
-                </MudButton>
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Error"
-                           OnClick="LogoutAsync"
-                           Disabled="_busy"
-                           Size="Size.Small"
-                           StartIcon="@Icons.Material.Filled.Logout">
-                    @(_busy ? "Signing out..." : "Sign out")
-                </MudButton>
-            </MudStack>
-        </div>
-
         <div class="identity-card">
             
             <div class="identity-card-header">
@@ -419,62 +398,4 @@ else
         _editingPassword = false;
     }
 
-    private async Task LogoutAsync()
-    {
-        if (!Session.IsAuthenticated || string.IsNullOrEmpty(Session.AccessToken)) return;
-        _busy = true;
-        StateHasChanged();
-        try
-        {
-            await AuthApi.LogoutAsync(Session.AccessToken);
-            Snackbar.Add("Signed out. All refresh tokens revoked.", Severity.Success);
-        }
-        catch (AuthApiException ex)
-        {
-            Snackbar.Add($"Logout failed: {ex.Message}", Severity.Warning);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Network error during logout: {ex.Message}", Severity.Warning);
-        }
-        finally
-        {
-            await AuthPersistence.ClearAsync();
-            Session.Clear();
-            _busy = false;
-            Nav.NavigateTo("/login", replace: true);
-        }
-    }
-
-    private async Task ReloadAsync()
-    {
-        if (string.IsNullOrEmpty(Session.AccessToken)) return;
-        _busy = true;
-        StateHasChanged();
-        try
-        {
-            var me = await AuthApi.GetMeAsync(Session.AccessToken);
-            // Patch the current session's user without losing the tokens.
-            if (Session.Session is not null)
-            {
-                Session.Session.User = me;
-                Session.Set(Session.Session);
-            }
-            Snackbar.Add("Profile refreshed from /me.", Severity.Info);
-        }
-        catch (AuthApiException ex)
-        {
-            Snackbar.Add($"Failed to refresh: {ex.Message}", Severity.Warning);
-            if (ex.StatusCode == 401)
-            {
-                Session.Clear();
-                Nav.NavigateTo("/login", replace: true);
-            }
-        }
-        finally
-        {
-            _busy = false;
-            StateHasChanged();
-        }
-    }
 }
