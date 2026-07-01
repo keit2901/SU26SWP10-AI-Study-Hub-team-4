@@ -33,6 +33,7 @@ builder.Services
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
+builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
@@ -120,14 +121,19 @@ builder.Services.AddScoped<IChunkingService, ChunkingService>();
 builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
 builder.Services.AddScoped<IDocumentStorageReadService, SupabaseDocumentStorageReadService>();
 builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
-builder.Services.AddScoped<IEmbeddingService, FakeEmbeddingService>();
+
 builder.Services.AddScoped<IRagSearchService, RagSearchService>();
 builder.Services.AddScoped<IAiChatService, SemanticKernelRagChatService>();
 builder.Services.AddScoped<IAiChatCompletionClientFactory, AiChatCompletionClientFactory>();
 builder.Services.AddHttpClient<GroqChatCompletionClient>();
 builder.Services.AddHttpClient<GeminiChatCompletionClient>();
 builder.Services.AddHttpClient<IImageDescriptionService, GroqVisionDescriptionService>();
+builder.Services.AddHttpClient<OllamaEmbeddingService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
+builder.Services.AddScoped<IEmbeddingService, OllamaEmbeddingService>();
 // Sprint 3 services ----------------------------------------------------------
 builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
