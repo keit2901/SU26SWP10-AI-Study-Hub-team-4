@@ -25,6 +25,13 @@ public sealed class RagControllerTests
             EmbeddingDimensions = 384,
             DefaultTopK = 6,
             MaxTopK = 12,
+            EmbeddingCacheEnabled = true,
+            ReRankEnabled = true,
+            ReRankCandidateCount = 30,
+            ReRankTopN = 7,
+            HybridSearchEnabled = true,
+            VectorWeight = 0.65d,
+            SearchMode = "hybrid",
         };
         var sut = new RagController(
             Mock.Of<IRagSearchService>(),
@@ -43,6 +50,13 @@ public sealed class RagControllerTests
         dto.EmbeddingDimensions.Should().Be(384);
         dto.DefaultTopK.Should().Be(6);
         dto.MaxTopK.Should().Be(12);
+        dto.EmbeddingCacheEnabled.Should().BeTrue();
+        dto.ReRankEnabled.Should().BeTrue();
+        dto.ReRankCandidateCount.Should().Be(30);
+        dto.ReRankTopN.Should().Be(7);
+        dto.HybridSearchEnabled.Should().BeTrue();
+        dto.VectorWeight.Should().Be(0.65d);
+        dto.SearchMode.Should().Be("hybrid");
         dto.ScoreMeaning.Should().Contain("Lower score");
     }
 

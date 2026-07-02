@@ -8,7 +8,8 @@ public sealed record RagSearchRequest(
     string? Semester,
     int TopK = 5,
     IReadOnlyList<Guid>? DocumentIds = null,
-    string? TopicKeyword = null);
+    string? TopicKeyword = null,
+    string? SearchMode = null);
 
 public sealed record RagSearchResultDto(
     string SourceLabel,

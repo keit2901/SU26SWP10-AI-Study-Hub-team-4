@@ -21,4 +21,28 @@ public sealed class RagOptions
     public int EmbeddingDimensions { get; set; } = 384;
 
     public int MaxContextChars { get; set; } = 6000;
+
+    public bool EmbeddingCacheEnabled { get; set; } = true;
+
+    public int EmbeddingCacheMaxEntries { get; set; } = 1000;
+
+    public int EmbeddingCacheTtlMinutes { get; set; } = 30;
+
+    public bool ReRankEnabled { get; set; } = true;
+
+    public int ReRankCandidateCount { get; set; } = 20;
+
+    public int ReRankTopN { get; set; } = 5;
+
+    public bool HybridSearchEnabled { get; set; } = true;
+
+    public double VectorWeight { get; set; } = 0.7d;
+
+    public string SearchMode { get; set; } = "hybrid";
+
+    public bool BenchmarkAutomationEnabled { get; set; } = false;
+
+    public int BenchmarkAutomationIntervalHours { get; set; } = 168;
+
+    public double BenchmarkAlertDropPercent { get; set; } = 10d;
 }

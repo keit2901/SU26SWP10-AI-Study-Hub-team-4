@@ -1,5 +1,11 @@
 using System.Diagnostics;
+using System.Text.Json;
+using AI_Study_Hub_v2.Data;
+using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
+using AI_Study_Hub_v2.Options;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace AI_Study_Hub_v2.Services.Rag.Benchmarking;
 
@@ -8,17 +14,23 @@ public sealed class BenchmarkRunner
     private readonly IAiChatService _aiChat;
     private readonly BenchmarkEvaluator _evaluator;
     private readonly IAiChatCompletionClientFactory _clientFactory;
+    private readonly AppDbContext _db;
+    private readonly RagOptions _ragOptions;
     private readonly ILogger<BenchmarkRunner> _logger;
 
     public BenchmarkRunner(
         IAiChatService aiChat,
         BenchmarkEvaluator evaluator,
         IAiChatCompletionClientFactory clientFactory,
+        AppDbContext db,
+        IOptions<RagOptions> ragOptions,
         ILogger<BenchmarkRunner> logger)
     {
         _aiChat = aiChat;
         _evaluator = evaluator;
         _clientFactory = clientFactory;
+        _db = db;
+        _ragOptions = ragOptions.Value;
         _logger = logger;
     }
 
@@ -89,6 +101,62 @@ public sealed class BenchmarkRunner
             config.ModelName, result.OverallScore, result.CitationAccuracy,
             result.HallucinationRate, result.RefusalAccuracy);
 
+        await SaveHistoryAsync(result, config, cancellationToken);
         return result;
+    }
+
+    private async Task SaveHistoryAsync(
+        BenchmarkResult result,
+        BenchmarkConfig config,
+        CancellationToken cancellationToken)
+    {
+        var previous = await _db.BenchmarkRuns
+            .AsNoTracking()
+            .Where(x => x.ModelName == result.ModelName && x.Provider == result.Provider)
+            .OrderByDescending(x => x.RunAt)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        var alertTriggered = false;
+        if (previous is not null && previous.OverallScore > 0 && _ragOptions.BenchmarkAlertDropPercent > 0)
+        {
+            var dropPercent = ((previous.OverallScore - result.OverallScore) / previous.OverallScore) * 100d;
+            alertTriggered = dropPercent > _ragOptions.BenchmarkAlertDropPercent;
+
+            if (alertTriggered)
+            {
+                _logger.LogWarning(
+                    "Benchmark regression detected: model={Model}, previous={Previous:P2}, current={Current:P2}, drop_percent={DropPercent:F2}",
+                    result.ModelName,
+                    previous.OverallScore,
+                    result.OverallScore,
+                    dropPercent);
+            }
+        }
+
+        var passedQuestions = result.CategoryScores.Sum(x => x.Passed);
+        var totalQuestions = result.Responses.Count;
+        var record = new BenchmarkRunRecord
+        {
+            ModelName = result.ModelName,
+            Provider = result.Provider,
+            RunAt = result.RunAt,
+            OverallScore = result.OverallScore,
+            CitationAccuracy = result.CitationAccuracy,
+            HallucinationRate = result.HallucinationRate,
+            RefusalAccuracy = result.RefusalAccuracy,
+            TutoringQuality = result.TutoringQuality,
+            DiagramAccuracy = result.DiagramAccuracy,
+            P50LatencyMs = result.P50LatencyMs,
+            P95LatencyMs = result.P95LatencyMs,
+            TotalQuestions = totalQuestions,
+            PassedQuestions = passedQuestions,
+            FailedQuestions = Math.Max(0, totalQuestions - passedQuestions),
+            IsAutomated = config.IsAutomated,
+            AlertTriggered = alertTriggered,
+            PayloadJson = JsonSerializer.Serialize(result)
+        };
+
+        _db.BenchmarkRuns.Add(record);
+        await _db.SaveChangesAsync(cancellationToken);
     }
 }
