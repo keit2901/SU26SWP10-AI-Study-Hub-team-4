@@ -164,14 +164,19 @@ public class DocumentIngestionServiceTests
 
         return new DocumentIngestionService(
             db,
-            storage ?? new FakeStorageReadService(),
-            extraction,
-            new ChunkingService(Microsoft.Extensions.Options.Options.Create(ragOptions)),
-            embedding ?? new FakeEmbeddingService(ragOptions.EmbeddingDimensions),
-            imageDescription ?? new FakeImageDescriptionService(),
-            Microsoft.Extensions.Options.Options.Create(ragOptions),
-            Microsoft.Extensions.Options.Options.Create(groqOptions ?? new GroqOptions()),
-            NullLogger<DocumentIngestionService>.Instance);
+    storage ?? new FakeStorageReadService(),
+    extraction,
+    new ChunkingService(Microsoft.Extensions.Options.Options.Create(ragOptions)),
+    embedding ?? new FakeEmbeddingService(ragOptions.EmbeddingDimensions),
+    imageDescription ?? new FakeImageDescriptionService(),
+    Microsoft.Extensions.Options.Options.Create(ragOptions),
+    Microsoft.Extensions.Options.Options.Create(new OllamaOptions
+    {
+        Model = "all-minilm:l6-v2"
+    }),
+    Microsoft.Extensions.Options.Options.Create(groqOptions ?? new GroqOptions()),
+    NullLogger<DocumentIngestionService>.Instance);
+
     }
 
     private static AppDbContext CreateDb()

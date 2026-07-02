@@ -12,9 +12,87 @@ using Pgvector;
 
 namespace AI_Study_Hub_v2.Tests.Services;
 
+
+
 [TestFixture]
 public sealed class RagSearchServiceTests
 {
+
+[Test]
+public async Task SearchAsync_FiltersChunksByCurrentEmbeddingModel()
+{
+    using var db = CreateDb();
+    var user = SeedUser(db);
+
+    var currentDocument = new Document
+    {
+        Id = Guid.NewGuid(),
+        UserId = user.Id,
+        FileName = "current.pdf",
+        StoragePath = "documents/current.pdf",
+        FileSizeBytes = 1024,
+        MimeType = "application/pdf",
+        SubjectCode = "SWP391",
+        Semester = "SU26",
+        Status = DocumentStatus.Ready,
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow
+    };
+
+    var oldDocument = new Document
+    {
+        Id = Guid.NewGuid(),
+        UserId = user.Id,
+        FileName = "old.pdf",
+        StoragePath = "documents/old.pdf",
+        FileSizeBytes = 1024,
+        MimeType = "application/pdf",
+        SubjectCode = "SWP391",
+        Semester = "SU26",
+        Status = DocumentStatus.Ready,
+        CreatedAt = DateTimeOffset.UtcNow,
+        UpdatedAt = DateTimeOffset.UtcNow
+    };
+
+    db.Documents.AddRange(currentDocument, oldDocument);
+
+    var queryEmbedding = TestEmbedding(1f);
+
+    db.DocumentChunks.AddRange(
+        new DocumentChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = currentDocument.Id,
+            ChunkIndex = 0,
+            Content = "current model chunk",
+            Embedding = new Vector(TestEmbedding(1f)),
+            EmbeddingModel = "all-minilm:l6-v2",
+            CreatedAt = DateTimeOffset.UtcNow
+        },
+        new DocumentChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = oldDocument.Id,
+            ChunkIndex = 0,
+            Content = "old model chunk",
+            Embedding = new Vector(TestEmbedding(1f)),
+            EmbeddingModel = "old-model",
+            CreatedAt = DateTimeOffset.UtcNow
+        });
+
+    await db.SaveChangesAsync();
+
+    var sut = BuildSut(db, queryEmbedding, currentModel: "all-minilm:l6-v2");
+
+    var results = await sut.SearchAsync(
+        user.SupabaseUserId,
+        new RagSearchRequest("test", null, null, null, null, 5, null, null),
+        CancellationToken.None);
+
+    results.Should().ContainSingle();
+    results.Single().DocumentId.Should().Be(currentDocument.Id);
+}
+
     [Test]
     public async Task SearchAsync_IgnoresForeignUserChunks()
     {
@@ -194,15 +272,26 @@ public sealed class RagSearchServiceTests
         }
     }
 
-    private static RagSearchService BuildSut(AppDbContext db, float[] queryEmbedding, RagOptions? options = null)
-    {
-        var embeddings = new Mock<IEmbeddingService>();
-        embeddings
-            .Setup(e => e.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(queryEmbedding);
+    private static RagSearchService BuildSut(
+    AppDbContext db,
+    float[] queryEmbedding,
+    RagOptions? options = null,
+    string currentModel = "all-minilm:l6-v2")
+{
+    var embeddings = new Mock<IEmbeddingService>();
+    embeddings
+        .Setup(e => e.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+        .ReturnsAsync(queryEmbedding);
 
-        return new RagSearchService(db, embeddings.Object, OptionsFactory.Create(options ?? new RagOptions()));
-    }
+    return new RagSearchService(
+        db,
+        embeddings.Object,
+        OptionsFactory.Create(options ?? new RagOptions()),
+        OptionsFactory.Create(new OllamaOptions
+        {
+            Model = currentModel
+        }));
+}
 
     private static User SeedUser(AppDbContext db)
     {
@@ -252,26 +341,27 @@ public sealed class RagSearchServiceTests
     }
 
     private static void SeedChunk(
-        AppDbContext db,
-        Document document,
-        int chunkIndex,
-        string content,
-        float[] embedding,
-        int? pageNumber = null)
+    AppDbContext db,
+    Document document,
+    int chunkIndex,
+    string content,
+    float[] embedding,
+    int? pageNumber = null)
+{
+    db.DocumentChunks.Add(new DocumentChunk
     {
-        db.DocumentChunks.Add(new DocumentChunk
-        {
-            Id = Guid.NewGuid(),
-            DocumentId = document.Id,
-            Document = document,
-            ChunkIndex = chunkIndex,
-            PageNumber = pageNumber,
-            Content = content,
-            TokenCount = content.Length / 4,
-            Embedding = new Vector(embedding),
-            CreatedAt = DateTimeOffset.UtcNow,
-        });
-    }
+        Id = Guid.NewGuid(),
+        DocumentId = document.Id,
+        Document = document,
+        ChunkIndex = chunkIndex,
+        PageNumber = pageNumber,
+        Content = content,
+        TokenCount = content.Length / 4,
+        Embedding = new Vector(embedding),
+        EmbeddingModel = "all-minilm:l6-v2",
+        CreatedAt = DateTimeOffset.UtcNow,
+    });
+}
 
     private static float[] UnitAt(int index)
     {
@@ -279,4 +369,11 @@ public sealed class RagSearchServiceTests
         vector[index] = 1f;
         return vector;
     }
+
+private static float[] TestEmbedding(float value)
+{
+    var embedding = new float[DocumentChunk.EmbeddingDimension];
+    embedding[0] = value;
+    return embedding;
+}
 }
