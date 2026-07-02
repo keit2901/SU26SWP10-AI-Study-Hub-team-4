@@ -134,6 +134,7 @@ builder.Services.AddHttpClient<OllamaEmbeddingService>(client =>
 });
 
 builder.Services.AddScoped<IEmbeddingService, OllamaEmbeddingService>();
+builder.Services.AddHostedService<OllamaHealthCheck>();
 // Sprint 3 services ----------------------------------------------------------
 builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
 builder.Services.AddScoped<IQuizService, QuizService>();

@@ -1,3 +1,4 @@
+using AI_Study_Hub_v2.Services;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using AI_Study_Hub_v2.Data.Entities;
@@ -36,54 +37,65 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
     }
 
     public async Task<float[]> GenerateEmbeddingAsync(
-        string text,
-        CancellationToken cancellationToken = default)
+    string text,
+    CancellationToken cancellationToken = default)
+{
+    var prompt = text ?? string.Empty;
+    var maxAttempts = Math.Max(1, _options.MaxRetries);
+    Exception? lastException = null;
+
+    for (var attempt = 1; attempt <= maxAttempts; attempt++)
     {
-        var prompt = text ?? string.Empty;
-        var maxAttempts = Math.Max(1, _options.MaxRetries);
-
-        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        try
         {
-            try
+            var request = new OllamaEmbeddingRequest(_options.Model, prompt);
+
+            using var response = await _httpClient.PostAsJsonAsync(
+                "/api/embeddings",
+                request,
+                cancellationToken);
+
+            response.EnsureSuccessStatusCode();
+
+            var result = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>(
+                cancellationToken: cancellationToken);
+
+            if (result?.Embedding is null)
             {
-                var request = new OllamaEmbeddingRequest(_options.Model, prompt);
-
-                using var response = await _httpClient.PostAsJsonAsync(
-                    "/api/embeddings",
-                    request,
-                    cancellationToken);
-
-                response.EnsureSuccessStatusCode();
-
-                var result = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>(
-                    cancellationToken: cancellationToken);
-
-                if (result?.Embedding is null)
-                {
-                    throw new InvalidOperationException("Ollama response does not contain embedding.");
-                }
-
-                ValidateEmbedding(result.Embedding);
-
-                return result.Embedding;
+                throw new InvalidOperationException("Ollama response does not contain embedding.");
             }
-            catch (Exception ex) when (attempt < maxAttempts && !cancellationToken.IsCancellationRequested)
-            {
-                var delaySeconds = (int)Math.Pow(2, attempt - 1);
 
-                _logger.LogWarning(
-                    ex,
-                    "Ollama embedding attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelaySeconds}s.",
-                    attempt,
-                    maxAttempts,
-                    delaySeconds);
+            ValidateEmbedding(result.Embedding);
 
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
-            }
+            return result.Embedding;
         }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            lastException = ex;
 
-        throw new InvalidOperationException("Failed to generate embedding from Ollama.");
+            if (attempt >= maxAttempts)
+            {
+                break;
+            }
+
+            var delaySeconds = (int)Math.Pow(2, attempt - 1);
+
+            _logger.LogWarning(
+                ex,
+                "Ollama embedding attempt {Attempt}/{MaxAttempts} failed. Retrying in {DelaySeconds}s.",
+                attempt,
+                maxAttempts,
+                delaySeconds);
+
+            await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+        }
     }
+
+    throw new AiChatException(
+        503,
+        "embedding_service_unavailable",
+        "Dịch vụ embedding đang bảo trì, vui lòng thử lại sau.");
+}
 
     private static void ValidateEmbedding(float[] embedding)
     {

@@ -14,18 +14,21 @@ public sealed class RagSearchService : IRagSearchService
     private const int ExcerptMaxChars = 500;
 
     private readonly AppDbContext _db;
-    private readonly IEmbeddingService _embeddingService;
-    private readonly RagOptions _options;
+private readonly IEmbeddingService _embeddingService;
+private readonly RagOptions _options;
+private readonly string _currentModel;
 
     public RagSearchService(
-        AppDbContext db,
-        IEmbeddingService embeddingService,
-        IOptions<RagOptions> options)
-    {
-        _db = db;
-        _embeddingService = embeddingService;
-        _options = options.Value;
-    }
+    AppDbContext db,
+    IEmbeddingService embeddingService,
+    IOptions<RagOptions> options,
+    IOptions<OllamaOptions> ollamaOptions)
+{
+    _db = db;
+    _embeddingService = embeddingService;
+    _options = options.Value;
+    _currentModel = ollamaOptions.Value.Model;
+}
 
     public async Task<IReadOnlyList<RagSearchResultDto>> SearchAsync(
         Guid supabaseUserId,
@@ -117,15 +120,15 @@ public sealed class RagSearchService : IRagSearchService
             .ToList();
     }
 
-    private static IQueryable<DocumentChunk> ApplyFilters(
+    private IQueryable<DocumentChunk> ApplyFilters(
         IQueryable<DocumentChunk> query,
         Guid userId,
         RagSearchRequest request)
     {
-        query = query.Where(c =>
-            c.Document.UserId == userId
-            && c.Document.Status == DocumentStatus.Ready);
-
+query = query.Where(c =>
+    c.Document.UserId == userId
+    && c.Document.Status == DocumentStatus.Ready
+    && c.EmbeddingModel == _currentModel);
         if (request.DocumentId.HasValue)
         {
             query = query.Where(c => c.DocumentId == request.DocumentId.Value);
