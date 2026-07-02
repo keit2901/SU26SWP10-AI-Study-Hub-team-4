@@ -1,166 +1,800 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin.AuditLogs
+@namespace AI_Study_Hub_v2.Components.Admin.AuditLogs
 @page "/admin/audit-logs"
 @layout AdminLayout
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @inject ISnackbar Snackbar
 
-<MudStack Spacing="4" Class="audit-page page-enter">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
-        <div>
-            <MudText Typo="Typo.overline" Color="Color.Secondary">Governance and traceability</MudText>
-            <MudText Typo="Typo.h4">Audit Logs</MudText>
-            <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Review administrator actions, user security events, moderation decisions, configuration changes, and before/after JSON payloads.
-            </MudText>
-        </div>
-        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
-            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="Reload">Refresh</MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportLogs">
-                Export visible logs
-            </MudButton>
-        </MudStack>
-    </MudStack>
+<div class="audit-page">
+    <div class="breadcrumbs-container">
+        GOVERNANCE > AUDIT LOGS
+    </div>
 
-    <FilterBar SearchText="@_searchText"
-               SearchTextChanged="OnSearchChanged"
-               SearchPlaceholder="Search action, actor, entity, IP, or JSON"
-               ActiveFilters="@ActiveFilters"
-               RemoveFilter="RemoveFilterAsync"
-               ClearAllFilters="ClearFiltersAsync">
-        <MudSelect T="string" Value="@_selectedAction" ValueChanged="OnActionChanged" Label="Action" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="audit-filter">
+    <div class="page-header-row">
+        <div>
+            <h1 class="page-title">Audit Logs</h1>
+            <p class="page-desc">Review administrator actions, user security events, moderation decisions, configuration changes, and before/after JSON payloads.</p>
+        </div>
+        <div class="header-actions">
+            <button class="header-outline-btn" @onclick="Reload">
+                <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
+                <span>REFRESH</span>
+            </button>
+            <button class="header-filled-btn" @onclick="ExportLogs">
+                <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" />
+                <span>EXPORT VISIBLE LOGS</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- Search & Filters -->
+    <div class="filter-row-custom mb-6">
+        <div class="search-input-wrapper">
+            <input type="text" class="search-input" placeholder="Search action, actor, entity, IP, or JSON..."
+                   value="@_searchText" @oninput="OnSearchInput" />
+            <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" Size="Size.Small" />
+        </div>
+        <select class="filter-select" value="@_selectedAction" @onchange="OnActionChanged">
+            <option value="">Action</option>
             @foreach (var action in _logs.Select(log => log.Action).Distinct().OrderBy(action => action))
             {
-                <MudSelectItem T="string" Value="@action">@action</MudSelectItem>
+                <option value="@action">@action</option>
             }
-        </MudSelect>
-        <MudSelect T="string" Value="@_selectedActor" ValueChanged="OnActorChanged" Label="Actor" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="audit-filter">
+        </select>
+        <select class="filter-select" value="@_selectedActor" @onchange="OnActorChanged">
+            <option value="">Actor</option>
             @foreach (var actor in _logs.Select(log => log.ActorEmail).Distinct().OrderBy(actor => actor))
             {
-                <MudSelectItem T="string" Value="@actor">@actor</MudSelectItem>
+                <option value="@actor">@actor</option>
             }
-        </MudSelect>
-        <MudSelect T="string" Value="@_selectedSeverity" ValueChanged="OnSeverityChanged" Label="Severity" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="audit-filter">
-            <MudSelectItem T="string" Value="@HighSeverity">High</MudSelectItem>
-            <MudSelectItem T="string" Value="@MediumSeverity">Medium</MudSelectItem>
-            <MudSelectItem T="string" Value="@LowSeverity">Low</MudSelectItem>
-        </MudSelect>
-        <MudDateRangePicker DateRange="@_dateRange"
-                            DateRangeChanged="OnDateRangeChanged"
-                            Label="Date range"
-                            Variant="Variant.Outlined"
-                            Margin="Margin.Dense"
-                            Clearable="true"
-                            Class="date-filter" />
-    </FilterBar>
+        </select>
+        <select class="filter-select" value="@_selectedSeverity" @onchange="OnSeverityChanged">
+            <option value="">Severity</option>
+            <option value="@HighSeverity">High</option>
+            <option value="@MediumSeverity">Medium</option>
+            <option value="@LowSeverity">Low</option>
+        </select>
+        <input type="date" class="custom-date-picker" value="@_selectedDateString" @onchange="OnDateInputChanged" />
+        <button class="filter-btn" @onclick="ClearFiltersAsync">
+            <MudIcon Icon="@Icons.Material.Filled.Tune" Style="font-size: 18px; color: #575e72;" />
+        </button>
+    </div>
 
-    <MudGrid>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="audit-stat-card">
-                <MudText Typo="Typo.caption">Visible events</MudText>
-                <MudText Typo="Typo.h4">@FilteredLogs.Count()</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">After filters</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="audit-stat-card error">
-                <MudText Typo="Typo.caption">High severity</MudText>
-                <MudText Typo="Typo.h4">@FilteredLogs.Count(log => log.Severity == HighSeverity)</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Immediate review</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="audit-stat-card warning">
-                <MudText Typo="Typo.caption">Config changes</MudText>
-                <MudText Typo="Typo.h4">@FilteredLogs.Count(log => log.Action == ConfigChangeAction)</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">UC13 trace</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="audit-stat-card success">
-                <MudText Typo="Typo.caption">Moderation</MudText>
-                <MudText Typo="Typo.h4">@FilteredLogs.Count(log => log.Action.StartsWith("DOCUMENT_", StringComparison.OrdinalIgnoreCase))</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">UC10 decisions</MudText>
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+    <!-- Active Filters -->
+    @if (ActiveFilters.Any())
+    {
+        <div class="active-filters-container">
+            @foreach (var filter in ActiveFilters)
+            {
+                <span class="filter-pill">
+                    @filter
+                    <button class="filter-pill-close" @onclick="@(() => RemoveFilterAsync(filter))">×</button>
+                </span>
+            }
+            <button class="clear-all-btn" @onclick="ClearFiltersAsync">Clear all filters</button>
+        </div>
+    }
 
+    <!-- KPI Grid -->
+    <div class="kpi-grid-container mb-6">
+        <div class="kpi-card-custom">
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">VISIBLE EVENTS</span>
+                <div class="kpi-value">@FilteredLogs.Count()</div>
+                <span class="kpi-subtext">After filters</span>
+            </div>
+        </div>
+        <div class="kpi-card-custom card-high-severity">
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">HIGH SEVERITY</span>
+                <div class="kpi-value danger-color">@FilteredLogs.Count(log => log.Severity == HighSeverity)</div>
+                <span class="kpi-subtext">Immediate review</span>
+            </div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">CONFIG CHANGES</span>
+                <div class="kpi-value">@FilteredLogs.Count(log => log.Action == ConfigChangeAction)</div>
+                <div class="kpi-subtext">
+                    <span class="stat-badge">UC13 trace</span>
+                </div>
+            </div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">MODERATION</span>
+                <div class="kpi-value">@FilteredLogs.Count(log => log.Action.StartsWith("DOCUMENT_", StringComparison.OrdinalIgnoreCase))</div>
+                <div class="kpi-subtext">
+                    <span class="stat-badge">UC10 decisions</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- List Items -->
     @if (_isLoading)
     {
-        <MudStack Spacing="2">
-            <MudSkeleton Height="92px" Animation="Animation.Wave" />
-            <MudSkeleton Height="92px" Animation="Animation.Wave" />
-            <MudSkeleton Height="92px" Animation="Animation.Wave" />
-        </MudStack>
+        <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
+            @for (var index = 0; index < 3; index++)
+            {
+                <MudSkeleton Height="92px" Animation="Animation.Wave" Style="border-radius: 8px;" />
+            }
+        </div>
     }
     else if (!string.IsNullOrWhiteSpace(_errorMessage))
     {
-        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-6">@_errorMessage</MudAlert>
     }
     else if (!FilteredLogs.Any())
     {
-        <MudPaper Elevation="0" Class="empty-state">
-            <MudIcon Icon="@Icons.Material.Filled.ManageSearch" Size="Size.Large" Color="Color.Secondary" />
-            <MudText Typo="Typo.h6">No audit events found</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary">Adjust filters to inspect a wider time range.</MudText>
-        </MudPaper>
+        <div class="empty-state mb-6" style="background: #ffffff; border: 1px solid rgba(199, 196, 215, 0.3); border-radius: 12px; padding: 3rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px;">
+            <MudIcon Icon="@Icons.Material.Filled.ManageSearch" Size="Size.Large" Color="Color.Secondary" Style="font-size: 48px; color: #767586;" />
+            <h3 style="font-size: 18px; font-weight: 800; margin-top: 1rem; color: #191c1e;">No audit events found</h3>
+            <p style="font-size: 14px; color: #575e72; margin-top: 0.5rem;">Adjust filters to inspect a wider time range.</p>
+        </div>
     }
     else
     {
-        <MudPaper Elevation="0" Class="audit-list-card">
-            <MudStack Spacing="2">
+        <div class="audit-list-card mb-6">
+            <div class="audit-rows-container">
                 @foreach (var log in FilteredLogs)
                 {
-                    <MudExpansionPanels Elevation="0" Class="audit-row-panel">
-                        <MudExpansionPanel>
-                            <TitleContent>
-                                <MudGrid Spacing="2" Class="audit-row-grid">
-                                    <MudItem xs="12" md="2">
-                                        <MudChip T="string" Color="@GetActionColor(log.Action)" Variant="Variant.Filled" Size="Size.Small">@log.Action</MudChip>
-                                        <MudText Typo="Typo.caption" Class="d-block mt-1">@FormatDateTime(log.CreatedAt)</MudText>
-                                    </MudItem>
-                                    <MudItem xs="12" md="3">
-                                        <MudText Typo="Typo.subtitle2">@log.ActorEmail</MudText>
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@log.IpAddress</MudText>
-                                    </MudItem>
-                                    <MudItem xs="12" md="3">
-                                        <MudText Typo="Typo.subtitle2">@log.EntityName</MudText>
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">@log.EntityId</MudText>
-                                    </MudItem>
-                                    <MudItem xs="12" md="2">
-                                        <MudText Typo="Typo.caption">Severity</MudText>
-                                        <MudChip T="string" Color="@GetSeverityColor(log.Severity)" Variant="Variant.Outlined" Size="Size.Small">@log.Severity</MudChip>
-                                    </MudItem>
-                                    <MudItem xs="12" md="2">
-                                        <MudText Typo="Typo.caption">Request</MudText>
-                                        <MudText Typo="Typo.body2">@log.RequestId</MudText>
-                                    </MudItem>
-                                </MudGrid>
-                            </TitleContent>
-                            <ChildContent>
-                                <MudDivider Class="my-3" />
-                                <MudGrid>
-                                    <MudItem xs="12" md="4">
-                                        <MudText Typo="Typo.subtitle2">Before</MudText>
-                                        <pre class="audit-json">@log.BeforeJson</pre>
-                                    </MudItem>
-                                    <MudItem xs="12" md="4">
-                                        <MudText Typo="Typo.subtitle2">After</MudText>
-                                        <pre class="audit-json">@log.AfterJson</pre>
-                                    </MudItem>
-                                    <MudItem xs="12" md="4">
-                                        <MudText Typo="Typo.subtitle2">Context</MudText>
-                                        <pre class="audit-json">@log.ContextJson</pre>
-                                    </MudItem>
-                                </MudGrid>
-                            </ChildContent>
-                        </MudExpansionPanel>
-                    </MudExpansionPanels>
+                    <div class="audit-row-custom">
+                        <div class="audit-row-summary" @onclick="@(() => ToggleExpand(log.RequestId))">
+                            <!-- Col 1: Action Badge & Date -->
+                            <div>
+                                <span class="action-badge-custom @GetActionClass(log.Action)">@log.Action</span>
+                                <div class="col-subtitle">@FormatDateTime(log.CreatedAt)</div>
+                            </div>
+                            
+                            <!-- Col 2: Actor & IP -->
+                            <div>
+                                <div class="col-title">@log.ActorEmail</div>
+                                <div class="col-subtitle">@log.IpAddress</div>
+                            </div>
+
+                            <!-- Col 3: Target Entity & ID -->
+                            <div>
+                                <div class="col-title">@log.EntityName</div>
+                                <div class="col-subtitle">@log.EntityId</div>
+                            </div>
+
+                            <!-- Col 4: Severity Badge -->
+                            <div>
+                                <span class="col-meta-label">SEVERITY</span>
+                                <span class="severity-badge-custom severity-@log.Severity.ToLowerInvariant()">@log.Severity</span>
+                            </div>
+
+                            <!-- Col 5: Request ID & Expand -->
+                            <div class="req-wrapper">
+                                <span class="col-meta-label">REQUEST</span>
+                                <span class="req-value">@log.RequestId</span>
+                                <MudIcon Icon="@(IsExpanded(log.RequestId) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" Size="Size.Small" Style="color: #767586; margin-left: auto;" />
+                            </div>
+                        </div>
+
+                        @if (IsExpanded(log.RequestId))
+                        {
+                            <div class="audit-row-details">
+                                <div class="details-grid">
+                                    <div>
+                                        <span class="details-section-title">Before</span>
+                                        <pre class="audit-json-box">@log.BeforeJson</pre>
+                                    </div>
+                                    <div>
+                                        <span class="details-section-title">After</span>
+                                        <pre class="audit-json-box">@log.AfterJson</pre>
+                                    </div>
+                                    <div>
+                                        <span class="details-section-title">Context</span>
+                                        <pre class="audit-json-box">@log.ContextJson</pre>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    </div>
                 }
-            </MudStack>
-        </MudPaper>
+            </div>
+
+            <!-- Pagination Footer -->
+            <div class="pagination-row-custom">
+                <span class="pagination-info">Showing 1-@FilteredLogs.Count() of @FilteredLogs.Count() events</span>
+                <div class="pagination-controls">
+                    <button class="pag-btn" disabled><MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" /></button>
+                    <span class="pag-active">1</span>
+                    <button class="pag-btn" disabled><MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" /></button>
+                </div>
+            </div>
+        </div>
     }
-</MudStack>
+</div>
+
+<style>
+    @@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap');
+
+    .audit-page {
+        font-family: 'Hanken Grotesk', sans-serif;
+        color: #191c1e;
+        animation: pageRise 0.4s ease-out;
+    }
+
+    /* Breadcrumbs */
+    .breadcrumbs-container {
+        font-size: 11px;
+        font-weight: 700;
+        color: #4648d4;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Page Header */
+    .page-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .page-title {
+        font-size: 28px;
+        font-weight: 800;
+        color: #191c1e;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .page-desc {
+        font-size: 14px;
+        color: #575e72;
+        margin: 4px 0 0 0;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .header-outline-btn {
+        background: #ffffff;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        height: 38px;
+        font-weight: 700;
+        font-size: 12px;
+        color: #575e72;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 16px;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .header-outline-btn:hover {
+        background-color: #f8fafc;
+        border-color: #767586;
+    }
+
+    .header-filled-btn {
+        background: #4648d4;
+        border: none;
+        border-radius: 8px;
+        height: 38px;
+        font-weight: 700;
+        font-size: 12px;
+        color: #ffffff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 16px;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .header-filled-btn:hover {
+        background-color: #3b3dbb;
+    }
+
+    /* KPI Grid */
+    .kpi-grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .kpi-card-custom {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 1.25rem;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
+    }
+
+    .kpi-card-custom.card-high-severity {
+        border-color: #fca5a5;
+    }
+
+    .kpi-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #767586;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        display: block;
+    }
+
+    .kpi-value {
+        font-size: 28px;
+        font-weight: 800;
+        color: #191c1e;
+        margin-top: 4px;
+        line-height: 1.1;
+    }
+
+    .kpi-value.danger-color {
+        color: #b91c1c;
+    }
+
+    .kpi-subtext {
+        font-size: 12px;
+        color: #767586;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        margin-top: 4px;
+    }
+
+    .stat-badge {
+        background: #f1f3f5;
+        color: #767586;
+        font-size: 10px;
+        font-weight: 700;
+        padding: 2px 6px;
+        border-radius: 4px;
+        text-transform: uppercase;
+    }
+
+    /* Filter Row */
+    .filter-row-custom {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input-wrapper {
+        position: relative;
+        flex: 1;
+        min-width: 260px;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #767586;
+        pointer-events: none;
+    }
+
+    .search-input {
+        width: 100%;
+        height: 40px;
+        padding: 0 12px 0 40px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #191c1e;
+        font-size: 14px;
+        font-weight: 500;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+        border-color: #4648d4;
+    }
+
+    .filter-select {
+        height: 40px;
+        padding: 0 24px 0 12px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #191c1e;
+        font-size: 14px;
+        font-weight: 600;
+        outline: none;
+        cursor: pointer;
+        min-width: 130px;
+        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23575e72'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        background-size: 20px;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    .custom-date-picker {
+        height: 40px;
+        padding: 0 12px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #191c1e;
+        font-size: 14px;
+        font-weight: 600;
+        outline: none;
+        cursor: pointer;
+        min-width: 160px;
+    }
+
+    .filter-btn {
+        width: 40px;
+        height: 40px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .filter-btn:hover {
+        background-color: #f8fafc;
+    }
+
+    /* Active filter pills */
+    .active-filters-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 1.25rem;
+    }
+
+    .filter-pill {
+        background-color: #f1f3f5;
+        color: #575e72;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .filter-pill-close {
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        color: #767586;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .clear-all-btn {
+        border: none;
+        background: transparent;
+        color: #4648d4;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+    }
+
+    /* Audit List Card */
+    .audit-list-card {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.02);
+    }
+
+    .audit-rows-container {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    /* Custom Audit Row Card */
+    .audit-row-custom {
+        border: 1px solid rgba(199, 196, 215, 0.25);
+        border-radius: 8px;
+        overflow: hidden;
+        background: #ffffff;
+        transition: all 0.2s ease;
+    }
+
+    .audit-row-custom:hover {
+        border-color: rgba(70, 72, 212, 0.3);
+    }
+
+    .audit-row-summary {
+        display: grid;
+        grid-template-columns: 2fr 2.5fr 2.5fr 1.5fr 1.5fr;
+        padding: 1rem 1.25rem;
+        align-items: center;
+        cursor: pointer;
+        gap: 1rem;
+    }
+
+    @@media (max-width: 768px) {
+        .audit-row-summary {
+            grid-template-columns: 1fr;
+            gap: 0.5rem;
+        }
+    }
+
+    /* Column Typography */
+    .col-title {
+        font-size: 14px;
+        font-weight: 700;
+        color: #191c1e;
+    }
+
+    .col-subtitle {
+        font-size: 12px;
+        color: #767586;
+        font-weight: 500;
+        margin-top: 2px;
+    }
+
+    .col-meta-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #767586;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-right: 6px;
+    }
+
+    .req-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+
+    .req-value {
+        font-size: 13px;
+        font-weight: 700;
+        color: #4648d4;
+    }
+
+    /* Action Badge */
+    .action-badge-custom {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 4px;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        display: inline-block;
+    }
+
+    .action-role-change {
+        background: #f1f3f5;
+        color: #575e72;
+    }
+
+    .action-approve {
+        background: #e6f4ea;
+        color: #137333;
+    }
+
+    .action-reject {
+        background: #fce8e6;
+        color: #c5221f;
+    }
+
+    .action-config-change {
+        background: #f1f3f5;
+        color: #575e72;
+    }
+
+    .action-quota-update {
+        background: #f3e8ff;
+        color: #7e22ce;
+    }
+
+    .action-login-failed {
+        background: #fce8e6;
+        color: #c5221f;
+    }
+
+    .action-default {
+        background: #e0e7ff;
+        color: #3730a3;
+    }
+
+    /* Severity Badges */
+    .severity-badge-custom {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 2px 8px;
+        border-radius: 4px;
+        border: 1px solid;
+        display: inline-block;
+    }
+
+    .severity-low {
+        border-color: #3b82f6;
+        color: #3b82f6;
+    }
+
+    .severity-medium {
+        border-color: #f59e0b;
+        color: #f59e0b;
+    }
+
+    .severity-high {
+        border-color: #ef4444;
+        color: #ef4444;
+    }
+
+    /* Expanded Details Box */
+    .audit-row-details {
+        background-color: #f8fafc;
+        border-top: 1px solid rgba(199, 196, 215, 0.2);
+        padding: 1.25rem;
+    }
+
+    .details-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        gap: 1.25rem;
+    }
+
+    .details-section-title {
+        font-size: 12px;
+        font-weight: 700;
+        color: #575e72;
+        margin-bottom: 6px;
+        display: block;
+    }
+
+    .audit-json-box {
+        background-color: #0b0f19;
+        border: 1px solid #1e293b;
+        border-radius: 8px;
+        padding: 12px;
+        color: #10b981;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.5;
+        overflow-x: auto;
+        white-space: pre-wrap;
+        word-break: break-all;
+        margin: 0;
+        max-height: 250px;
+    }
+
+    /* Pagination Footer */
+    .pagination-row-custom {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-top: 1.5rem;
+        font-size: 13px;
+        font-weight: 600;
+        color: #767586;
+        padding-top: 0.5rem;
+    }
+
+    .pagination-controls {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .pag-btn {
+        width: 32px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid #c7c6d5;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: #575e72;
+    }
+
+    .pag-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .pag-active {
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #4648d4;
+        font-weight: 700;
+    }
+
+    /* Dark theme overrides */
+    .dark-theme .kpi-card-custom,
+    .dark-theme .audit-row-custom,
+    .dark-theme .filter-select,
+    .dark-theme .search-input,
+    .dark-theme .custom-date-picker,
+    .dark-theme .filter-btn,
+    .dark-theme .audit-list-card,
+    .dark-theme .pag-btn,
+    .dark-theme .header-outline-btn {
+        background-color: #1e2124 !important;
+        border-color: rgba(255, 255, 255, 0.08) !important;
+        color: #f8fafc !important;
+    }
+
+    .dark-theme .page-title,
+    .dark-theme .kpi-value,
+    .dark-theme .col-title,
+    .dark-theme .pag-active,
+    .dark-theme .audit-row-summary:hover {
+        color: #f8fafc !important;
+    }
+
+    .dark-theme .audit-row-details {
+        background-color: #1a1c1e !important;
+    }
+
+    .dark-theme .details-section-title,
+    .dark-theme .col-subtitle,
+    .dark-theme .col-meta-label,
+    .dark-theme .pagination-info,
+    .dark-theme .page-desc,
+    .dark-theme .kpi-label,
+    .dark-theme .kpi-subtext {
+        color: #94a3b8 !important;
+    }
+
+    .dark-theme .stat-badge {
+        background-color: #25282c;
+        color: #94a3b8;
+    }
+
+    .dark-theme .action-role-change,
+    .dark-theme .action-config-change {
+        background-color: #25282c;
+        color: #94a3b8;
+    }
+
+    .dark-theme .filter-pill {
+        background-color: #25282c;
+        color: #94a3b8;
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
 
 @code {
     private const string HighSeverity = "High";
@@ -169,12 +803,14 @@
     private const string ConfigChangeAction = "CONFIG_CHANGE";
 
     private readonly List<AuditLogRow> _logs = new();
+    private readonly HashSet<string> _expandedRequests = new();
     private bool _isLoading = true;
     private string? _searchText;
     private string? _selectedAction;
     private string? _selectedActor;
     private string? _selectedSeverity;
-    private DateRange? _dateRange;
+    private DateTime? _selectedDate;
+    private string? _selectedDateString;
     private string? _errorMessage;
 
     private IEnumerable<AuditLogRow> FilteredLogs => _logs
@@ -204,9 +840,9 @@
                 yield return $"Severity: {_selectedSeverity}";
             }
 
-            if (_dateRange?.Start is not null || _dateRange?.End is not null)
+            if (_selectedDate is not null)
             {
-                yield return $"Date: {FormatDate(_dateRange?.Start)} - {FormatDate(_dateRange?.End)}";
+                yield return $"Date: {_selectedDate.Value.ToString("MMM dd, yyyy")}";
             }
         }
     }
@@ -236,34 +872,55 @@
         }
     }
 
-    private Task OnSearchChanged(string? value)
+    private void ToggleExpand(string requestId)
     {
-        _searchText = value;
-        return Task.CompletedTask;
+        if (_expandedRequests.Contains(requestId))
+        {
+            _expandedRequests.Remove(requestId);
+        }
+        else
+        {
+            _expandedRequests.Add(requestId);
+        }
     }
 
-    private Task OnActionChanged(string? value)
+    private bool IsExpanded(string requestId) => _expandedRequests.Contains(requestId);
+
+    private void OnSearchInput(ChangeEventArgs args)
     {
-        _selectedAction = value;
-        return Task.CompletedTask;
+        _searchText = args.Value?.ToString() ?? "";
     }
 
-    private Task OnActorChanged(string? value)
+    private void OnActionChanged(ChangeEventArgs args)
     {
-        _selectedActor = value;
-        return Task.CompletedTask;
+        _selectedAction = args.Value?.ToString();
+        if (_selectedAction == "") _selectedAction = null;
     }
 
-    private Task OnSeverityChanged(string? value)
+    private void OnActorChanged(ChangeEventArgs args)
     {
-        _selectedSeverity = value;
-        return Task.CompletedTask;
+        _selectedActor = args.Value?.ToString();
+        if (_selectedActor == "") _selectedActor = null;
     }
 
-    private Task OnDateRangeChanged(DateRange? value)
+    private void OnSeverityChanged(ChangeEventArgs args)
     {
-        _dateRange = value;
-        return Task.CompletedTask;
+        _selectedSeverity = args.Value?.ToString();
+        if (_selectedSeverity == "") _selectedSeverity = null;
+    }
+
+    private void OnDateInputChanged(ChangeEventArgs args)
+    {
+        _selectedDateString = args.Value?.ToString();
+        if (DateTime.TryParse(_selectedDateString, out var date))
+        {
+            _selectedDate = date;
+        }
+        else
+        {
+            _selectedDate = null;
+            _selectedDateString = null;
+        }
     }
 
     private Task RemoveFilterAsync(string filter)
@@ -282,7 +939,8 @@
         }
         else if (filter.StartsWith("Date:", StringComparison.OrdinalIgnoreCase))
         {
-            _dateRange = null;
+            _selectedDate = null;
+            _selectedDateString = null;
         }
 
         return Task.CompletedTask;
@@ -293,7 +951,8 @@
         _selectedAction = null;
         _selectedActor = null;
         _selectedSeverity = null;
-        _dateRange = null;
+        _selectedDate = null;
+        _selectedDateString = null;
         return Task.CompletedTask;
     }
 
@@ -317,17 +976,11 @@
 
     private bool MatchesDateRange(AuditLogRow log)
     {
-        if (_dateRange?.Start is not null && log.CreatedAt.Date < _dateRange.Start.Value.Date)
+        if (_selectedDate is null)
         {
-            return false;
+            return true;
         }
-
-        if (_dateRange?.End is not null && log.CreatedAt.Date > _dateRange.End.Value.Date)
-        {
-            return false;
-        }
-
-        return true;
+        return log.CreatedAt.Date == _selectedDate.Value.Date;
     }
 
     private bool MatchesSearch(AuditLogRow log)
@@ -354,29 +1007,19 @@
         Snackbar.Add($"Prepared {FilteredLogs.Count()} audit logs for CSV/JSON export.", Severity.Info);
     }
 
-    private static string FormatDate(DateTime? value) => value?.ToString("MMM dd, yyyy") ?? "Any";
-
     private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
 
-    private static Color GetActionColor(string action)
+    private static string GetActionClass(string action)
     {
         return action switch
         {
-            "DELETE" or "DOCUMENT_REMOVE" => Color.Error,
-            "UPDATE" or ConfigChangeAction or "ROLE_CHANGE" or "QUOTA_UPDATE" => Color.Warning,
-            "CREATE" or "DOCUMENT_APPROVE" => Color.Success,
-            "LOGIN_FAILED" or "DOCUMENT_REJECT" => Color.Error,
-            _ => Color.Primary
-        };
-    }
-
-    private static Color GetSeverityColor(string severity)
-    {
-        return severity switch
-        {
-            HighSeverity => Color.Error,
-            MediumSeverity => Color.Warning,
-            _ => Color.Info
+            "ROLE_CHANGE" => "action-role-change",
+            "DOCUMENT_APPROVE" => "action-approve",
+            "DOCUMENT_REJECT" => "action-reject",
+            "CONFIG_CHANGE" => "action-config-change",
+            "QUOTA_UPDATE" => "action-quota-update",
+            "LOGIN_FAILED" => "action-login-failed",
+            _ => "action-default"
         };
     }
 
@@ -424,89 +1067,3 @@
         string AfterJson,
         string ContextJson);
 }
-
-<style>
-    .page-enter {
-        animation: pageRise .42s ease both;
-    }
-
-    .page-header,
-    .audit-list-card,
-    .empty-state,
-    .audit-stat-card {
-        border-radius: 26px;
-        border: 1px solid rgba(15, 118, 110, .12);
-        background: rgba(255, 252, 246, .88);
-    }
-
-    .page-header {
-        padding: 1.2rem;
-        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
-    }
-
-    .audit-stat-card,
-    .audit-list-card {
-        padding: 1rem;
-    }
-
-    .audit-stat-card.success {
-        background: linear-gradient(145deg, rgba(34, 197, 94, .14), rgba(255, 252, 246, .86));
-    }
-
-    .audit-stat-card.warning {
-        background: linear-gradient(145deg, rgba(251, 146, 60, .14), rgba(255, 252, 246, .86));
-    }
-
-    .audit-stat-card.error {
-        background: linear-gradient(145deg, rgba(239, 68, 68, .12), rgba(255, 252, 246, .86));
-    }
-
-    .audit-row-panel {
-        border: 1px solid rgba(15, 118, 110, .1);
-        border-radius: 18px;
-        overflow: hidden;
-    }
-
-    .audit-row-grid {
-        align-items: center;
-    }
-
-    .audit-filter {
-        min-width: 180px;
-    }
-
-    .date-filter {
-        min-width: 260px;
-    }
-
-    .audit-json {
-        margin: .75rem 0 0;
-        padding: 1rem;
-        border-radius: 16px;
-        background: #102a2a;
-        color: #d7fff6;
-        overflow-x: auto;
-        font-size: .84rem;
-        line-height: 1.55;
-        min-height: 150px;
-    }
-
-    .empty-state {
-        min-height: 320px;
-        display: grid;
-        place-items: center;
-        text-align: center;
-        padding: 2rem;
-    }
-
-    @@keyframes pageRise {
-        from {
-            opacity: 0;
-            transform: translateY(14px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-</style>

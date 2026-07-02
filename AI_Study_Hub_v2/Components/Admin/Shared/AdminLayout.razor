@@ -1,4 +1,4 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin.Shared
+@namespace AI_Study_Hub_v2.Components.Admin.Shared
 @inherits LayoutComponentBase
 @implements IDisposable
 @using Microsoft.AspNetCore.Components
@@ -18,107 +18,114 @@
 }
 else if (_authorized)
 {
+    <MudThemeProvider Theme="@_theme" IsDarkMode="@_isDarkMode" />
 
-<MudThemeProvider Theme="@_theme" IsDarkMode="@_isDarkMode" />
-
-<MudLayout Class="admin-layout-shell">
-    <MudAppBar Elevation="0" Dense="true" Class="admin-topbar">
-        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" />
-        <MudBreadcrumbs Items="@_breadcrumbs" Separator="/" Class="admin-breadcrumbs" />
-        <MudSpacer />
-        <MudHidden Breakpoint="Breakpoint.SmAndDown">
-            <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined" Size="Size.Small" Icon="@Icons.Material.Filled.VerifiedUser">
-                Admin workspace
-            </MudChip>
-        </MudHidden>
-        <MudTooltip Text="Toggle theme">
-            <MudIconButton Icon="@ThemeIcon" Color="Color.Inherit" OnClick="ToggleTheme" />
-        </MudTooltip>
-        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
-            <ActivatorContent>
-                <MudBadge Content="5" Color="Color.Error" Overlap="true" Class="me-2">
-                    <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" />
-                </MudBadge>
-            </ActivatorContent>
-            <ChildContent>
-                <MudMenuItem Icon="@Icons.Material.Filled.Gavel" OnClick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">7 documents need moderation</MudMenuItem>
-                <MudMenuItem Icon="@Icons.Material.Filled.ReportProblem" OnClick="@(() => Navigation.NavigateTo("/admin/dashboard"))">4 failed processing jobs</MudMenuItem>
-                <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => Navigation.NavigateTo("/admin/users"))">12 users near token quota</MudMenuItem>
-                <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Navigation.NavigateTo("/admin/settings"))">2 critical config drafts</MudMenuItem>
-            </ChildContent>
-        </MudMenu>
-        <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
-            <ActivatorContent>
-                <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="admin-profile-button" StartIcon="@Icons.Material.Filled.AdminPanelSettings">
-                    <MudHidden Breakpoint="Breakpoint.SmAndDown">System Admin</MudHidden>
-                </MudButton>
-            </ActivatorContent>
-            <ChildContent>
-                <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Signed in as @AdminIdentity</MudMenuItem>
-                <MudMenuItem Icon="@Icons.Material.Filled.Security">Access: @AdminRole</MudMenuItem>
-                <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="SignOutAsync">Sign out</MudMenuItem>
-            </ChildContent>
-        </MudMenu>
-    </MudAppBar>
-
-    <MudDrawer @bind-Open="_drawerOpen"
-               Variant="DrawerVariant.Responsive"
-               Breakpoint="Breakpoint.Md"
-               ClipMode="DrawerClipMode.Never"
-               Elevation="0"
-               Class="admin-sidebar">
-        <MudDrawerHeader Class="admin-sidebar-header">
-            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Medium">
-                    <MudIcon Icon="@Icons.Material.Filled.AutoStories" />
-                </MudAvatar>
-                <div>
-                    <MudText Typo="Typo.h6" Class="admin-brand">AI Study Hub</MudText>
-                    <MudText Typo="Typo.caption" Class="admin-brand-subtitle">RAG Admin Console</MudText>
+    <MudLayout Class="@($"admin-layout-shell {(_isDarkMode ? "dark-theme" : "light-theme")}")">
+        <MudAppBar Elevation="0" Dense="true" Class="admin-topbar">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="ToggleDrawer" />
+            <MudBreadcrumbs Items="@_breadcrumbs" Separator="/" Class="admin-breadcrumbs" />
+            <MudSpacer />
+            
+            <div class="d-flex align-center me-3 flex-wrap" style="gap: 0.75rem;">
+                <div class="supabase-status-badge">
+                    <span class="status-pulse-dot"></span>
+                    <span class="status-badge-text">Supabase connected</span>
                 </div>
-            </MudStack>
-        </MudDrawerHeader>
+                <div class="refresh-badge d-flex align-center">
+                    <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" Class="me-1" Style="font-size: 14px; opacity: 0.7;" />
+                    <span style="font-size: 11px; opacity: 0.7;">Refreshed @DateTime.Now.ToString("HH:mm")</span>
+                </div>
+            </div>
 
-        <MudNavMenu Dense="true" Class="px-3 admin-nav-menu">
-            <MudNavLink Href="/admin/dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
-            <MudNavGroup Title="Operations" Icon="@Icons.Material.Filled.Workspaces" Expanded="true">
-                <MudNavLink Href="/admin/users" Icon="@Icons.Material.Filled.People">Users & Permissions</MudNavLink>
-                <MudNavLink Href="/admin/documents/moderation" Icon="@Icons.Material.Filled.Gavel">Document Moderation</MudNavLink>
-                <MudNavLink Href="/admin/community-reports" Icon="@Icons.Material.Filled.Flag">Community Reports</MudNavLink>
-                <MudNavLink Href="/admin/documents" Icon="@Icons.Material.Filled.Description">Document Library</MudNavLink>
-                <MudNavLink Href="/admin/subjects" Icon="@Icons.Material.Filled.AutoStories">Subjects</MudNavLink>
-            </MudNavGroup>
-            <MudNavGroup Title="Governance" Icon="@Icons.Material.Filled.Policy" Expanded="true">
-                <MudNavLink Href="/admin/settings" Icon="@Icons.Material.Filled.Tune">AI System Settings</MudNavLink>
-                <MudNavLink Href="/admin/audit-logs" Icon="@Icons.Material.Filled.ManageSearch">Audit Logs</MudNavLink>
-            </MudNavGroup>
-        </MudNavMenu>
+            <MudTooltip Text="Toggle theme">
+                <MudIconButton Icon="@ThemeIcon" Color="Color.Inherit" OnClick="ToggleTheme" />
+            </MudTooltip>
 
-        <MudSpacer />
+            <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+                <ActivatorContent>
+                    <MudBadge Content="5" Color="Color.Error" Overlap="true" Class="me-2">
+                        <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" />
+                    </MudBadge>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Gavel" OnClick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">7 documents need moderation</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.ReportProblem" OnClick="@(() => Navigation.NavigateTo("/admin/dashboard"))">4 failed processing jobs</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => Navigation.NavigateTo("/admin/users"))">12 users near token quota</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Navigation.NavigateTo("/admin/settings"))">2 critical config drafts</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
 
-        <div class="admin-sidebar-card">
-            <MudStack Spacing="1">
-                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                    <MudText Typo="Typo.subtitle2">Retrieval readiness</MudText>
-                    <MudText Typo="Typo.caption">82%</MudText>
+            <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
+                <ActivatorContent>
+                    <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="admin-profile-button" StartIcon="@Icons.Material.Filled.AdminPanelSettings">
+                        <MudHidden Breakpoint="Breakpoint.SmAndDown">System Admin</MudHidden>
+                    </MudButton>
+                </ActivatorContent>
+                <ChildContent>
+                    <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Signed in as @AdminIdentity</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Security">Access: @AdminRole</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="SignOutAsync">Sign out</MudMenuItem>
+                </ChildContent>
+            </MudMenu>
+        </MudAppBar>
+
+        <MudDrawer @bind-Open="_drawerOpen"
+                   Variant="DrawerVariant.Responsive"
+                   Breakpoint="Breakpoint.Md"
+                   ClipMode="DrawerClipMode.Never"
+                   Elevation="0"
+                   Class="admin-sidebar">
+            <MudDrawerHeader Class="admin-sidebar-header">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                    <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Medium">
+                        <MudIcon Icon="@Icons.Material.Filled.AutoStories" />
+                    </MudAvatar>
+                    <div>
+                        <MudText Typo="Typo.h6" Class="admin-brand">AI Study Hub</MudText>
+                        <MudText Typo="Typo.caption" Class="admin-brand-subtitle">RAG Admin Console</MudText>
+                    </div>
                 </MudStack>
-                <MudProgressLinear Value="82" Color="Color.Success" Rounded="true" />
-                <MudText Typo="Typo.caption">126 indexed documents, 7 awaiting review, 4 failed jobs.</MudText>
-            </MudStack>
-        </div>
-    </MudDrawer>
+            </MudDrawerHeader>
 
-    <MudMainContent Class="admin-main-content">
-        <MudContainer MaxWidth="MaxWidth.False" Class="admin-page-frame">
-            @Body
-        </MudContainer>
-    </MudMainContent>
-</MudLayout>
+            <MudNavMenu Dense="true" Class="px-3 admin-nav-menu">
+                <MudNavLink Href="/admin/dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+                <MudNavGroup Title="Operations" Icon="@Icons.Material.Filled.Workspaces" Expanded="true">
+                    <MudNavLink Href="/admin/users" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.People">Users & Permissions</MudNavLink>
+                    <MudNavLink Href="/admin/documents/moderation" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Gavel">Document Moderation</MudNavLink>
+                    <MudNavLink Href="/admin/community-reports" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Community Reports</MudNavLink>
+                    <MudNavLink Href="/admin/documents" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Description">Document Library</MudNavLink>
+                    <MudNavLink Href="/admin/subjects" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.AutoStories">Subjects</MudNavLink>
+                </MudNavGroup>
+                <MudNavGroup Title="Governance" Icon="@Icons.Material.Filled.Policy" Expanded="true">
+                    <MudNavLink Href="/admin/settings" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Tune">AI System Settings</MudNavLink>
+                    <MudNavLink Href="/admin/audit-logs" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.ManageSearch">Audit Logs</MudNavLink>
+                </MudNavGroup>
+            </MudNavMenu>
+
+            <MudSpacer />
+
+            <div class="mt-auto p-4 border-t border-outline-variant/10 admin-sidebar-footer">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Class="mb-4 py-2 font-bold admin-open-queue-btn" OnClick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">
+                    Open Queue
+                </MudButton>
+                <div class="space-y-1">
+                    <MudNavLink Href="/admin/settings" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Settings" Class="admin-footer-link">Settings</MudNavLink>
+                    <MudNavLink Href="/admin/support" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.HelpOutline" Class="admin-footer-link">Support</MudNavLink>
+                </div>
+            </div>
+        </MudDrawer>
+
+        <MudMainContent Class="admin-main-content">
+            <MudContainer MaxWidth="MaxWidth.False" Class="admin-page-frame">
+                @Body
+            </MudContainer>
+        </MudMainContent>
+    </MudLayout>
 }
 
 @code {
     private bool _drawerOpen = true;
-    private bool _isDarkMode;
+    private bool _isDarkMode = false;
     private bool _checkingAccess = true;
     private bool _authorized;
     private List<BreadcrumbItem> _breadcrumbs = new();
@@ -137,53 +144,68 @@ else if (_authorized)
     {
         PaletteLight = new PaletteLight
         {
-            Primary = "#0F766E",
-            Secondary = "#B45309",
-            Tertiary = "#334155",
-            Background = "#F5F0E8",
-            Surface = "#FFFCF6",
-            AppbarBackground = "#173B33",
-            AppbarText = "#FFF7ED",
-            DrawerBackground = "#102A2A",
-            DrawerText = "#E7F0EA",
-            DrawerIcon = "#A7F3D0",
-            TextPrimary = "#16231F",
-            TextSecondary = "#53615B",
-            LinesDefault = "#E5DED2",
-            Info = "#2563EB",
-            Success = "#15803D",
-            Warning = "#B45309",
-            Error = "#DC2626"
+            Primary = "#4648d4",
+            Secondary = "#575e72",
+            Tertiary = "#6b38d4",
+            Background = "#f7f9fb",
+            Surface = "#ffffff",
+            AppbarBackground = "#191c1e",
+            AppbarText = "#ffffff",
+            DrawerBackground = "#191c1e",
+            DrawerText = "#d8dadc",
+            DrawerIcon = "#bfc6dd",
+            TextPrimary = "#191c1e",
+            TextSecondary = "#464554",
+            LinesDefault = "#c7c4d7",
+            Info = "#3B82F6",
+            Success = "#10B981",
+            Warning = "#F59E0B",
+            Error = "#ba1a1a"
         },
         PaletteDark = new PaletteDark
         {
-            Primary = "#2DD4BF",
-            Secondary = "#FDBA74",
-            Background = "#0D1B1B",
-            Surface = "#142423",
-            AppbarBackground = "#0A1616",
-            DrawerBackground = "#091313",
-            DrawerText = "#DAF4EC",
-            DrawerIcon = "#99F6E4"
+            Primary = "#c0c1ff",
+            Secondary = "#bfc6dd",
+            Tertiary = "#d0bcff",
+            Background = "#191c1e",
+            Surface = "#1e2124",
+            AppbarBackground = "#191c1e",
+            AppbarText = "#f7f9fb",
+            DrawerBackground = "#191c1e",
+            DrawerText = "#d8dadc",
+            DrawerIcon = "#bfc6dd",
+            TextPrimary = "#f7f9fb",
+            TextSecondary = "#717182",
+            LinesDefault = "rgba(199, 196, 215, 0.2)",
+            Info = "#3B82F6",
+            Success = "#10B981",
+            Warning = "#F59E0B",
+            Error = "#ba1a1a"
         },
         Typography = new Typography
         {
             Default = new DefaultTypography
             {
-                FontFamily = new[] { "Aptos", "Trebuchet MS", "sans-serif" },
-                FontSize = ".95rem"
+                FontFamily = new[] { "Hanken Grotesk", "Inter", "Segoe UI", "sans-serif" },
+                FontSize = ".875rem"
             },
             H4 = new H4Typography
             {
-                FontFamily = new[] { "Georgia", "Aptos", "serif" },
+                FontFamily = new[] { "Hanken Grotesk", "sans-serif" },
                 FontWeight = "700",
-                LetterSpacing = "-.035em"
+                LetterSpacing = "-.025em"
             },
             H5 = new H5Typography
             {
-                FontFamily = new[] { "Georgia", "Aptos", "serif" },
+                FontFamily = new[] { "Hanken Grotesk", "sans-serif" },
                 FontWeight = "700",
-                LetterSpacing = "-.025em"
+                LetterSpacing = "-.02em"
+            },
+            H6 = new H6Typography
+            {
+                FontFamily = new[] { "Hanken Grotesk", "sans-serif" },
+                FontWeight = "700",
+                LetterSpacing = "-.01em"
             }
         }
     };
@@ -278,20 +300,59 @@ else if (_authorized)
     private void BuildBreadcrumbs()
     {
         var relative = Navigation.ToBaseRelativePath(Navigation.Uri).Trim('/');
-        var segments = string.IsNullOrWhiteSpace(relative)
-            ? new[] { "admin", "dashboard" }
-            : relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
+        _breadcrumbs = new List<BreadcrumbItem>();
 
-        _breadcrumbs = new List<BreadcrumbItem>
+        // Check exact path mapping to match mockup
+        if (relative.Equals("admin/documents/moderation", StringComparison.OrdinalIgnoreCase))
         {
-            new("Admin", "/admin/dashboard")
-        };
-
-        var path = string.Empty;
-        foreach (var segment in segments.Where(segment => !segment.Equals("admin", StringComparison.OrdinalIgnoreCase)))
+            _breadcrumbs.Add(new BreadcrumbItem("Governance", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Document Moderation", null, disabled: true));
+        }
+        else if (relative.Equals("admin/users", StringComparison.OrdinalIgnoreCase))
         {
-            path += $"/{segment}";
-            _breadcrumbs.Add(new BreadcrumbItem(ToTitle(segment), $"/admin{path}"));
+            _breadcrumbs.Add(new BreadcrumbItem("Operations", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Users & Permissions", null, disabled: true));
+        }
+        else if (relative.Equals("admin/dashboard", StringComparison.OrdinalIgnoreCase) || string.IsNullOrEmpty(relative) || relative.Equals("admin", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Console", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Dashboard", null, disabled: true));
+        }
+        else if (relative.Equals("admin/community-reports", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Operations", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Community Reports", null, disabled: true));
+        }
+        else if (relative.Equals("admin/documents", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Operations", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Document Library", null, disabled: true));
+        }
+        else if (relative.Equals("admin/subjects", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Operations", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Subjects", null, disabled: true));
+        }
+        else if (relative.Equals("admin/settings", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Governance", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("AI System Settings", null, disabled: true));
+        }
+        else if (relative.Equals("admin/audit-logs", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Governance", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Audit Logs", null, disabled: true));
+        }
+        else
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Admin", "/admin/dashboard"));
+            var segments = relative.Split('/', StringSplitOptions.RemoveEmptyEntries);
+            var path = string.Empty;
+            foreach (var segment in segments.Where(segment => !segment.Equals("admin", StringComparison.OrdinalIgnoreCase)))
+            {
+                path += $"/{segment}";
+                _breadcrumbs.Add(new BreadcrumbItem(ToTitle(segment), $"/admin{path}"));
+            }
         }
     }
 
@@ -299,8 +360,10 @@ else if (_authorized)
     {
         return string.Join(' ', value
             .Split('-', StringSplitOptions.RemoveEmptyEntries)
-            .Select(part => char.ToUpperInvariant(part[0]) + part[1..]));
+            .Select(part => char.ToUpperInvariant(part[0]) + part[Part1..]));
     }
+
+    private static int Part1 => 1;
 
     public void Dispose()
     {
@@ -309,75 +372,343 @@ else if (_authorized)
 }
 
 <style>
+    @@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;600;700;800&display=swap');
+
+    /* ═══════════════════════════════════════════════
+       ADMIN SHELL — Stitch-inspired Mixed Design System
+       Sidebar & Topbar: Dark (#191c1e)
+       Main Content: Light (#f7f9fb)
+       ═══════════════════════════════════════════════ */
+
     .admin-layout-shell {
         min-height: 100vh;
-        background:
-            radial-gradient(circle at top left, rgba(20, 184, 166, .14), transparent 32rem),
-            radial-gradient(circle at bottom right, rgba(180, 83, 9, .1), transparent 28rem),
-            linear-gradient(135deg, #f8f1e7 0%, #eef7f3 47%, #fffaf0 100%);
+        font-family: 'Hanken Grotesk', sans-serif;
+    }
+
+    .admin-layout-shell.light-theme {
+        background: #f7f9fb;
+        color: #191c1e;
+    }
+
+    .admin-layout-shell.dark-theme {
+        background: #191c1e;
+        color: #f7f9fb;
     }
 
     .admin-topbar {
-        border-bottom: 1px solid rgba(255, 255, 255, .14);
-        backdrop-filter: blur(16px);
+        background: #191c1e !important;
+        color: #ffffff !important;
+        border-bottom: 1px solid rgba(199, 196, 215, 0.15) !important;
+    }
+
+    .supabase-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background-color: rgba(70, 72, 212, 0.2);
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        border: 1px solid rgba(70, 72, 212, 0.3);
+    }
+
+    .status-pulse-dot {
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 9999px;
+        background-color: #22c55e;
+        display: inline-block;
+        animation: status-pulse-anim 2s infinite;
+    }
+
+    @@keyframes status-pulse-anim {
+        0% {
+            transform: scale(0.95);
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
+        }
+        70% {
+            transform: scale(1);
+            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0);
+        }
+        100% {
+            transform: scale(0.95);
+            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+        }
+    }
+
+    .status-badge-text {
+        font-size: 10px;
+        font-weight: 700;
+        color: #ffffff;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .refresh-badge {
+        color: #e0e3e5;
     }
 
     .admin-profile-button {
         text-transform: none;
         letter-spacing: 0;
+        font-weight: 600;
+        color: #ffffff !important;
     }
 
+    /* ── Sidebar ── */
     .admin-sidebar {
-        border-right: 1px solid rgba(255, 255, 255, .08);
+        background: #191c1e !important;
+        border-right: 1px solid rgba(199, 196, 215, 0.15) !important;
+        display: flex;
+        flex-direction: column;
     }
 
     .admin-sidebar-header {
         min-height: 92px;
         align-items: center;
+        border-bottom: 1px solid rgba(199, 196, 215, 0.15);
     }
 
+    /* ── Brand ── */
     .admin-brand {
-        color: #fff7ed;
-        font-family: Georgia, Aptos, serif;
-        letter-spacing: -.03em;
+        font-family: 'Hanken Grotesk', sans-serif;
+        font-weight: 800;
+        letter-spacing: -.02em;
+        color: #ffffff !important;
     }
 
     .admin-brand-subtitle {
-        color: rgba(231, 240, 234, .72);
         text-transform: uppercase;
-        letter-spacing: .14em;
+        letter-spacing: .15em;
+        font-size: 0.625rem;
+        font-weight: 800;
+        color: #d8dadc !important;
     }
 
+    /* ── Nav Menu ── */
     .admin-nav-menu .mud-nav-group .mud-navmenu {
         margin-left: .25rem;
-        border-left: 1px solid rgba(167, 243, 208, .16);
+        border-left: 1px solid rgba(199, 196, 215, 0.1);
     }
 
-    .admin-sidebar-card {
-        margin: 1rem;
+    .admin-nav-menu .mud-nav-link {
+        color: #d8dadc !important;
+        font-size: 0.81rem;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        margin: 2px 8px;
+        border-radius: 0.5rem;
+        transition: all 0.2s ease;
+    }
+
+    .admin-nav-menu .mud-nav-link.active {
+        background: #4648d4 !important;
+        color: #ffffff !important;
+    }
+
+    .admin-nav-menu .mud-nav-link:not(.active):hover {
+        background: #3f4759 !important;
+        color: #ffffff !important;
+    }
+
+    .admin-nav-menu .mud-nav-group-title {
+        color: #bfc6dd !important;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        margin-top: 1rem;
+        padding-left: 1rem;
+    }
+
+    /* ── Footer ── */
+    .admin-sidebar-footer {
+        margin-top: auto;
         padding: 1rem;
-        border-radius: 18px;
-        color: #e7f0ea;
-        background: linear-gradient(145deg, rgba(45, 212, 191, .16), rgba(180, 83, 9, .14));
-        border: 1px solid rgba(255, 255, 255, .1);
+        border-top: 1px solid rgba(199, 196, 215, 0.1);
     }
 
+    .admin-open-queue-btn {
+        background-color: #6063ee !important;
+        color: #fffbff !important;
+        border-radius: 0.5rem !important;
+        font-weight: 700 !important;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        transition: transform 0.1s ease;
+    }
+
+    .admin-open-queue-btn:active {
+        transform: scale(0.96);
+    }
+
+    .admin-footer-link {
+        color: #d8dadc !important;
+        font-size: 0.81rem;
+        font-weight: 600;
+        border-radius: 0.5rem;
+        margin: 2px 0;
+    }
+
+    .admin-footer-link:hover {
+        background: #3f4759 !important;
+        color: #ffffff !important;
+    }
+
+    /* ── Main Content ── */
     .admin-main-content {
         min-height: 100vh;
     }
 
-    .admin-page-frame {
-        padding: 6rem 1rem 2.25rem;
+    .light-theme .admin-main-content {
+        background: #f7f9fb;
     }
 
+    .dark-theme .admin-main-content {
+        background: #191c1e;
+    }
+
+    .admin-page-frame {
+        padding: 6rem 1.5rem 2.25rem;
+    }
+
+    /* ── Breadcrumbs ── */
     .admin-breadcrumbs .mud-breadcrumb-item,
     .admin-breadcrumbs .mud-breadcrumb-separator {
-        color: rgba(255, 247, 237, .82) !important;
+        font-weight: 500;
+        font-size: 0.81rem;
+    }
+
+    .admin-breadcrumbs li a,
+    .admin-breadcrumbs li span,
+    .admin-breadcrumbs .mud-breadcrumb-separator {
+        color: #bfc6dd !important;
+        font-weight: 500;
+    }
+
+    .admin-breadcrumbs li:last-child a,
+    .admin-breadcrumbs li:last-child span {
+        color: #ffffff !important;
+        font-weight: 700 !important;
+    }
+
+    /* ── MudBlazor elements in Light main content ── */
+    .light-theme .mud-table,
+    .light-theme .mud-table-root,
+    .light-theme .mud-table-container {
+        background: #ffffff !important;
+        border-radius: 0.75rem !important;
+        color: #191c1e !important;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05) !important;
+        border: 1px solid rgba(199, 196, 215, 0.3) !important;
+    }
+
+    .light-theme .mud-table-cell,
+    .light-theme .mud-table-head .mud-table-cell {
+        border-color: #e0e3e5 !important;
+        color: #191c1e !important;
+    }
+
+    .light-theme .mud-table-head .mud-table-cell {
+        color: #464554 !important;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.68rem;
+        background-color: #f2f4f6 !important;
+    }
+
+    .light-theme .mud-table-row:hover {
+        background: #f7f9fb !important;
+    }
+
+    .light-theme .mud-paper {
+        background-color: #ffffff !important;
+        color: #191c1e !important;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05) !important;
+        border: 1px solid rgba(199, 196, 215, 0.3) !important;
+    }
+
+    .light-theme .mud-input,
+    .light-theme .mud-input-control {
+        color: #191c1e !important;
+    }
+
+    .light-theme .mud-input-label {
+        color: #464554 !important;
+    }
+
+    .light-theme .mud-select .mud-input-underline::before,
+    .light-theme .mud-input-underline::before {
+        border-bottom-color: #c7c4d7 !important;
+    }
+
+    .light-theme .mud-dialog {
+        background-color: #ffffff !important;
+        color: #191c1e !important;
+    }
+
+    .light-theme .mud-chip {
+        font-weight: 700;
+    }
+
+    /* ── Dark overrides ── */
+    .dark-theme .mud-table,
+    .dark-theme .mud-table-root,
+    .dark-theme .mud-table-container {
+        background: #1e2124 !important;
+        border-radius: 0.75rem !important;
+        color: #d8dadc !important;
+    }
+
+    .dark-theme .mud-table-cell,
+    .dark-theme .mud-table-head .mud-table-cell {
+        border-color: rgba(199, 196, 215, 0.1) !important;
+        color: #d8dadc !important;
+    }
+
+    .dark-theme .mud-table-head .mud-table-cell {
+        color: #717182 !important;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        font-size: 0.68rem;
+    }
+
+    .dark-theme .mud-table-row:hover {
+        background: rgba(70, 72, 212, 0.06) !important;
+    }
+
+    .dark-theme .mud-paper {
+        background-color: #1e2124 !important;
+        color: #f7f9fb !important;
+    }
+
+    .dark-theme .mud-input,
+    .dark-theme .mud-input-control {
+        color: #f7f9fb !important;
+    }
+
+    .dark-theme .mud-input-label {
+        color: #717182 !important;
+    }
+
+    .dark-theme .mud-select .mud-input-underline::before,
+    .dark-theme .mud-input-underline::before {
+        border-bottom-color: rgba(199, 196, 215, 0.2) !important;
+    }
+
+    .dark-theme .mud-dialog {
+        background-color: #25282b !important;
+        color: #f7f9fb !important;
+    }
+
+    .dark-theme .mud-chip {
+        font-weight: 600;
     }
 
     @@media (min-width: 960px) {
         .admin-page-frame {
-            padding: 6rem 2.25rem 2.75rem;
+            padding: 6rem 2rem 2.75rem;
         }
     }
 </style>

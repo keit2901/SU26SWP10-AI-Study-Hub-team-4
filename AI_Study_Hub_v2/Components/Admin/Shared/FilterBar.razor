@@ -1,4 +1,4 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin.Shared
+@namespace AI_Study_Hub_v2.Components.Admin.Shared
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 
@@ -55,11 +55,17 @@
 
 <style>
     .filter-bar-shell {
-        border-radius: 22px;
-        padding: .9rem;
-        border: 1px solid rgba(15, 118, 110, .14);
-        background: rgba(255, 252, 246, .78);
-        box-shadow: 0 18px 50px rgba(29, 44, 37, .07);
+        border-radius: 12px;
+        padding: 1rem;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        background: #ffffff;
+        box-shadow: 0 4px 15px rgba(0, 0, 0, 0.03);
+    }
+
+    .dark-theme .filter-bar-shell {
+        border: 1px solid rgba(199, 196, 215, 0.1);
+        background: #1e2124;
+        box-shadow: none;
     }
 
     .filter-bar-content {

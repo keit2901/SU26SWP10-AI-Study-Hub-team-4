@@ -1,4 +1,4 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin.Subjects
+@namespace AI_Study_Hub_v2.Components.Admin.Subjects
 @page "/admin/subjects"
 @layout AdminLayout
 @using MudBlazor
@@ -6,101 +6,172 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
-<MudStack Spacing="4" Class="subjects-page page-enter">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+<div class="subjects-page page-enter">
+    <!-- Breadcrumbs & Header -->
+    <div class="header-breadcrumb-row">
+        <span class="crumb-link">Governance</span>
+        <span class="crumb-separator">&gt;</span>
+        <span class="crumb-active">Subjects</span>
+    </div>
+
+    <div class="page-title-row">
         <div>
-            <MudText Typo="Typo.overline" Color="Color.Secondary">Subjects table</MudText>
-            <MudText Typo="Typo.h4">Subject Management</MudText>
-            <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Organize subjects by semester and maintain searchable course metadata.
-            </MudText>
+            <h1 class="page-title-text">Subject Management</h1>
+            <p class="page-subtitle-text">
+                Organize subjects by semester and maintain searchable course metadata for RAG indexing.
+            </p>
         </div>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Add" OnClick="CreateSubject">
-            Create subject
-        </MudButton>
-    </MudStack>
+        <button class="create-subject-btn" @onclick="CreateSubject">
+            <MudIcon Icon="@Icons.Material.Filled.Add" Size="Size.Small" Style="margin-right: 0.5rem;" />
+            Create Subject
+        </button>
+    </div>
 
-    <FilterBar SearchText="@_searchText"
-               SearchTextChanged="OnSearchChanged"
-               SearchPlaceholder="Search code, name, or description"
-               ActiveFilters="@ActiveFilters"
-               RemoveFilter="RemoveFilterAsync"
-               ClearAllFilters="ClearFiltersAsync">
-        <MudSelect T="string"
-                   Value="@_selectedSemester"
-                   ValueChanged="OnSemesterChanged"
-                   Label="Semester"
-                   Variant="Variant.Outlined"
-                   Margin="Margin.Dense"
-                   Clearable="true"
-                   Class="semester-filter">
-            @foreach (var semester in _subjects.Select(subject => subject.Semester).Distinct().OrderBy(value => value))
+    <!-- KPI Grid -->
+    <div class="kpi-grid-container">
+        <div class="kpi-card-custom">
+            <div class="kpi-card-top">
+                <span class="kpi-label">TOTAL SUBJECTS</span>
+            </div>
+            <div class="kpi-value kpi-blue">124</div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="kpi-card-top">
+                <span class="kpi-label">ACTIVE SEMESTERS</span>
+            </div>
+            <div class="kpi-value kpi-purple">3</div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="kpi-card-top">
+                <span class="kpi-label">METADATA COMPLETION</span>
+            </div>
+            <div class="kpi-value kpi-green">98%</div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="kpi-card-top">
+                <span class="kpi-label">RAG INDEX NODES</span>
+            </div>
+            <div class="kpi-value kpi-dark">2.4k</div>
+        </div>
+    </div>
+
+    <!-- Filters Row -->
+    <div class="filter-row-custom">
+        <div class="search-input-wrapper">
+            <input type="text" class="search-input" placeholder="Search code, name, or description"
+                   value="@_searchText" @oninput="OnSearchInput" />
+            <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" Size="Size.Small" />
+        </div>
+        <select class="filter-select" value="@_selectedSemester" @onchange="OnSemesterSelect">
+            <option value="">All Semesters</option>
+            @foreach (var sem in _subjects.Select(s => s.Semester).Distinct().OrderBy(s => s))
             {
-                <MudSelectItem T="string" Value="@semester">@semester</MudSelectItem>
+                <option value="@sem">@sem</option>
             }
-        </MudSelect>
-    </FilterBar>
+        </select>
+    </div>
 
+    <!-- List of semesters and subjects -->
     @if (_isLoading)
     {
-        <MudStack Spacing="2">
-            <MudSkeleton Height="84px" Animation="Animation.Wave" />
-            <MudSkeleton Height="240px" Animation="Animation.Wave" />
-            <MudSkeleton Height="240px" Animation="Animation.Wave" />
-        </MudStack>
+        <div style="margin-top: 1.5rem;">
+            <MudStack Spacing="2">
+                <MudSkeleton Height="84px" Animation="Animation.Wave" />
+                <MudSkeleton Height="160px" Animation="Animation.Wave" />
+                <MudSkeleton Height="160px" Animation="Animation.Wave" />
+            </MudStack>
+        </div>
     }
     else if (!string.IsNullOrWhiteSpace(_errorMessage))
     {
-        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+        <div style="margin-top: 1.5rem;">
+            <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+        </div>
     }
     else if (!FilteredSubjects.Any())
     {
-        <MudPaper Elevation="0" Class="empty-state">
-            <MudIcon Icon="@Icons.Material.Filled.AutoStories" Size="Size.Large" Color="Color.Secondary" />
-            <MudText Typo="Typo.h6">No subjects found</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary">Clear filters or create the first subject.</MudText>
-        </MudPaper>
+        <div class="empty-state-card">
+            <MudIcon Icon="@Icons.Material.Filled.AutoStories" Size="Size.Large" Color="Color.Secondary" Style="margin-bottom: 1rem;" />
+            <h3 class="empty-state-title">No subjects found</h3>
+            <p class="empty-state-subtitle">Clear search terms or select another semester.</p>
+        </div>
     }
     else
     {
-        <MudExpansionPanels MultiExpansion="true" Elevation="0" Class="subject-groups">
+        <div class="subject-groups">
             @foreach (var group in GroupedSubjects)
             {
-                <MudExpansionPanel Text="@group.Key" Expanded="true" Class="subject-group-panel">
-                    <TitleContent>
-                        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="width: 100%;">
-                            <MudText Typo="Typo.h6">@group.Key</MudText>
-                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@group.Count() subjects</MudChip>
-                        </MudStack>
-                    </TitleContent>
-                    <ChildContent>
-                        <MudTable Items="@group" Dense="true" Hover="true" Elevation="0" Breakpoint="Breakpoint.Sm">
-                            <HeaderContent>
-                                <MudTh>Code</MudTh>
-                                <MudTh>Name</MudTh>
-                                <MudTh>Description</MudTh>
-                                <MudTh>Created</MudTh>
-                                <MudTh Style="text-align: right;">Actions</MudTh>
-                            </HeaderContent>
-                            <RowTemplate>
-                                <MudTd DataLabel="Code">
-                                    <MudChip T="string" Color="Color.Primary" Variant="Variant.Filled" Size="Size.Small">@context.Code</MudChip>
-                                </MudTd>
-                                <MudTd DataLabel="Name">@context.Name</MudTd>
-                                <MudTd DataLabel="Description">@context.Description</MudTd>
-                                <MudTd DataLabel="Created">@FormatDate(context.CreatedAt)</MudTd>
-                                <MudTd DataLabel="Actions" Style="text-align: right;">
-                                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Size="Size.Small" Color="Color.Primary" OnClick="@(() => EditSubject(context))" />
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" OnClick="@(() => DeleteSubjectAsync(context))" />
-                                </MudTd>
-                            </RowTemplate>
-                        </MudTable>
-                    </ChildContent>
-                </MudExpansionPanel>
+                var semester = group.Key;
+                var isExpanded = IsSemesterExpanded(semester);
+                var subjectCount = group.Count();
+                var countText = subjectCount == 1 ? "1 SUBJECT" : $"{subjectCount} SUBJECTS";
+
+                <div class="subject-group-card">
+                    <!-- Header -->
+                    <div class="subject-group-header" @onclick="() => ToggleSemester(semester)">
+                        <div class="subject-header-left">
+                            <div class="calendar-icon-wrapper">
+                                <MudIcon Icon="@Icons.Material.Outlined.CalendarToday" Size="Size.Small" />
+                            </div>
+                            <span class="semester-title">@semester</span>
+                            <span class="subject-count-badge">@countText</span>
+                        </div>
+                        <div class="subject-header-right">
+                            <MudIcon Icon="@(isExpanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" Class="chevron-icon" />
+                        </div>
+                    </div>
+
+                    <!-- Child Table Content -->
+                    @if (isExpanded)
+                    {
+                        <div class="subject-group-body">
+                            <table class="subjects-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 120px;">CODE</th>
+                                        <th style="width: 220px;">NAME</th>
+                                        <th>DESCRIPTION</th>
+                                        <th style="width: 140px;">CREATED</th>
+                                        <th style="width: 100px; text-align: right;">ACTIONS</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    @foreach (var subject in group)
+                                    {
+                                        <tr>
+                                            <td>
+                                                <span class="code-badge">@subject.Code</span>
+                                            </td>
+                                            <td>
+                                                <span class="subject-name">@subject.Name</span>
+                                            </td>
+                                            <td>
+                                                <span class="subject-description">@subject.Description</span>
+                                            </td>
+                                            <td>
+                                                <span class="subject-date">@FormatDate(subject.CreatedAt)</span>
+                                            </td>
+                                            <td style="text-align: right;">
+                                                <div class="actions-wrapper">
+                                                    <button class="action-btn edit-btn" @onclick="() => EditSubject(subject)" @onclick:stopPropagation="true" title="Edit">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
+                                                    </button>
+                                                    <button class="action-btn delete-btn" @onclick="() => DeleteSubjectAsync(subject)" @onclick:stopPropagation="true" title="Delete">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                </tbody>
+                            </table>
+                        </div>
+                    }
+                </div>
             }
-        </MudExpansionPanels>
+        </div>
     }
-</MudStack>
+</div>
 
 <SubjectForm Open="@_subjectSheetOpen"
              OpenChanged="@(value => _subjectSheetOpen = value)"
@@ -116,6 +187,8 @@
     private string? _selectedSemester;
     private string? _errorMessage;
 
+    private readonly HashSet<string> _collapsedSemesters = new();
+
     private IEnumerable<SubjectForm.SubjectFormModel> FilteredSubjects => _subjects
         .Where(MatchesSemester)
         .Where(MatchesSearch)
@@ -124,17 +197,6 @@
     private IEnumerable<IGrouping<string, SubjectForm.SubjectFormModel>> GroupedSubjects => FilteredSubjects
         .GroupBy(subject => subject.Semester)
         .OrderBy(group => group.Key);
-
-    private IEnumerable<string> ActiveFilters
-    {
-        get
-        {
-            if (!string.IsNullOrWhiteSpace(_selectedSemester))
-            {
-                yield return $"Semester: {_selectedSemester}";
-            }
-        }
-    }
 
     protected override void OnInitialized()
     {
@@ -152,31 +214,15 @@
         }
     }
 
-    private Task OnSearchChanged(string? value)
+    private Task OnSearchInput(ChangeEventArgs e)
     {
-        _searchText = value;
+        _searchText = e.Value?.ToString();
         return Task.CompletedTask;
     }
 
-    private Task OnSemesterChanged(string? value)
+    private Task OnSemesterSelect(ChangeEventArgs e)
     {
-        _selectedSemester = value;
-        return Task.CompletedTask;
-    }
-
-    private Task RemoveFilterAsync(string filter)
-    {
-        if (filter.StartsWith("Semester:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedSemester = null;
-        }
-
-        return Task.CompletedTask;
-    }
-
-    private Task ClearFiltersAsync()
-    {
-        _selectedSemester = null;
+        _selectedSemester = e.Value?.ToString();
         return Task.CompletedTask;
     }
 
@@ -198,6 +244,20 @@
             || subject.Name.Contains(text, StringComparison.OrdinalIgnoreCase)
             || subject.Description.Contains(text, StringComparison.OrdinalIgnoreCase);
     }
+
+    private void ToggleSemester(string semester)
+    {
+        if (_collapsedSemesters.Contains(semester))
+        {
+            _collapsedSemesters.Remove(semester);
+        }
+        else
+        {
+            _collapsedSemesters.Add(semester);
+        }
+    }
+
+    private bool IsSemesterExpanded(string semester) => !_collapsedSemesters.Contains(semester);
 
     private void CreateSubject()
     {
@@ -264,10 +324,10 @@
     {
         return new[]
         {
-            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "SWP391", Name = "Software Development Project", Semester = "Summer 2026", Description = "Capstone-style team project and documentation workflow.", CreatedAt = DateTime.UtcNow.AddDays(-28) },
-            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "PRN212", Name = ".NET Cross-Platform Programming", Semester = "Summer 2026", Description = "C# application development and service integration.", CreatedAt = DateTime.UtcNow.AddDays(-25) },
-            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "DBI202", Name = "Database Systems", Semester = "Spring 2026", Description = "Relational modeling, SQL, and normalization.", CreatedAt = DateTime.UtcNow.AddDays(-65) },
-            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "SWT301", Name = "Software Testing", Semester = "Fall 2026", Description = "Testing strategy, automation, and quality control.", CreatedAt = DateTime.UtcNow.AddDays(-4) }
+            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "SWP391", Name = "Software Development Project", Semester = "Summer 2026", Description = "Capstone-style team project focusing on full software development lif...", CreatedAt = DateTime.Parse("2026-06-02T00:00:00Z") },
+            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "PRN212", Name = ".NET Cross-Platform Programming", Semester = "Summer 2026", Description = "C# application development and service integration across Windows, ...", CreatedAt = DateTime.Parse("2026-06-05T00:00:00Z") },
+            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "DBI202", Name = "Database Systems", Semester = "Spring 2026", Description = "Relational modeling, SQL, and normalization techniques for large-scal...", CreatedAt = DateTime.Parse("2026-04-26T00:00:00Z") },
+            new SubjectForm.SubjectFormModel { Id = Guid.NewGuid(), Code = "SWT301", Name = "Software Testing", Semester = "Fall 2026", Description = "Testing strategy, automation, and quality control methodologies for en...", CreatedAt = DateTime.Parse("2026-06-26T00:00:00Z") }
         };
     }
 }
@@ -277,34 +337,461 @@
         animation: pageRise .42s ease both;
     }
 
-    .page-header,
-    .empty-state,
-    .subject-group-panel {
-        border-radius: 26px;
-        border: 1px solid rgba(15, 118, 110, .12);
-        background: rgba(255, 252, 246, .88);
+    .subjects-page {
+        font-family: 'Hanken Grotesk', 'Segoe UI', system-ui, -apple-system, sans-serif;
+        color: #1e293b;
     }
 
-    .page-header {
-        padding: 1.2rem;
-        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+    /* Breadcrumbs */
+    .header-breadcrumb-row {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    .crumb-link {
+        font-size: 11px;
+        font-weight: 700;
+        color: #767586;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .crumb-separator {
+        font-size: 11px;
+        color: #bfc6dd;
+    }
+    .crumb-active {
+        font-size: 11px;
+        font-weight: 700;
+        color: #575e72;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
-    .semester-filter {
-        min-width: 200px;
-    }
-
-    .empty-state {
-        min-height: 320px;
-        display: grid;
-        place-items: center;
-        text-align: center;
-        padding: 2rem;
-    }
-
-    .subject-groups {
-        display: grid;
+    /* Header Title Row */
+    .page-title-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
         gap: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .page-title-text {
+        font-size: 28px;
+        font-weight: 800;
+        color: #191c1e;
+        letter-spacing: -0.02em;
+        margin: 0;
+    }
+    .page-subtitle-text {
+        font-size: 14px;
+        color: #575e72;
+        margin: 0.25rem 0 0 0;
+    }
+    .create-subject-btn {
+        background: #4648d4;
+        color: #ffffff;
+        font-weight: 700;
+        font-size: 14px;
+        padding: 0.625rem 1.25rem;
+        border-radius: 8px;
+        border: none;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        box-shadow: 0 4px 12px rgba(70, 72, 212, 0.24);
+        transition: all 0.2s;
+    }
+    .create-subject-btn:hover {
+        background: #3b3cbd;
+        box-shadow: 0 6px 16px rgba(70, 72, 212, 0.32);
+        transform: translateY(-1px);
+    }
+
+    /* KPI Cards Grid */
+    .kpi-grid-container {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.5rem;
+        margin-bottom: 1.5rem;
+    }
+    @@media (max-width: 1200px) {
+        .kpi-grid-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @@media (max-width: 600px) {
+        .kpi-grid-container {
+            grid-template-columns: 1fr;
+        }
+    }
+    .kpi-card-custom {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 1.25rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 110px;
+    }
+    .kpi-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .kpi-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #767586;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .kpi-value {
+        font-size: 28px;
+        font-weight: 800;
+        line-height: 1.2;
+        margin-top: 0.5rem;
+    }
+    .kpi-value.kpi-blue {
+        color: #4648d4;
+    }
+    .kpi-value.kpi-purple {
+        color: #8b5cf6;
+    }
+    .kpi-value.kpi-green {
+        color: #10b981;
+    }
+    .kpi-value.kpi-dark {
+        color: #1e293b;
+    }
+
+    /* Filters Row */
+    .filter-row-custom {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+    }
+    .search-input-wrapper {
+        position: relative;
+        flex: 1;
+        min-width: 280px;
+    }
+    .search-input {
+        width: 100%;
+        padding: 0.625rem 1rem 0.625rem 2.5rem;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 8px;
+        background: #ffffff;
+        font-size: 14px;
+        outline: none;
+        color: #191c1e;
+        transition: border-color 0.2s;
+    }
+    .search-input:focus {
+        border-color: #4648d4;
+    }
+    .search-icon {
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #767586;
+        pointer-events: none;
+    }
+    .filter-select {
+        padding: 0.625rem 2.25rem 0.625rem 1rem;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 8px;
+        background: #ffffff;
+        font-size: 14px;
+        outline: none;
+        color: #191c1e;
+        cursor: pointer;
+        transition: border-color 0.2s;
+        min-width: 180px;
+    }
+    .filter-select:focus {
+        border-color: #4648d4;
+    }
+
+    /* Empty State */
+    .empty-state-card {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 3rem 1.5rem;
+        text-align: center;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    }
+    .empty-state-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #1e293b;
+        margin: 0 0 0.5rem 0;
+    }
+    .empty-state-subtitle {
+        font-size: 14px;
+        color: #64748b;
+        margin: 0;
+    }
+
+    /* Semester Groups list */
+    .subject-groups {
+        display: flex;
+        flex-direction: column;
+        gap: 1.25rem;
+    }
+    .subject-group-card {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.03);
+        overflow: hidden;
+        transition: all 0.2s ease;
+    }
+    .subject-group-header {
+        padding: 1rem 1.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        background: #ffffff;
+        transition: background 0.2s;
+        user-select: none;
+    }
+    .subject-group-header:hover {
+        background: #f8fafc;
+    }
+    .subject-header-left {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+    }
+    .calendar-icon-wrapper {
+        width: 36px;
+        height: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: #eaecef;
+        border-radius: 8px;
+        color: #575e72;
+    }
+    .semester-title {
+        font-size: 16px;
+        font-weight: 700;
+        color: #1e293b;
+    }
+    .subject-count-badge {
+        font-size: 11px;
+        font-weight: 700;
+        color: #475569;
+        background: #f1f5f9;
+        padding: 0.25rem 0.5rem;
+        border-radius: 6px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+    .subject-header-right {
+        color: #64748b;
+        display: flex;
+        align-items: center;
+    }
+    .chevron-icon {
+        transition: transform 0.2s;
+    }
+
+    /* Accordion Body / Custom Table */
+    .subject-group-body {
+        border-top: 1px solid #f1f5f9;
+        padding: 0;
+        background: #ffffff;
+        overflow-x: auto;
+    }
+    .subjects-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: left;
+        font-size: 14px;
+        min-width: 700px;
+    }
+    .subjects-table th {
+        background: #f8fafc;
+        padding: 0.75rem 1.5rem;
+        font-size: 11px;
+        font-weight: 700;
+        color: #64748b;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid #e2e8f0;
+    }
+    .subjects-table td {
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid #f1f5f9;
+        vertical-align: middle;
+    }
+    .subjects-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    /* Column Specific Styles */
+    .code-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 700;
+        color: #4f46e5;
+        background: #eef2ff;
+        border: 1px solid rgba(79, 70, 229, 0.15);
+        border-radius: 6px;
+        padding: 0.25rem 0.625rem;
+        min-width: 64px;
+        text-align: center;
+    }
+    .subject-name {
+        font-size: 15px;
+        font-weight: 700;
+        color: #1e293b;
+        display: block;
+    }
+    .subject-description {
+        font-size: 13.5px;
+        color: #64748b;
+        line-height: 1.5;
+    }
+    .subject-date {
+        font-size: 13.5px;
+        color: #64748b;
+    }
+
+    /* Table Actions */
+    .actions-wrapper {
+        display: inline-flex;
+        gap: 0.375rem;
+        align-items: center;
+        justify-content: flex-end;
+    }
+    .action-btn {
+        border: none;
+        background: transparent;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: 0.375rem;
+        border-radius: 6px;
+        transition: all 0.2s;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .action-btn:hover {
+        background: #f1f5f9;
+        color: #1e293b;
+    }
+    .action-btn.delete-btn:hover {
+        background: #fef2f2;
+        color: #ef4444;
+    }
+
+    /* Dark Theme Support */
+    .dark-theme .crumb-separator {
+        color: #3b3f46;
+    }
+    .dark-theme .crumb-active {
+        color: #94a3b8;
+    }
+    .dark-theme .page-title-text {
+        color: #f8fafc;
+    }
+    .dark-theme .page-subtitle-text {
+        color: #94a3b8;
+    }
+    .dark-theme .kpi-card-custom {
+        background: #1e2124;
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+    }
+    .dark-theme .kpi-value.kpi-dark {
+        color: #f8fafc;
+    }
+    .dark-theme .search-input,
+    .dark-theme .filter-select {
+        background: #1e2124;
+        border-color: rgba(255, 255, 255, 0.08);
+        color: #f8fafc;
+    }
+    .dark-theme .search-input:focus,
+    .dark-theme .filter-select:focus {
+        border-color: #4648d4;
+    }
+    .dark-theme .empty-state-card {
+        background: #1e2124;
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+    }
+    .dark-theme .empty-state-title {
+        color: #f8fafc;
+    }
+    .dark-theme .empty-state-subtitle {
+        color: #94a3b8;
+    }
+    .dark-theme .subject-group-card {
+        background: #1e2124;
+        border-color: rgba(255, 255, 255, 0.08);
+        box-shadow: none;
+    }
+    .dark-theme .subject-group-header {
+        background: #1e2124;
+    }
+    .dark-theme .subject-group-header:hover {
+        background: #25282c;
+    }
+    .dark-theme .calendar-icon-wrapper {
+        background: #2d3139;
+        color: #94a3b8;
+    }
+    .dark-theme .semester-title {
+        color: #f8fafc;
+    }
+    .dark-theme .subject-count-badge {
+        background: #2d3139;
+        color: #94a3b8;
+    }
+    .dark-theme .subject-group-body {
+        border-top-color: rgba(255, 255, 255, 0.08);
+        background: #1e2124;
+    }
+    .dark-theme .subjects-table th {
+        background: #181a1d;
+        color: #94a3b8;
+        border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+    .dark-theme .subjects-table td {
+        border-bottom-color: rgba(255, 255, 255, 0.05);
+    }
+    .dark-theme .code-badge {
+        background: rgba(79, 70, 229, 0.15);
+        color: #a5b4fc;
+        border-color: rgba(165, 180, 252, 0.25);
+    }
+    .dark-theme .subject-name {
+        color: #f8fafc;
+    }
+    .dark-theme .subject-description,
+    .dark-theme .subject-date {
+        color: #94a3b8;
+    }
+    .dark-theme .action-btn:hover {
+        background: #2d3139;
+        color: #f8fafc;
+    }
+    .dark-theme .action-btn.delete-btn:hover {
+        background: rgba(239, 68, 68, 0.15);
+        color: #f87171;
     }
 
     @@keyframes pageRise {

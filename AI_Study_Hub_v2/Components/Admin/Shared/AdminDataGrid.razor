@@ -1,4 +1,4 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin.Shared
+@namespace AI_Study_Hub_v2.Components.Admin.Shared
 @typeparam TItem
 @attribute [CascadingTypeParameter(nameof(TItem))]
 @using Microsoft.AspNetCore.Components
@@ -89,26 +89,46 @@
 
 <style>
     .admin-grid-shell {
-        border-radius: 24px;
+        border-radius: 12px;
         overflow: hidden;
-        border: 1px solid rgba(15, 118, 110, .14);
-        background: rgba(255, 252, 246, .92);
-        box-shadow: 0 24px 80px rgba(29, 44, 37, .08);
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        background: #ffffff;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        transition: all 0.3s ease;
+    }
+
+    .dark-theme .admin-grid-shell {
+        border: 1px solid rgba(199, 196, 215, 0.1);
+        background: #1e2124;
+        box-shadow: none;
     }
 
     .admin-grid-toolbar {
-        padding: 1.1rem 1.25rem;
-        border-bottom: 1px solid rgba(15, 118, 110, .1);
-        background: linear-gradient(90deg, rgba(15, 118, 110, .08), rgba(180, 83, 9, .06));
+        padding: 1.25rem 1.5rem;
+        border-bottom: 1px solid rgba(199, 196, 215, 0.2);
+        background: linear-gradient(90deg, rgba(70, 72, 212, 0.05) 0%, rgba(107, 56, 212, 0.03) 100%);
+    }
+
+    .dark-theme .admin-grid-toolbar {
+        border-bottom: 1px solid rgba(199, 196, 215, 0.08);
+        background: linear-gradient(90deg, rgba(70, 72, 212, 0.1) 0%, rgba(107, 56, 212, 0.05) 100%);
     }
 
     .admin-grid-empty {
         min-height: 320px;
-        padding: 2rem;
+        padding: 2.5rem;
         text-align: center;
     }
 
+    .admin-data-grid {
+        background: transparent !important;
+    }
+
     .admin-data-grid .mud-table-head {
-        background: rgba(15, 118, 110, .07);
+        background: #f2f4f6 !important;
+    }
+
+    .dark-theme .admin-data-grid .mud-table-head {
+        background: rgba(199, 196, 215, 0.05) !important;
     }
 </style>

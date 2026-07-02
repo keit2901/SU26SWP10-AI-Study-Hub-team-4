@@ -1,4 +1,4 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin
+@namespace AI_Study_Hub_v2.Components.Admin
 @page "/admin"
 @page "/admin/dashboard"
 @layout AdminLayout
@@ -7,24 +7,12 @@
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @inject NavigationManager Navigation
 
-<MudStack Spacing="4" Class="dashboard-page page-enter">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="dashboard-hero" Style="flex-wrap: wrap; gap: 1rem;">
-        <div>
-            <MudText Typo="Typo.overline" Color="Color.Secondary">UC08 - System overview</MudText>
-            <MudText Typo="Typo.h4">Admin Dashboard</MudText>
-            <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Monitor adoption, document processing health, moderation risk, and token consumption from one command center.
-            </MudText>
-        </div>
-        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
-            <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Icon="@Icons.Material.Filled.CheckCircle">
-                Supabase connected
-            </MudChip>
-            <MudChip T="string" Color="Color.Warning" Variant="Variant.Outlined" Icon="@Icons.Material.Filled.Schedule">
-                Refreshed @DateTime.Now.ToString("HH:mm")
-            </MudChip>
-        </MudStack>
-    </MudStack>
+<div class="dashboard-page page-enter">
+    <!-- Page Header -->
+    <div class="d-flex flex-column gap-1 mb-md px-1">
+        <h2 class="text-headline-lg font-headline-lg text-on-surface">Overview</h2>
+        <p class="text-body-md text-on-surface-variant max-w-2xl">Monitor adoption, document processing health, moderation risk, and token consumption from one command center.</p>
+    </div>
 
     @if (_isLoading)
     {
@@ -49,157 +37,215 @@
     }
     else
     {
-        <MudGrid>
+        <!-- KPI Cards grid -->
+        <div class="kpi-grid-container mb-6">
             @foreach (var metric in KpiCards)
             {
-                <MudItem xs="12" sm="6" lg="3" xl="2">
-                    <MudPaper Elevation="0" Class="@($"kpi-card {metric.AccentClass}")">
-                        <MudStack Row="true" AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween">
-                            <div>
-                                <MudText Typo="Typo.caption">@metric.Label</MudText>
-                                <MudText Typo="Typo.h4">@metric.Value</MudText>
-                            </div>
-                            <MudAvatar Color="Color.Inherit" Variant="Variant.Outlined" Size="Size.Medium">
-                                <MudIcon Icon="@metric.Icon" />
-                            </MudAvatar>
-                        </MudStack>
-                        <MudText Typo="Typo.body2" Class="mt-3">@metric.SupportingText</MudText>
-                    </MudPaper>
-                </MudItem>
+                <div class="kpi-card-custom">
+                    <div class="kpi-card-header">
+                        <div class="kpi-icon-wrapper @metric.AccentClass">
+                            <MudIcon Icon="@metric.Icon" Size="Size.Medium" />
+                        </div>
+                        <span class="kpi-badge @metric.AccentClass">@metric.SupportingText</span>
+                    </div>
+                    <div class="kpi-card-body">
+                        <div class="kpi-value">@metric.Value</div>
+                        <div class="kpi-label">@metric.Label</div>
+                    </div>
+                </div>
             }
-        </MudGrid>
+        </div>
 
-        <MudGrid>
+        <MudGrid Class="mb-6">
+            <!-- Activity trends (Line chart) -->
             <MudItem xs="12" lg="8">
                 <MudPaper Elevation="0" Class="dashboard-card">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-4" Style="gap: 1rem; flex-wrap: wrap;">
+                    <div class="d-flex justify-space-between align-center mb-6 flex-wrap" style="gap: 1rem;">
                         <div>
-                            <MudText Typo="Typo.h6">Activity trends</MudText>
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Uploads, active chat sessions, and token usage over the last seven days.</MudText>
+                            <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Activity trends</h3>
+                            <span class="text-label-md font-label-md text-on-surface-variant uppercase">Uploads, sessions, and token usage</span>
                         </div>
-                        <MudChip T="string" Color="Color.Primary" Variant="Variant.Outlined" Size="Size.Small">7 days</MudChip>
-                    </MudStack>
-                    <MudChart T="double" ChartType="ChartType.Line" ChartSeries="@_activitySeries" ChartLabels="@_activityLabels" Width="100%" Height="305px" />
+                        <select class="bg-surface-container border-none text-label-md font-label-md rounded-lg py-2 px-3" style="background: #eceef0; border-radius: 0.5rem; outline: none; font-weight: 600; font-size: 12px; color: #191c1e;">
+                            <option>Last 7 days</option>
+                            <option>Last 30 days</option>
+                        </select>
+                    </div>
+                    <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@_activitySeries" ChartLabels="@_activityLabels" ChartOptions="@_activityChartOptions" Width="100%" Height="305px" />
                 </MudPaper>
             </MudItem>
 
+            <!-- Document Status Breakdown (Donut chart) -->
             <MudItem xs="12" lg="4">
                 <MudPaper Elevation="0" Class="dashboard-card">
-                    <MudText Typo="Typo.h6">Document status breakdown</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Pipeline state for indexed knowledge base documents.</MudText>
-                    <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@_statusSeries" ChartLabels="@_statusLabels" Width="100%" Height="235px" />
-                    <MudStack Spacing="2" Class="mt-3">
+                    <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Document status breakdown</h3>
+                    <span class="text-label-md font-label-md text-on-surface-variant uppercase mb-6 d-block">Pipeline state for indexed knowledge</span>
+                    
+                    <div style="position: relative; display: flex; align-items: center; justify-content: center; height: 200px;">
+                        <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@_statusSeries" ChartLabels="@_statusLabels" ChartOptions="@_statusChartOptions" Width="100%" Height="200px" />
+                        <div class="donut-center-overlay" style="position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center;">
+                            <span class="donut-center-val" style="font-size: 26px; font-weight: 800; line-height: 1; font-family: 'Hanken Grotesk', sans-serif;">155</span>
+                            <span class="donut-center-lbl" style="font-size: 10px; font-weight: 700; color: #767586; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">Total</span>
+                        </div>
+                    </div>
+                    
+                    <div class="space-y-2 mt-4">
                         @foreach (var status in _documentStatuses)
                         {
                             <div class="status-row">
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween">
-                                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                                        <span class="status-dot @status.CssClass"></span>
-                                        <MudText Typo="Typo.body2">@status.Label</MudText>
-                                    </MudStack>
-                                    <MudText Typo="Typo.subtitle2">@status.Count</MudText>
-                                </MudStack>
+                                <div class="d-flex align-center" style="gap: 0.75rem;">
+                                    <span class="status-dot @status.CssClass"></span>
+                                    <span class="text-body-md" style="font-size: 14px; font-weight: 500;">@status.Label</span>
+                                </div>
+                                <span class="text-body-md font-bold" style="font-size: 14px;">@status.Count</span>
                             </div>
                         }
-                    </MudStack>
+                    </div>
                 </MudPaper>
             </MudItem>
         </MudGrid>
 
-        <MudGrid>
-            <MudItem xs="12" lg="7">
-                <MudPaper Elevation="0" Class="dashboard-card">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3" Style="gap: 1rem; flex-wrap: wrap;">
+        <!-- Attention Documents Row (12 columns, full width) -->
+        <MudGrid Class="mb-6">
+            <MudItem xs="12">
+                <MudPaper Elevation="0" Class="dashboard-card overflow-hidden" Style="padding: 0;">
+                    <div class="p-4 d-flex justify-space-between align-center border-b" style="border-bottom: 1px solid #e0e3e5; gap: 1rem; flex-wrap: wrap;">
                         <div>
-                            <MudText Typo="Typo.h6">Documents needing attention</MudText>
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">Pending review, reported, rejected, and failed processing items from UC10.</MudText>
+                            <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Documents needing attention</h3>
+                            <span class="text-label-md font-label-md text-on-surface-variant uppercase">Pending review, reported, or failed items</span>
                         </div>
-                        <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Gavel" OnClick="OpenModerationQueue">
-                            Open queue
+                        <MudButton Variant="Variant.Outlined" Class="attention-queue-btn px-4 py-2 text-label-md font-bold" StartIcon="@Icons.Material.Filled.OpenInNew" OnClick="OpenModerationQueue">
+                            OPEN QUEUE
                         </MudButton>
-                    </MudStack>
-                    <MudTable Items="@_attentionDocuments" Dense="true" Hover="true" Elevation="0" Class="attention-table">
-                        <HeaderContent>
-                            <MudTh>Document</MudTh>
-                            <MudTh>Owner</MudTh>
-                            <MudTh>Status</MudTh>
-                            <MudTh>Risk</MudTh>
-                            <MudTh>Age</MudTh>
-                        </HeaderContent>
-                        <RowTemplate>
-                            <MudTd DataLabel="Document">
-                                <MudText Typo="Typo.subtitle2">@context.Title</MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.SubjectCode</MudText>
-                            </MudTd>
-                            <MudTd DataLabel="Owner">
-                                <MudText Typo="Typo.body2">@context.OwnerName</MudText>
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">@context.OwnerEmail</MudText>
-                            </MudTd>
-                            <MudTd DataLabel="Status">
-                                <MudChip T="string" Color="@GetDocumentStatusColor(context.Status)" Variant="Variant.Filled" Size="Size.Small">@context.Status</MudChip>
-                            </MudTd>
-                            <MudTd DataLabel="Risk">
-                                <MudChip T="string" Color="@GetSeverityColor(context.Severity)" Variant="Variant.Outlined" Size="Size.Small">@context.Severity</MudChip>
-                            </MudTd>
-                            <MudTd DataLabel="Age">@context.AgeLabel</MudTd>
-                        </RowTemplate>
-                    </MudTable>
+                    </div>
+                    
+                    <div class="overflow-x-auto">
+                        <MudTable Items="@_attentionDocuments" Dense="true" Hover="true" Elevation="0" Class="attention-table">
+                            <HeaderContent>
+                                <MudTh>Document</MudTh>
+                                <MudTh>Owner</MudTh>
+                                <MudTh Class="text-center">Status</MudTh>
+                                <MudTh Class="text-center">Risk</MudTh>
+                                <MudTh Class="text-right">Age</MudTh>
+                            </HeaderContent>
+                            <RowTemplate>
+                                <MudTd DataLabel="Document">
+                                    <div class="font-bold text-body-md" style="color: #191c1e;">@context.Title</div>
+                                    <div class="text-[10px] text-on-surface-variant uppercase font-bold">@context.SubjectCode</div>
+                                </MudTd>
+                                <MudTd DataLabel="Owner">
+                                    <div class="text-body-md" style="color: #191c1e;">@context.OwnerName</div>
+                                    <div class="text-[11px] text-on-surface-variant">@context.OwnerEmail</div>
+                                </MudTd>
+                                <MudTd DataLabel="Status" Class="text-center">
+                                    <span class="attention-status-badge @GetStatusClass(context.Status)">@context.Status</span>
+                                </MudTd>
+                                <MudTd DataLabel="Risk" Class="text-center">
+                                    <span class="attention-risk-badge @GetSeverityClass(context.Severity)">@context.Severity</span>
+                                </MudTd>
+                                <MudTd DataLabel="Age" Class="text-right text-body-md">@context.AgeLabel</MudTd>
+                            </RowTemplate>
+                        </MudTable>
+                    </div>
                 </MudPaper>
             </MudItem>
+        </MudGrid>
 
-            <MudItem xs="12" lg="5">
-                <MudPaper Elevation="0" Class="dashboard-card operations-card">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-3" Style="gap: 1rem;">
-                        <div>
-                            <MudText Typo="Typo.h6">Critical events</MudText>
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">High-signal events from audit_logs and workers.</MudText>
-                        </div>
-                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="OpenAuditLogs">View logs</MudButton>
-                    </MudStack>
-                    <MudTimeline>
+        <!-- Bottom row: Critical Events (4), Token Usage (4), Checklist (4) -->
+        <MudGrid Class="pb-10">
+            <!-- Critical Events -->
+            <MudItem xs="12" lg="4">
+                <MudPaper Elevation="0" Class="dashboard-card">
+                    <div class="d-flex justify-space-between align-center mb-6">
+                        <h3 class="text-headline-sm font-headline-sm text-on-surface">Critical events</h3>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Class="font-bold text-label-md" OnClick="OpenAuditLogs" Style="padding: 0; min-width: auto;">VIEW LOGS</MudButton>
+                    </div>
+                    <div class="space-y-6 timeline-custom pl-2">
                         @foreach (var item in _recentActivities)
                         {
-                            <MudTimelineItem Color="@item.Color" Icon="@item.Icon">
-                                <MudText Typo="Typo.subtitle2">@item.Title</MudText>
-                                <MudText Typo="Typo.body2" Color="Color.Secondary">@item.Description</MudText>
-                                <MudText Typo="Typo.caption">@FormatDateTime(item.CreatedAt)</MudText>
-                            </MudTimelineItem>
+                            <div class="timeline-item">
+                                <div class="timeline-dot @item.Color.ToString().ToLower()"></div>
+                                <div class="timeline-content">
+                                    <div class="text-body-md font-bold text-on-surface">@item.Title</div>
+                                    <div class="text-[11px] font-bold timeline-desc mt-0.5 mb-1">@item.Description</div>
+                                    <div class="text-[10px] text-on-surface-variant">@FormatDateTime(item.CreatedAt)</div>
+                                </div>
+                            </div>
                         }
-                    </MudTimeline>
+                    </div>
                 </MudPaper>
             </MudItem>
-        </MudGrid>
 
-        <MudGrid>
-            <MudItem xs="12" md="5">
-                <MudPaper Elevation="0" Class="dashboard-card quota-card">
-                    <MudText Typo="Typo.h6">Daily token usage</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-4">Current consumption against the configured daily platform quota.</MudText>
-                    <MudProgressLinear Value="@_metrics.TokenUsagePercent" Color="@GetTokenProgressColor(_metrics.TokenUsagePercent)" Rounded="true" Size="Size.Large" />
-                    <MudStack Row="true" Justify="Justify.SpaceBetween" Class="mt-2">
-                        <MudText Typo="Typo.subtitle2">@_metrics.DailyTokensUsed.ToString("N0") used</MudText>
-                        <MudText Typo="Typo.subtitle2">@_metrics.DailyTokenQuota.ToString("N0") quota</MudText>
-                    </MudStack>
-                    <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mt-4">
-                        12 users are above 85% of their assigned quota. Review UC16 controls in Users & Permissions.
-                    </MudAlert>
+            <!-- Daily Token Usage -->
+            <MudItem xs="12" lg="4">
+                <MudPaper Elevation="0" Class="dashboard-card">
+                    <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Daily token usage</h3>
+                    <span class="text-label-md font-label-md text-on-surface-variant uppercase mb-8 d-block">Current consumption against daily platform quota</span>
+                    
+                    <div class="mb-2 d-flex justify-space-between align-end">
+                        <span class="text-headline-md font-headline-md">@_metrics.DailyTokensUsed.ToString("N0") <span class="text-label-md font-normal" style="font-size: 14px; font-weight: normal; color: #464554;">used</span></span>
+                        <span class="text-label-md text-on-surface-variant" style="font-size: 12px; font-weight: 600;">@_metrics.DailyTokenQuota.ToString("N0") quota</span>
+                    </div>
+                    
+                    <div class="w-full h-3 bg-surface-container rounded-full overflow-hidden mb-8" style="background-color: #eceef0; height: 12px; border-radius: 9999px;">
+                        <div class="h-full bg-gradient-to-r" style="height: 100%; border-radius: 9999px; background: linear-gradient(90deg, #4648d4, #6b38d4); width: @($"{_metrics.TokenUsagePercent:0}%");"></div>
+                    </div>
+                    
+                    <div class="p-sm bg-error-container/20 border border-error/10 rounded-lg d-flex gap-3 align-start" style="background-color: #ffdad6; border: 1px solid rgba(186, 26, 26, 0.1); border-radius: 0.5rem; padding: 12px;">
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Class="text-error mt-0.5" Style="color: #ba1a1a;" />
+                        <p class="text-body-md text-on-error-container mb-0" style="color: #93000a; font-size: 13px; line-height: 1.4;">12 users are above 85% of their assigned quotas. Review UC16 controls in Users &amp; Permissions.</p>
+                    </div>
                 </MudPaper>
             </MudItem>
-            <MudItem xs="12" md="7">
-                <MudPaper Elevation="0" Class="dashboard-card">
-                    <MudText Typo="Typo.h6">Administrator checklist</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">Recommended actions based on use-case guardrails.</MudText>
-                    <MudList T="string" Dense="true">
-                        <MudListItem Icon="@Icons.Material.Filled.Gavel" Text="Resolve pending and reported documents before the next indexing window." />
-                        <MudListItem Icon="@Icons.Material.Filled.AdminPanelSettings" Text="Confirm no administrator is attempting to deactivate their own account." />
-                        <MudListItem Icon="@Icons.Material.Filled.DataUsage" Text="Adjust daily token quotas for high-usage courses or roles before throttling begins." />
-                        <MudListItem Icon="@Icons.Material.Filled.Tune" Text="Review critical AI configuration changes and verify audit log entries." />
-                    </MudList>
+
+            <!-- Administrator Checklist -->
+            <MudItem xs="12" lg="4">
+                <MudPaper Elevation="0" Class="dashboard-card d-flex flex-column justify-space-between">
+                    <div>
+                        <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Administrator checklist</h3>
+                        <span class="text-label-md font-label-md text-on-surface-variant uppercase mb-6 d-block">Recommended actions based on use-case guardrails</span>
+                        
+                        <div class="space-y-4">
+                            <label class="flex items-center gap-3 cursor-pointer group d-flex align-center">
+                                <div class="w-5 h-5 rounded flex items-center justify-center" style="width: 20px; height: 20px; background-color: #4648d4; border-radius: 4px;">
+                                    <MudIcon Icon="@Icons.Material.Filled.Check" Style="color: #ffffff; font-size: 14px;" />
+                                </div>
+                                <span class="text-body-md text-on-surface pl-2" style="font-size: 13px; font-weight: 500;">Resolve pending and reported documents before indexing.</span>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer group d-flex align-center">
+                                <div class="w-5 h-5 rounded border-2 border-outline flex items-center justify-center" style="width: 20px; height: 20px; border: 2px solid #767586; border-radius: 0.25rem;"></div>
+                                <span class="text-body-md text-on-surface pl-2" style="font-size: 13px; font-weight: 500;">Confirm no administrator is deactivating own account.</span>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer group d-flex align-center">
+                                <div class="w-5 h-5 rounded border-2 border-outline flex items-center justify-center" style="width: 20px; height: 20px; border: 2px solid #767586; border-radius: 0.25rem;"></div>
+                                <span class="text-body-md text-on-surface pl-2" style="font-size: 13px; font-weight: 500;">Adjust daily token quotas for high-usage courses.</span>
+                            </label>
+                            <label class="flex items-center gap-3 cursor-pointer group d-flex align-center">
+                                <div class="w-5 h-5 rounded border-2 border-outline flex items-center justify-center" style="width: 20px; height: 20px; border: 2px solid #767586; border-radius: 0.25rem;"></div>
+                                <span class="text-body-md text-on-surface pl-2" style="font-size: 13px; font-weight: 500;">Review critical AI configuration changes and verify audit logs.</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-8 pt-6 border-t d-flex align-center justify-space-between" style="border-top: 1px solid #e0e3e5;">
+                        <div class="d-flex flex-column">
+                            <span class="text-label-md text-on-surface-variant uppercase" style="font-size: 11px; font-weight: 700;">Retrieval readiness</span>
+                            <div class="d-flex align-center" style="gap: 0.5rem; margin-top: 2px;">
+                                <span class="text-headline-sm font-bold text-primary" style="font-size: 18px; font-weight: 700; color: #4648d4;">82%</span>
+                                <div class="w-16 h-1.5 bg-surface-container rounded-full overflow-hidden" style="width: 64px; height: 6px; background-color: #eceef0; border-radius: 9999px;">
+                                    <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: 82%;"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] text-on-surface-variant uppercase leading-none font-bold" style="font-size: 10px; color: #464554;">Status summary</div>
+                            <div class="text-[10px] font-bold text-on-surface mt-1" style="font-size: 10px; font-weight: 700; color: #191c1e;">126 INDEXED, 4 FAILED</div>
+                        </div>
+                    </div>
                 </MudPaper>
             </MudItem>
         </MudGrid>
     }
-</MudStack>
+</div>
 
 @code {
     private bool _isLoading = true;
@@ -209,20 +255,29 @@
     private readonly List<AttentionDocument> _attentionDocuments = new();
     private readonly List<DocumentStatusMetric> _documentStatuses = new();
 
+    private readonly ChartOptions _activityChartOptions = new()
+    {
+        ChartPalette = new[] { "#4648d4", "#6b38d4", "#575e72" }
+    };
+
+    private readonly ChartOptions _statusChartOptions = new()
+    {
+        ChartPalette = new[] { "#fbc02d", "#6b38d4", "#4648d4", "#ba1a1a" }
+    };
+
     private IEnumerable<KpiCard> KpiCards => new[]
     {
-        new KpiCard("Total Users", _metrics.TotalUsers.ToString("N0"), $"+{_metrics.NewUsersThisWeek} this week", Icons.Material.Filled.People, "teal"),
-        new KpiCard("Total Documents", _metrics.TotalDocuments.ToString("N0"), $"{_metrics.ProcessingDocuments} processing now", Icons.Material.Filled.Description, "amber"),
-        new KpiCard("Active Sessions", _metrics.ActiveSessions.ToString("N0"), "Live study and chat sessions", Icons.Material.Filled.Forum, "blue"),
-        new KpiCard("Failed Jobs", _metrics.FailedJobs.ToString("N0"), "Embedding or indexing jobs", Icons.Material.Filled.ReportProblem, "coral"),
-        new KpiCard("Daily Tokens", _metrics.DailyTokensUsed.ToString("N0"), $"{_metrics.TokenUsagePercent:N0}% of quota", Icons.Material.Filled.Token, "slate")
+        new KpiCard("Total Users", _metrics.TotalUsers.ToString("N0"), $"+{_metrics.NewUsersThisWeek} this week", Icons.Material.Outlined.People, "green"),
+        new KpiCard("Total Documents", _metrics.TotalDocuments.ToString("N0"), $"{_metrics.ProcessingDocuments} processing now", Icons.Material.Outlined.Description, "purple"),
+        new KpiCard("Active Sessions", _metrics.ActiveSessions.ToString("N0"), "Live sessions", Icons.Material.Outlined.Monitor, "blue"),
+        new KpiCard("Daily Tokens", _metrics.DailyTokensUsed.ToString("N0"), $"{_metrics.TokenUsagePercent:0}% of quota", Icons.Material.Outlined.GeneratingTokens, "grey")
     };
 
     private readonly List<ChartSeries<double>> _activitySeries = new()
     {
         new ChartSeries<double> { Name = "Uploads", Data = new double[] { 12, 18, 10, 22, 27, 19, 34 } },
         new ChartSeries<double> { Name = "Chat sessions", Data = new double[] { 44, 51, 49, 63, 70, 58, 86 } },
-        new ChartSeries<double> { Name = "Tokens (10k)", Data = new double[] { 18, 21, 17, 26, 31, 29, 36 } }
+        new ChartSeries<double> { Name = "Tokens", Data = new double[] { 18, 21, 17, 26, 31, 29, 36 } }
     };
 
     private readonly string[] _activityLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
@@ -239,7 +294,7 @@
             _metrics = new DashboardMetrics
             {
                 TotalUsers = 1248,
-                NewUsersThisWeek = 37,
+                NewUsersThisWeek = 27,
                 TotalDocuments = 155,
                 ProcessingDocuments = 18,
                 ActiveSessions = 86,
@@ -250,9 +305,9 @@
 
             _documentStatuses.AddRange(new[]
             {
-                new DocumentStatusMetric("Pending", 7, "pending"),
-                new DocumentStatusMetric("Processing", 18, "processing"),
                 new DocumentStatusMetric("Indexed", 126, "indexed"),
+                new DocumentStatusMetric("Processing", 18, "processing"),
+                new DocumentStatusMetric("Pending", 7, "pending"),
                 new DocumentStatusMetric("Failed", 4, "failed")
             });
 
@@ -273,7 +328,28 @@
 
     private void OpenAuditLogs() => Navigation.NavigateTo("/admin/audit-logs");
 
-    private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
+    private static string FormatDateTime(DateTime value) => value.ToString("MMM dd, yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+
+    private static string GetStatusClass(string status)
+    {
+        return status switch
+        {
+            "Pending Review" or "Pending" => "pending-review",
+            "Reported" => "reported",
+            "Failed" => "failed",
+            _ => "pending-review"
+        };
+    }
+
+    private static string GetSeverityClass(string severity)
+    {
+        return severity switch
+        {
+            "High" => "risk-high",
+            "Medium" => "risk-medium",
+            _ => "risk-low"
+        };
+    }
 
     private static Color GetDocumentStatusColor(string status)
     {
@@ -317,10 +393,9 @@
     {
         return new[]
         {
-            new ActivityFeedItem("Document reported", "Exam Bank 2025 was reported for policy review before indexing.", DateTime.UtcNow.AddMinutes(-18), Icons.Material.Filled.Gavel, Color.Error),
-            new ActivityFeedItem("Failed processing job", "Embedding worker failed on Lecture OCR Export after 3 retries.", DateTime.UtcNow.AddMinutes(-42), Icons.Material.Filled.ReportProblem, Color.Error),
-            new ActivityFeedItem("Configuration changed", "rag.chunk_size changed from 800 to 1,000 with audit log entry.", DateTime.UtcNow.AddHours(-5), Icons.Material.Filled.Tune, Color.Warning),
-            new ActivityFeedItem("Quota warning", "12 users exceeded 85% of their daily token quota.", DateTime.UtcNow.AddHours(-7), Icons.Material.Filled.DataUsage, Color.Warning)
+            new ActivityFeedItem("Document reported", "Exam Bank 2025 was reported for policy review before indexing.", new DateTime(2026, 6, 30, 11, 21, 0, DateTimeKind.Unspecified), Icons.Material.Filled.Gavel, Color.Error),
+            new ActivityFeedItem("Failed processing job", "Embedding worker failed on Lecture OCR Export after 3 retries.", new DateTime(2026, 6, 30, 10, 47, 0, DateTimeKind.Unspecified), Icons.Material.Filled.ReportProblem, Color.Warning),
+            new ActivityFeedItem("Configuration changed", "rag.chunk_size changed from 800 to 1,000 with audit log entry.", new DateTime(2026, 6, 30, 6, 39, 0, DateTimeKind.Unspecified), Icons.Material.Filled.Tune, Color.Info)
         };
     }
 
@@ -348,83 +423,335 @@
         animation: pageRise .42s ease both;
     }
 
-    .dashboard-hero,
-    .dashboard-card,
-    .kpi-card {
-        border-radius: 28px;
-        border: 1px solid rgba(15, 118, 110, .12);
-        box-shadow: 0 20px 70px rgba(29, 44, 37, .07);
-    }
-
-    .dashboard-hero {
-        padding: 1.4rem;
-        background:
-            radial-gradient(circle at 10% 20%, rgba(20, 184, 166, .18), transparent 18rem),
-            linear-gradient(135deg, rgba(255, 252, 246, .94), rgba(236, 247, 242, .9));
-    }
-
+    /* ── Cards ── */
     .dashboard-card {
+        border-radius: 0.75rem;
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        padding: 1.5rem;
         height: 100%;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .dashboard-card:hover {
+        box-shadow: 0px 10px 30px rgba(99, 102, 241, 0.06);
+    }
+
+    /* ── KPI Grid ── */
+    .kpi-grid-container {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.25rem;
+    }
+
+    @@media (max-width: 1200px) {
+        .kpi-grid-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @@media (max-width: 768px) {
+        .kpi-grid-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @@media (max-width: 480px) {
+        .kpi-grid-container {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .kpi-card-custom {
+        background: #ffffff;
+        border-radius: 0.75rem;
+        border: 1px solid rgba(199, 196, 215, 0.3);
         padding: 1.25rem;
-        background: rgba(255, 252, 246, .9);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        transition: all 0.2s ease;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.05);
+        min-height: 140px;
     }
 
-    .kpi-card {
-        min-height: 156px;
-        padding: 1.2rem;
-        color: #0f1f1c;
-        position: relative;
-        overflow: hidden;
-        background: #fffcf6;
+    .dark-theme .kpi-card-custom {
+        background: #1e2124;
+        border: 1px solid rgba(199, 196, 215, 0.1);
+        box-shadow: none;
     }
 
-    .kpi-card::after {
-        content: "";
-        position: absolute;
-        width: 160px;
-        height: 160px;
-        right: -60px;
-        top: -70px;
-        border-radius: 999px;
-        opacity: .22;
-        background: currentColor;
+    .kpi-card-custom:hover {
+        transform: translateY(-2px);
+        box-shadow: 0px 10px 30px rgba(99, 102, 241, 0.08);
+        border-color: rgba(70, 72, 212, 0.2);
     }
 
-    .kpi-card.teal { color: #0f766e; }
-    .kpi-card.amber { color: #b45309; }
-    .kpi-card.blue { color: #2563eb; }
-    .kpi-card.slate { color: #475569; }
-    .kpi-card.coral { color: #dc2626; }
-
-    .operations-card,
-    .quota-card {
-        background:
-            linear-gradient(145deg, rgba(15, 118, 110, .1), rgba(180, 83, 9, .08)),
-            rgba(255, 252, 246, .9);
+    .kpi-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 1rem;
     }
 
+    .kpi-icon-wrapper {
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    /* KPI Colors mapping */
+    .kpi-icon-wrapper.green {
+        background-color: #e8f5e9;
+        color: #2e7d32;
+    }
+
+    .kpi-icon-wrapper.purple {
+        background-color: #f3e5f5;
+        color: #7b1fa2;
+    }
+
+    .kpi-icon-wrapper.blue {
+        background-color: #e3f2fd;
+        color: #1565c0;
+    }
+
+    .kpi-icon-wrapper.grey {
+        background-color: #f5f5f5;
+        color: #616161;
+    }
+
+    .dark-theme .kpi-icon-wrapper.green {
+        background-color: rgba(46, 125, 50, 0.15);
+        color: #81c784;
+    }
+
+    .dark-theme .kpi-icon-wrapper.purple {
+        background-color: rgba(123, 31, 162, 0.15);
+        color: #ba68c8;
+    }
+
+    .dark-theme .kpi-icon-wrapper.blue {
+        background-color: rgba(21, 101, 192, 0.15);
+        color: #64b5f6;
+    }
+
+    .dark-theme .kpi-icon-wrapper.grey {
+        background-color: rgba(97, 97, 97, 0.15);
+        color: #e0e0e0;
+    }
+
+    .kpi-badge {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+    }
+
+    .kpi-badge.green {
+        color: #2e7d32;
+        background-color: #e8f5e9;
+    }
+
+    .kpi-badge.purple {
+        color: #7b1fa2;
+        background-color: #f3e5f5;
+    }
+
+    .kpi-badge.blue {
+        color: #1565c0;
+        background-color: #e3f2fd;
+    }
+
+    .kpi-badge.grey {
+        color: #616161;
+        background-color: #f5f5f5;
+    }
+
+    .dark-theme .kpi-badge.green {
+        color: #81c784;
+        background-color: rgba(46, 125, 50, 0.15);
+    }
+
+    .dark-theme .kpi-badge.purple {
+        color: #ba68c8;
+        background-color: rgba(123, 31, 162, 0.15);
+    }
+
+    .dark-theme .kpi-badge.blue {
+        color: #64b5f6;
+        background-color: rgba(21, 101, 192, 0.15);
+    }
+
+    .dark-theme .kpi-badge.grey {
+        color: #e0e0e0;
+        background-color: rgba(97, 97, 97, 0.15);
+    }
+
+    .kpi-card-body {
+        margin-top: auto;
+    }
+
+    .kpi-value {
+        font-size: 24px;
+        font-weight: 700;
+        color: #191c1e;
+        line-height: 1.3;
+    }
+
+    .dark-theme .kpi-value {
+        color: #ffffff;
+    }
+
+    .kpi-label {
+        font-size: 12px;
+        font-weight: 700;
+        color: #464554;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        margin-top: 0.25rem;
+    }
+
+    .dark-theme .kpi-label {
+        color: #a3a3a3;
+    }
+
+    .donut-center-val {
+        color: #191c1e;
+    }
+
+    .dark-theme .donut-center-val {
+        color: #ffffff;
+    }
+
+    /* ── Status Rows ── */
     .status-row {
-        padding: .55rem .7rem;
-        border-radius: 14px;
-        background: rgba(15, 118, 110, .06);
+        padding: 0.4rem 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        transition: opacity 0.15s;
     }
 
     .status-dot {
-        width: .7rem;
-        height: .7rem;
-        border-radius: 999px;
-        display: inline-flex;
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 9999px;
+        display: inline-block;
     }
 
-    .status-dot.pending { background: #f59e0b; }
-    .status-dot.processing { background: #2563eb; }
-    .status-dot.indexed { background: #16a34a; }
-    .status-dot.failed { background: #dc2626; }
+    .status-dot.pending { background-color: #fbc02d; }
+    .status-dot.processing { background-color: #6b38d4; }
+    .status-dot.indexed { background-color: #4648d4; }
+    .status-dot.failed { background-color: #ba1a1a; }
 
-    .attention-table .mud-table-head {
-        background: rgba(15, 118, 110, .07);
+    /* ── Attention badges ── */
+    .attention-queue-btn {
+        border-color: #767586 !important;
+        color: #191c1e !important;
+        border-radius: 0.5rem !important;
     }
 
+    .attention-queue-btn:hover {
+        background-color: #f7f9fb !important;
+    }
+
+    .attention-status-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        text-transform: uppercase;
+        display: inline-block;
+    }
+
+    .attention-status-badge.pending-review {
+        background-color: #fef3c7;
+        color: #92400e;
+    }
+
+    .attention-status-badge.reported {
+        background-color: #fee2e2;
+        color: #991b1b;
+    }
+
+    .attention-status-badge.failed {
+        background-color: #ffdad6;
+        color: #93000a;
+    }
+
+    .attention-risk-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 0.25rem 0.5rem;
+        border-radius: 0.25rem;
+        display: inline-block;
+    }
+
+    .attention-risk-badge.risk-high {
+        background-color: #ba1a1a;
+        color: #ffffff;
+    }
+
+    .attention-risk-badge.risk-medium {
+        border: 1px solid #fcd34d;
+        color: #d97706;
+    }
+
+    .attention-risk-badge.risk-low {
+        border: 1px solid rgba(70, 72, 212, 0.3);
+        color: #4648d4;
+    }
+
+    /* ── Timeline ── */
+    .timeline-custom {
+        position: relative;
+    }
+
+    .timeline-custom::before {
+        content: "";
+        position: absolute;
+        left: 19px;
+        top: 8px;
+        bottom: 8px;
+        width: 1px;
+        background-color: #e0e3e5;
+    }
+
+    .timeline-item {
+        position: relative;
+        padding-left: 2.25rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .timeline-item:last-child {
+        margin-bottom: 0;
+    }
+
+    .timeline-dot {
+        position: absolute;
+        left: 15px;
+        top: 6px;
+        width: 9px;
+        height: 9px;
+        border-radius: 9999px;
+        border: 2px solid #ffffff;
+        z-index: 2;
+    }
+
+    .timeline-dot.error { background-color: #ba1a1a; }
+    .timeline-dot.warning { background-color: #f59e0b; }
+    .timeline-dot.info { background-color: #4648d4; }
+    .timeline-dot.success { background-color: #10b981; }
+
+    .timeline-desc {
+        color: #575e72;
+    }
+
+    /* ── Animations ── */
     @@keyframes pageRise {
         from {
             opacity: 0;
@@ -436,3 +763,4 @@
         }
     }
 </style>
+

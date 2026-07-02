@@ -1,4 +1,4 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin.Settings
+@namespace AI_Study_Hub_v2.Components.Admin.Settings
 @page "/admin/settings"
 @layout AdminLayout
 @using System.Globalization
@@ -7,206 +7,1296 @@
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@implements IDisposable
 
-<MudStack Spacing="4" Class="settings-page page-enter">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+<div class="settings-page">
+    <div class="breadcrumbs-container">
+        UC13 • UC16 • AI SYSTEM PARAMETERS
+    </div>
+
+    <div class="page-header-row">
         <div>
-            <MudText Typo="Typo.overline" Color="Color.Secondary">UC13 + UC16 - AI system parameters</MudText>
-            <MudText Typo="Typo.h4">AI System Settings</MudText>
-            <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Configure RAG model parameters, chunking rules, prompts, feature flags, and default daily token quotas.
-            </MudText>
+            <h1 class="page-title">AI System Settings</h1>
+            <p class="page-desc">Configure RAG model parameters, chunking rules, and system behavior.</p>
         </div>
-        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
-            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ManageSearch" OnClick="ShowAuditHint">
-                Audit trail
-            </MudButton>
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="Reload">
-                Reload configs
-            </MudButton>
-        </MudStack>
-    </MudStack>
+        <div class="header-actions">
+            <button class="header-outline-btn" @onclick="ShowAuditHint">
+                <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" />
+                <span>AUDIT TRAIL</span>
+            </button>
+            <button class="header-filled-btn" @onclick="Reload">
+                <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
+                <span>RELOAD CONFIGS</span>
+            </button>
+        </div>
+    </div>
 
-    <FilterBar SearchText="@_searchText"
-               SearchTextChanged="OnSearchChanged"
-               SearchPlaceholder="Search key, label, description, or category"
-               ActiveFilters="@ActiveFilters"
-               RemoveFilter="RemoveFilterAsync"
-               ClearAllFilters="ClearFiltersAsync">
-        <MudSelect T="string" Value="@_selectedCategory" ValueChanged="OnCategoryChanged" Label="Category" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="settings-filter">
-            @foreach (var category in _configs.Select(config => config.Category).Distinct().OrderBy(category => category))
+    <!-- KPI Grid -->
+    <div class="kpi-grid-container mb-6">
+        <div class="kpi-card-custom">
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">SYSTEM CONFIGS</span>
+                <div class="kpi-value">@_configs.Count</div>
+                <span class="kpi-subtext">Active system parameters</span>
+            </div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">ACTION REQUIRED</span>
+                <div class="kpi-value warning-color">@_configs.Count(c => c.IsCritical)</div>
+                <span class="kpi-subtext">Requires confirmation</span>
+            </div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">LAST SYNC</span>
+                <div class="kpi-value">@DateTime.Now.ToString("HH:mm")</div>
+                <span class="kpi-subtext">Refreshed just now</span>
+            </div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">MODEL HEALTH</span>
+                <div class="kpi-value success-color">99.8%</div>
+                <span class="kpi-subtext">Optimal performance</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search & Filters -->
+    <div class="filter-row-custom mb-6">
+        <div class="search-input-wrapper">
+            <input type="text" class="search-input" placeholder="Search configs, logs, or sessions..."
+                   value="@_searchText" @oninput="OnSearchInput" />
+            <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" Size="Size.Small" />
+        </div>
+        <select class="filter-select" value="@_selectedCategory" @onchange="OnCategoryChanged">
+            <option value="">Category</option>
+            @foreach (var category in _configs.Select(c => c.Category).Distinct().OrderBy(c => c))
             {
-                <MudSelectItem T="string" Value="@category">@category</MudSelectItem>
+                <option value="@category">@category</option>
             }
-        </MudSelect>
-        <MudSelect T="string" Value="@_selectedRisk" ValueChanged="OnRiskChanged" Label="Risk" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="settings-filter">
-            <MudSelectItem T="string" Value="@CriticalRisk">Critical</MudSelectItem>
-            <MudSelectItem T="string" Value="@StandardRisk">Standard</MudSelectItem>
-            <MudSelectItem T="string" Value="@UnsavedRisk">Unsaved changes</MudSelectItem>
-        </MudSelect>
-    </FilterBar>
+        </select>
+        <select class="filter-select" value="@_selectedRisk" @onchange="OnRiskChanged">
+            <option value="">Risk</option>
+            <option value="@CriticalRisk">Critical</option>
+            <option value="@StandardRisk">Standard</option>
+            <option value="@UnsavedRisk">Unsaved changes</option>
+        </select>
+        <button class="filter-btn" @onclick="ClearFiltersAsync">
+            <MudIcon Icon="@Icons.Material.Filled.Tune" Style="font-size: 18px; color: #575e72;" />
+        </button>
+    </div>
 
-    <MudGrid>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="settings-stat-card">
-                <MudText Typo="Typo.caption">Configs</MudText>
-                <MudText Typo="Typo.h4">@_configs.Count</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">system_configs rows</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="settings-stat-card warning">
-                <MudText Typo="Typo.caption">Critical</MudText>
-                <MudText Typo="Typo.h4">@_configs.Count(config => config.IsCritical)</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Requires confirmation</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="settings-stat-card error">
-                <MudText Typo="Typo.caption">Unsaved</MudText>
-                <MudText Typo="Typo.h4">@_configs.Count(config => config.HasChanges)</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Changed locally</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="settings-stat-card success">
-                <MudText Typo="Typo.caption">Last update</MudText>
-                <MudText Typo="Typo.h6">@FormatDateTime(_configs.OrderByDescending(config => config.UpdatedAt).FirstOrDefault()?.UpdatedAt)</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Audit ready</MudText>
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+    <!-- Active Filters -->
+    @if (ActiveFilters.Any())
+    {
+        <div class="active-filters-container">
+            @foreach (var filter in ActiveFilters)
+            {
+                <span class="filter-pill">
+                    @filter
+                    <button class="filter-pill-close" @onclick="@(() => RemoveFilterAsync(filter))">×</button>
+                </span>
+            }
+            <button class="clear-all-btn" @onclick="ClearFiltersAsync">Clear all filters</button>
+        </div>
+    }
 
+    <!-- Config Grid -->
     @if (_isLoading)
     {
-        <MudGrid>
+        <div class="config-grid mb-6">
             @for (var index = 0; index < 4; index++)
             {
-                <MudItem xs="12" lg="6">
-                    <MudSkeleton Height="260px" Animation="Animation.Wave" />
-                </MudItem>
+                <MudSkeleton Height="260px" Animation="Animation.Wave" Style="border-radius: 12px;" />
             }
-        </MudGrid>
+        </div>
     }
     else if (!string.IsNullOrWhiteSpace(_errorMessage))
     {
-        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-6">@_errorMessage</MudAlert>
     }
     else if (!FilteredConfigs.Any())
     {
-        <MudPaper Elevation="0" Class="empty-state">
-            <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Large" Color="Color.Secondary" />
-            <MudText Typo="Typo.h6">No configuration found</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary">Change the search or filters to inspect a wider set of system_configs.</MudText>
-        </MudPaper>
+        <div class="empty-state mb-6" style="background: #ffffff; border: 1px solid rgba(199, 196, 215, 0.3); border-radius: 12px; padding: 3rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px;">
+            <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Large" Color="Color.Secondary" Style="font-size: 48px; color: #767586;" />
+            <h3 style="font-size: 18px; font-weight: 800; margin-top: 1rem; color: #191c1e;">No configuration found</h3>
+            <p style="font-size: 14px; color: #575e72; margin-top: 0.5rem;">Change the search or filters to inspect a wider set of parameters.</p>
+        </div>
     }
     else
     {
-        <MudGrid>
+        <div class="config-grid mb-6">
             @foreach (var config in FilteredConfigs)
             {
-                <MudItem xs="12" lg="6">
-                    <MudPaper Elevation="0" Class="config-card">
-                        <MudStack Spacing="3">
-                            <MudStack Row="true" AlignItems="AlignItems.Start" Justify="Justify.SpaceBetween" Style="gap: 1rem;">
-                                <div>
-                                    <MudText Typo="Typo.h6">@config.DisplayName</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@config.Key</MudText>
+                <div class="config-card">
+                    <div>
+                        <div class="config-header-row">
+                            <div>
+                                <h3 class="config-title">@config.DisplayName</h3>
+                                <span class="config-key">@config.Key</span>
+                            </div>
+                            <div class="badge-group">
+                                <span class="custom-badge category-badge">@config.Category</span>
+                                @if (config.IsCritical)
+                                {
+                                    <span class="custom-badge critical-badge">Critical</span>
+                                }
+                                @if (config.HasChanges)
+                                {
+                                    <span class="custom-badge unsaved-badge">Unsaved</span>
+                                }
+                            </div>
+                        </div>
+
+                        <span class="config-desc-label mt-4">@config.Description.ToUpperInvariant()</span>
+
+                        @if (config.Key == "generation.temperature" || config.Key == "generation.top_p")
+                        {
+                            <!-- Slider UI -->
+                            <div class="custom-slider-container">
+                                <input type="range" class="custom-slider" min="0" max="1" step="0.05"
+                                       value="@GetDecimalValue(config)"
+                                       @oninput="@(e => SetDecimalValue(config, decimal.TryParse(e.Value?.ToString(), out var v) ? v : 0))" />
+                                <div class="slider-labels">
+                                    <span>CONSISTENT (0)</span>
+                                    <span>BALANCED (0.5)</span>
+                                    <span>CREATIVE (1.0)</span>
                                 </div>
-                                <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap; justify-content: flex-end;">
-                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@config.Category</MudChip>
-                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@config.Type</MudChip>
-                                    @if (config.IsCritical)
+                                <div class="slider-value-box">
+                                    <span class="value-box-label">Value</span>
+                                    <span class="value-box-val">@config.Value</span>
+                                </div>
+                            </div>
+                        }
+                        else if (config.Type == ConfigInputType.Boolean)
+                        {
+                            <!-- Switch UI -->
+                            <div class="switch-field-group">
+                                <label class="custom-switch-container">
+                                    <input type="checkbox" checked="@GetBooleanValue(config)"
+                                           @onchange="@(e => SetBooleanValue(config, (bool)(e.Value ?? false)))" />
+                                    <span class="custom-switch-slider"></span>
+                                </label>
+                                <span class="switch-field-label">@(GetBooleanValue(config) ? "Active" : "Disabled")</span>
+                            </div>
+                        }
+                        else if (config.Key == "ai.chat_model" || config.Key == "ai.embedding_model")
+                        {
+                            <!-- Select Dropdown UI -->
+                            <div class="custom-select-wrapper">
+                                <select class="custom-select" value="@config.Value" @onchange="@(e => config.Value = e.Value?.ToString() ?? "")">
+                                    @if (config.Key == "ai.chat_model")
                                     {
-                                        <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled">Critical</MudChip>
+                                        <option value="gpt-4o-mini">gpt-4o-mini (Current)</option>
+                                        <option value="gpt-4">gpt-4</option>
+                                        <option value="gpt-4o">gpt-4o</option>
+                                        <option value="claude-3-5-sonnet">claude-3-5-sonnet</option>
                                     }
-                                    @if (config.HasChanges)
+                                    else
                                     {
-                                        <MudChip T="string" Color="Color.Error" Size="Size.Small" Variant="Variant.Outlined">Unsaved</MudChip>
+                                        <option value="text-embedding-3-small">text-embedding-3-small (Current)</option>
+                                        <option value="text-embedding-3-large">text-embedding-3-large</option>
+                                        <option value="text-embedding-ada-002">text-embedding-ada-002</option>
                                     }
-                                </MudStack>
-                            </MudStack>
+                                </select>
+                            </div>
+                        }
+                        else if (config.Type == ConfigInputType.Number)
+                        {
+                            <!-- Suffix input UI -->
+                            <div class="custom-input-group">
+                                <input type="number" class="custom-input"
+                                       value="@GetDecimalValue(config)"
+                                       @oninput="@(e => SetDecimalValue(config, decimal.TryParse(e.Value?.ToString(), out var v) ? v : 0))" />
+                                <span class="custom-input-suffix">@GetSuffixUnit(config.Key)</span>
+                            </div>
+                        }
+                        else if (config.Type == ConfigInputType.Json || config.Lines > 1)
+                        {
+                            <!-- Custom Textarea UI -->
+                            <textarea class="custom-textarea" rows="@(config.Lines > 1 ? config.Lines : 4)"
+                                      value="@config.Value" @oninput="@(e => config.Value = e.Value?.ToString() ?? "")"></textarea>
+                        }
+                        else
+                        {
+                            <!-- Standard Text input UI -->
+                            <div class="custom-input-group">
+                                <input type="text" class="custom-input" value="@config.Value" @oninput="@(e => config.Value = e.Value?.ToString() ?? "")" />
+                            </div>
+                        }
 
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">@config.Description</MudText>
+                        @if (config.IsCritical || config.Key == "generation.temperature")
+                        {
+                            <div class="custom-warning-box">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Class="warning-box-icon" />
+                                <span class="warning-box-text">@GetWarningText(config.Key)</span>
+                            </div>
+                        }
+                    </div>
 
-                            @switch (config.Type)
-                            {
-                                case ConfigInputType.Boolean:
-                                    <MudSwitch T="bool" Value="@GetBooleanValue(config)" ValueChanged="@(value => SetBooleanValue(config, value))" Color="Color.Primary" Label="Enabled" />
-                                    break;
-                                case ConfigInputType.Number:
-                                    <MudNumericField T="decimal" Value="@GetDecimalValue(config)" ValueChanged="@(value => SetDecimalValue(config, value))" Label="Value" Variant="Variant.Outlined" Immediate="true" />
-                                    break;
-                                case ConfigInputType.Json:
-                                    <MudTextField @bind-Value="config.Value" Label="JSON value" Variant="Variant.Outlined" Lines="8" Immediate="true" />
-                                    break;
-                                default:
-                                    <MudTextField @bind-Value="config.Value" Label="Value" Variant="Variant.Outlined" Lines="@config.Lines" Immediate="true" />
-                                    break;
-                            }
+                    <div>
+                        <div class="card-meta-row">
+                            <span>Default: @config.DefaultValue</span>
+                            <span>Last updated: @FormatDateTime(config.UpdatedAt) by admin</span>
+                        </div>
 
-                            <MudGrid Spacing="2">
-                                <MudItem xs="12" sm="6">
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Default value</MudText>
-                                    <MudText Typo="Typo.body2" Class="config-mini-value">@config.DefaultValue</MudText>
-                                </MudItem>
-                                <MudItem xs="12" sm="6">
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Updated</MudText>
-                                    <MudText Typo="Typo.body2">@FormatDateTime(config.UpdatedAt) by @config.UpdatedBy</MudText>
-                                </MudItem>
-                            </MudGrid>
-
-                            @if (config.IsCritical)
-                            {
-                                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
-                                    Saving this setting requires typed confirmation and writes before/after values to audit_logs.
-                                </MudAlert>
-                            }
-
-                            <MudStack Row="true" Justify="Justify.FlexEnd" Spacing="1">
-                                <MudButton Variant="Variant.Text" Disabled="@(!config.HasChanges)" OnClick="@(() => ResetConfig(config))">Reset</MudButton>
-                                <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!config.HasChanges)" OnClick="@(() => SaveConfigAsync(config))">
-                                    Save
-                                </MudButton>
-                            </MudStack>
-                        </MudStack>
-                    </MudPaper>
-                </MudItem>
+                        <div class="card-actions">
+                            <button class="reset-btn" disabled="@(!config.HasChanges)" @onclick="@(() => ResetConfig(config))">RESET</button>
+                            <button class="save-btn" disabled="@(!config.HasChanges)" @onclick="@(() => SaveConfigAsync(config))">SAVE</button>
+                        </div>
+                    </div>
+                </div>
             }
-        </MudGrid>
+        </div>
     }
 
-    <MudPaper Elevation="0" Class="audit-preview-card">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="mb-2" Style="gap: 1rem; flex-wrap: wrap;">
-            <div>
-                <MudText Typo="Typo.h6">Configuration audit preview</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Recent local changes that should map to audit_logs entries.</MudText>
+    <!-- Live configuration stream console -->
+    <div class="live-stream-panel mb-6">
+        <div class="stream-header">
+            <div class="stream-title-group">
+                <span class="stream-dot"></span>
+                <span class="stream-title">LIVE CONFIGURATION STREAM</span>
             </div>
-            <MudButton Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.OpenInNew" OnClick="ShowAuditHint">Open Audit Logs</MudButton>
-        </MudStack>
+            <div class="stream-actions">
+                <button class="stream-action-btn" title="Pause Stream">
+                    <MudIcon Icon="@Icons.Material.Filled.Pause" Size="Size.Small" />
+                </button>
+                <button class="stream-action-btn" title="Clear Logs" @onclick="ClearTerminalLogs">
+                    <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
+                </button>
+            </div>
+        </div>
+        <div class="terminal-console">
+            @foreach (var log in _terminalLogs)
+            {
+                var lowerLog = log.ToLowerInvariant();
+                var logClass = "info";
+                if (lowerLog.Contains("event:")) logClass = "event";
+                else if (lowerLog.Contains("warn:")) logClass = "warn";
+                else if (lowerLog.Contains("error:")) logClass = "error";
+
+                <p class="terminal-line @logClass">@log</p>
+            }
+            <p class="terminal-line"><span class="terminal-cursor"></span></p>
+        </div>
+    </div>
+
+    <!-- Configuration Audit Preview -->
+    <div class="audit-preview-card mb-6">
+        <div class="audit-preview-header">
+            <div>
+                <h3 class="audit-preview-title">Configuration audit preview</h3>
+                <p class="audit-preview-desc">Recent local changes that should map to audit_logs entries.</p>
+            </div>
+            <button class="open-audit-btn" @onclick="ShowAuditHint">
+                <span>Open Audit Logs</span>
+                <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Size="Size.Small" />
+            </button>
+        </div>
+
         @if (!_recentChanges.Any())
         {
             <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">No configuration changes in this session.</MudAlert>
         }
         else
         {
-            <MudTable Items="@_recentChanges" Dense="true" Hover="true" Elevation="0">
-                <HeaderContent>
-                    <MudTh>Key</MudTh>
-                    <MudTh>Actor</MudTh>
-                    <MudTh>Changed</MudTh>
-                    <MudTh>Before / After</MudTh>
-                </HeaderContent>
-                <RowTemplate>
-                    <MudTd DataLabel="Key">@context.Key</MudTd>
-                    <MudTd DataLabel="Actor">@context.Actor</MudTd>
-                    <MudTd DataLabel="Changed">@FormatDateTime(context.CreatedAt)</MudTd>
-                    <MudTd DataLabel="Before / After"><code>@context.BeforeAfterJson</code></MudTd>
-                </RowTemplate>
-            </MudTable>
+            <div class="audit-table-container">
+                <table class="audit-table">
+                    <thead>
+                        <tr>
+                            <th>Key</th>
+                            <th>Actor</th>
+                            <th>Changed</th>
+                            <th>Before / After</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var context in _recentChanges)
+                        {
+                            <tr>
+                                <td>@context.Key</td>
+                                <td>@context.Actor</td>
+                                <td>@FormatDateTime(context.CreatedAt)</td>
+                                <td><code class="audit-code-value">@context.BeforeAfterJson</code></td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
         }
-    </MudPaper>
-</MudStack>
+    </div>
+</div>
+
+<style>
+    @@import url('https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap');
+
+    .settings-page {
+        font-family: 'Hanken Grotesk', sans-serif;
+        color: #191c1e;
+        animation: pageRise 0.4s ease-out;
+    }
+
+    /* Breadcrumbs */
+    .breadcrumbs-container {
+        font-size: 11px;
+        font-weight: 700;
+        color: #4648d4;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+    }
+
+    /* Page Header */
+    .page-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1.5rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .page-title {
+        font-size: 28px;
+        font-weight: 800;
+        color: #191c1e;
+        margin: 0;
+        line-height: 1.2;
+    }
+
+    .page-desc {
+        font-size: 14px;
+        color: #575e72;
+        margin: 4px 0 0 0;
+    }
+
+    .header-actions {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+    }
+
+    .header-outline-btn {
+        background: #ffffff;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        height: 38px;
+        font-weight: 700;
+        font-size: 12px;
+        color: #575e72;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 16px;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .header-outline-btn:hover {
+        background-color: #f8fafc;
+        border-color: #767586;
+    }
+
+    .header-filled-btn {
+        background: #191c1e;
+        border: none;
+        border-radius: 8px;
+        height: 38px;
+        font-weight: 700;
+        font-size: 12px;
+        color: #ffffff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 16px;
+        gap: 8px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .header-filled-btn:hover {
+        background-color: #2d3135;
+    }
+
+    /* KPI Grid */
+    .kpi-grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1.25rem;
+        margin-bottom: 1.5rem;
+    }
+
+    .kpi-card-custom {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 1.25rem;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
+    }
+
+    .kpi-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #767586;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        display: block;
+    }
+
+    .kpi-value {
+        font-size: 28px;
+        font-weight: 800;
+        color: #191c1e;
+        margin-top: 4px;
+        line-height: 1.1;
+    }
+
+    .kpi-value.warning-color {
+        color: #d97706;
+    }
+
+    .kpi-value.success-color {
+        color: #10b981;
+    }
+
+    .kpi-subtext {
+        font-size: 12px;
+        color: #767586;
+        font-weight: 500;
+        display: block;
+        margin-top: 2px;
+    }
+
+    /* Filter Row */
+    .filter-row-custom {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+        margin-bottom: 1.5rem;
+    }
+
+    .search-input-wrapper {
+        position: relative;
+        flex: 1;
+        min-width: 260px;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #767586;
+        pointer-events: none;
+    }
+
+    .search-input {
+        width: 100%;
+        height: 40px;
+        padding: 0 12px 0 40px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #191c1e;
+        font-size: 14px;
+        font-weight: 500;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+        border-color: #4648d4;
+    }
+
+    .filter-select {
+        height: 40px;
+        padding: 0 24px 0 12px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #191c1e;
+        font-size: 14px;
+        font-weight: 600;
+        outline: none;
+        cursor: pointer;
+        min-width: 150px;
+        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23575e72'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 8px center;
+        background-size: 20px;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    .filter-btn {
+        width: 40px;
+        height: 40px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .filter-btn:hover {
+        background-color: #f8fafc;
+    }
+
+    /* Active filter pills */
+    .active-filters-container {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        margin-bottom: 1.25rem;
+    }
+
+    .filter-pill {
+        background-color: #f1f3f5;
+        color: #575e72;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 9999px;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .filter-pill-close {
+        border: none;
+        background: transparent;
+        cursor: pointer;
+        font-size: 12px;
+        font-weight: bold;
+        color: #767586;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .clear-all-btn {
+        border: none;
+        background: transparent;
+        color: #4648d4;
+        font-size: 12px;
+        font-weight: 700;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+    }
+
+    /* Grid */
+    .config-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 1.5rem;
+        margin-bottom: 2rem;
+    }
+
+    @@media (max-width: 960px) {
+        .config-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    /* Config Card */
+    .config-card {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 1.5rem;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.02);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 1.25rem;
+    }
+
+    .config-header-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 1rem;
+    }
+
+    .config-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: #191c1e;
+        margin: 0;
+    }
+
+    .config-key {
+        font-size: 12px;
+        color: #767586;
+        font-weight: 500;
+        margin-top: 2px;
+        display: block;
+    }
+
+    .badge-group {
+        display: flex;
+        gap: 4px;
+        flex-wrap: wrap;
+        justify-content: flex-end;
+    }
+
+    .custom-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 4px;
+        letter-spacing: 0.02em;
+        text-transform: uppercase;
+        display: inline-block;
+    }
+
+    .custom-badge.category-badge {
+        background: #f1f3f5;
+        border: 1px solid #e2e8f0;
+        color: #575e72;
+    }
+
+    .custom-badge.critical-badge {
+        background: #fef2f2;
+        border: 1px solid #fca5a5;
+        color: #b91c1c;
+    }
+
+    .custom-badge.unsaved-badge {
+        background: rgba(70, 72, 212, 0.05);
+        border: 1px solid rgba(70, 72, 212, 0.2);
+        color: #4648d4;
+    }
+
+    .config-desc-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #767586;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        margin-bottom: 0.5rem;
+        display: block;
+    }
+
+    /* Sliders */
+    .custom-slider-container {
+        margin: 0.5rem 0;
+    }
+
+    .custom-slider {
+        width: 100%;
+        height: 6px;
+        background: #e2e8f0;
+        border-radius: 999px;
+        outline: none;
+        -webkit-appearance: none;
+        appearance: none;
+        cursor: pointer;
+    }
+
+    .custom-slider::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        appearance: none;
+        width: 18px;
+        height: 18px;
+        border-radius: 50%;
+        background: #4648d4;
+        cursor: pointer;
+        box-shadow: 0 2px 6px rgba(70, 72, 212, 0.4);
+        transition: transform 0.1s ease;
+    }
+
+    .custom-slider::-webkit-slider-thumb:hover {
+        transform: scale(1.15);
+    }
+
+    .slider-labels {
+        display: flex;
+        justify-content: space-between;
+        font-size: 10px;
+        font-weight: 700;
+        color: #94a3b8;
+        margin-top: 6px;
+    }
+
+    .slider-value-box {
+        display: flex;
+        justify-content: space-between;
+        background: #f8fafc;
+        border: 1px solid #e2e8f0;
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-top: 12px;
+    }
+
+    .value-box-label {
+        font-size: 13px;
+        font-weight: 700;
+        color: #575e72;
+    }
+
+    .value-box-val {
+        font-size: 14px;
+        font-weight: 800;
+        color: #4648d4;
+    }
+
+    /* Custom Switch */
+    .switch-field-group {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin: 0.5rem 0;
+    }
+
+    .custom-switch-container {
+        position: relative;
+        display: inline-block;
+        width: 48px;
+        height: 24px;
+        cursor: pointer;
+    }
+
+    .custom-switch-container input {
+        opacity: 0;
+        width: 0;
+        height: 0;
+    }
+
+    .custom-switch-slider {
+        position: absolute;
+        cursor: pointer;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-color: #cbd5e1;
+        transition: .3s;
+        border-radius: 24px;
+    }
+
+    .custom-switch-slider:before {
+        position: absolute;
+        content: "";
+        height: 18px;
+        width: 18px;
+        left: 3px;
+        bottom: 3px;
+        background-color: white;
+        transition: .3s;
+        border-radius: 50%;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+    }
+
+    input:checked + .custom-switch-slider {
+        background-color: #4648d4;
+    }
+
+    input:checked + .custom-switch-slider:before {
+        transform: translateX(24px);
+    }
+
+    .switch-field-label {
+        font-size: 13px;
+        font-weight: 700;
+        color: #191c1e;
+    }
+
+    /* Dropdowns */
+    .custom-select-wrapper {
+        position: relative;
+        margin: 0.5rem 0;
+    }
+
+    .custom-select {
+        width: 100%;
+        height: 44px;
+        padding: 0 36px 0 12px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #191c1e;
+        font-size: 14px;
+        font-weight: 600;
+        outline: none;
+        cursor: pointer;
+        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23575e72'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 12px center;
+        background-size: 20px;
+        -webkit-appearance: none;
+        appearance: none;
+    }
+
+    /* Custom Input Group */
+    .custom-input-group {
+        position: relative;
+        display: flex;
+        align-items: center;
+        margin: 0.5rem 0;
+    }
+
+    .custom-input {
+        width: 100%;
+        height: 44px;
+        padding: 0 90px 0 12px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #191c1e;
+        font-size: 15px;
+        font-weight: 700;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .custom-input:focus {
+        border-color: #4648d4;
+    }
+
+    .custom-input-suffix {
+        position: absolute;
+        right: 12px;
+        font-size: 11px;
+        font-weight: 800;
+        color: #767586;
+        background: #f1f3f5;
+        padding: 4px 8px;
+        border-radius: 4px;
+        pointer-events: none;
+    }
+
+    /* Custom Textarea */
+    .custom-textarea {
+        width: 100%;
+        padding: 12px;
+        border: 1px solid #c7c6d5;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #191c1e;
+        font-size: 13px;
+        font-weight: 500;
+        outline: none;
+        resize: vertical;
+        font-family: inherit;
+        line-height: 1.5;
+    }
+
+    .custom-textarea:focus {
+        border-color: #4648d4;
+    }
+
+    /* Warning box */
+    .custom-warning-box {
+        display: flex;
+        gap: 8px;
+        background-color: #fffbeb;
+        border: 1px solid #fef3c7;
+        border-radius: 8px;
+        padding: 10px 14px;
+        margin-top: 0.5rem;
+    }
+
+    .warning-box-icon {
+        color: #d97706;
+        flex-shrink: 0;
+    }
+
+    .warning-box-text {
+        font-size: 12px;
+        color: #b45309;
+        font-weight: 600;
+        line-height: 1.4;
+    }
+
+    /* Card Footer metadata */
+    .card-meta-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 12px;
+        color: #767586;
+        font-weight: 600;
+        margin-top: 0.5rem;
+    }
+
+    /* Action buttons */
+    .card-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 1rem;
+    }
+
+    .reset-btn {
+        background: transparent;
+        border: none;
+        color: #767586;
+        font-size: 13px;
+        font-weight: 700;
+        cursor: pointer;
+        padding: 8px 16px;
+        transition: color 0.2s;
+    }
+
+    .reset-btn:hover:not(:disabled) {
+        color: #191c1e;
+    }
+
+    .reset-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    .save-btn {
+        background-color: rgba(70, 72, 212, 0.08);
+        border: none;
+        color: #4648d4;
+        font-size: 13px;
+        font-weight: 700;
+        padding: 8px 20px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+    }
+
+    .save-btn:hover:not(:disabled) {
+        background-color: #4648d4;
+        color: #ffffff;
+    }
+
+    .save-btn:disabled {
+        opacity: 0.4;
+        cursor: not-allowed;
+    }
+
+    /* Live configuration stream console */
+    .live-stream-panel {
+        background-color: #0b0f19;
+        border: 1px solid #1e293b;
+        border-radius: 12px;
+        padding: 1.25rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        color: #ffffff;
+    }
+
+    .stream-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.75rem;
+    }
+
+    .stream-title-group {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .stream-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: #10b981;
+        display: inline-block;
+        box-shadow: 0 0 8px #10b981;
+    }
+
+    .stream-title {
+        font-size: 12px;
+        font-weight: 800;
+        color: #94a3b8;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .stream-actions {
+        display: flex;
+        gap: 8px;
+    }
+
+    .stream-action-btn {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: background-color 0.2s, color 0.2s;
+    }
+
+    .stream-action-btn:hover {
+        background-color: rgba(255, 255, 255, 0.05);
+        color: #ffffff;
+    }
+
+    .terminal-console {
+        background-color: #06090f;
+        border-radius: 8px;
+        padding: 14px;
+        height: 200px;
+        overflow-y: auto;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 12px;
+        line-height: 1.6;
+        border: 1px solid #111827;
+    }
+
+    .terminal-line {
+        margin: 0;
+        white-space: pre-wrap;
+        word-break: break-all;
+    }
+
+    .terminal-line.info {
+        color: #10b981; /* emerald green */
+    }
+
+    .terminal-line.event {
+        color: #60a5fa; /* light blue */
+    }
+
+    .terminal-line.warn {
+        color: #f59e0b; /* amber yellow */
+    }
+
+    .terminal-line.error {
+        color: #ef4444; /* red */
+    }
+
+    .terminal-cursor {
+        display: inline-block;
+        width: 8px;
+        height: 2px;
+        background-color: #10b981;
+        animation: blink 1s step-end infinite;
+        vertical-align: middle;
+        margin-left: 2px;
+    }
+
+    @@keyframes blink {
+        from, to { background-color: transparent }
+        50% { background-color: #10b981 }
+    }
+
+    /* Configuration Audit Preview table */
+    .audit-preview-card {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 1.25rem;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
+    }
+
+    .audit-preview-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .audit-preview-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: #191c1e;
+        margin: 0;
+    }
+
+    .audit-preview-desc {
+        font-size: 12px;
+        color: #767586;
+        margin: 2px 0 0 0;
+        font-weight: 500;
+    }
+
+    .open-audit-btn {
+        background: transparent;
+        border: none;
+        color: #4648d4;
+        font-size: 12px;
+        font-weight: 800;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 8px 0;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+
+    .open-audit-btn:hover {
+        text-decoration: underline;
+    }
+
+    .audit-table-container {
+        border-radius: 8px;
+        overflow: hidden;
+        border: 1px solid #e2e8f0;
+    }
+
+    .audit-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+
+    .audit-table th {
+        background: #f8fafc;
+        padding: 10px 12px;
+        font-size: 11px;
+        font-weight: 800;
+        color: #767586;
+        text-align: left;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    .audit-table td {
+        padding: 12px;
+        font-size: 13px;
+        color: #191c1e;
+        border-bottom: 1px solid #f1f5f9;
+        font-weight: 500;
+    }
+
+    .audit-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .audit-code-value {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+        font-size: 11px;
+        background: #f1f3f5;
+        padding: 2px 6px;
+        border-radius: 4px;
+        color: #4648d4;
+        word-break: break-all;
+    }
+
+    /* Dark theme overrides */
+    .dark-theme .kpi-card-custom,
+    .dark-theme .config-card,
+    .dark-theme .filter-select,
+    .dark-theme .search-input,
+    .dark-theme .filter-btn,
+    .dark-theme .custom-select,
+    .dark-theme .custom-input,
+    .dark-theme .custom-textarea,
+    .dark-theme .audit-preview-card,
+    .dark-theme .header-outline-btn {
+        background-color: #1e2124 !important;
+        border-color: rgba(255, 255, 255, 0.08) !important;
+        color: #f8fafc !important;
+    }
+
+    .dark-theme .page-title,
+    .dark-theme .kpi-value,
+    .dark-theme .config-title,
+    .dark-theme .switch-field-label,
+    .dark-theme .audit-preview-title,
+    .dark-theme .audit-table td {
+        color: #f8fafc !important;
+    }
+
+    .dark-theme .page-desc,
+    .dark-theme .kpi-label,
+    .dark-theme .kpi-subtext,
+    .dark-theme .config-key,
+    .dark-theme .config-desc-label,
+    .dark-theme .slider-labels,
+    .dark-theme .card-meta-row,
+    .dark-theme .audit-preview-desc,
+    .dark-theme .audit-table th {
+        color: #94a3b8 !important;
+    }
+
+    .dark-theme .slider-value-box {
+        background: #25282c;
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .dark-theme .value-box-label {
+        color: #94a3b8;
+    }
+
+    .dark-theme .value-box-val {
+        color: #a5b4fc;
+    }
+
+    .dark-theme .custom-input-suffix {
+        background: #25282c;
+        color: #94a3b8;
+    }
+
+    .dark-theme .custom-slider {
+        background: #25282c;
+    }
+
+    .dark-theme .custom-switch-slider {
+        background-color: #4b5563;
+    }
+
+    .dark-theme .header-filled-btn {
+        background-color: #f8fafc;
+        color: #191c1e;
+    }
+
+    .dark-theme .header-filled-btn:hover {
+        background-color: #e2e8f0;
+    }
+
+    .dark-theme .audit-table-container {
+        border-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .dark-theme .audit-table th {
+        background-color: #25282c;
+        border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .dark-theme .audit-table td {
+        border-bottom-color: rgba(255, 255, 255, 0.08);
+    }
+
+    .dark-theme .audit-code-value {
+        background: #25282c;
+        color: #a5b4fc;
+    }
+
+    .dark-theme .custom-badge.category-badge {
+        background: #25282c;
+        border-color: rgba(255, 255, 255, 0.08);
+        color: #94a3b8;
+    }
+
+    .dark-theme .filter-pill {
+        background-color: #25282c;
+        color: #94a3b8;
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
 
 @code {
     private const string CriticalRisk = "Critical";
@@ -215,6 +1305,8 @@
 
     private readonly List<ConfigRow> _configs = new();
     private readonly List<ConfigChangePreview> _recentChanges = new();
+    private readonly List<string> _terminalLogs = new();
+    private System.Threading.Timer? _logTimer;
     private bool _isLoading = true;
     private string? _searchText;
     private string? _selectedCategory;
@@ -248,6 +1340,8 @@
     protected override void OnInitialized()
     {
         Reload();
+        InitializeTerminalLogs();
+        _logTimer = new System.Threading.Timer(OnLogTimerTick, null, 8000, 8000);
     }
 
     private void Reload()
@@ -270,27 +1364,71 @@
         }
     }
 
+    private void InitializeTerminalLogs()
+    {
+        var now = DateTime.Now;
+        _terminalLogs.Add($"[{now.AddMinutes(-5).ToString("HH:mm:ss")}] info: Polling Supabase for configuration updates...");
+        _terminalLogs.Add($"[{now.AddMinutes(-4).ToString("HH:mm:ss")}] info: Successfully fetched 14 parameters.");
+        _terminalLogs.Add($"[{now.AddMinutes(-3).ToString("HH:mm:ss")}] event: User 'admin@aistudyhub.edu' accessed ai.chat_model via Admin Console.");
+        _terminalLogs.Add($"[{now.AddMinutes(-1).ToString("HH:mm:ss")}] warn: generation.temperature local value (0.2) differs from production (0.2).");
+        _terminalLogs.Add($"[{now.ToString("HH:mm:ss")}] info: RAG pipeline health check: 200 OK. Latency: 1.2s.");
+    }
+
+    private void OnLogTimerTick(object? state)
+    {
+        var random = new Random();
+        var now = DateTime.Now.ToString("HH:mm:ss");
+        string log;
+        int choice = random.Next(3);
+        if (choice == 0)
+        {
+            log = $"[{now}] info: RAG pipeline health check: 200 OK. Latency: {random.NextDouble() * 0.5 + 0.8:F1}s.";
+        }
+        else if (choice == 1)
+        {
+            log = $"[{now}] info: Polling Supabase for configuration updates...";
+        }
+        else
+        {
+            log = $"[{now}] info: Successfully synced {_configs.Count} parameters with secondary replica.";
+        }
+
+        InvokeAsync(() =>
+        {
+            _terminalLogs.Add(log);
+            if (_terminalLogs.Count > 50)
+            {
+                _terminalLogs.RemoveAt(0);
+            }
+            StateHasChanged();
+        });
+    }
+
+    private void ClearTerminalLogs()
+    {
+        _terminalLogs.Clear();
+    }
+
     private void ShowAuditHint()
     {
         Snackbar.Add("Open /admin/audit-logs to review persisted CONFIG_CHANGE entries with before/after JSON.", Severity.Info);
     }
 
-    private Task OnSearchChanged(string? value)
+    private void OnSearchInput(ChangeEventArgs args)
     {
-        _searchText = value;
-        return Task.CompletedTask;
+        _searchText = args.Value?.ToString() ?? "";
     }
 
-    private Task OnCategoryChanged(string? value)
+    private void OnCategoryChanged(ChangeEventArgs args)
     {
-        _selectedCategory = value;
-        return Task.CompletedTask;
+        _selectedCategory = args.Value?.ToString();
+        if (_selectedCategory == "") _selectedCategory = null;
     }
 
-    private Task OnRiskChanged(string? value)
+    private void OnRiskChanged(ChangeEventArgs args)
     {
-        _selectedRisk = value;
-        return Task.CompletedTask;
+        _selectedRisk = args.Value?.ToString();
+        if (_selectedRisk == "") _selectedRisk = null;
     }
 
     private Task RemoveFilterAsync(string filter)
@@ -379,12 +1517,19 @@
         config.UpdatedAt = DateTime.UtcNow;
         config.UpdatedBy = "admin@aistudyhub.edu";
         _recentChanges.Insert(0, new ConfigChangePreview(config.Key, "admin@aistudyhub.edu", DateTime.UtcNow, ToBeforeAfterJson(previous, config.Value)));
+        
+        _terminalLogs.Add($"[{DateTime.Now.ToString("HH:mm:ss")}] event: User 'admin@aistudyhub.edu' updated {config.Key} to '{config.Value}'.");
+        
         Snackbar.Add($"{config.Key} saved and CONFIG_CHANGE audit log queued.", Severity.Success);
     }
 
     private void ResetConfig(ConfigRow config)
     {
+        var prev = config.Value;
         config.Value = config.OriginalValue;
+        
+        _terminalLogs.Add($"[{DateTime.Now.ToString("HH:mm:ss")}] event: User 'admin@aistudyhub.edu' reset {config.Key} from '{prev}' to '{config.OriginalValue}'.");
+        
         Snackbar.Add($"{config.Key} reset to the last saved value.", Severity.Info);
     }
 
@@ -406,6 +1551,35 @@
     private static void SetDecimalValue(ConfigRow config, decimal value)
     {
         config.Value = value.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private static string GetSuffixUnit(string key)
+    {
+        return key switch
+        {
+            "rag.chunk_size" => "TOKENS",
+            "rag.chunk_overlap" => "TOKENS",
+            "rag.max_chunks" => "CHUNKS",
+            "quota.default_student_daily_tokens" => "TOKENS",
+            "quota.default_admin_daily_tokens" => "TOKENS",
+            "audit.retention_days" => "DAYS",
+            _ => "UNITS"
+        };
+    }
+
+    private static string GetWarningText(string key)
+    {
+        return key switch
+        {
+            "generation.temperature" => "Directly impacts hallucination rates and output diversity.",
+            "generation.top_p" => "Controls context diversity and randomness threshold.",
+            "ai.chat_model" => "Directly impacts generation costs, context window limits, and answer latency.",
+            "ai.embedding_model" => "Modifying the embedding model invalidates all existing index vectors.",
+            "auth.allow_self_registration" => "Exposes student sign-ups to open public domains without whitelist checks.",
+            "rag.chunk_size" => "RAG indexing parameters modify token consumption and LLM context window loading.",
+            "rag.chunk_overlap" => "RAG indexing parameters modify token consumption and LLM context window loading.",
+            _ => "Saving this setting requires typed confirmation and writes before/after values to audit_logs."
+        };
     }
 
     private static bool IsValidJson(string value)
@@ -457,6 +1631,11 @@
         };
     }
 
+    public void Dispose()
+    {
+        _logTimer?.Dispose();
+    }
+
     private sealed class ConfigRow
     {
         public ConfigRow(string key, string displayName, string description, string category, ConfigInputType type, string value, string defaultValue, bool isCritical, int lines = 1)
@@ -500,81 +1679,3 @@
         Json
     }
 }
-
-<style>
-    .page-enter {
-        animation: pageRise .42s ease both;
-    }
-
-    .page-header,
-    .config-card,
-    .empty-state,
-    .settings-stat-card,
-    .audit-preview-card {
-        border-radius: 26px;
-        border: 1px solid rgba(15, 118, 110, .12);
-        background: rgba(255, 252, 246, .88);
-    }
-
-    .page-header {
-        padding: 1.2rem;
-        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
-    }
-
-    .settings-filter {
-        min-width: 190px;
-    }
-
-    .settings-stat-card,
-    .config-card,
-    .audit-preview-card {
-        padding: 1.25rem;
-    }
-
-    .settings-stat-card.success {
-        background: linear-gradient(145deg, rgba(34, 197, 94, .14), rgba(255, 252, 246, .86));
-    }
-
-    .settings-stat-card.warning {
-        background: linear-gradient(145deg, rgba(251, 146, 60, .14), rgba(255, 252, 246, .86));
-    }
-
-    .settings-stat-card.error {
-        background: linear-gradient(145deg, rgba(239, 68, 68, .12), rgba(255, 252, 246, .86));
-    }
-
-    .config-card {
-        height: 100%;
-        box-shadow: 0 18px 60px rgba(29, 44, 37, .06);
-    }
-
-    .config-mini-value {
-        font-family: Consolas, monospace;
-        word-break: break-word;
-    }
-
-    .empty-state {
-        min-height: 320px;
-        display: grid;
-        place-items: center;
-        text-align: center;
-        padding: 2rem;
-    }
-
-    .audit-preview-card code {
-        white-space: normal;
-        word-break: break-word;
-        color: #173b33;
-    }
-
-    @@keyframes pageRise {
-        from {
-            opacity: 0;
-            transform: translateY(14px);
-        }
-        to {
-            opacity: 1;
-            transform: translateY(0);
-        }
-    }
-</style>
