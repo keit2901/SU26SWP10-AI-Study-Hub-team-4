@@ -34,8 +34,10 @@ $ErrorActionPreference = 'Stop'
 
 # ---- Paths (relative to this script's location) ----
 $repoRoot = $PSScriptRoot
-$infraDir = Join-Path $repoRoot 'infra\supabase'
-$appDir   = Join-Path $repoRoot 'AI_Study_Hub_v2'
+$infraDir      = Join-Path $repoRoot 'infra\supabase'
+$ollamaDir     = Join-Path $repoRoot 'infra\ollama'
+$ollamaCompose = Join-Path $ollamaDir 'docker-compose.yml'
+$appDir        = Join-Path $repoRoot 'AI_Study_Hub_v2'
 $csproj   = Join-Path $appDir 'AI_Study_Hub_v2.csproj'
 $envFile  = Join-Path $infraDir '.env'
 $testProj = Join-Path $appDir 'AI_Study_Hub_v2.Tests\AI_Study_Hub_v2.Tests.csproj'
@@ -52,6 +54,7 @@ function Fail($m)       { Write-Host "`nFAIL $m" -ForegroundColor Red; exit 1 }
 Write-Step '1/6  Checking prerequisites...'
 
 if (-not (Test-Path -LiteralPath $infraDir)) { Fail "Missing: $infraDir" }
+if (-not (Test-Path -LiteralPath $ollamaCompose)) { Fail "Missing: $ollamaCompose" }
 if (-not (Test-Path -LiteralPath $appDir))   { Fail "Missing: $appDir" }
 if (-not (Test-Path -LiteralPath $csproj))   { Fail "Missing: $csproj" }
 Write-Ok "Worktree structure verified"
@@ -294,6 +297,43 @@ if ($SkipDocker) {
 }
 
 # ======================================================================
+# 3.5 OLLAMA DOCKER UP
+# ======================================================================
+if ($SkipDocker) {
+    Write-Step '3.5/6  -SkipDocker: skipping Ollama Docker'
+} elseif (-not $dockerOk) {
+    Write-Step '3.5/6  Docker unavailable -- skipping Ollama'
+} else {
+    Write-Step '3.5/6  Starting Ollama embedding service...'
+
+    & docker compose -f $ollamaCompose up -d
+    if ($LASTEXITCODE -ne 0) { Fail 'Ollama docker compose up failed' }
+
+    Write-Step '     Waiting for Ollama model all-minilm:l6-v2...'
+    $deadline = (Get-Date).AddSeconds(180)
+    $ollamaReady = $false
+
+    do {
+        Start-Sleep -Seconds 5
+        $tags = (& curl.exe -s http://localhost:11434/api/tags) 2>$null
+
+        if ($tags -match 'all-minilm:l6-v2') {
+            $ollamaReady = $true
+            break
+        }
+
+        Write-Host "     waiting for Ollama..." -ForegroundColor DarkGray
+    } while ((Get-Date) -lt $deadline)
+
+    if ($ollamaReady) {
+        Write-Ok "Ollama ready: all-minilm:l6-v2"
+    } else {
+        Write-Warn "Ollama not ready within 180s. Check:"
+        Write-Host "     docker logs -f aistudy-ollama" -ForegroundColor DarkGray
+    }
+}
+
+# ======================================================================
 # 4. ENSURE user-secrets INIT
 # ======================================================================
 if ($DockerOnly) {
@@ -350,6 +390,21 @@ if ($DockerOnly) {
 }
 
 # ======================================================================
+# 5.5 APPLY EF MIGRATIONS
+# ======================================================================
+if ($DockerOnly) {
+    Write-Step '5.5/6  Docker-only mode -- skipping EF migrations'
+} else {
+    Write-Step '5.5/6  Applying EF migrations...'
+
+    & dotnet ef database update --project $csproj --startup-project $csproj
+    if ($LASTEXITCODE -ne 0) {
+        Fail 'dotnet ef database update failed. Make sure dotnet-ef is installed and Supabase DB is running.'
+    }
+
+    Write-Ok "EF migrations applied"
+}
+# ======================================================================
 # 6. BUILD
 # ======================================================================
 if ($SkipBuild) {
@@ -376,6 +431,8 @@ if (-not $DockerOnly) {
     Write-Host "  Kong gateway    : http://localhost:8000"
     Write-Host "  Studio login    : supabase / $($secrets['DASHBOARD_PASSWORD'])"
     Write-Host "  App URL         : http://localhost:5240"
+Write-Host "  Ollama API      : http://localhost:11434"
+Write-Host "  Ollama model    : all-minilm:l6-v2"
     Write-Host ''
     Write-Host "  Admin email     : admin@aistudyhub.local" -ForegroundColor Yellow
     Write-Host "  Admin password  : $adminPwd  ($adminPwdSource)" -ForegroundColor Yellow
@@ -384,14 +441,13 @@ Write-Host ''
 Write-Host 'Quick start:' -ForegroundColor Cyan
 Write-Host '  # Run app'
 Write-Host '  $env:ASPNETCORE_ENVIRONMENT = "Development"'
-Write-Host '  dotnet run --project "' + $csproj + '" --no-launch-profile --urls http://localhost:5240'
+Write-Host "  dotnet run --project `"$csproj`" --no-launch-profile --urls http://localhost:5240"
 Write-Host ''
 Write-Host '  # Run tests (no Docker needed)'
-Write-Host '  dotnet test "' + $testProj + '"'
+Write-Host "  dotnet test `"$testProj`""
 Write-Host ''
 Write-Host '  # Re-run setup with different options'
 Write-Host '  .\setup.ps1 -Force          # regenerate all secrets'
 Write-Host '  .\setup.ps1 -SkipDocker     # skip docker, set secrets only'
-Write-Host '  .\setup.ps1 -DockerOnly     # just start Supabase stack'
+Write-Host '  .\setup.ps1 -DockerOnly     # just start Supabase + Ollama stack'
 Write-Host ''
-
