@@ -235,11 +235,3 @@
     word-break: break-all;
 }
 
-/* Top bar actions placement (so we can keep refresh/signout on the same page visually) */
-.profile-actions-bar {
-    display: flex;
-    justify-content: flex-end;
-    margin-bottom: 1rem;
-    width: 80%;
-    max-width: 100%;
-}

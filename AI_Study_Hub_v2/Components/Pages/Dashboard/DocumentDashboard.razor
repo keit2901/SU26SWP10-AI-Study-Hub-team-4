@@ -2,9 +2,7 @@
 @layout AI_Study_Hub_v2.Components.Layout.DashboardLayout
 @using AI_Study_Hub_v2.Components.Layout
 @using AI_Study_Hub_v2.Dtos
-@using AI_Study_Hub_v2.Data.Entities
 @inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
-@inject AI_Study_Hub_v2.Services.IDocumentService DocumentService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -14,18 +12,10 @@
 
 <div style="display: flex; flex-direction: column; flex: 1; height: 100%;">
     <!-- Header -->
-    <div style="display: flex; height: 4rem; align-items: center; justify-content: flex-end; border-bottom: 1px solid rgba(199,196,215,0.3); background: #faf9fe; padding: 0 1.5rem; gap: 1rem;">
+    <div style="display: flex; height: 4rem; align-items: center; justify-content: flex-end; border-bottom: 1px solid rgba(199,196,215,0.3); background: #faf9fe; padding: 0 1.5rem; gap: 0.5rem;">
         <button style="display: flex; align-items: center; justify-content: center; border-radius: 9999px; padding: 0.5rem; background: transparent; border: none; cursor: pointer;">
             <MudIcon Icon="@Icons.Material.Filled.Notifications" Style="font-size: 1.25rem; color: #464554;" />
         </button>
-        <button style="display: flex; align-items: center; justify-content: center; border-radius: 9999px; padding: 0.5rem; background: transparent; border: none; cursor: pointer;">
-            <MudIcon Icon="@Icons.Material.Filled.Settings" Style="font-size: 1.25rem; color: #464554;" />
-        </button>
-        <div style="display: flex; height: 2rem; width: 2rem; align-items: center; justify-content: center; border-radius: 9999px; background: #5e5ce6;">
-            <span style="font-size: 0.8125rem; font-weight: 600; color: #fff; letter-spacing: 0.39px;">
-                @(Session.CurrentUser?.Username?.Substring(0, Math.Min(2, Session.CurrentUser.Username.Length)).ToUpper() ?? "US")
-            </span>
-        </div>
     </div>
 
     <!-- Page Content -->
@@ -33,10 +23,10 @@
         <!-- Page Header -->
         <div style="margin-bottom: 2rem; display: flex; flex-direction: column; gap: 0.5rem;">
             <h1 style="font-size: 1.875rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.6px; color: #1a1b1f; margin: 0;">
-                Review Pending Documents
+                @(FolderId.HasValue ? $"Folder: {FolderName}" : "Review Pending Documents")
             </h1>
             <p style="font-size: 1rem; font-weight: 400; color: #464554; margin: 0;">
-                Evaluate and process documents awaiting approval.
+                @(FolderId.HasValue ? $"Documents in the folder \"{FolderName}\"." : "Documents from all folders pending share review. Approve or reject individual documents.")
             </p>
         </div>
 
@@ -51,7 +41,7 @@
             <div style="background: white; border-radius: 0.75rem; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); padding: 2rem; text-align: center; border: 1px solid rgba(199,196,215,0.3);">
                 <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 3rem; color: #34C759; margin-bottom: 1rem;" />
                 <h3 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin-bottom: 0.5rem;">All caught up!</h3>
-                <p style="color: #6b7280; max-width: 24rem; margin: 0 auto;">No pending documents awaiting moderation.</p>
+                <p style="color: #6b7280; max-width: 24rem; margin: 0 auto;">No documents found in this folder.</p>
             </div>
         }
         else
@@ -61,7 +51,7 @@
                 <!-- Card Header -->
                 <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(199,196,215,0.3); padding: 1rem 1.5rem;">
                     <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin: 0;">
-                        Pending Items (@pendingDocuments.Count)
+                        Documents (@pendingDocuments.Count)
                     </h2>
                 </div>
 
@@ -71,6 +61,10 @@
                         <thead>
                             <tr style="background: #f4f3f8;">
                                 <th style="padding: 1.3125rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">DOCUMENT NAME</th>
+                                @if (!FolderId.HasValue)
+                                {
+                                    <th style="padding: 1.3125rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">FOLDER</th>
+                                }
                                 <th style="padding: 0.75rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">SUBJECT<br />CODE</th>
                                 <th style="padding: 1.3125rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">SEMESTER</th>
                                 <th style="padding: 0.75rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">UPLOAD<br />DATE</th>
@@ -82,15 +76,25 @@
                             {
                                 <tr style="border-top: 1px solid rgba(199,196,215,0.2);">
                                     <td style="padding: 1rem 1.5rem;">
-                                        <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                        <div @onclick="() => InspectDocumentAsync(item.Id)" style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; transition: opacity 0.15s;"
+                                             onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'" role="button">
                                             <div style="display: flex; height: 2rem; align-items: center; justify-content: center; border-radius: 0.25rem; background: rgba(94,92,230,0.1); padding: 0 0.5rem;">
                                                 <MudIcon Icon="@GetFileIcon(item.MimeType)" Style="font-size: 1rem; color: #4441CC;" />
                                             </div>
-                                            <div style="font-size: 0.875rem; font-weight: 500; color: #1a1b1f;">
+                                            <div style="font-size: 0.875rem; font-weight: 500; color: #1a1b1f; text-decoration: none; border-bottom: 1px dashed rgba(26,27,31,0.25);">
                                                 @item.FileName
                                             </div>
                                         </div>
                                     </td>
+                                    @if (!FolderId.HasValue)
+                                    {
+                                        <td style="padding: 1rem 1.5rem;">
+                                            <span style="display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; font-weight: 500; color: #464554;">
+                                                <MudIcon Icon="@Icons.Material.Filled.Folder" Style="font-size: 0.875rem; color: #5e5ce6;" />
+                                                @(item.FolderName ?? "—")
+                                            </span>
+                                        </td>
+                                    }
                                     <td style="padding: 1.5rem 1.5rem;">
                                         <div style="display: inline-flex; align-items: center; border-radius: 0.25rem; background: rgba(223,223,228,0.5); padding: 0.25rem 0.5rem;">
                                             <span style="font-size: 0.75rem; font-weight: 500; color: #616267;">@item.SubjectCode</span>
@@ -107,20 +111,29 @@
                                         </div>
                                     </td>
                                     <td style="padding: 1rem 1.5rem;">
-                                        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem;">
-                                            <button @onclick="() => InspectDocumentAsync(item.Id)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(199,196,215,0.5); background: #e9e7ed; padding: 0.4375rem 0.8125rem; cursor: pointer; transition: background 0.2s;">
-                                                <MudIcon Icon="@Icons.Material.Filled.Visibility" Style="font-size: 0.75rem; color: #464554;" />
-                                                <span style="font-size: 0.75rem; font-weight: 500; color: #464554;">Inspect</span>
-                                            </button>
-                                            <button @onclick="() => ApproveDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(52,199,89,0.2); background: rgba(52,199,89,0.1); padding: 0.4375rem 0.8125rem; cursor: pointer; transition: background 0.2s;">
-                                                <MudIcon Icon="@Icons.Material.Filled.Check" Style="font-size: 0.75rem; color: #34C759;" />
-                                                <span style="font-size: 0.75rem; font-weight: 500; color: #34c759;">Approve</span>
-                                            </button>
-                                            <button @onclick="() => RejectDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(255,59,48,0.2); background: rgba(255,59,48,0.1); padding: 0.4375rem 0.8125rem; cursor: pointer; transition: background 0.2s;">
-                                                <MudIcon Icon="@Icons.Material.Filled.Close" Style="font-size: 0.75rem; color: #FF3B30;" />
-                                                <span style="font-size: 0.75rem; font-weight: 500; color: #ff3b30;">Reject</span>
-                                            </button>
-                                        </div>
+                                        @if (_resolvedStatuses.TryGetValue(item.Id, out var resolvedStatus))
+                                        {
+                                            var isApproved = string.Equals(resolvedStatus, "Approved", StringComparison.OrdinalIgnoreCase);
+                                            var bg = isApproved ? "rgba(52,199,89,0.12)" : "rgba(255,59,48,0.1)";
+                                            var color = isApproved ? "#1a8c4a" : "#c23c21";
+                                            <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: @bg; color: @color; font-size: 0.8125rem; font-weight: 600;">
+                                                <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: @color; flex-shrink: 0;"></span>
+                                                @resolvedStatus
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem;">
+                                                <button @onclick="() => ApproveDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(52,199,89,0.2); background: rgba(52,199,89,0.1); padding: 0.4375rem 0.8125rem; cursor: pointer; transition: background 0.2s;">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Check" Style="font-size: 0.75rem; color: #34C759;" />
+                                                    <span style="font-size: 0.75rem; font-weight: 500; color: #34c759;">Approve</span>
+                                                </button>
+                                                <button @onclick="() => RejectDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(255,59,48,0.2); background: rgba(255,59,48,0.1); padding: 0.4375rem 0.8125rem; cursor: pointer; transition: background 0.2s;">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Close" Style="font-size: 0.75rem; color: #FF3B30;" />
+                                                    <span style="font-size: 0.75rem; font-weight: 500; color: #ff3b30;">Reject</span>
+                                                </button>
+                                            </div>
+                                        }
                                     </td>
                                 </tr>
                             }
@@ -135,6 +148,14 @@
 @code {
     private bool isLoading = true;
     private List<DocumentDto>? pendingDocuments;
+    private readonly Dictionary<Guid, string> _resolvedStatuses = new();
+
+    [Parameter]
+    [SupplyParameterFromQuery(Name = "folderId")]
+    public Guid? FolderId { get; set; }
+
+    private string FolderName = string.Empty;
+    private Guid? _previousFolderId;
 
     protected override async Task OnInitializedAsync()
     {
@@ -147,12 +168,31 @@
         await LoadPendingDocumentsAsync();
     }
 
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_previousFolderId != FolderId)
+        {
+            _previousFolderId = FolderId;
+            await LoadPendingDocumentsAsync();
+        }
+    }
+
     private async Task LoadPendingDocumentsAsync()
     {
         isLoading = true;
         try
         {
-            pendingDocuments = await DashboardService.GetPendingDocumentsAsync();
+            pendingDocuments = await DashboardService.GetPendingDocumentsAsync(FolderId);
+
+            if (FolderId.HasValue)
+            {
+                // Derive folder name from the first document's FolderName, or fetch separately
+                FolderName = pendingDocuments?.FirstOrDefault()?.FolderName ?? string.Empty;
+            }
+            else
+            {
+                FolderName = string.Empty;
+            }
         }
         finally
         {
@@ -164,10 +204,10 @@
     {
         try
         {
-            var doc = await DocumentService.GetByIdAsync(Session.CurrentUser.Id, docId);
-            if (!string.IsNullOrWhiteSpace(doc.DownloadUrl))
+            var signedUrl = await DashboardService.GetDocumentSignedUrlAsync(docId);
+            if (!string.IsNullOrWhiteSpace(signedUrl))
             {
-                await JS.InvokeVoidAsync("open", doc.DownloadUrl, "_blank");
+                await JS.InvokeVoidAsync("open", signedUrl, "_blank");
             }
             else
             {
@@ -188,7 +228,7 @@
             if (success)
             {
                 Snackbar.Add($"Document '{fileName}' approved successfully.", Severity.Success);
-                await LoadPendingDocumentsAsync();
+                _resolvedStatuses[docId] = "Approved";
             }
             else
             {
@@ -209,7 +249,7 @@
             if (success)
             {
                 Snackbar.Add($"Document '{fileName}' rejected.", Severity.Warning);
-                await LoadPendingDocumentsAsync();
+                _resolvedStatuses[docId] = "Rejected";
             }
             else
             {

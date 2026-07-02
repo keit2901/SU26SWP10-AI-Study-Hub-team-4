@@ -28,4 +28,10 @@ public interface IGoTrueClient
 
     /// <summary>Admin endpoint — fetch a user by email. Returns null when not found.</summary>
     Task<GoTrueUser?> AdminGetUserByEmailAsync(string email, CancellationToken cancellationToken = default);
+
+    /// <summary>Admin endpoint — update a user's app_metadata (e.g. role). Requires service-role key.</summary>
+    Task<GoTrueUser> AdminUpdateUserByIdAsync(Guid userId, Dictionary<string, object?>? appMetadata, CancellationToken cancellationToken = default);
+
+    /// <summary>Admin endpoint — sign out all sessions for a user (force logout). Requires service-role key.</summary>
+    Task AdminSignOutUserAsync(Guid userId, CancellationToken cancellationToken = default);
 }

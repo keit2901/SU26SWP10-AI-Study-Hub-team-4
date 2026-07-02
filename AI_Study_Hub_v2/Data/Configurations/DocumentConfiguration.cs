@@ -64,6 +64,11 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
             .HasDefaultValue(DocumentStatus.Uploading)
             .IsRequired();
 
+        builder.Property(d => d.ReviewStatus)
+            .HasColumnName("review_status")
+            .HasDefaultValue(DocumentReviewStatus.None)
+            .IsRequired();
+
         builder.Property(d => d.ErrorMessage)
             .HasColumnName("error_message");
 

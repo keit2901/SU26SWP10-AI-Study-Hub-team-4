@@ -316,7 +316,7 @@ public sealed class CommunityServiceTests
             Id = Guid.NewGuid(),
             UserId = userId,
             Name = $"Folder {Guid.NewGuid():N}"[..20],
-            IsShared = isShared,
+            ShareStatus = isShared ? AI_Study_Hub_v2.Data.Entities.FolderStatus.Approved : AI_Study_Hub_v2.Data.Entities.FolderStatus.None,
             SharedAt = isShared ? DateTimeOffset.UtcNow : null,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,

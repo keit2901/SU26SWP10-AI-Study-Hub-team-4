@@ -6,17 +6,23 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Components.Pages.Dashboard;
+using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Services;
 
 public class DashboardService : IDashboardService
 {
-    private readonly AppDbContext _context;
+    private const string BucketName = "documents";
+    private const int SignedUrlTtlSeconds = 300;
 
-    public DashboardService(AppDbContext context)
+    private readonly AppDbContext _context;
+    private readonly ISupabaseStorageClient _storage;
+
+    public DashboardService(AppDbContext context, ISupabaseStorageClient storage)
     {
         _context = context;
+        _storage = storage;
     }
 
     public async Task<AdminDashboardStatsDto> GetAdminStatsAsync(CancellationToken ct = default)
@@ -152,10 +158,25 @@ public class DashboardService : IDashboardService
         )).OrderBy(s => s.Semester).ToList();
     }
 
-    public async Task<System.Collections.Generic.List<DocumentDto>> GetPendingDocumentsAsync(CancellationToken ct = default)
+    public async Task<System.Collections.Generic.List<DocumentDto>> GetPendingDocumentsAsync(System.Guid? folderId = null, CancellationToken ct = default)
     {
-        var docs = await _context.Documents.AsNoTracking()
-            .Where(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing)
+        IQueryable<Document> query;
+
+        if (folderId.HasValue)
+        {
+            // Folder-specific: all documents in the folder (any status)
+            query = _context.Documents.AsNoTracking()
+                .Where(d => d.FolderId == folderId.Value);
+        }
+        else
+        {
+            // Global view: all documents from ANY folder with PendingShare status
+            query = _context.Documents.AsNoTracking()
+                .Where(d => d.Folder != null && d.Folder.ShareStatus == FolderStatus.PendingShare);
+        }
+
+        var docs = await query
+            .Include(d => d.Folder)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(ct);
 
@@ -170,9 +191,11 @@ public class DashboardService : IDashboardService
             Semester = d.Semester,
             PageCount = d.PageCount,
             Status = d.Status,
+            ReviewStatus = d.ReviewStatus,
             ErrorMessage = d.ErrorMessage,
             CreatedAt = d.CreatedAt,
-            UpdatedAt = d.UpdatedAt
+            UpdatedAt = d.UpdatedAt,
+            FolderName = d.Folder?.Name
         }).ToList();
     }
 
@@ -181,7 +204,7 @@ public class DashboardService : IDashboardService
         var doc = await _context.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc == null) return false;
 
-        doc.Status = DocumentStatus.Ready;
+        doc.ReviewStatus = DocumentReviewStatus.Approved;
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync(ct);
         return true;
@@ -192,7 +215,7 @@ public class DashboardService : IDashboardService
         var doc = await _context.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc == null) return false;
 
-        doc.Status = DocumentStatus.Failed;
+        doc.ReviewStatus = DocumentReviewStatus.Rejected;
         doc.ErrorMessage = "Rejected by administrator.";
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync(ct);
@@ -223,6 +246,8 @@ public class DashboardService : IDashboardService
 
         var dailyCounts = new System.Collections.Generic.List<double>();
         var dailyLabels = new System.Collections.Generic.List<string>();
+        var dailyApproved = new System.Collections.Generic.List<double>();
+        var dailyRejected = new System.Collections.Generic.List<double>();
 
         foreach (var date in last7Days)
         {
@@ -231,6 +256,14 @@ public class DashboardService : IDashboardService
                 .Where(d => d.CreatedAt >= date && d.CreatedAt < nextDate)
                 .CountAsync(ct);
             dailyCounts.Add(count);
+            var approved = await query
+                .Where(d => d.Status == DocumentStatus.Ready && d.CreatedAt >= date && d.CreatedAt < nextDate)
+                .CountAsync(ct);
+            dailyApproved.Add(approved);
+            var rejected = await query
+                .Where(d => d.Status == DocumentStatus.Failed && d.CreatedAt >= date && d.CreatedAt < nextDate)
+                .CountAsync(ct);
+            dailyRejected.Add(rejected);
             dailyLabels.Add(date.ToString("ddd"));
         }
 
@@ -263,8 +296,178 @@ public class DashboardService : IDashboardService
             StorageUsedMb: storageUsedMb,
             DailyUploadCounts: dailyCounts,
             DailyUploadLabels: dailyLabels,
+            DailyApprovedCounts: dailyApproved,
+            DailyRejectedCounts: dailyRejected,
             CommonIssues: issues,
             RecentDocuments: docs
         );
+    }
+
+    public async Task<string?> GetDocumentSignedUrlAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var doc = await _context.Documents
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == documentId, ct);
+
+        if (doc == null) return null;
+
+        try
+        {
+            return await _storage.CreateSignedUrlAsync(
+                BucketName, doc.StoragePath, SignedUrlTtlSeconds, ct);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    public async Task<UserAnalyticsDto> GetAdminAnalyticsAsync(Guid? folderId = null, CancellationToken ct = default)
+    {
+        IQueryable<Document> query;
+
+        if (folderId.HasValue)
+        {
+            // Specific folder: all its documents (any status)
+            query = _context.Documents.AsNoTracking()
+                .Include(d => d.Chunks)
+                .Where(d => d.FolderId == folderId.Value);
+        }
+        else
+        {
+            // Global: ALL documents across all folders (and orphans)
+            query = _context.Documents.AsNoTracking()
+                .Include(d => d.Chunks);
+        }
+
+        var totalDocuments = await query.CountAsync(ct);
+        var approvedDocuments = await query.Where(d => d.ReviewStatus == DocumentReviewStatus.Approved).CountAsync(ct);
+        double completionRate = totalDocuments > 0 ? System.Math.Round((double)approvedDocuments * 100 / totalDocuments, 1) : 0;
+
+        var totalBytes = await query.SumAsync(d => d.FileSizeBytes, ct);
+        double storageUsedMb = System.Math.Round((double)totalBytes / (1024 * 1024), 2);
+
+        // Daily counts for last 7 days (based on UpdatedAt of moderator action)
+        var today = new DateTimeOffset(DateTimeOffset.UtcNow.Date, TimeSpan.Zero);
+        var last7Days = Enumerable.Range(0, 7)
+            .Select(i => today.AddDays(-i))
+            .Reverse()
+            .ToList();
+
+        var dailyApproved = new List<double>();
+        var dailyRejected = new List<double>();
+        var dailyLabels = new List<string>();
+
+        foreach (var date in last7Days)
+        {
+            var nextDate = date.AddDays(1);
+            var approved = await query
+                .Where(d => d.ReviewStatus == DocumentReviewStatus.Approved && d.UpdatedAt >= date && d.UpdatedAt < nextDate)
+                .CountAsync(ct);
+            dailyApproved.Add(approved);
+
+            var rejected = await query
+                .Where(d => d.ReviewStatus == DocumentReviewStatus.Rejected && d.UpdatedAt >= date && d.UpdatedAt < nextDate)
+                .CountAsync(ct);
+            dailyRejected.Add(rejected);
+
+            dailyLabels.Add(date.ToString("ddd"));
+        }
+
+        // Common issues (only for moderator-rejected documents)
+        var issues = await query
+            .Where(d => d.ReviewStatus == DocumentReviewStatus.Rejected && d.ErrorMessage != null)
+            .GroupBy(d => d.ErrorMessage)
+            .Select(g => new AnalyticsIssueDto(g.Key ?? "Unknown Error", g.Count()))
+            .ToListAsync(ct);
+
+        // Recent documents (show status based on ReviewStatus)
+        var docs = await query
+            .OrderByDescending(d => d.UpdatedAt)
+            .Take(10)
+            .Select(d => new AnalyticsDocumentDto(
+                d.Id,
+                d.FileName,
+                d.ReviewStatus.ToString(),
+                d.CreatedAt,
+                d.PageCount,
+                d.Chunks.Count
+            ))
+            .ToListAsync(ct);
+
+        return new UserAnalyticsDto(
+            TotalDocuments: totalDocuments,
+            CompletionRate: completionRate,
+            AvgProcessingTimeHrs: 1.2,
+            StorageUsedMb: storageUsedMb,
+            DailyUploadCounts: dailyApproved,          // reuse field — shows approved trend
+            DailyUploadLabels: dailyLabels,
+            DailyApprovedCounts: dailyApproved,
+            DailyRejectedCounts: dailyRejected,
+            CommonIssues: issues,
+            RecentDocuments: docs
+        );
+    }
+
+    public async Task<ActivityTrendsDto> GetActivityTrendsAsync(string period = "day", CancellationToken ct = default)
+    {
+        var now = DateTime.UtcNow;
+        int buckets;
+        Func<int, DateTime> bucketStart;
+        Func<DateTime, string> labelFormatter;
+
+        switch (period?.ToLowerInvariant())
+        {
+            case "week":
+                buckets = 8;
+                bucketStart = i => now.AddDays(-(i + 1) * 7).Date;
+                labelFormatter = dt => $"W{ISOWeek(dt)}";
+                break;
+            case "month":
+                buckets = 6;
+                bucketStart = i => new DateTime(now.Year, now.Month, 1, 0, 0, 0, DateTimeKind.Utc).AddMonths(-i);
+                labelFormatter = dt => dt.ToString("MMM");
+                break;
+            default:
+                period = "day";
+                buckets = 7;
+                bucketStart = i => now.AddDays(-i).Date;
+                labelFormatter = dt => dt.ToString("ddd");
+                break;
+        }
+
+        var points = new List<ActivityTrendPoint>();
+        for (var i = buckets - 1; i >= 0; i--)
+        {
+            var start = bucketStart(i);
+            var end = i == 0
+                ? now.AddDays(1).Date
+                : bucketStart(i - 1);
+
+            var allDocs = await _context.Documents
+                .AsNoTracking()
+                .Where(d => d.CreatedAt >= start && d.CreatedAt < end)
+                .CountAsync(ct);
+
+            var failed = await _context.Documents
+                .AsNoTracking()
+                .Where(d => d.CreatedAt >= start && d.CreatedAt < end && d.Status == DocumentStatus.Failed)
+                .CountAsync(ct);
+
+            points.Add(new ActivityTrendPoint(
+                Label: labelFormatter(start),
+                Uploads: allDocs,
+                Documents: allDocs,
+                Failed: failed
+            ));
+        }
+
+        return new ActivityTrendsDto(Period: period, Points: points);
+    }
+
+    private static int ISOWeek(DateTime dt)
+    {
+        var cal = System.Globalization.CultureInfo.InvariantCulture.Calendar;
+        return cal.GetWeekOfYear(dt, System.Globalization.CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
     }
 }

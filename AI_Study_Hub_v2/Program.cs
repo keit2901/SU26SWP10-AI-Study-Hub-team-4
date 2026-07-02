@@ -33,6 +33,7 @@ builder.Services
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
+builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
@@ -110,6 +111,9 @@ builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentModerationService, DocumentModerationService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
+builder.Services.AddScoped<IAuditLogService, AuditLogService>();
+builder.Services.AddScoped<IAdminUserService, AdminUserService>();
+builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -117,14 +121,20 @@ builder.Services.AddScoped<IChunkingService, ChunkingService>();
 builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
 builder.Services.AddScoped<IDocumentStorageReadService, SupabaseDocumentStorageReadService>();
 builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
-builder.Services.AddScoped<IEmbeddingService, FakeEmbeddingService>();
+
 builder.Services.AddScoped<IRagSearchService, RagSearchService>();
 builder.Services.AddScoped<IAiChatService, SemanticKernelRagChatService>();
 builder.Services.AddScoped<IAiChatCompletionClientFactory, AiChatCompletionClientFactory>();
 builder.Services.AddHttpClient<GroqChatCompletionClient>();
 builder.Services.AddHttpClient<GeminiChatCompletionClient>();
 builder.Services.AddHttpClient<IImageDescriptionService, GroqVisionDescriptionService>();
+builder.Services.AddHttpClient<OllamaEmbeddingService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
+builder.Services.AddScoped<IEmbeddingService, OllamaEmbeddingService>();
+builder.Services.AddHostedService<OllamaHealthCheck>();
 // Sprint 3 services ----------------------------------------------------------
 builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
@@ -169,6 +179,10 @@ builder.Services.AddHttpClient<CommunityApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
+builder.Services.AddHttpClient<AdminApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
 builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
@@ -178,6 +192,10 @@ builder.Services.AddHttpClient<QuizApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
     http.Timeout = TimeSpan.FromMinutes(2);
+});
+builder.Services.AddHttpClient<AdminDashboardApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
 builder.Services.AddHttpClient<IRecaptchaVerificationService, RecaptchaVerificationService>(http =>
 {

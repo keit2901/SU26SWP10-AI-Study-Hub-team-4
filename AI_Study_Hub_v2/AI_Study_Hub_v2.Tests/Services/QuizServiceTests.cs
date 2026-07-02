@@ -4,7 +4,6 @@ using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Rag;
-using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -161,6 +160,7 @@ public sealed class QuizServiceTests
             Mock.Of<IAiChatCompletionClientFactory>(),
             groqOptions,
             Mock.Of<IChatPersistenceService>(),
+            Mock.Of<IAiQuotaService>(),
             Mock.Of<ILogger<QuizService>>());
     }
 

@@ -38,6 +38,21 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnName("total_tokens_used")
             .HasDefaultValue(0L);
 
+        builder.Property(u => u.DailyTokenQuota)
+            .HasColumnName("daily_token_quota")
+            .HasDefaultValue(25_000L)
+            .IsRequired();
+
+        builder.Property(u => u.TokensUsedToday)
+            .HasColumnName("tokens_used_today")
+            .HasDefaultValue(0L)
+            .IsRequired();
+
+        builder.Property(u => u.TokenUsageDate)
+            .HasColumnName("token_usage_date")
+            .HasDefaultValueSql("CURRENT_DATE")
+            .IsRequired();
+
         builder.Property(u => u.IsActive)
             .HasColumnName("is_active")
             .HasDefaultValue(true)

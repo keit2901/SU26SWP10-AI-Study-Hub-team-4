@@ -98,6 +98,13 @@
     transition: color 200ms ease, background 200ms ease, border-color 200ms ease, transform 200ms ease;
 }
 
+button.nav-pill {
+    appearance: none;
+    background: transparent;
+    cursor: pointer;
+    font: inherit;
+}
+
 .nav-pill::after {
     content: "";
     position: absolute;
@@ -121,12 +128,24 @@
     background: rgba(238, 242, 255, 0.8);
     transform: translateY(-1px);
 }
-}
 
 .nav-pill:hover::after,
 .nav-pill.active::after {
     width: 100%;
     left: 0%;
+}
+
+.nav-pill-static {
+    cursor: default;
+}
+
+.nav-pill-static:hover {
+    transform: none;
+}
+
+.nav-pill-static:hover::after {
+    width: 0;
+    left: 50%;
 }
 
 .community-actions {
