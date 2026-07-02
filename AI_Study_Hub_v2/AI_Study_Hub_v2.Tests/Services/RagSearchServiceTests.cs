@@ -4,94 +4,91 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services.Rag;
+using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using OptionsFactory = Microsoft.Extensions.Options.Options;
 using Pgvector;
 
 namespace AI_Study_Hub_v2.Tests.Services;
 
-
-
 [TestFixture]
 public sealed class RagSearchServiceTests
 {
-
-[Test]
-public async Task SearchAsync_FiltersChunksByCurrentEmbeddingModel()
-{
-    using var db = CreateDb();
-    var user = SeedUser(db);
-
-    var currentDocument = new Document
+    [Test]
+    public async Task SearchAsync_FiltersChunksByCurrentEmbeddingModel()
     {
-        Id = Guid.NewGuid(),
-        UserId = user.Id,
-        FileName = "current.pdf",
-        StoragePath = "documents/current.pdf",
-        FileSizeBytes = 1024,
-        MimeType = "application/pdf",
-        SubjectCode = "SWP391",
-        Semester = "SU26",
-        Status = DocumentStatus.Ready,
-        CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow
-    };
+        using var db = CreateDb();
+        var user = SeedUser(db);
 
-    var oldDocument = new Document
-    {
-        Id = Guid.NewGuid(),
-        UserId = user.Id,
-        FileName = "old.pdf",
-        StoragePath = "documents/old.pdf",
-        FileSizeBytes = 1024,
-        MimeType = "application/pdf",
-        SubjectCode = "SWP391",
-        Semester = "SU26",
-        Status = DocumentStatus.Ready,
-        CreatedAt = DateTimeOffset.UtcNow,
-        UpdatedAt = DateTimeOffset.UtcNow
-    };
-
-    db.Documents.AddRange(currentDocument, oldDocument);
-
-    var queryEmbedding = TestEmbedding(1f);
-
-    db.DocumentChunks.AddRange(
-        new DocumentChunk
+        var currentDocument = new Document
         {
             Id = Guid.NewGuid(),
-            DocumentId = currentDocument.Id,
-            ChunkIndex = 0,
-            Content = "current model chunk",
-            Embedding = new Vector(TestEmbedding(1f)),
-            EmbeddingModel = "all-minilm:l6-v2",
-            CreatedAt = DateTimeOffset.UtcNow
-        },
-        new DocumentChunk
+            UserId = user.Id,
+            FileName = "current.pdf",
+            StoragePath = "documents/current.pdf",
+            FileSizeBytes = 1024,
+            MimeType = "application/pdf",
+            SubjectCode = "SWP391",
+            Semester = "SU26",
+            Status = DocumentStatus.Ready,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+
+        var oldDocument = new Document
         {
             Id = Guid.NewGuid(),
-            DocumentId = oldDocument.Id,
-            ChunkIndex = 0,
-            Content = "old model chunk",
-            Embedding = new Vector(TestEmbedding(1f)),
-            EmbeddingModel = "old-model",
-            CreatedAt = DateTimeOffset.UtcNow
-        });
+            UserId = user.Id,
+            FileName = "old.pdf",
+            StoragePath = "documents/old.pdf",
+            FileSizeBytes = 1024,
+            MimeType = "application/pdf",
+            SubjectCode = "SWP391",
+            Semester = "SU26",
+            Status = DocumentStatus.Ready,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
 
-    await db.SaveChangesAsync();
+        db.Documents.AddRange(currentDocument, oldDocument);
 
-    var sut = BuildSut(db, queryEmbedding, currentModel: "all-minilm:l6-v2");
+        db.DocumentChunks.AddRange(
+            new DocumentChunk
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = currentDocument.Id,
+                ChunkIndex = 0,
+                Content = "current model chunk",
+                Embedding = new Vector(TestEmbedding(1f)),
+                EmbeddingModel = "all-minilm:l6-v2",
+                CreatedAt = DateTimeOffset.UtcNow
+            },
+            new DocumentChunk
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = oldDocument.Id,
+                ChunkIndex = 0,
+                Content = "old model chunk",
+                Embedding = new Vector(TestEmbedding(1f)),
+                EmbeddingModel = "old-model",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
 
-    var results = await sut.SearchAsync(
-        user.SupabaseUserId,
-        new RagSearchRequest("test", null, null, null, null, 5, null, null),
-        CancellationToken.None);
+        await db.SaveChangesAsync();
 
-    results.Should().ContainSingle();
-    results.Single().DocumentId.Should().Be(currentDocument.Id);
-}
+        var sut = BuildSut(db, TestEmbedding(1f), currentModel: "all-minilm:l6-v2");
+
+        var results = await sut.SearchAsync(
+            user.SupabaseUserId,
+            new RagSearchRequest("test", null, null, null, null, 5, null, null),
+            CancellationToken.None);
+
+        results.Should().ContainSingle();
+        results.Single().DocumentId.Should().Be(currentDocument.Id);
+    }
 
     [Test]
     public async Task SearchAsync_IgnoresForeignUserChunks()
@@ -241,7 +238,117 @@ public async Task SearchAsync_FiltersChunksByCurrentEmbeddingModel()
         result.ChunkIndex.Should().Be(7);
         result.PageNumber.Should().Be(3);
         result.ContentExcerpt.Should().Be("spaced excerpt content");
-        result.Score.Should().BeApproximately(1d, 0.0001d);
+        result.Score.Should().BeApproximately(1.06d, 0.0001d);
+    }
+
+    [Test]
+    public async Task SearchAsync_KeywordMode_PrefersExactKeywordMatch()
+    {
+        using var db = CreateDb();
+        var owner = SeedUser(db);
+        var denseDoc = SeedDocument(db, owner.Id, fileName: "dense.pdf");
+        var keywordDoc = SeedDocument(db, owner.Id, fileName: "keyword.pdf");
+        SeedChunk(db, denseDoc, 0, "general architecture overview", UnitAt(0));
+        SeedChunk(db, keywordDoc, 0, "SWP391 capstone plan and checklist", UnitAt(1));
+        await db.SaveChangesAsync();
+
+        var sut = BuildSut(db, UnitAt(0), new RagOptions { SearchMode = "keyword", ReRankEnabled = false });
+
+        var results = await sut.SearchAsync(owner.SupabaseUserId, new RagSearchRequest(
+            "SWP391 plan",
+            DocumentId: null,
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null,
+            TopK: 5,
+            DocumentIds: null,
+            TopicKeyword: null,
+            SearchMode: "keyword"));
+
+        results.Should().NotBeEmpty();
+        results[0].DocumentId.Should().Be(keywordDoc.Id);
+    }
+
+    [Test]
+    public async Task SearchAsync_HybridMode_UsesVectorAndKeywordFusion()
+    {
+        using var db = CreateDb();
+        var owner = SeedUser(db);
+        var denseDoc = SeedDocument(db, owner.Id, fileName: "dense.pdf");
+        var hybridDoc = SeedDocument(db, owner.Id, fileName: "hybrid.pdf");
+        SeedChunk(db, denseDoc, 0, "general architecture overview", UnitAt(0));
+        SeedChunk(db, hybridDoc, 0, "SWP391 capstone plan and checklist", UnitAt(1));
+        await db.SaveChangesAsync();
+
+        var sut = BuildSut(db, UnitAt(0), new RagOptions
+        {
+            SearchMode = "hybrid",
+            HybridSearchEnabled = true,
+            VectorWeight = 0.2d,
+            ReRankEnabled = false
+        });
+
+        var results = await sut.SearchAsync(owner.SupabaseUserId, new RagSearchRequest(
+            "SWP391 plan",
+            DocumentId: null,
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null,
+            TopK: 5,
+            DocumentIds: null,
+            TopicKeyword: null,
+            SearchMode: "hybrid"));
+
+        results.Should().NotBeEmpty();
+        results[0].DocumentId.Should().Be(hybridDoc.Id);
+    }
+
+    [Test]
+    public async Task SearchAsync_ReRankEnabled_ReordersTopCandidates()
+    {
+        using var db = CreateDb();
+        var owner = SeedUser(db);
+        var firstDoc = SeedDocument(db, owner.Id, fileName: "first.pdf");
+        var secondDoc = SeedDocument(db, owner.Id, fileName: "second.pdf");
+        SeedChunk(db, firstDoc, 0, "first chunk", UnitAt(0));
+        SeedChunk(db, secondDoc, 0, "second chunk", UnitAt(1));
+        await db.SaveChangesAsync();
+
+        var reRank = new Mock<IReRankService>();
+        reRank.Setup(x => x.ReRankAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<ReRankCandidate>>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, IReadOnlyList<ReRankCandidate> candidates, int topN, CancellationToken _) =>
+                candidates
+                    .Select(candidate => candidate.DocumentId == secondDoc.Id
+                        ? candidate with { ReRankScore = 0.95d }
+                        : candidate with { ReRankScore = 0.10d })
+                    .OrderByDescending(candidate => candidate.ReRankScore)
+                    .Take(topN)
+                    .ToList());
+
+        var sut = BuildSut(db, UnitAt(0), new RagOptions
+        {
+            ReRankEnabled = true,
+            ReRankCandidateCount = 5,
+            ReRankTopN = 5
+        }, reRankService: reRank.Object);
+
+        var results = await sut.SearchAsync(owner.SupabaseUserId, new RagSearchRequest(
+            "chunk",
+            DocumentId: null,
+            FolderId: null,
+            SubjectCode: null,
+            Semester: null,
+            TopK: 5,
+            DocumentIds: null,
+            TopicKeyword: null,
+            SearchMode: null));
+
+        results.Should().HaveCount(2);
+        results[0].DocumentId.Should().Be(secondDoc.Id);
     }
 
     private static AppDbContext CreateDb()
@@ -273,25 +380,47 @@ public async Task SearchAsync_FiltersChunksByCurrentEmbeddingModel()
     }
 
     private static RagSearchService BuildSut(
-    AppDbContext db,
-    float[] queryEmbedding,
-    RagOptions? options = null,
-    string currentModel = "all-minilm:l6-v2")
-{
-    var embeddings = new Mock<IEmbeddingService>();
-    embeddings
-        .Setup(e => e.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
-        .ReturnsAsync(queryEmbedding);
+        AppDbContext db,
+        float[] queryEmbedding,
+        RagOptions? options = null,
+        string currentModel = "all-minilm:l6-v2",
+        IReRankService? reRankService = null)
+    {
+        var embeddings = new Mock<IEmbeddingService>();
+        embeddings
+            .Setup(e => e.GenerateEmbeddingAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(queryEmbedding);
 
-    return new RagSearchService(
-        db,
-        embeddings.Object,
-        OptionsFactory.Create(options ?? new RagOptions()),
-        OptionsFactory.Create(new OllamaOptions
-        {
-            Model = currentModel
-        }));
-}
+        reRankService ??= CreatePassThroughReRankService();
+
+        return new RagSearchService(
+            db,
+            embeddings.Object,
+            reRankService,
+            OptionsFactory.Create(options ?? new RagOptions()),
+            OptionsFactory.Create(new OllamaOptions
+            {
+                Model = currentModel
+            }),
+            NullLogger<RagSearchService>.Instance);
+    }
+
+    private static IReRankService CreatePassThroughReRankService()
+    {
+        var reRank = new Mock<IReRankService>();
+        reRank.Setup(x => x.ReRankAsync(
+                It.IsAny<string>(),
+                It.IsAny<IReadOnlyList<ReRankCandidate>>(),
+                It.IsAny<int>(),
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, IReadOnlyList<ReRankCandidate> candidates, int topN, CancellationToken _) =>
+                candidates
+                    .Take(topN)
+                    .Select(candidate => candidate with { ReRankScore = candidate.InitialScore })
+                    .ToList());
+
+        return reRank.Object;
+    }
 
     private static User SeedUser(AppDbContext db)
     {
@@ -341,27 +470,27 @@ public async Task SearchAsync_FiltersChunksByCurrentEmbeddingModel()
     }
 
     private static void SeedChunk(
-    AppDbContext db,
-    Document document,
-    int chunkIndex,
-    string content,
-    float[] embedding,
-    int? pageNumber = null)
-{
-    db.DocumentChunks.Add(new DocumentChunk
+        AppDbContext db,
+        Document document,
+        int chunkIndex,
+        string content,
+        float[] embedding,
+        int? pageNumber = null)
     {
-        Id = Guid.NewGuid(),
-        DocumentId = document.Id,
-        Document = document,
-        ChunkIndex = chunkIndex,
-        PageNumber = pageNumber,
-        Content = content,
-        TokenCount = content.Length / 4,
-        Embedding = new Vector(embedding),
-        EmbeddingModel = "all-minilm:l6-v2",
-        CreatedAt = DateTimeOffset.UtcNow,
-    });
-}
+        db.DocumentChunks.Add(new DocumentChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = document.Id,
+            Document = document,
+            ChunkIndex = chunkIndex,
+            PageNumber = pageNumber,
+            Content = content,
+            TokenCount = content.Length / 4,
+            Embedding = new Vector(embedding),
+            EmbeddingModel = "all-minilm:l6-v2",
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+    }
 
     private static float[] UnitAt(int index)
     {
@@ -370,10 +499,10 @@ public async Task SearchAsync_FiltersChunksByCurrentEmbeddingModel()
         return vector;
     }
 
-private static float[] TestEmbedding(float value)
-{
-    var embedding = new float[DocumentChunk.EmbeddingDimension];
-    embedding[0] = value;
-    return embedding;
-}
+    private static float[] TestEmbedding(float value)
+    {
+        var embedding = new float[DocumentChunk.EmbeddingDimension];
+        embedding[0] = value;
+        return embedding;
+    }
 }

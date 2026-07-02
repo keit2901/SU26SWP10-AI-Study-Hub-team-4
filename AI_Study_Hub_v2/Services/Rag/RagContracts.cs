@@ -55,6 +55,26 @@ public interface IEmbeddingService
     Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default);
 }
 
+public interface IReRankService
+{
+    Task<IReadOnlyList<ReRankCandidate>> ReRankAsync(
+        string query,
+        IReadOnlyList<ReRankCandidate> candidates,
+        int topN,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record ReRankCandidate(
+    Guid DocumentId,
+    string FileName,
+    int ChunkIndex,
+    int? PageNumber,
+    string Content,
+    double DenseScore,
+    double KeywordScore,
+    double InitialScore,
+    double? ReRankScore = null);
+
 public interface IRagSearchService
 {
     Task<IReadOnlyList<RagSearchResultDto>> SearchAsync(

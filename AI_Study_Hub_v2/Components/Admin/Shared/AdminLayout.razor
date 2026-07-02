@@ -98,6 +98,7 @@ else if (_authorized)
                 </MudNavGroup>
                 <MudNavGroup Title="Governance" Icon="@Icons.Material.Filled.Policy" Expanded="true">
                     <MudNavLink Href="/admin/settings" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Tune">AI System Settings</MudNavLink>
+                    <MudNavLink Href="/admin/benchmarks" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Insights">Benchmark History</MudNavLink>
                     <MudNavLink Href="/admin/audit-logs" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.ManageSearch">Audit Logs</MudNavLink>
                 </MudNavGroup>
             </MudNavMenu>
@@ -337,6 +338,11 @@ else if (_authorized)
         {
             _breadcrumbs.Add(new BreadcrumbItem("Governance", null, disabled: true));
             _breadcrumbs.Add(new BreadcrumbItem("AI System Settings", null, disabled: true));
+        }
+        else if (relative.Equals("admin/benchmarks", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Governance", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Benchmark History", null, disabled: true));
         }
         else if (relative.Equals("admin/audit-logs", StringComparison.OrdinalIgnoreCase))
         {

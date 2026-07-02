@@ -1,0 +1,415 @@
+@namespace AI_Study_Hub_v2.Components.Admin.Benchmarks
+@page "/admin/benchmarks"
+@layout AdminLayout
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Services
+@using MudBlazor
+@inject BenchmarkApiClient BenchmarkApi
+@inject AuthSessionState Session
+@inject ISnackbar Snackbar
+
+<div class="benchmarks-page page-enter">
+    <div class="d-flex justify-space-between align-center mb-6 flex-wrap" style="gap: 1rem;">
+        <div>
+            <div class="benchmark-kicker mb-1">Governance / Benchmark History</div>
+            <h2 class="benchmark-title">Benchmark History</h2>
+            <p class="benchmark-subtitle">Track quality, latency, and regression alerts from manual and automated benchmark runs.</p>
+        </div>
+        <div class="d-flex align-center flex-wrap" style="gap: 0.75rem;">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" Disabled="@_isBusy" OnClick="LoadAsync">
+                Refresh
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="@_isBusy" OnClick="RunManualAsync">
+                Run Manual
+            </MudButton>
+            <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Schedule" Disabled="@_isBusy" OnClick="RunAutomationAsync">
+                Run Automated
+            </MudButton>
+        </div>
+    </div>
+
+    @if (_isLoading)
+    {
+        <MudGrid>
+            @for (var i = 0; i < 4; i++)
+            {
+                <MudItem xs="12" sm="6" lg="3">
+                    <MudSkeleton Height="138px" Animation="Animation.Wave" />
+                </MudItem>
+            }
+            <MudItem xs="12" lg="8">
+                <MudSkeleton Height="300px" Animation="Animation.Wave" />
+            </MudItem>
+            <MudItem xs="12" lg="4">
+                <MudSkeleton Height="300px" Animation="Animation.Wave" />
+            </MudItem>
+        </MudGrid>
+    }
+    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
+    }
+    else
+    {
+        <div class="benchmark-kpi-grid mb-6">
+            <div class="benchmark-kpi-card">
+                <div class="benchmark-kpi-label">Latest overall</div>
+                <div class="benchmark-kpi-value">@FormatPercent(Latest?.OverallScore)</div>
+                <div class="benchmark-kpi-sub">@GetRunMeta(Latest)</div>
+            </div>
+            <div class="benchmark-kpi-card">
+                <div class="benchmark-kpi-label">Citation accuracy</div>
+                <div class="benchmark-kpi-value">@FormatPercent(Latest?.CitationAccuracy)</div>
+                <div class="benchmark-kpi-sub">Grounding quality</div>
+            </div>
+            <div class="benchmark-kpi-card">
+                <div class="benchmark-kpi-label">P50 latency</div>
+                <div class="benchmark-kpi-value">@FormatLatency(Latest?.P50LatencyMs)</div>
+                <div class="benchmark-kpi-sub">Median answer speed</div>
+            </div>
+            <div class="benchmark-kpi-card @(Latest?.AlertTriggered == true ? "alert" : string.Empty)">
+                <div class="benchmark-kpi-label">Regression</div>
+                <div class="benchmark-kpi-value">@(Latest?.AlertTriggered == true ? "Alert" : "Stable")</div>
+                <div class="benchmark-kpi-sub">Triggers above 10% drop</div>
+            </div>
+        </div>
+
+        <MudGrid>
+            <MudItem xs="12" lg="8">
+                <MudPaper Elevation="0" Class="benchmark-card">
+                    <h3 class="benchmark-section-title">Overall score trend</h3>
+                    <span class="benchmark-section-caption">Latest stored runs over time</span>
+                    <MudChart T="double" ChartType="ChartType.Line" ChartSeries="@_scoreSeries" ChartLabels="@_labels" Width="100%" Height="280px" />
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" lg="4">
+                <MudPaper Elevation="0" Class="benchmark-card">
+                    <h3 class="benchmark-section-title">Run mix</h3>
+                    <span class="benchmark-section-caption">Manual versus automated</span>
+                    <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@_runMixSeries" ChartLabels="@_runMixLabels" Width="100%" Height="220px" />
+                    <div class="benchmark-mini-list mt-4">
+                        <div class="benchmark-mini-row">
+                            <span>Manual runs</span>
+                            <strong>@_history.Count(x => !x.IsAutomated)</strong>
+                        </div>
+                        <div class="benchmark-mini-row">
+                            <span>Automated runs</span>
+                            <strong>@_history.Count(x => x.IsAutomated)</strong>
+                        </div>
+                        <div class="benchmark-mini-row">
+                            <span>Alerted runs</span>
+                            <strong>@_history.Count(x => x.AlertTriggered)</strong>
+                        </div>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <MudPaper Elevation="0" Class="benchmark-card mt-6">
+            <h3 class="benchmark-section-title">Recent runs</h3>
+            <span class="benchmark-section-caption">Benchmark history persisted in the database</span>
+
+            <MudTable Items="@_history" Dense="true" Hover="true" Class="mt-4">
+                <HeaderContent>
+                    <MudTh>Run At</MudTh>
+                    <MudTh>Model</MudTh>
+                    <MudTh>Mode</MudTh>
+                    <MudTh>Overall</MudTh>
+                    <MudTh>Citation</MudTh>
+                    <MudTh>P50</MudTh>
+                    <MudTh>Passed</MudTh>
+                    <MudTh>Alert</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Run At">@context.RunAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</MudTd>
+                    <MudTd DataLabel="Model">
+                        <div class="d-flex flex-column">
+                            <strong>@context.ModelName</strong>
+                            <span class="benchmark-provider">@context.Provider</span>
+                        </div>
+                    </MudTd>
+                    <MudTd DataLabel="Mode">
+                        <MudChip T="string" Color="@(context.IsAutomated ? Color.Secondary : Color.Primary)" Variant="Variant.Outlined" Size="Size.Small">
+                            @(context.IsAutomated ? "Automated" : "Manual")
+                        </MudChip>
+                    </MudTd>
+                    <MudTd DataLabel="Overall">@FormatPercent(context.OverallScore)</MudTd>
+                    <MudTd DataLabel="Citation">@FormatPercent(context.CitationAccuracy)</MudTd>
+                    <MudTd DataLabel="P50">@FormatLatency(context.P50LatencyMs)</MudTd>
+                    <MudTd DataLabel="Passed">@context.PassedQuestions/@context.TotalQuestions</MudTd>
+                    <MudTd DataLabel="Alert">
+                        <MudChip T="string" Color="@(context.AlertTriggered ? Color.Error : Color.Success)" Variant="Variant.Filled" Size="Size.Small">
+                            @(context.AlertTriggered ? "Alert" : "OK")
+                        </MudChip>
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+</div>
+
+@code {
+    private bool _isLoading = true;
+    private bool _isBusy;
+    private string? _errorMessage;
+    private List<BenchmarkHistoryItemDto> _history = new();
+    private List<ChartSeries<double>> _scoreSeries = new();
+    private string[] _labels = [];
+    private List<ChartSeries<double>> _runMixSeries = new();
+    private readonly string[] _runMixLabels = ["Manual", "Automated"];
+
+    private BenchmarkHistoryItemDto? Latest => _history.OrderByDescending(x => x.RunAt).FirstOrDefault();
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            _errorMessage = "Admin session is missing. Please sign in again before loading benchmark history.";
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+            return;
+        }
+
+        _isLoading = true;
+        _errorMessage = null;
+        await InvokeAsync(StateHasChanged);
+
+        try
+        {
+            _history = (await BenchmarkApi.GetHistoryAsync(Session.AccessToken, 24)).ToList();
+            BuildCharts();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        finally
+        {
+            _isLoading = false;
+            await InvokeAsync(StateHasChanged);
+        }
+    }
+
+    private Task RunManualAsync() =>
+        RunActionAsync(
+            async () => await BenchmarkApi.RunManualAsync(Session.AccessToken!),
+            "Manual benchmark completed.");
+
+    private Task RunAutomationAsync() =>
+        RunActionAsync(
+            async () => await BenchmarkApi.RunAutomationAsync(Session.AccessToken!),
+            "Automated benchmark completed and stored.");
+
+    private async Task RunActionAsync(Func<Task> action, string successMessage)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            Snackbar.Add("Session token is missing. Please sign in again.", Severity.Error);
+            return;
+        }
+
+        _isBusy = true;
+        try
+        {
+            await action();
+            Snackbar.Add(successMessage, Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            _isBusy = false;
+        }
+    }
+
+    private void BuildCharts()
+    {
+        var ordered = _history
+            .OrderBy(x => x.RunAt)
+            .TakeLast(12)
+            .ToList();
+
+        _labels = ordered
+            .Select(x => x.RunAt.ToLocalTime().ToString("dd/MM"))
+            .ToArray();
+
+        _scoreSeries = new List<ChartSeries<double>>
+        {
+            new()
+            {
+                Name = "Overall score",
+                Data = ordered.Select(x => Math.Round(x.OverallScore * 100d, 2)).ToArray()
+            },
+            new()
+            {
+                Name = "Citation accuracy",
+                Data = ordered.Select(x => Math.Round(x.CitationAccuracy * 100d, 2)).ToArray()
+            }
+        };
+
+        _runMixSeries = new List<ChartSeries<double>>
+        {
+            new()
+            {
+                Name = "Runs",
+                Data = new double[]
+                {
+                    _history.Count(x => !x.IsAutomated),
+                    _history.Count(x => x.IsAutomated)
+                }
+            }
+        };
+    }
+
+    private static string FormatPercent(double? value) =>
+        value is null ? "--" : $"{value.Value * 100d:0.#}%";
+
+    private static string FormatLatency(long? value) =>
+        value is null ? "--" : $"{value.Value} ms";
+
+    private static string GetRunMeta(BenchmarkHistoryItemDto? item)
+    {
+        if (item is null)
+        {
+            return "No benchmark run stored yet";
+        }
+
+        return $"{item.ModelName} • {item.RunAt.ToLocalTime():dd/MM HH:mm}";
+    }
+}
+
+<style>
+    .benchmarks-page {
+        font-family: 'Hanken Grotesk', sans-serif;
+    }
+
+    .page-enter {
+        animation: pageRise .42s ease both;
+    }
+
+    .benchmark-kicker {
+        font-size: 11px;
+        font-weight: 800;
+        color: #4648d4;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+    }
+
+    .benchmark-title {
+        font-size: 30px;
+        font-weight: 800;
+        line-height: 1.1;
+        color: #191c1e;
+        margin: 0;
+    }
+
+    .benchmark-subtitle {
+        margin: 8px 0 0;
+        font-size: 14px;
+        color: #575e72;
+        max-width: 760px;
+    }
+
+    .benchmark-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1rem;
+    }
+
+    .benchmark-kpi-card,
+    .benchmark-card {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 14px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    }
+
+    .benchmark-kpi-card {
+        padding: 1.25rem;
+    }
+
+    .benchmark-kpi-card.alert {
+        border-color: rgba(186, 26, 26, 0.25);
+    }
+
+    .benchmark-kpi-label {
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #767586;
+    }
+
+    .benchmark-kpi-value {
+        font-size: 28px;
+        font-weight: 800;
+        color: #191c1e;
+        margin-top: 10px;
+    }
+
+    .benchmark-kpi-sub,
+    .benchmark-provider,
+    .benchmark-section-caption {
+        font-size: 12px;
+        color: #575e72;
+    }
+
+    .benchmark-card {
+        padding: 1.5rem;
+    }
+
+    .benchmark-section-title {
+        font-size: 18px;
+        font-weight: 800;
+        margin: 0 0 4px;
+        color: #191c1e;
+    }
+
+    .benchmark-mini-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .benchmark-mini-row {
+        display: flex;
+        justify-content: space-between;
+        font-size: 13px;
+        color: #575e72;
+    }
+
+    @@media (max-width: 1200px) {
+        .benchmark-kpi-grid {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+
+    @@media (max-width: 640px) {
+        .benchmark-kpi-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>

@@ -45,6 +45,11 @@ builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Olla
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
+builder.Services.AddMemoryCache(options =>
+{
+    var ragCacheOptions = builder.Configuration.GetSection(RagOptions.SectionName).Get<RagOptions>() ?? new RagOptions();
+    options.SizeLimit = Math.Max(1, ragCacheOptions.EmbeddingCacheMaxEntries);
+});
 
 var recaptchaBootstrap = builder.Configuration.GetSection(RecaptchaOptions.SectionName).Get<RecaptchaOptions>() ?? new();
 if (!builder.Environment.IsDevelopment() && (!recaptchaBootstrap.Enabled || !recaptchaBootstrap.IsConfigured))
@@ -141,6 +146,7 @@ builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
 builder.Services.AddScoped<IDocumentStorageReadService, SupabaseDocumentStorageReadService>();
 builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
 
+builder.Services.AddScoped<IReRankService, ReRankService>();
 builder.Services.AddScoped<IRagSearchService, RagSearchService>();
 builder.Services.AddScoped<IAiChatService, SemanticKernelRagChatService>();
 builder.Services.AddScoped<IAiChatCompletionClientFactory, AiChatCompletionClientFactory>();
@@ -151,8 +157,17 @@ builder.Services.AddHttpClient<OllamaEmbeddingService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddScoped<IEmbeddingService>(sp =>
+{
+    var ragOptions = sp.GetRequiredService<IOptions<RagOptions>>().Value;
+    var ollama = sp.GetRequiredService<OllamaEmbeddingService>();
+    if (!ragOptions.EmbeddingCacheEnabled)
+    {
+        return ollama;
+    }
 
-builder.Services.AddScoped<IEmbeddingService, OllamaEmbeddingService>();
+    return ActivatorUtilities.CreateInstance<CachingEmbeddingService>(sp, ollama);
+});
 builder.Services.AddHostedService<OllamaHealthCheck>();
 // Sprint 3 services ----------------------------------------------------------
 builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
@@ -162,6 +177,7 @@ builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddSingleton<BenchmarkEvaluator>();
 builder.Services.AddScoped<BenchmarkRunner>();
 builder.Services.AddScoped<ChunkingBenchmarkService>();
+builder.Services.AddHostedService<BenchmarkAutomationHostedService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
@@ -214,6 +230,10 @@ builder.Services.AddHttpClient<QuizApiClient>((sp, http) =>
     http.Timeout = TimeSpan.FromMinutes(2);
 });
 builder.Services.AddHttpClient<AdminDashboardApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
+builder.Services.AddHttpClient<BenchmarkApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
@@ -309,6 +329,7 @@ using (var scope = app.Services.CreateScope())
     {
         await db.Database.MigrateAsync();
         startupLogger.LogInformation("Database migrations applied.");
+        await EnsurePhase3SchemaAsync(db, startupLogger);
 
         await SeedDefaultAdminAsync(db, goTrue, seedOptions, startupLogger);
         await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
@@ -429,6 +450,61 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
     db.Users.Add(admin);
     await db.SaveChangesAsync();
     logger.LogInformation("Default admin profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
+}
+
+static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
+{
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE TABLE IF NOT EXISTS benchmark_results (
+            id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+            model_name character varying(100) NOT NULL,
+            provider character varying(50) NOT NULL,
+            run_at timestamp with time zone NOT NULL,
+            overall_score double precision NOT NULL,
+            citation_accuracy double precision NOT NULL,
+            hallucination_rate double precision NOT NULL,
+            refusal_accuracy double precision NOT NULL,
+            tutoring_quality double precision NOT NULL,
+            diagram_accuracy double precision NOT NULL,
+            p50_latency_ms bigint NOT NULL,
+            p95_latency_ms bigint NOT NULL,
+            total_questions integer NOT NULL,
+            passed_questions integer NOT NULL,
+            failed_questions integer NOT NULL,
+            is_automated boolean NOT NULL,
+            alert_triggered boolean NOT NULL,
+            payload_json jsonb NOT NULL DEFAULT '{{}}'::jsonb,
+            created_at timestamp with time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
+        );
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE INDEX IF NOT EXISTS ix_benchmark_results_is_automated
+        ON benchmark_results (is_automated);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE INDEX IF NOT EXISTS ix_benchmark_results_model_run_at
+        ON benchmark_results (model_name, run_at);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE INDEX IF NOT EXISTS ix_benchmark_results_run_at
+        ON benchmark_results (run_at);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE document_chunks
+        ADD COLUMN IF NOT EXISTS search_vector tsvector
+        GENERATED ALWAYS AS (to_tsvector('simple', coalesce(content, ''))) STORED;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        CREATE INDEX IF NOT EXISTS ix_document_chunks_search_vector
+        ON document_chunks USING GIN (search_vector);
+        """);
+
+    logger.LogInformation("Phase 3 schema bootstrap completed.");
 }
 
 static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotrue, SeedOptions seedOptions, ILogger logger)

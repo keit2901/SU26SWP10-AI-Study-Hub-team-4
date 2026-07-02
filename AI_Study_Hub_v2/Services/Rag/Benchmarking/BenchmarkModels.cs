@@ -56,4 +56,5 @@ public sealed record BenchmarkConfig(
     string? Provider = null,
     int? Count = null,
     Guid? DocumentId = null,
-    IReadOnlyList<Guid>? DocumentIds = null);
+    IReadOnlyList<Guid>? DocumentIds = null,
+    bool IsAutomated = false);
