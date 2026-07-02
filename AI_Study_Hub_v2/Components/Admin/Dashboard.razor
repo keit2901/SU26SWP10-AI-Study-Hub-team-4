@@ -201,15 +201,47 @@
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" md="7">
-                <MudPaper Elevation="0" Class="dashboard-card">
-                    <MudText Typo="Typo.h6">Administrator checklist</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mb-3">Recommended actions based on use-case guardrails.</MudText>
-                    <MudList T="string" Dense="true">
-                        <MudListItem Icon="@Icons.Material.Filled.Gavel" Text="Resolve pending and reported documents before the next indexing window." />
-                        <MudListItem Icon="@Icons.Material.Filled.AdminPanelSettings" Text="Confirm no administrator is attempting to deactivate their own account." />
-                        <MudListItem Icon="@Icons.Material.Filled.DataUsage" Text="Adjust daily token quotas for high-usage courses or roles before throttling begins." />
-                        <MudListItem Icon="@Icons.Material.Filled.Tune" Text="Review critical AI configuration changes and verify audit log entries." />
-                    </MudList>
+                <MudPaper Elevation="0" Class="dashboard-card checklist-card" Style="background:#FAFBFC;">
+                    <div class="checklist-header">
+                        <div>
+                            <MudText Typo="Typo.h6">Administrator checklist</MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">Guardrail-based actions that require admin review.</MudText>
+                        </div>
+                    </div>
+                    <div class="checklist-rows">
+                        <div class="cl-row">
+                            <div class="cl-icon"><MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline" Size="Size.Small" /></div>
+                            <div class="cl-body">
+                                <span class="cl-title">Resolve document queue</span>
+                                <span class="cl-desc">Resolve pending and reported documents before the next indexing window.</span>
+                            </div>
+                            <span class="cl-badge badge-mod">Moderation</span>
+                        </div>
+                        <div class="cl-row">
+                            <div class="cl-icon"><MudIcon Icon="@Icons.Material.Filled.ShieldOutlined" Size="Size.Small" /></div>
+                            <div class="cl-body">
+                                <span class="cl-title">Protect admin access</span>
+                                <span class="cl-desc">Confirm no administrator is attempting to deactivate their own account.</span>
+                            </div>
+                            <span class="cl-badge badge-sec">Security</span>
+                        </div>
+                        <div class="cl-row">
+                            <div class="cl-icon"><MudIcon Icon="@Icons.Material.Filled.Speed" Size="Size.Small" /></div>
+                            <div class="cl-body">
+                                <span class="cl-title">Review token limits</span>
+                                <span class="cl-desc">Adjust daily token quotas for high-usage courses or roles before throttling begins.</span>
+                            </div>
+                            <span class="cl-badge badge-qta">Quota</span>
+                        </div>
+                        <div class="cl-row">
+                            <div class="cl-icon"><MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Small" /></div>
+                            <div class="cl-body">
+                                <span class="cl-title">Verify AI configuration</span>
+                                <span class="cl-desc">Review critical AI configuration changes and verify audit log entries.</span>
+                            </div>
+                            <span class="cl-badge badge-aud">Audit</span>
+                        </div>
+                    </div>
                 </MudPaper>
             </MudItem>
         </MudGrid>
@@ -487,6 +519,21 @@
     .attention-table .mud-table-head {
         background: rgba(15, 118, 110, .07);
     }
+
+    /* Administrator checklist */
+    .checklist-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem; }
+    .checklist-rows { display: flex; flex-direction: column; gap: .5rem; }
+    .cl-row { display: flex; align-items: center; gap: .75rem; padding: .7rem .85rem; background: #FFFFFF; border: 1px solid #E5E7EB; border-radius: 10px; transition: background .12s, border-color .12s; }
+    .cl-row:hover { background: #F1F5F9; border-color: #CBD5E1; }
+    .cl-icon { width: 32px; height: 32px; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #64748B; background: #F1F5F9; }
+    .cl-body { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+    .cl-title { font-size: .82rem; font-weight: 600; color: #1E293B; line-height: 1.2; }
+    .cl-desc { font-size: .76rem; color: #64748B; line-height: 1.35; }
+    .cl-badge { font-size: 10px; font-weight: 600; padding: .18rem .5rem; border-radius: 5px; text-transform: uppercase; letter-spacing: .03em; flex-shrink: 0; white-space: nowrap; }
+    .badge-mod { background: #FEF3C7; color: #92400E; }
+    .badge-sec { background: #EDE9FE; color: #5B21B6; }
+    .badge-qta { background: #DBEAFE; color: #1E40AF; }
+    .badge-aud { background: #D1FAE5; color: #065F46; }
 
     @@keyframes pageRise {
         from {
