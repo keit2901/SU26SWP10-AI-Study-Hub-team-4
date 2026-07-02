@@ -1,5 +1,6 @@
 @page "/profile"
 @using AI_Study_Hub_v2.Services
+@using AI_Study_Hub_v2.Dtos
 @inject AuthApiClient AuthApi
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
@@ -454,7 +455,6 @@ else
         try
         {
             var me = await AuthApi.GetMeAsync(Session.AccessToken);
-            // Patch the current session's user without losing the tokens.
             if (Session.Session is not null)
             {
                 Session.Session.User = me;

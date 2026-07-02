@@ -188,6 +188,7 @@
             var resp = await AuthApi.RegisterAsync(_model);
             resp.Password = _model.Password;
             Session.Set(resp);
+            Session.CurrentPassword = _model.Password;
             Snackbar.Add($"Account created. Welcome, {resp.User.FullName}!", Severity.Success);
             Nav.NavigateTo(AdminAccessPolicy.GetAuthenticatedLandingPage(resp.User.Role));
         }
