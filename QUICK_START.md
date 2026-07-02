@@ -11,7 +11,7 @@ powershell -ExecutionPolicy Bypass -File .\setup.ps1
 If Docker is not running and you only need local `.env` + app user-secrets:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipUp -SkipBuild
+powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipDocker -SkipBuild
 ```
 
 Set your own AI provider key locally, never commit it:

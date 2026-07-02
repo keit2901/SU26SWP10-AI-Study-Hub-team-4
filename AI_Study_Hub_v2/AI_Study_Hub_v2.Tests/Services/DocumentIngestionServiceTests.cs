@@ -5,7 +5,6 @@ using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.Extensions.Logging.Abstractions;
 
 namespace AI_Study_Hub_v2.Tests.Services;
@@ -29,7 +28,7 @@ public class DocumentIngestionServiceTests
         var result = await sut.IngestAsync(document.Id, profile.SupabaseUserId);
 
         result.Success.Should().BeTrue();
-        result.ChunkCount.Should().Be(2);
+        result.ChunkCount.Should().Be(1);
         result.ErrorMessage.Should().BeNull();
 
         var reloaded = await db.Documents.SingleAsync(d => d.Id == document.Id);
@@ -41,9 +40,9 @@ public class DocumentIngestionServiceTests
             .Where(c => c.DocumentId == document.Id)
             .OrderBy(c => c.ChunkIndex)
             .ToListAsync();
-        chunks.Select(c => c.ChunkIndex).Should().Equal(0, 1);
-        chunks.Select(c => c.PageNumber).Should().Equal(1, 2);
-        chunks.Select(c => c.Content).Should().Equal("First page text.", "Second page text.");
+        chunks.Select(c => c.ChunkIndex).Should().Equal(0);
+        chunks.Select(c => c.PageNumber).Should().Equal(1);
+        chunks.Select(c => c.Content).Should().Equal("First page text. Second page text.");
         chunks.Should().OnlyContain(c => c.TokenCount > 0);
     }
 
@@ -164,20 +163,26 @@ public class DocumentIngestionServiceTests
 
         return new DocumentIngestionService(
             db,
-    storage ?? new FakeStorageReadService(),
-    extraction,
-    new ChunkingService(Microsoft.Extensions.Options.Options.Create(ragOptions)),
-    embedding ?? new FakeEmbeddingService(ragOptions.EmbeddingDimensions),
-    imageDescription ?? new FakeImageDescriptionService(),
-    Microsoft.Extensions.Options.Options.Create(ragOptions),
-    Microsoft.Extensions.Options.Options.Create(new OllamaOptions
-    {
-        Model = "all-minilm:l6-v2"
-    }),
-    Microsoft.Extensions.Options.Options.Create(groqOptions ?? new GroqOptions()),
-    NullLogger<DocumentIngestionService>.Instance);
+            storage ?? new FakeStorageReadService(),
+            extraction,
+            BuildChunkingService(ragOptions),
+            embedding ?? new FakeEmbeddingService(ragOptions.EmbeddingDimensions),
+            imageDescription ?? new FakeImageDescriptionService(),
+            Microsoft.Extensions.Options.Options.Create(ragOptions),
+            Microsoft.Extensions.Options.Options.Create(new OllamaOptions
+            {
+                Model = "all-minilm:l6-v2"
+            }),
+            Microsoft.Extensions.Options.Options.Create(groqOptions ?? new GroqOptions()),
+            NullLogger<DocumentIngestionService>.Instance);
 
     }
+
+    private static ChunkingService BuildChunkingService(RagOptions options) =>
+        new(
+            new BlockParser(),
+            new SentenceSplitter(),
+            new ChunkMerger(Microsoft.Extensions.Options.Options.Create(options)));
 
     private static AppDbContext CreateDb()
     {

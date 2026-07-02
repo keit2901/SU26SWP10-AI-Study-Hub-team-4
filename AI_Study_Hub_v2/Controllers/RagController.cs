@@ -71,7 +71,10 @@ public sealed class RagController : ControllerBase
             _ragOptions.DefaultTopK,
             _ragOptions.MaxTopK,
             "Lower score means closer semantic distance; results are ranked from most relevant to least relevant.",
-            "Cosine distance over pgvector embeddings, constrained by owner and any document/folder/subject/semester filters."));
+            "Cosine distance over pgvector embeddings, constrained by owner and any document/folder/subject/semester filters.",
+            _ragOptions.ChunkingStrategy,
+            _ragOptions.MinChunkChars,
+            _ragOptions.MaxSectionChars));
     }
 
     private ObjectResult ToErrorResult(DocumentException exception) =>

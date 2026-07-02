@@ -14,11 +14,16 @@ namespace AI_Study_Hub_v2.Controllers;
 public sealed class BenchmarkController : ControllerBase
 {
     private readonly BenchmarkRunner _runner;
+    private readonly ChunkingBenchmarkService _chunkingBenchmarkService;
     private readonly ILogger<BenchmarkController> _logger;
 
-    public BenchmarkController(BenchmarkRunner runner, ILogger<BenchmarkController> logger)
+    public BenchmarkController(
+        BenchmarkRunner runner,
+        ChunkingBenchmarkService chunkingBenchmarkService,
+        ILogger<BenchmarkController> logger)
     {
         _runner = runner;
+        _chunkingBenchmarkService = chunkingBenchmarkService;
         _logger = logger;
     }
 
@@ -45,6 +50,26 @@ public sealed class BenchmarkController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPost("chunking-compare")]
+    [ProducesResponseType(typeof(ChunkingBenchmarkComparisonResult), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ChunkingBenchmarkComparisonResult>> CompareChunking(
+        [FromBody] ChunkingBenchmarkRunRequest? request,
+        CancellationToken cancellationToken)
+    {
+        var result = await _chunkingBenchmarkService.RunAsync(
+            request?.TopK,
+            cancellationToken: cancellationToken);
+
+        _logger.LogInformation(
+            "Chunking benchmark completed: semantic recall@{TopK}={SemanticRecall:P2}, fixed recall@{TopK}={FixedRecall:P2}",
+            result.TopK,
+            result.Semantic.RecallAtK,
+            result.TopK,
+            result.Fixed.RecallAtK);
+
+        return Ok(result);
+    }
+
     private Guid? GetSupabaseUserId()
     {
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -61,3 +86,6 @@ public sealed record BenchmarkRunRequest(
     string? ModelName = null,
     IReadOnlyList<Guid>? DocumentIds = null,
     int? Count = null);
+
+public sealed record ChunkingBenchmarkRunRequest(
+    int? TopK = null);

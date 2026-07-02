@@ -16,15 +16,18 @@ public sealed class AdminDocumentsController : ControllerBase
 {
     private readonly AppDbContext _db;
     private readonly IDocumentIngestionService _ingestionService;
+    private readonly string _chunkingStrategy;
     private readonly ILogger<AdminDocumentsController> _logger;
 
     public AdminDocumentsController(
         AppDbContext db,
         IDocumentIngestionService ingestionService,
+        Microsoft.Extensions.Options.IOptions<AI_Study_Hub_v2.Options.RagOptions> ragOptions,
         ILogger<AdminDocumentsController> logger)
     {
         _db = db;
         _ingestionService = ingestionService;
+        _chunkingStrategy = ragOptions.Value.ChunkingStrategy;
         _logger = logger;
     }
 
@@ -34,8 +37,9 @@ public sealed class AdminDocumentsController : ControllerBase
     {
         var documents = await _db.Documents
             .Include(d => d.User)
-            .Where(d => d.Status == DocumentStatus.Ready)
-            .OrderBy(d => d.CreatedAt)
+            .Where(d => d.Status == DocumentStatus.Ready || d.Status == DocumentStatus.Failed)
+            .OrderBy(d => d.Status == DocumentStatus.Failed ? 0 : 1)
+            .ThenBy(d => d.CreatedAt)
             .Select(d => new
             {
                 d.Id,
@@ -89,6 +93,7 @@ public sealed class AdminDocumentsController : ControllerBase
             Total: documents.Count,
             Succeeded: succeeded,
             Failed: failed,
+            ChunkingStrategy: _chunkingStrategy,
             Failures: failures));
     }
 }
@@ -97,6 +102,7 @@ public sealed record ReingestAllDocumentsResponse(
     int Total,
     int Succeeded,
     int Failed,
+    string ChunkingStrategy,
     IReadOnlyList<ReingestDocumentFailure> Failures);
 
 public sealed record ReingestDocumentFailure(

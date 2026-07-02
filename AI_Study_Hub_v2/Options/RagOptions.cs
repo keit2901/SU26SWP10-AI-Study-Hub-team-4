@@ -4,9 +4,15 @@ public sealed class RagOptions
 {
     public const string SectionName = "Rag";
 
+    public string ChunkingStrategy { get; set; } = "semantic";
+
     public int ChunkSizeChars { get; set; } = 1000;
 
     public int ChunkOverlapChars { get; set; } = 200;
+
+    public int MinChunkChars { get; set; } = 100;
+
+    public int MaxSectionChars { get; set; } = 1000;
 
     public int DefaultTopK { get; set; } = 5;
 
