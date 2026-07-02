@@ -1,4 +1,4 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin.Shared
+@namespace AI_Study_Hub_v2.Components.Admin.Shared
 @typeparam TItem
 @attribute [CascadingTypeParameter(nameof(TItem))]
 @using Microsoft.AspNetCore.Components
@@ -96,19 +96,38 @@
         box-shadow: 0 1px 3px rgba(0,0,0,.04);
     }
 
+    .dark-theme .admin-grid-shell {
+        border: 1px solid rgba(199, 196, 215, 0.1);
+        background: #1e2124;
+        box-shadow: none;
+    }
+
     .admin-grid-toolbar {
         padding: 1.1rem 1.25rem;
         border-bottom: 1px solid #E2E8F0;
         background: linear-gradient(90deg, rgba(90, 50, 234, .04), rgba(16, 185, 129, .03));
     }
 
+    .dark-theme .admin-grid-toolbar {
+        border-bottom: 1px solid rgba(199, 196, 215, 0.08);
+        background: linear-gradient(90deg, rgba(70, 72, 212, 0.1) 0%, rgba(107, 56, 212, 0.05) 100%);
+    }
+
     .admin-grid-empty {
         min-height: 320px;
-        padding: 2rem;
+        padding: 2.5rem;
         text-align: center;
+    }
+
+    .admin-data-grid {
+        background: transparent !important;
     }
 
     .admin-data-grid .mud-table-head {
         background: rgba(90, 50, 234, .05);
+    }
+
+    .dark-theme .admin-data-grid .mud-table-head {
+        background: rgba(199, 196, 215, 0.05) !important;
     }
 </style>

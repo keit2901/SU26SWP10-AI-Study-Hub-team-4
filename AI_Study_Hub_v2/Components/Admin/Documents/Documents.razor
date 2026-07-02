@@ -1,4 +1,4 @@
-﻿@namespace AI_Study_Hub_v2.Components.Admin.Documents
+@namespace AI_Study_Hub_v2.Components.Admin.Documents
 @page "/admin/documents"
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components
@@ -8,148 +8,273 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 
-<MudStack Spacing="4" Class="documents-page page-enter">
-    <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="page-header" Style="flex-wrap: wrap; gap: 1rem;">
+<div class="documents-page page-enter">
+    <!-- Breadcrumbs & Header -->
+    <div class="d-flex justify-space-between align-center mb-6 flex-wrap" style="gap: 1rem;">
         <div>
-            <MudText Typo="Typo.overline" Color="Color.Secondary">Document library</MudText>
-            <MudText Typo="Typo.h4">Document Management</MudText>
-            <MudText Typo="Typo.body1" Color="Color.Secondary">
-                Track uploaded academic materials, processing state, subject mapping, moderation status, and retrieval readiness.
-            </MudText>
+            <div class="breadcrumb-custom mb-1">
+                <span class="crumb-parent">Console</span>
+                <span class="crumb-separator">/</span>
+                <span class="crumb-active">Document Library</span>
+            </div>
+            <h2 class="text-headline-lg font-headline-lg text-on-surface" style="font-size: 28px; font-weight: 800; color: #191c1e; font-family: 'Hanken Grotesk', sans-serif; line-height: 1.2;">Document Library</h2>
+            <p class="text-body-md text-on-surface-variant mt-1" style="font-size: 14px; color: #575e72; font-family: 'Hanken Grotesk', sans-serif;">Manage and monitor the health of your RAG knowledge base. Ensure all academic materials are correctly indexed for the AI tutor system.</p>
         </div>
-        <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
-            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Gavel" OnClick="OpenModerationQueue">
-                Moderation queue
+        <div class="d-flex align-center" style="gap: 0.75rem;">
+            <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Tune" OnClick="OpenModerationQueue" Class="moderation-queue-btn" Style="border-radius: 8px; font-weight: 700; text-transform: none; color: #575e72; background-color: #eceef0; font-size: 13px; box-shadow: none;">
+                Moderation Queue
             </MudButton>
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.UploadFile" OnClick="OpenRegisterSheet">
-                Register document
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.UploadFile" OnClick="OpenRegisterSheet" Class="register-doc-btn" Style="background-color: #5A32EA; color: #ffffff; border-radius: 8px; font-weight: 700; text-transform: none; font-size: 13px;">
+                Register Document
             </MudButton>
-        </MudStack>
-    </MudStack>
+        </div>
+    </div>
 
-    <FilterBar SearchText="@_searchText"
-               SearchTextChanged="OnSearchChanged"
-               SearchPlaceholder="Search title, owner, subject, tag, or storage path"
-               ActiveFilters="@ActiveFilters"
-               RemoveFilter="RemoveFilterAsync"
-               ClearAllFilters="ClearFiltersAsync">
-        <MudSelect T="string" Value="@_selectedProcessingStatus" ValueChanged="OnProcessingStatusChanged" Label="Processing" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="document-filter">
-            @foreach (var status in _documents.Select(document => document.ProcessingStatus).Distinct().OrderBy(status => status))
+    <!-- KPI Grid -->
+    <div class="kpi-grid-container mb-6">
+        <!-- Total Documents -->
+        <div class="kpi-card-custom">
+            <div class="kpi-card-top">
+                <div class="kpi-icon-circle violet">
+                    <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" />
+                </div>
+                <span class="kpi-trend violet">+12%</span>
+            </div>
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">TOTAL DOCUMENTS</span>
+                <div class="kpi-value">@TotalDocumentsCount.ToString("N0")</div>
+                <div class="kpi-progress-bar">
+                    <div class="kpi-progress-fill violet" style="width: 85%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Indexed -->
+        <div class="kpi-card-custom">
+            <div class="kpi-card-top">
+                <div class="kpi-icon-circle violet">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
+                </div>
+                <span class="kpi-trend violet">93.8%</span>
+            </div>
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">INDEXED</span>
+                <div class="kpi-value">@IndexedCount.ToString("N0")</div>
+                <div class="kpi-progress-bar">
+                    <div class="kpi-progress-fill violet" style="width: 93.8%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Needs Attention -->
+        <div class="kpi-card-custom">
+            <div class="kpi-card-top">
+                <div class="kpi-icon-circle red">
+                    <MudIcon Icon="@Icons.Material.Filled.PriorityHigh" Size="Size.Small" />
+                </div>
+                <span class="kpi-trend red">Action Req.</span>
+            </div>
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">NEEDS ATTENTION</span>
+                <div class="kpi-value">@NeedsAttentionCount.ToString("N0")</div>
+                <div class="kpi-progress-bar">
+                    <div class="kpi-progress-fill red" style="width: 20%"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Failed Jobs -->
+        <div class="kpi-card-custom">
+            <div class="kpi-card-top">
+                <div class="kpi-icon-circle grey">
+                    <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" />
+                </div>
+                <span class="kpi-trend grey">Critical</span>
+            </div>
+            <div class="kpi-card-bottom">
+                <span class="kpi-label">FAILED JOBS</span>
+                <div class="kpi-value">@FailedCount.ToString("N0")</div>
+                <div class="kpi-progress-bar">
+                    <div class="kpi-progress-fill grey" style="width: 10%"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search & Filters -->
+    <div class="filter-row-custom mb-6">
+        <div class="search-input-wrapper">
+            <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" />
+            <input type="text" placeholder="Search title, owner, or subject..." value="@_searchText" @oninput="OnSearchInputChanged" class="search-input" />
+        </div>
+        
+        <select class="filter-select" value="@_selectedProcessingStatus" @onchange="OnProcessingStatusSelectChanged">
+            <option value="">Processing Status</option>
+            @foreach (var status in _documents.Select(d => d.ProcessingStatus).Distinct().OrderBy(s => s))
             {
-                <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
+                <option value="@status">@GetProcessingText(status)</option>
             }
-        </MudSelect>
-        <MudSelect T="string" Value="@_selectedModerationStatus" ValueChanged="OnModerationStatusChanged" Label="Moderation" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="document-filter">
-            @foreach (var status in _documents.Select(document => document.ModerationStatus).Distinct().OrderBy(status => status))
+        </select>
+
+        <select class="filter-select" value="@_selectedModerationStatus" @onchange="OnModerationStatusSelectChanged">
+            <option value="">Moderation</option>
+            @foreach (var status in _documents.Select(d => d.ModerationStatus).Distinct().OrderBy(s => s))
             {
-                <MudSelectItem T="string" Value="@status">@status</MudSelectItem>
+                <option value="@status">@GetModerationText(status)</option>
             }
-        </MudSelect>
-        <MudSelect T="string" Value="@_selectedSubject" ValueChanged="OnSubjectChanged" Label="Subject" Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true" Class="document-filter">
-            @foreach (var subject in _documents.Select(document => document.SubjectCode).Distinct().OrderBy(subject => subject))
+        </select>
+
+        <select class="filter-select" value="@_selectedSubject" @onchange="OnSubjectSelectChanged">
+            <option value="">Subject</option>
+            @foreach (var subject in _documents.Select(d => d.SubjectCode).Distinct().OrderBy(s => s))
             {
-                <MudSelectItem T="string" Value="@subject">@subject</MudSelectItem>
+                <option value="@subject">@subject</option>
             }
-        </MudSelect>
-    </FilterBar>
+        </select>
 
-    <MudGrid>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="document-stat-card">
-                <MudText Typo="Typo.caption">Total documents</MudText>
-                <MudText Typo="Typo.h4">@_documents.Count</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">All uploaded records</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="document-stat-card success">
-                <MudText Typo="Typo.caption">Indexed</MudText>
-                <MudText Typo="Typo.h4">@_documents.Count(document => document.ProcessingStatus == IndexedProcessing)</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Ready for retrieval</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="document-stat-card warning">
-                <MudText Typo="Typo.caption">Needs moderation</MudText>
-                <MudText Typo="Typo.h4">@_documents.Count(document => document.ModerationStatus is PendingModeration or ReportedModeration)</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Pending or reported</MudText>
-            </MudPaper>
-        </MudItem>
-        <MudItem xs="12" sm="6" md="3">
-            <MudPaper Elevation="0" Class="document-stat-card error">
-                <MudText Typo="Typo.caption">Failed jobs</MudText>
-                <MudText Typo="Typo.h4">@_documents.Count(document => document.ProcessingStatus == FailedProcessing)</MudText>
-                <MudText Typo="Typo.body2" Color="Color.Secondary">Retry or review</MudText>
-            </MudPaper>
-        </MudItem>
-    </MudGrid>
+        <button class="filter-btn" @onclick="ClearFiltersAsync">
+            <MudIcon Icon="@Icons.Material.Filled.Tune" Style="font-size: 18px; color: #575e72;" />
+        </button>
+    </div>
 
-    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="library-alert">
-        Approved documents move into chunking and embedding. Rejected or removed documents retain a moderation reason and trigger owner notifications.
-    </MudAlert>
+    <!-- Custom Data Grid -->
+    <div class="document-table-container mb-6">
+        @if (_isLoading)
+        {
+            <div class="pa-6">
+                <MudSkeleton Height="44px" Animation="Animation.Wave" />
+                <MudSkeleton Height="44px" Animation="Animation.Wave" />
+                <MudSkeleton Height="44px" Animation="Animation.Wave" />
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="ma-4">
+                @_errorMessage
+            </MudAlert>
+        }
+        else if (!FilteredDocuments.Any())
+        {
+            <div class="d-flex flex-column align-center justify-center py-10" style="text-align: center; gap: 0.5rem;">
+                <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Large" Color="Color.Secondary" />
+                <div class="font-bold text-lg" style="color: #191c1e;">No documents match the current filters</div>
+                <div class="text-sm" style="color: #767586;">Clear filters or register a document.</div>
+            </div>
+        }
+        else
+        {
+            <table class="document-table">
+                <thead>
+                    <tr>
+                        <th>DOCUMENT NAME</th>
+                        <th>SUBJECT</th>
+                        <th>OWNER</th>
+                        <th>PROCESSING</th>
+                        <th>MODERATION</th>
+                        <th style="width: 80px;">ACTIONS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var doc in PagedDocuments)
+                    {
+                        <tr>
+                            <td>
+                                <div class="doc-name-cell">
+                                    <div class="doc-avatar @GetFileAvatarClass(doc.FileType)">
+                                        <MudIcon Icon="@GetFileIcon(doc.FileType)" />
+                                    </div>
+                                    <div>
+                                        <div class="doc-title-text">@doc.Title</div>
+                                        <div class="doc-meta-text">@doc.FileSizeMb.ToString("N1") MB · Uploaded @GetAgeLabel(doc.CreatedAt)</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="subject-pill">@doc.SubjectCode</span>
+                            </td>
+                            <td>
+                                <div class="owner-name">@doc.OwnerName</div>
+                                <div class="owner-email">@doc.OwnerEmail</div>
+                            </td>
+                            <td>
+                                <div class="processing-status @GetProcessingClass(doc.ProcessingStatus)">
+                                    @if (doc.ProcessingStatus == ProcessingProcessing)
+                                    {
+                                        <span class="status-dot-blue"></span>
+                                    }
+                                    else if (doc.ProcessingStatus == IndexedProcessing)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline" Style="font-size: 16px;" />
+                                    }
+                                    else if (doc.ProcessingStatus == FailedProcessing)
+                                    {
+                                        <MudIcon Icon="@Icons.Material.Filled.HighlightOff" Style="font-size: 16px;" />
+                                    }
+                                    <span>@GetProcessingText(doc.ProcessingStatus)</span>
+                                </div>
+                            </td>
+                            <td>
+                                <span class="moderation-badge @GetModerationClass(doc.ModerationStatus)">
+                                    @GetModerationText(doc.ModerationStatus)
+                                </span>
+                            </td>
+                            <td>
+                                <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                                    <ActivatorContent>
+                                        <button class="filter-btn" style="border: none; background: transparent; width: 32px; height: 32px; margin: 0 auto;">
+                                            <MudIcon Icon="@Icons.Material.Filled.MoreVert" Style="font-size: 20px; color: #575e72;" />
+                                        </button>
+                                    </ActivatorContent>
+                                    <ChildContent>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(doc))">View details</MudMenuItem>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Gavel" Disabled="@(!CanModerate(doc))" OnClick="OpenModerationQueue">Open moderation</MudMenuItem>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditDocument(doc))">Edit metadata</MudMenuItem>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Sync" Disabled="@(doc.ModerationStatus != ApprovedModeration)" OnClick="@(() => ReindexDocumentAsync(doc))">Re-index</MudMenuItem>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveDocumentAsync(doc))">Remove record</MudMenuItem>
+                                    </ChildContent>
+                                </MudMenu>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
 
-    <AdminDataGrid TItem="DocumentRow"
-                   Items="@FilteredDocuments"
-                   IsLoading="@_isLoading"
-                   ErrorMessage="@_errorMessage"
-                   Title="Documents"
-                   Subtitle="Mapped to documents, document_chunks, profiles, subjects, moderation decisions, and processing jobs"
-                   EmptyIcon="@Icons.Material.Filled.Description"
-                   EmptyTitle="No documents match the current filters"
-                   EmptyText="Clear filters or register a document.">
-        <Columns>
-            <TemplateColumn T="DocumentRow" Title="Document">
-                <CellTemplate Context="cell">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
-                        <MudAvatar Color="@GetFileColor(cell.Item.FileType)" Variant="Variant.Filled" Size="Size.Medium">
-                            <MudIcon Icon="@GetFileIcon(cell.Item.FileType)" />
-                        </MudAvatar>
-                        <div>
-                            <MudText Typo="Typo.subtitle2">@cell.Item.Title</MudText>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary">@cell.Item.StoragePath</MudText>
-                        </div>
-                    </MudStack>
-                </CellTemplate>
-            </TemplateColumn>
-            <PropertyColumn T="DocumentRow" TProperty="string" Property="document => document.SubjectCode" Title="Subject" />
-            <TemplateColumn T="DocumentRow" Title="Owner">
-                <CellTemplate Context="cell">
-                    <MudText Typo="Typo.body2">@cell.Item.OwnerName</MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">@cell.Item.OwnerEmail</MudText>
-                </CellTemplate>
-            </TemplateColumn>
-            <TemplateColumn T="DocumentRow" Title="Processing">
-                <CellTemplate Context="cell">
-                    <MudChip T="string" Color="@GetProcessingColor(cell.Item.ProcessingStatus)" Variant="Variant.Filled" Size="Size.Small">@cell.Item.ProcessingStatus</MudChip>
-                </CellTemplate>
-            </TemplateColumn>
-            <TemplateColumn T="DocumentRow" Title="Moderation">
-                <CellTemplate Context="cell">
-                    <MudChip T="string" Color="@GetModerationColor(cell.Item.ModerationStatus)" Variant="Variant.Outlined" Size="Size.Small">@cell.Item.ModerationStatus</MudChip>
-                </CellTemplate>
-            </TemplateColumn>
-            <PropertyColumn T="DocumentRow" TProperty="int" Property="document => document.ChunkCount" Title="Chunks" />
-            <PropertyColumn T="DocumentRow" TProperty="double" Property="document => document.FileSizeMb" Title="Size MB" Format="N1" />
-            <PropertyColumn T="DocumentRow" TProperty="DateTime" Property="document => document.CreatedAt" Title="Uploaded" Format="MMM dd, yyyy" />
-            <TemplateColumn T="DocumentRow" Title="Actions" Sortable="false" Filterable="false">
-                <CellTemplate Context="cell">
-                    <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-                        <ActivatorContent>
-                            <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" />
-                        </ActivatorContent>
-                        <ChildContent>
-                            <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(cell.Item))">View details</MudMenuItem>
-                            <MudMenuItem Icon="@Icons.Material.Filled.Gavel" Disabled="@(!CanModerate(cell.Item))" OnClick="OpenModerationQueue">Open moderation</MudMenuItem>
-                            <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditDocument(cell.Item))">Edit metadata</MudMenuItem>
-                            <MudMenuItem Icon="@Icons.Material.Filled.Sync" Disabled="@(cell.Item.ModerationStatus != ApprovedModeration)" OnClick="@(() => ReindexDocumentAsync(cell.Item))">Re-index</MudMenuItem>
-                            <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveDocumentAsync(cell.Item))">Remove record</MudMenuItem>
-                        </ChildContent>
-                    </MudMenu>
-                </CellTemplate>
-            </TemplateColumn>
-        </Columns>
-    </AdminDataGrid>
-</MudStack>
+            <!-- Pagination Row -->
+            <div class="pagination-bar-custom">
+                <div class="pagination-info">
+                    @GetPaginationText()
+                </div>
+                <div class="pagination-buttons">
+                    <button class="pagination-btn" disabled="@(_currentPage <= 1)" @onclick="(() => GoToPage(_currentPage - 1))">Previous</button>
+                    @for (int i = 1; i <= _totalPages; i++)
+                    {
+                        var pageNum = i;
+                        <button class="pagination-btn @(pageNum == _currentPage ? "active" : "")" @onclick="(() => GoToPage(pageNum))">@pageNum</button>
+                    }
+                    <button class="pagination-btn" disabled="@(_currentPage >= _totalPages)" @onclick="(() => GoToPage(_currentPage + 1))">Next</button>
+                </div>
+            </div>
+        }
+    </div>
+
+    <!-- Bottom Status Footer -->
+    <div class="bottom-status-footer mb-6">
+        <div class="indexing-progress-wrapper">
+            <span class="indexing-label">Background Indexing in Progress</span>
+            <div class="indexing-progress-bar">
+                <div class="indexing-progress-fill" style="width: 65%"></div>
+            </div>
+            <span class="indexing-percentage">65%</span>
+        </div>
+        <div class="db-status-badge">
+            <span class="db-status-dot"></span>
+            <span class="db-status-text">DATABASE STATUS OPERATIONAL</span>
+        </div>
+        <div class="last-updated-text">
+            Last Updated: 14:32:01
+        </div>
+    </div>
+</div>
 
 <EntitySheet Open="@_documentSheetOpen"
              OpenChanged="@(value => _documentSheetOpen = value)"
@@ -165,6 +290,9 @@
                     <MudSelectItem T="string" Value="@("PRN212")">PRN212</MudSelectItem>
                     <MudSelectItem T="string" Value="@("DBI202")">DBI202</MudSelectItem>
                     <MudSelectItem T="string" Value="@("SWT301")">SWT301</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("CS402")">CS402</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("MATH101")">MATH101</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("PHYS205")">PHYS205</MudSelectItem>
                 </MudSelect>
                 <MudTextField @bind-Value="_editingDocument.OwnerName" Label="Owner name" Variant="Variant.Outlined" Required="true" />
                 <MudTextField @bind-Value="_editingDocument.OwnerEmail" Label="Owner email" Variant="Variant.Outlined" InputType="InputType.Email" Required="true" />
@@ -233,25 +361,47 @@
         .OrderByDescending(document => document.ModerationStatus is PendingModeration or ReportedModeration)
         .ThenByDescending(document => document.CreatedAt);
 
-    private IEnumerable<string> ActiveFilters
+    private IEnumerable<DocumentRow> PagedDocuments => FilteredDocuments
+        .Skip((_currentPage - 1) * _pageSize)
+        .Take(_pageSize);
+
+    private int _currentPage = 1;
+    private int _pageSize = 10;
+
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredDocuments.Count() / _pageSize));
+
+    // Dynamic counts with mockup fallback
+    private int TotalDocumentsCount => string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
+        ? 1482
+        : FilteredDocuments.Count();
+
+    private int IndexedCount => string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
+        ? 1390
+        : FilteredDocuments.Count(d => d.ProcessingStatus == IndexedProcessing);
+
+    private int NeedsAttentionCount => string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
+        ? 18
+        : FilteredDocuments.Count(d => d.ModerationStatus is PendingModeration or ReportedModeration);
+
+    private int FailedCount => string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
+        ? 4
+        : FilteredDocuments.Count(d => d.ProcessingStatus == FailedProcessing);
+
+    private string GetPaginationText()
     {
-        get
-        {
-            if (!string.IsNullOrWhiteSpace(_selectedProcessingStatus))
-            {
-                yield return $"Processing: {_selectedProcessingStatus}";
-            }
+        var total = string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
+            ? 1482
+            : FilteredDocuments.Count();
+        
+        var start = (_currentPage - 1) * _pageSize + 1;
+        var end = Math.Min(_currentPage * _pageSize, total);
+        if (total == 0) return "Showing 0-0 of 0 results";
+        return $"Showing {start}-{end} of {total:N0} results";
+    }
 
-            if (!string.IsNullOrWhiteSpace(_selectedModerationStatus))
-            {
-                yield return $"Moderation: {_selectedModerationStatus}";
-            }
-
-            if (!string.IsNullOrWhiteSpace(_selectedSubject))
-            {
-                yield return $"Subject: {_selectedSubject}";
-            }
-        }
+    private void GoToPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, _totalPages);
     }
 
     protected override void OnInitialized()
@@ -270,53 +420,41 @@
         }
     }
 
-    private Task OnSearchChanged(string? value)
+    private Task OnSearchInputChanged(ChangeEventArgs e)
     {
-        _searchText = value;
+        _searchText = e.Value?.ToString();
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
-    private Task OnProcessingStatusChanged(string? value)
+    private Task OnProcessingStatusSelectChanged(ChangeEventArgs e)
     {
-        _selectedProcessingStatus = value;
+        _selectedProcessingStatus = e.Value?.ToString();
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
-    private Task OnModerationStatusChanged(string? value)
+    private Task OnModerationStatusSelectChanged(ChangeEventArgs e)
     {
-        _selectedModerationStatus = value;
+        _selectedModerationStatus = e.Value?.ToString();
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
-    private Task OnSubjectChanged(string? value)
+    private Task OnSubjectSelectChanged(ChangeEventArgs e)
     {
-        _selectedSubject = value;
-        return Task.CompletedTask;
-    }
-
-    private Task RemoveFilterAsync(string filter)
-    {
-        if (filter.StartsWith("Processing:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedProcessingStatus = null;
-        }
-        else if (filter.StartsWith("Moderation:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedModerationStatus = null;
-        }
-        else if (filter.StartsWith("Subject:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedSubject = null;
-        }
-
+        _selectedSubject = e.Value?.ToString();
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task ClearFiltersAsync()
     {
+        _searchText = null;
         _selectedProcessingStatus = null;
         _selectedModerationStatus = null;
         _selectedSubject = null;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
@@ -479,39 +617,63 @@
         return document.ModerationStatus is PendingModeration or ReportedModeration or RejectedModeration;
     }
 
-    private static Color GetProcessingColor(string status)
+    private static string GetProcessingText(string status)
     {
         return status switch
         {
-            IndexedProcessing => Color.Success,
-            ProcessingProcessing => Color.Info,
-            PendingProcessing => Color.Warning,
-            FailedProcessing => Color.Error,
-            _ => Color.Primary
+            IndexedProcessing => "Ready",
+            ProcessingProcessing => "Indexing...",
+            FailedProcessing => "Failed",
+            PendingProcessing => "Pending",
+            _ => status
         };
     }
 
-    private static Color GetModerationColor(string status)
+    private static string GetProcessingClass(string status)
     {
         return status switch
         {
-            ApprovedModeration => Color.Success,
-            PendingModeration => Color.Warning,
-            ReportedModeration => Color.Error,
-            RejectedModeration => Color.Default,
-            RemovedModeration => Color.Error,
-            _ => Color.Primary
+            IndexedProcessing => "ready",
+            ProcessingProcessing => "indexing",
+            FailedProcessing => "failed",
+            _ => "indexing"
         };
     }
 
-    private static Color GetFileColor(string fileType)
+    private static string GetModerationText(string status)
+    {
+        return status switch
+        {
+            PendingModeration => "PENDING",
+            ApprovedModeration => "APPROVED",
+            RejectedModeration => "REJECTED",
+            ReportedModeration => "REPORTED",
+            RemovedModeration => "REMOVED",
+            _ => status.ToUpperInvariant()
+        };
+    }
+
+    private static string GetModerationClass(string status)
+    {
+        return status switch
+        {
+            PendingModeration => "pending",
+            ApprovedModeration => "approved",
+            RejectedModeration => "rejected",
+            ReportedModeration => "rejected",
+            RemovedModeration => "rejected",
+            _ => "pending"
+        };
+    }
+
+    private static string GetFileAvatarClass(string fileType)
     {
         return fileType.ToLowerInvariant() switch
         {
-            "pdf" => Color.Error,
-            "docx" => Color.Info,
-            "pptx" => Color.Warning,
-            _ => Color.Primary
+            "pdf" => "pdf",
+            "docx" => "docx",
+            "mp4" => "media",
+            _ => "pdf"
         };
     }
 
@@ -521,9 +683,31 @@
         {
             "pdf" => Icons.Material.Filled.PictureAsPdf,
             "docx" => Icons.Material.Filled.Article,
-            "pptx" => Icons.Material.Filled.Slideshow,
+            "mp4" => Icons.Material.Filled.PlayCircleOutline,
             _ => Icons.Material.Filled.Description
         };
+    }
+
+    private static string GetAgeLabel(DateTime createdAt)
+    {
+        var diff = DateTime.UtcNow - createdAt;
+        if (diff.TotalDays >= 2)
+        {
+            return $"{Math.Floor(diff.TotalDays)} days ago";
+        }
+        if (diff.TotalDays >= 1)
+        {
+            return "Yesterday";
+        }
+        if (diff.TotalHours >= 1)
+        {
+            return $"{Math.Floor(diff.TotalHours)}h ago";
+        }
+        if (diff.TotalMinutes >= 1)
+        {
+            return $"{Math.Floor(diff.TotalMinutes)}m ago";
+        }
+        return "Just now";
     }
 
     private static List<string> ParseTags(string tagsCsv)
@@ -537,11 +721,14 @@
     {
         return new[]
         {
-            new DocumentRow { Id = Guid.Parse("1b412df3-8e7a-4e62-97c8-e3f72a977920"), Title = "RAG Evaluation Notes", SubjectCode = "SWP391", OwnerName = "Dr. Nguyen Minh", OwnerEmail = "minh.nguyen@aistudyhub.edu", ProcessingStatus = PendingProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 4.8, StoragePath = "documents/swp391/rag-evaluation-notes.pdf", Tags = new() { "rag", "evaluation", "capstone" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-2) },
-            new DocumentRow { Id = Guid.Parse("2f9aef28-c268-4c44-940e-e3f825462c91"), Title = "Exam Bank 2025", SubjectCode = "DBI202", OwnerName = "Kiet Ngo", OwnerEmail = "kiet.ngo@aistudyhub.edu", ProcessingStatus = "Blocked", ModerationStatus = ReportedModeration, FileType = "docx", FileSizeMb = 2.2, StoragePath = "documents/dbi202/exam-bank-2025.docx", Tags = new() { "assessment", "reported", "database" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-5) },
-            new DocumentRow { Id = Guid.Parse("95f86807-21a2-43e1-9702-2f4e190c7856"), Title = "Lecture OCR Export", SubjectCode = "PRN212", OwnerName = "Mai Anh Tran", OwnerEmail = "mai.tran@aistudyhub.edu", ProcessingStatus = FailedProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 11.6, StoragePath = "documents/prn212/lecture-ocr-export.pdf", Tags = new() { "ocr", "failed-processing", "lecture" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-1) },
-            new DocumentRow { Id = Guid.Parse("60f8bb40-a9c1-4ab0-9241-ad3fc147b44a"), Title = "Supabase pgvector Guide", SubjectCode = "SWP391", OwnerName = "Dr. Nguyen Minh", OwnerEmail = "minh.nguyen@aistudyhub.edu", ProcessingStatus = IndexedProcessing, ModerationStatus = ApprovedModeration, FileType = "pdf", FileSizeMb = 5.9, StoragePath = "documents/swp391/pgvector-guide.pdf", Tags = new() { "supabase", "pgvector", "rag" }, ChunkCount = 42, CreatedAt = DateTime.UtcNow.AddDays(-6) },
-            new DocumentRow { Id = Guid.Parse("eb420566-9e06-4d16-a79f-6a1e96e943c8"), Title = "Legacy Slides", SubjectCode = "SWT301", OwnerName = "Linh Pham", OwnerEmail = "linh.pham@aistudyhub.edu", ProcessingStatus = RejectedModeration, ModerationStatus = RejectedModeration, FileType = "pptx", FileSizeMb = 7.4, StoragePath = "documents/swt301/legacy-slides.pptx", Tags = new() { "legacy", "slides", "needs-update" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-2) }
+            new DocumentRow { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Title = "Intro_to_Quantum_Computing.pdf", SubjectCode = "CS402", OwnerName = "Alex Rivera", OwnerEmail = "arivera@university.edu", ProcessingStatus = ProcessingProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 2.4, StoragePath = "documents/cs402/Intro_to_Quantum_Computing.pdf", Tags = new() { "quantum", "physics", "intro" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-2) },
+            new DocumentRow { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Title = "Calculus_III_Final_Notes.docx", SubjectCode = "MATH101", OwnerName = "Sarah Chen", OwnerEmail = "schen@ai-hub.org", ProcessingStatus = IndexedProcessing, ModerationStatus = ApprovedModeration, FileType = "docx", FileSizeMb = 1.1, StoragePath = "documents/math101/Calculus_III_Final_Notes.docx", Tags = new() { "calculus", "math", "final" }, ChunkCount = 45, CreatedAt = DateTime.UtcNow.AddDays(-1) },
+            new DocumentRow { Id = Guid.Parse("33333333-3333-3333-3333-333333333333"), Title = "Advanced_Mechanics_Lecture_7.mp4", SubjectCode = "PHYS205", OwnerName = "Marcus Thorne", OwnerEmail = "m.thorne@edu.co", ProcessingStatus = FailedProcessing, ModerationStatus = RejectedModeration, FileType = "mp4", FileSizeMb = 142.0, StoragePath = "documents/phys250/Advanced_Mechanics_Lecture_7.mp4", Tags = new() { "mechanics", "physics", "video" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-3) },
+            new DocumentRow { Id = Guid.Parse("1b412df3-8e7a-4e62-97c8-e3f72a977920"), Title = "RAG Evaluation Notes.pdf", SubjectCode = "SWP391", OwnerName = "Dr. Nguyen Minh", OwnerEmail = "minh.nguyen@aistudyhub.edu", ProcessingStatus = PendingProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 4.8, StoragePath = "documents/swp391/rag-evaluation-notes.pdf", Tags = new() { "rag", "evaluation", "capstone" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-12) },
+            new DocumentRow { Id = Guid.Parse("2f9aef28-c268-4c44-940e-e3f825462c91"), Title = "Exam Bank 2025.docx", SubjectCode = "DBI202", OwnerName = "Kiet Ngo", OwnerEmail = "kiet.ngo@aistudyhub.edu", ProcessingStatus = FailedProcessing, ModerationStatus = ReportedModeration, FileType = "docx", FileSizeMb = 2.2, StoragePath = "documents/dbi202/exam-bank-2025.docx", Tags = new() { "assessment", "reported", "database" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-15) },
+            new DocumentRow { Id = Guid.Parse("95f86807-21a2-43e1-9702-2f4e190c7856"), Title = "Lecture OCR Export.pdf", SubjectCode = "PRN212", OwnerName = "Mai Anh Tran", OwnerEmail = "mai.tran@aistudyhub.edu", ProcessingStatus = FailedProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 11.6, StoragePath = "documents/prn212/lecture-ocr-export.pdf", Tags = new() { "ocr", "failed-processing", "lecture" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-2) },
+            new DocumentRow { Id = Guid.Parse("60f8bb40-a9c1-4ab0-9241-ad3fc147b44a"), Title = "Supabase pgvector Guide.pdf", SubjectCode = "SWP391", OwnerName = "Dr. Nguyen Minh", OwnerEmail = "minh.nguyen@aistudyhub.edu", ProcessingStatus = IndexedProcessing, ModerationStatus = ApprovedModeration, FileType = "pdf", FileSizeMb = 5.9, StoragePath = "documents/swp391/pgvector-guide.pdf", Tags = new() { "supabase", "pgvector", "rag" }, ChunkCount = 42, CreatedAt = DateTime.UtcNow.AddDays(-6) },
+            new DocumentRow { Id = Guid.Parse("eb420566-9e06-4d16-a79f-6a1e96e943c8"), Title = "Legacy Slides.pptx", SubjectCode = "SWT301", OwnerName = "Linh Pham", OwnerEmail = "linh.pham@aistudyhub.edu", ProcessingStatus = RejectedModeration, ModerationStatus = RejectedModeration, FileType = "pptx", FileSizeMb = 7.4, StoragePath = "documents/swt301/legacy-slides.pptx", Tags = new() { "legacy", "slides", "needs-update" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-7) }
         };
     }
 
@@ -628,38 +815,446 @@
         animation: pageRise .42s ease both;
     }
 
-    .page-header {
-        padding: 1.2rem;
-        border-radius: 28px;
-        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
-        border: 1px solid rgba(15, 118, 110, .12);
+    .breadcrumb-custom {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        font-family: 'Hanken Grotesk', sans-serif;
+    }
+    .crumb-parent {
+        font-size: 11px;
+        font-weight: 700;
+        color: #5A32EA;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .crumb-separator {
+        font-size: 11px;
+        color: #bfc6dd;
+    }
+    .crumb-active {
+        font-size: 11px;
+        font-weight: 700;
+        color: #575e72;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
     }
 
-    .document-filter {
-        min-width: 190px;
+    /* KPI Cards styling */
+    .kpi-grid-container {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 1.5rem;
+    }
+    @@media (max-width: 1200px) {
+        .kpi-grid-container {
+            grid-template-columns: repeat(2, 1fr);
+        }
+    }
+    @@media (max-width: 600px) {
+        .kpi-grid-container {
+            grid-template-columns: 1fr;
+        }
+    }
+    .kpi-card-custom {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 1.25rem;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        min-height: 140px;
+    }
+    .kpi-card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .kpi-icon-circle {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .kpi-icon-circle.violet {
+        background: rgba(70, 72, 212, 0.08);
+        color: #5A32EA;
+    }
+    .kpi-icon-circle.red {
+        background: rgba(186, 26, 26, 0.08);
+        color: #ba1a1a;
+    }
+    .kpi-icon-circle.grey {
+        background: rgba(87, 94, 114, 0.08);
+        color: #575e72;
+    }
+    .kpi-trend {
+        font-size: 12px;
+        font-weight: 700;
+    }
+    .kpi-trend.violet {
+        color: #5A32EA;
+    }
+    .kpi-trend.red {
+        color: #ba1a1a;
+        background: rgba(186, 26, 26, 0.08);
+        padding: 2px 8px;
+        border-radius: 20px;
+    }
+    .kpi-trend.grey {
+        color: #575e72;
+        background: rgba(87, 94, 114, 0.08);
+        padding: 2px 8px;
+        border-radius: 20px;
+    }
+    .kpi-card-bottom {
+        margin-top: 1rem;
+    }
+    .kpi-label {
+        font-size: 10px;
+        font-weight: 700;
+        color: #767586;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .kpi-value {
+        font-size: 28px;
+        font-weight: 800;
+        color: #191c1e;
+        line-height: 1.2;
+        margin-top: 2px;
+    }
+    .kpi-progress-bar {
+        width: 100%;
+        height: 4px;
+        border-radius: 2px;
+        background: #e2e8f0;
+        margin-top: 0.5rem;
+        overflow: hidden;
+    }
+    .kpi-progress-fill {
+        height: 100%;
+        border-radius: 2px;
+    }
+    .kpi-progress-fill.violet {
+        background: #5A32EA;
+    }
+    .kpi-progress-fill.red {
+        background: #ba1a1a;
+    }
+    .kpi-progress-fill.grey {
+        background: #575e72;
     }
 
-    .document-stat-card,
-    .library-alert {
-        border-radius: 24px;
-        border: 1px solid rgba(15, 118, 110, .12);
-        background: rgba(255, 252, 246, .84);
+    /* Filter row */
+    .filter-row-custom {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+    .search-input-wrapper {
+        position: relative;
+        flex: 1;
+        min-width: 280px;
+    }
+    .search-input {
+        width: 100%;
+        padding: 0.625rem 1rem 0.625rem 2.5rem;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 8px;
+        background: #ffffff;
+        font-size: 14px;
+        outline: none;
+        color: #191c1e;
+        transition: border-color 0.2s;
+    }
+    .search-input:focus {
+        border-color: #5A32EA;
+    }
+    .search-icon {
+        position: absolute;
+        left: 0.75rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #767586;
+        pointer-events: none;
+    }
+    .filter-select {
+        padding: 0.625rem 2.25rem 0.625rem 1rem;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 8px;
+        background: #ffffff;
+        font-size: 14px;
+        outline: none;
+        color: #191c1e;
+        appearance: none;
+        cursor: pointer;
+        min-width: 170px;
+        background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23575e72'%3E%3Cpath d='M7 10l5 5 5-5z'/%3E%3C/svg%3E");
+        background-repeat: no-repeat;
+        background-position: right 0.75rem center;
+        background-size: 1.25rem;
+    }
+    .filter-btn {
+        width: 38px;
+        height: 38px;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 8px;
+        background: #ffffff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .filter-btn:hover {
+        background: #f1f5f9;
     }
 
-    .document-stat-card {
-        padding: 1.15rem;
+    /* Table Container */
+    .document-table-container {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        overflow: hidden;
+    }
+    .document-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    .document-table th {
+        background: #f8fafc;
+        color: #767586;
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 1rem;
+        text-align: left;
+        border-bottom: 1px solid rgba(199, 196, 215, 0.3);
+    }
+    .document-table td {
+        padding: 1rem;
+        border-bottom: 1px solid rgba(199, 196, 215, 0.15);
+        vertical-align: middle;
+        font-size: 14px;
+    }
+    .document-table tbody tr:hover {
+        background: #f8fafc;
+    }
+    .doc-name-cell {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+    }
+    .doc-avatar {
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .doc-avatar.pdf {
+        background: rgba(186, 26, 26, 0.08);
+        color: #ba1a1a;
+    }
+    .doc-avatar.docx {
+        background: rgba(70, 72, 212, 0.08);
+        color: #5A32EA;
+    }
+    .doc-avatar.media {
+        background: rgba(245, 158, 11, 0.08);
+        color: #f59e0b;
+    }
+    .doc-title-text {
+        font-weight: 600;
+        color: #191c1e;
+    }
+    .doc-meta-text {
+        font-size: 11px;
+        color: #767586;
+        margin-top: 2px;
+    }
+    .subject-pill {
+        background: #eceef0;
+        color: #464554;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 4px 8px;
+        border-radius: 6px;
+        display: inline-block;
+    }
+    .owner-name {
+        font-weight: 600;
+        color: #191c1e;
+    }
+    .owner-email {
+        font-size: 11px;
+        color: #767586;
+    }
+    .processing-status {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.375rem;
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .processing-status.indexing {
+        color: #3b82f6;
+    }
+    .processing-status.ready {
+        color: #5A32EA;
+    }
+    .processing-status.failed {
+        color: #ba1a1a;
+    }
+    .status-dot-blue {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #3b82f6;
+        display: inline-block;
+    }
+    .moderation-badge {
+        font-size: 11px;
+        font-weight: 700;
+        padding: 4px 10px;
+        border-radius: 6px;
+        display: inline-block;
+        text-transform: uppercase;
+        letter-spacing: 0.02em;
+    }
+    .moderation-badge.pending {
+        background: #eceef0;
+        color: #575e72;
+    }
+    .moderation-badge.approved {
+        background: rgba(70, 72, 212, 0.08);
+        color: #5A32EA;
+    }
+    .moderation-badge.rejected {
+        background: rgba(186, 26, 26, 0.08);
+        color: #ba1a1a;
     }
 
-    .document-stat-card.success {
-        background: linear-gradient(145deg, rgba(34, 197, 94, .14), rgba(255, 252, 246, .86));
+    /* Pagination */
+    .pagination-bar-custom {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem;
+        background: #ffffff;
+        border-top: 1px solid rgba(199, 196, 215, 0.3);
+    }
+    .pagination-info {
+        font-size: 13px;
+        color: #767586;
+    }
+    .pagination-buttons {
+        display: flex;
+        gap: 0.25rem;
+        align-items: center;
+    }
+    .pagination-btn {
+        padding: 0.375rem 0.75rem;
+        border: 1px solid rgba(199, 196, 215, 0.2);
+        background: #ffffff;
+        border-radius: 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #575e72;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    .pagination-btn:hover:not(:disabled) {
+        background: #f1f5f9;
+    }
+    .pagination-btn:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+    }
+    .pagination-btn.active {
+        background: #5A32EA;
+        color: #ffffff;
+        border-color: #5A32EA;
     }
 
-    .document-stat-card.warning {
-        background: linear-gradient(145deg, rgba(251, 146, 60, .14), rgba(255, 252, 246, .86));
+    /* Bottom status footer */
+    .bottom-status-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 1rem 1.5rem;
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        flex-wrap: wrap;
+        gap: 1rem;
     }
-
-    .document-stat-card.error {
-        background: linear-gradient(145deg, rgba(239, 68, 68, .12), rgba(255, 252, 246, .86));
+    .indexing-progress-wrapper {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex: 1;
+        min-width: 280px;
+        max-width: 450px;
+    }
+    .indexing-label {
+        font-size: 12px;
+        font-weight: 600;
+        color: #575e72;
+        white-space: nowrap;
+    }
+    .indexing-progress-bar {
+        flex: 1;
+        height: 6px;
+        border-radius: 3px;
+        background: #eceef0;
+        overflow: hidden;
+    }
+    .indexing-progress-fill {
+        height: 100%;
+        background: #5A32EA;
+        border-radius: 3px;
+    }
+    .indexing-percentage {
+        font-size: 12px;
+        font-weight: 700;
+        color: #5A32EA;
+    }
+    .db-status-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background-color: rgba(16, 185, 129, 0.1);
+        padding: 0.25rem 0.75rem;
+        border-radius: 9999px;
+        border: 1px solid rgba(16, 185, 129, 0.2);
+    }
+    .db-status-dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background-color: #10b981;
+    }
+    .db-status-text {
+        font-size: 10px;
+        font-weight: 800;
+        color: #10b981;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    .last-updated-text {
+        font-size: 11px;
+        color: #767586;
     }
 
     @@keyframes pageRise {

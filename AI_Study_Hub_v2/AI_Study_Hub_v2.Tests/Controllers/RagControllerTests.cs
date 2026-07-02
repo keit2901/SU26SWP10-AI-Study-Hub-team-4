@@ -17,8 +17,11 @@ public sealed class RagControllerTests
     {
         var options = new RagOptions
         {
+            ChunkingStrategy = "semantic",
             ChunkSizeChars = 1200,
             ChunkOverlapChars = 180,
+            MinChunkChars = 120,
+            MaxSectionChars = 900,
             EmbeddingDimensions = 384,
             DefaultTopK = 6,
             MaxTopK = 12,
@@ -34,6 +37,9 @@ public sealed class RagControllerTests
         var dto = ok.Value.Should().BeOfType<RagScoringInfoResponse>().Subject;
         dto.ChunkSizeChars.Should().Be(1200);
         dto.ChunkOverlapChars.Should().Be(180);
+        dto.ChunkingStrategy.Should().Be("semantic");
+        dto.MinChunkChars.Should().Be(120);
+        dto.MaxSectionChars.Should().Be(900);
         dto.EmbeddingDimensions.Should().Be(384);
         dto.DefaultTopK.Should().Be(6);
         dto.MaxTopK.Should().Be(12);

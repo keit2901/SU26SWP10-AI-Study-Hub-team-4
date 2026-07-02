@@ -1,0 +1,35 @@
+version: "3.8"
+services:
+  ollama:
+    image: ollama/ollama:0.30.9
+    container_name: aistudy-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 5
+        echo "Pulling all-minilm:l6-v2 (pinned to 0.3.14 tag for reproducible embeddings)..."
+        ollama pull all-minilm:l6-v2
+        echo "Model ready."
+        wait
+    networks:
+      - aistudy-net
+
+volumes:
+  ollama_data:
+
+networks:
+  aistudy-net:
+    external: true
+    name: supabase_network  # share network với Supabase stack

@@ -185,6 +185,7 @@ public sealed class GoTrueClient : IGoTrueClient
         }
     }
 
+
     private HttpRequestMessage BuildAdminRequest(HttpMethod method, string path)
     {
         var req = new HttpRequestMessage(method, path);
@@ -276,6 +277,7 @@ public sealed class GoTrueClient : IGoTrueClient
         ("get_user", _) => "get_user_failed",
         ("admin_create_user", _) => "admin_create_failed",
         ("admin_list_users", _) => "admin_list_failed",
+        ("update_user", _) => "update_user_failed",
         ("admin_update_user", _) => "admin_update_failed",
         ("admin_logout_user", _) => "admin_logout_failed",
         _ => "gotrue_request_failed",

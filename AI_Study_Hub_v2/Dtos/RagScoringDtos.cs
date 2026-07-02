@@ -7,4 +7,7 @@ public sealed record RagScoringInfoResponse(
     int DefaultTopK,
     int MaxTopK,
     string ScoreMeaning,
-    string RankingMethod);
+    string RankingMethod,
+    string ChunkingStrategy = "fixed",
+    int? MinChunkChars = null,
+    int? MaxSectionChars = null);

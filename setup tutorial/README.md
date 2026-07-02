@@ -45,13 +45,13 @@ Script se:
 Dung khi chi muon chuan bi config local hoac Docker chua bat:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipUp -SkipBuild
+powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipDocker -SkipBuild
 ```
 
 ### Khi da co stack chay roi
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipUp
+powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipDocker
 ```
 
 ### Reset toan bo secret local
@@ -203,7 +203,7 @@ docker compose -f infra\supabase\docker-compose.yml --project-directory infra\su
 Mo Docker Desktop va doi Docker san sang. Neu chi muon tao `.env` + user-secrets, dung:
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipUp -SkipBuild
+powershell -ExecutionPolicy Bypass -File .\setup.ps1 -SkipDocker -SkipBuild
 ```
 
 ### Port bi chiem

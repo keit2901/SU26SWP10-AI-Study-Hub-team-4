@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -11,14 +11,6 @@ namespace AI_Study_Hub_v2.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.AlterColumn<Guid>(
-                name: "user_id",
-                table: "quizzes",
-                type: "uuid",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "text");
-
             migrationBuilder.AlterColumn<string>(
                 name: "questions_json",
                 table: "quizzes",
@@ -155,14 +147,6 @@ namespace AI_Study_Hub_v2.Migrations
             migrationBuilder.DropColumn(
                 name: "scope_json",
                 table: "quizzes");
-
-            migrationBuilder.AlterColumn<string>(
-                name: "user_id",
-                table: "quizzes",
-                type: "text",
-                nullable: false,
-                oldClrType: typeof(Guid),
-                oldType: "uuid");
 
             migrationBuilder.AlterColumn<string>(
                 name: "questions_json",

@@ -165,6 +165,7 @@
             var resp = await AuthApi.LoginAsync(_model);
             resp.Password = _model.Password;
             Session.Set(resp);
+            Session.CurrentPassword = _model.Password;
             await AuthPersistence.SaveAsync(resp);
             Snackbar.Add($"Welcome back, {resp.User.FullName}!", Severity.Success);
             RedirectAuthenticatedUser(resp.User.Role);

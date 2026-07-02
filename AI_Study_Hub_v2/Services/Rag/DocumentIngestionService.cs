@@ -20,6 +20,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
     private readonly RagOptions _options;
     private readonly GroqOptions _groqOptions;
     private readonly ILogger<DocumentIngestionService> _logger;
+    private readonly string _currentEmbeddingModel;
 
     public DocumentIngestionService(
         AppDbContext db,
@@ -29,6 +30,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
         IEmbeddingService embedding,
         IImageDescriptionService imageDescription,
         IOptions<RagOptions> options,
+        IOptions<OllamaOptions> ollamaOptions,
         IOptions<GroqOptions> groqOptions,
         ILogger<DocumentIngestionService> logger)
     {
@@ -41,6 +43,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
         _options = options.Value;
         _groqOptions = groqOptions.Value;
         _logger = logger;
+        _currentEmbeddingModel = ollamaOptions.Value.Model;
     }
 
     public async Task<DocumentIngestionResult> IngestAsync(
@@ -131,46 +134,111 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
                 throw new InvalidOperationException("No chunks were produced from the extracted text.");
             }
 
-            await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+          var now = DateTimeOffset.UtcNow;
+var successfulChunkIndices = new HashSet<int>();
+var successfulChunkCount = 0;
+var failedChunkCount = 0;
 
-            var oldChunks = _db.DocumentChunks.Where(c => c.DocumentId == document.Id);
-            _db.DocumentChunks.RemoveRange(oldChunks);
+foreach (var draft in drafts)
+{
+    float[] embedding;
 
-            var now = DateTimeOffset.UtcNow;
-            foreach (var draft in drafts)
-            {
-                var embedding = await _embedding.GenerateEmbeddingAsync(draft.Content, cancellationToken);
-                if (embedding.Length != _options.EmbeddingDimensions)
-                {
-                    throw new InvalidOperationException(
-                        $"Embedding dimensions mismatch. Expected {_options.EmbeddingDimensions}, got {embedding.Length}.");
-                }
+    try
+    {
+        embedding = await _embedding.GenerateEmbeddingAsync(draft.Content, cancellationToken);
 
-                _db.DocumentChunks.Add(new DocumentChunk
-                {
-                    Id = Guid.NewGuid(),
-                    DocumentId = document.Id,
-                    ChunkIndex = draft.ChunkIndex,
-                    PageNumber = draft.PageNumber,
-                    Content = draft.Content,
-                    TokenCount = EstimateTokenCount(draft.Content),
-                    Embedding = new Vector(embedding),
-                    CreatedAt = now,
-                });
-            }
+        if (embedding.Length != _options.EmbeddingDimensions)
+        {
+            throw new InvalidOperationException(
+                $"Embedding dimensions mismatch. Expected {_options.EmbeddingDimensions}, got {embedding.Length}.");
+        }
+    }
+    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+    {
+        failedChunkCount++;
 
-            document.PageCount = pages.Count;
-            document.Status = DocumentStatus.Ready;
-            document.ErrorMessage = null;
+        _logger.LogWarning(
+            ex,
+            "Skipping chunk {ChunkIndex} for document {DocumentId} because embedding generation failed.",
+            draft.ChunkIndex,
+            document.Id);
 
-            await _db.SaveChangesAsync(cancellationToken);
-            await transaction.CommitAsync(cancellationToken);
+        continue;
+    }
 
-            _logger.LogInformation(
-                "Document ingested: id={DocumentId} chunks={ChunkCount} pages={PageCount}",
-                document.Id, drafts.Count, document.PageCount);
+    var existingChunk = await _db.DocumentChunks
+        .FirstOrDefaultAsync(
+            c => c.DocumentId == document.Id && c.ChunkIndex == draft.ChunkIndex,
+            cancellationToken);
 
-            return new DocumentIngestionResult(document.Id, drafts.Count, Success: true, ErrorMessage: null);
+    if (existingChunk is null)
+    {
+        _db.DocumentChunks.Add(new DocumentChunk
+        {
+            Id = Guid.NewGuid(),
+    DocumentId = document.Id,
+    ChunkIndex = draft.ChunkIndex,
+    PageNumber = draft.PageNumber,
+    Content = draft.Content,
+    TokenCount = EstimateTokenCount(draft.Content),
+    Embedding = new Vector(embedding),
+    EmbeddingModel = _currentEmbeddingModel,
+    CreatedAt = now,
+
+        });
+    }
+    else
+    {
+        existingChunk.PageNumber = draft.PageNumber;
+existingChunk.Content = draft.Content;
+existingChunk.TokenCount = EstimateTokenCount(draft.Content);
+existingChunk.Embedding = new Vector(embedding);
+existingChunk.EmbeddingModel = _currentEmbeddingModel;
+    }
+
+    await _db.SaveChangesAsync(cancellationToken);
+
+    successfulChunkIndices.Add(draft.ChunkIndex);
+    successfulChunkCount++;
+}
+
+if (successfulChunkCount == 0)
+{
+    document.PageCount = pages.Count;
+    document.Status = DocumentStatus.Failed;
+    document.ErrorMessage = "No chunks could be embedded.";
+
+    await _db.SaveChangesAsync(cancellationToken);
+
+    return Failure(document.Id, document.ErrorMessage);
+}
+
+var successfulChunkIndexList = successfulChunkIndices.ToList();
+
+var staleChunks = await _db.DocumentChunks
+    .Where(c => c.DocumentId == document.Id && !successfulChunkIndexList.Contains(c.ChunkIndex))
+    .ToListAsync(cancellationToken);
+
+_db.DocumentChunks.RemoveRange(staleChunks);
+
+document.PageCount = pages.Count;
+document.Status = DocumentStatus.Ready;
+document.ErrorMessage = null;
+
+await _db.SaveChangesAsync(cancellationToken);
+
+_logger.LogInformation(
+    "Document ingested: id={DocumentId} chunks={ChunkCount} pages={PageCount} failedChunks={FailedChunkCount}",
+    document.Id,
+    successfulChunkCount,
+    document.PageCount,
+    failedChunkCount);
+
+return new DocumentIngestionResult(
+    document.Id,
+    successfulChunkCount,
+    Success: true,
+    ErrorMessage: null);
         }
         catch (OperationCanceledException)
         {

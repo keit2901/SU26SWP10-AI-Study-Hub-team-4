@@ -19,6 +19,14 @@ using Pgvector.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (builder.Environment.IsDevelopment())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConfiguration(builder.Configuration.GetSection("Logging"));
+    builder.Logging.AddConsole();
+    builder.Logging.AddDebug();
+}
+
 // Configuration ---------------------------------------------------------------
 builder.Services
     .AddOptions<SupabaseOptions>()
@@ -33,6 +41,7 @@ builder.Services
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
+builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
@@ -116,18 +125,35 @@ builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
-builder.Services.AddScoped<IChunkingService, ChunkingService>();
+builder.Services.AddScoped<BlockParser>();
+builder.Services.AddScoped<SentenceSplitter>();
+builder.Services.AddScoped<ChunkMerger>();
+builder.Services.AddScoped<ChunkingService>();
+builder.Services.AddScoped<FixedSizeChunkingService>();
+builder.Services.AddScoped<IChunkingService>(sp =>
+{
+    var ragOptions = sp.GetRequiredService<IOptions<RagOptions>>().Value;
+    return string.Equals(ragOptions.ChunkingStrategy, "fixed", StringComparison.OrdinalIgnoreCase)
+        ? sp.GetRequiredService<FixedSizeChunkingService>()
+        : sp.GetRequiredService<ChunkingService>();
+});
 builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
 builder.Services.AddScoped<IDocumentStorageReadService, SupabaseDocumentStorageReadService>();
 builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
-builder.Services.AddScoped<IEmbeddingService, FakeEmbeddingService>();
+
 builder.Services.AddScoped<IRagSearchService, RagSearchService>();
 builder.Services.AddScoped<IAiChatService, SemanticKernelRagChatService>();
 builder.Services.AddScoped<IAiChatCompletionClientFactory, AiChatCompletionClientFactory>();
 builder.Services.AddHttpClient<GroqChatCompletionClient>();
 builder.Services.AddHttpClient<GeminiChatCompletionClient>();
 builder.Services.AddHttpClient<IImageDescriptionService, GroqVisionDescriptionService>();
+builder.Services.AddHttpClient<OllamaEmbeddingService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(30);
+});
 
+builder.Services.AddScoped<IEmbeddingService, OllamaEmbeddingService>();
+builder.Services.AddHostedService<OllamaHealthCheck>();
 // Sprint 3 services ----------------------------------------------------------
 builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
@@ -135,6 +161,7 @@ builder.Services.AddScoped<IQuizService, QuizService>();
 // Benchmarking services ------------------------------------------------------
 builder.Services.AddSingleton<BenchmarkEvaluator>();
 builder.Services.AddScoped<BenchmarkRunner>();
+builder.Services.AddScoped<ChunkingBenchmarkService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
