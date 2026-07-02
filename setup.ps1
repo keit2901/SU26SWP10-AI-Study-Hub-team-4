@@ -14,7 +14,7 @@
   Khong chay dotnet build cuoi cung.
 
 .PARAMETER DockerOnly
-  Chi up docker stack, khong tao secrets hay build.
+  Chi up docker stack (Supabase + Ollama), khong tao secrets hay build.
 
 .EXAMPLE
   .\setup.ps1                 # lan dau setup day du
@@ -431,8 +431,7 @@ if (-not $DockerOnly) {
     Write-Host "  Kong gateway    : http://localhost:8000"
     Write-Host "  Studio login    : supabase / $($secrets['DASHBOARD_PASSWORD'])"
     Write-Host "  App URL         : http://localhost:5240"
-Write-Host "  Ollama API      : http://localhost:11434"
-Write-Host "  Ollama model    : all-minilm:l6-v2"
+    Write-Host "  Ollama          : http://localhost:11434 (all-minilm:l6-v2)"
     Write-Host ''
     Write-Host "  Admin email     : admin@aistudyhub.local" -ForegroundColor Yellow
     Write-Host "  Admin password  : $adminPwd  ($adminPwdSource)" -ForegroundColor Yellow
