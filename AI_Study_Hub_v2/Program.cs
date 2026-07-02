@@ -19,6 +19,14 @@ using Pgvector.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+if (builder.Environment.IsDevelopment())
+{
+    builder.Logging.ClearProviders();
+    builder.Logging.AddConfiguration(builder.Configuration.GetSection("Logging"));
+    builder.Logging.AddConsole();
+    builder.Logging.AddDebug();
+}
+
 // Configuration ---------------------------------------------------------------
 builder.Services
     .AddOptions<SupabaseOptions>()
@@ -117,7 +125,18 @@ builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
-builder.Services.AddScoped<IChunkingService, ChunkingService>();
+builder.Services.AddScoped<BlockParser>();
+builder.Services.AddScoped<SentenceSplitter>();
+builder.Services.AddScoped<ChunkMerger>();
+builder.Services.AddScoped<ChunkingService>();
+builder.Services.AddScoped<FixedSizeChunkingService>();
+builder.Services.AddScoped<IChunkingService>(sp =>
+{
+    var ragOptions = sp.GetRequiredService<IOptions<RagOptions>>().Value;
+    return string.Equals(ragOptions.ChunkingStrategy, "fixed", StringComparison.OrdinalIgnoreCase)
+        ? sp.GetRequiredService<FixedSizeChunkingService>()
+        : sp.GetRequiredService<ChunkingService>();
+});
 builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
 builder.Services.AddScoped<IDocumentStorageReadService, SupabaseDocumentStorageReadService>();
 builder.Services.AddScoped<IDocumentIngestionService, DocumentIngestionService>();
@@ -142,6 +161,7 @@ builder.Services.AddScoped<IQuizService, QuizService>();
 // Benchmarking services ------------------------------------------------------
 builder.Services.AddSingleton<BenchmarkEvaluator>();
 builder.Services.AddScoped<BenchmarkRunner>();
+builder.Services.AddScoped<ChunkingBenchmarkService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
