@@ -22,3 +22,6 @@ Library_UI_UX_v2/
 Thumbs.db
 .DS_Store
 UI popup/
+
+# Setup script (contains .env template — generated secrets at runtime)
+setup.ps1
