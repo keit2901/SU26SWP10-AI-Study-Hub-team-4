@@ -349,6 +349,20 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
+
+if (app.Environment.IsDevelopment())
+{
+    var agentationPath = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "../../agentation/node_modules"));
+    if (Directory.Exists(agentationPath))
+    {
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(agentationPath),
+            RequestPath = "/agentation-static"
+        });
+    }
+}
+
 app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
