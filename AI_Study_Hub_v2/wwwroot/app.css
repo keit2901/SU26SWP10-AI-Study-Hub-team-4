@@ -1313,7 +1313,7 @@ h1:focus {
     display: flex !important;
     flex-direction: column !important;
     min-height: 0 !important;
-    height: 100vh !important;
+    height: 100% !important;
     overflow: hidden !important;
 }
 
