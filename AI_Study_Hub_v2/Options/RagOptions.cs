@@ -8,11 +8,11 @@ public sealed class RagOptions
 
     public int ChunkSizeChars { get; set; } = 1000;
 
-    public int ChunkOverlapChars { get; set; } = 200;
+    public int ChunkOverlapChars { get; set; } = 80;
 
-    public int MinChunkChars { get; set; } = 100;
+    public int MinChunkChars { get; set; } = 200;
 
-    public int MaxSectionChars { get; set; } = 1000;
+    public int MaxSectionChars { get; set; } = 400;
 
     public int DefaultTopK { get; set; } = 5;
 
