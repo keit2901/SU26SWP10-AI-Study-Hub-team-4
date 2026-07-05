@@ -15,9 +15,9 @@ public sealed class RagContractTests
 
         options.ChunkingStrategy.Should().Be("semantic");
         options.ChunkSizeChars.Should().Be(1000);
-        options.ChunkOverlapChars.Should().Be(200);
-        options.MinChunkChars.Should().Be(100);
-        options.MaxSectionChars.Should().Be(1000);
+        options.ChunkOverlapChars.Should().Be(80);
+        options.MinChunkChars.Should().Be(200);
+        options.MaxSectionChars.Should().Be(400);
         options.DefaultTopK.Should().Be(5);
         options.MaxTopK.Should().Be(10);
         options.EmbeddingDimensions.Should().Be(DocumentChunk.EmbeddingDimension);

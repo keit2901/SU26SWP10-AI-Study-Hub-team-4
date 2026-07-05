@@ -128,6 +128,9 @@ builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
 builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
+builder.Services.AddScoped<IPlanService, PlanService>();
+builder.Services.AddScoped<IStorageQuotaService, StorageQuotaService>();
+builder.Services.AddScoped<IStorageReconciliationService, StorageReconciliationService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -179,6 +182,7 @@ builder.Services.AddSingleton<BenchmarkEvaluator>();
 builder.Services.AddScoped<BenchmarkRunner>();
 builder.Services.AddScoped<ChunkingBenchmarkService>();
 builder.Services.AddHostedService<BenchmarkAutomationHostedService>();
+builder.Services.AddHostedService<StorageReconciliationHostedService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
@@ -239,6 +243,10 @@ builder.Services.AddHttpClient<AdminDashboardApiClient>((sp, http) =>
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
 builder.Services.AddHttpClient<BenchmarkApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
+builder.Services.AddHttpClient<PlanApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
@@ -339,6 +347,7 @@ using (var scope = app.Services.CreateScope())
         await SeedDefaultAdminAsync(db, goTrue, seedOptions, startupLogger);
         await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
         await SeedSystemConfigsAsync(db, startupLogger);
+        await SeedDefaultPlansAsync(db, startupLogger);
     }
     catch (Exception ex)
     {
@@ -648,4 +657,99 @@ static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
     db.SystemConfigs.AddRange(configs);
     await db.SaveChangesAsync();
     logger.LogInformation("Seeded {Count} system configs.", configs.Length);
+}
+
+static async Task SeedDefaultPlansAsync(AppDbContext db, ILogger logger)
+{
+    var now = DateTimeOffset.UtcNow;
+
+    // 1. Seed plans (only if the table is empty — one-time initialization)
+    if (!await db.Plans.AnyAsync())
+    {
+        var plans = new List<Plan>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                PlanKey = "free",
+                DisplayName = "Free",
+                Description = "Basic access with limited storage and features.",
+                StorageQuotaBytes = 2L * 1024 * 1024 * 1024,       // 2 GB
+                MaxDocumentCount = 100,
+                MaxFolderCount = 20,
+                DailyTokenQuota = 25_000,
+                MaxFileSizeBytes = 50L * 1024 * 1024,              // 50 MB
+                MaxDocsPerFolder = 30,
+                MonthlyPriceVnd = null,
+                YearlyPriceVnd = null,
+                SortOrder = 1,
+                IsActive = true,
+                CreatedAt = now,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                PlanKey = "pro",
+                DisplayName = "Pro",
+                Description = "Extended storage, unlimited documents and folders.",
+                StorageQuotaBytes = 10L * 1024 * 1024 * 1024,      // 10 GB
+                MaxDocumentCount = null,
+                MaxFolderCount = null,
+                DailyTokenQuota = 100_000,
+                MaxFileSizeBytes = 100L * 1024 * 1024,             // 100 MB
+                MaxDocsPerFolder = null,
+                MonthlyPriceVnd = 50_000,
+                YearlyPriceVnd = 500_000,
+                SortOrder = 2,
+                IsActive = true,
+                CreatedAt = now,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                PlanKey = "unlimited",
+                DisplayName = "Unlimited",
+                Description = "No limits on storage, documents, or folders.",
+                StorageQuotaBytes = null,
+                MaxDocumentCount = null,
+                MaxFolderCount = null,
+                DailyTokenQuota = null,
+                MaxFileSizeBytes = null,
+                MaxDocsPerFolder = null,
+                MonthlyPriceVnd = 100_000,
+                YearlyPriceVnd = null,
+                SortOrder = 3,
+                IsActive = true,
+                CreatedAt = now,
+            },
+        };
+
+        db.Plans.AddRange(plans);
+        await db.SaveChangesAsync();
+        logger.LogInformation("Default plans seeded: 3 plans (free, pro, unlimited).");
+    }
+
+    // 2. ALWAYS backfill UserPlan for users without one (new users post-seed)
+    var freePlan = await db.Plans.FirstAsync(p => p.PlanKey == "free");
+    var usersWithoutPlan = await db.Users
+        .Where(u => !db.UserPlans.Any(up => up.UserId == u.Id))
+        .ToListAsync();
+
+    if (usersWithoutPlan.Any())
+    {
+        var backfillNow = DateTimeOffset.UtcNow;
+        foreach (var user in usersWithoutPlan)
+        {
+            db.UserPlans.Add(new UserPlan
+            {
+                UserId = user.Id,
+                PlanId = freePlan.Id,
+                Status = "active",
+                AssignedAt = backfillNow,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        logger.LogInformation("Backfill: assigned Free plan to {Count} users without a plan.", usersWithoutPlan.Count);
+    }
 }
