@@ -144,6 +144,8 @@ public sealed class FolderDto
     /// <summary>Reaction of the current authenticated user (null = no vote, true = like, false = dislike).</summary>
     public bool? CurrentUserVote { get; set; }
 
+    public string? Status { get; set; }
+
     // UI-only computed properties (not from API)
     public string? Subject { get; set; }
     public string? Semester { get; set; }

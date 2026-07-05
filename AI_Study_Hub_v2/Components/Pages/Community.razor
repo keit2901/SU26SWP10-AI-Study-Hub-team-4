@@ -57,11 +57,14 @@
                                     <span class="sidebar-item-name">@folder.Name</span>
                                     @if (_activeTab == "personal")
                                     {
-                                        <span class="sidebar-item-meta">
-                                            <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small" />
-                                            @folder.LikeCount
-                                            <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Size="Size.Small" />
-                                            @folder.DislikeCount
+                                        <span class="sidebar-item-meta" style="display: flex; align-items: center; gap: 0.25rem; width: 100%;">
+                                            <span>@folder.DocumentCount sources</span>
+                                            <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 0.15rem;">
+                                                <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Style="font-size: 0.75rem;" />
+                                                @folder.LikeCount
+                                                <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Style="font-size: 0.75rem;" />
+                                                @folder.DislikeCount
+                                            </span>
                                         </span>
                                     }
                                     else
@@ -235,7 +238,18 @@
                                             </div>
                                             <div class="personal-card-info">
                                                 <h3 class="personal-card-title">@folder.Name</h3>
-                                                <span class="personal-card-sources">@folder.DocumentCount sources</span>
+                                                <div style="display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+                                                    <span class="personal-card-sources">@folder.DocumentCount sources</span>
+                                                    @{
+                                                        var badgeStyles = GetStatusBadgeStyles(folder.Status);
+                                                        var badgeStyleAttr = $"display: inline-flex; align-items: center; padding: 0.125rem 0.375rem; border-radius: 9999px; font-size: 0.65rem; font-weight: 600; background: {badgeStyles.Bg}; color: {badgeStyles.Color}; line-height: 1;";
+                                                        var dotStyleAttr = $"display: inline-block; width: 0.3125rem; height: 0.3125rem; border-radius: 9999px; margin-right: 0.1875rem; background: {badgeStyles.DotColor};";
+                                                    }
+                                                    <span style="@badgeStyleAttr">
+                                                        <span style="@dotStyleAttr"></span>
+                                                        @GetStatusText(folder.Status)
+                                                    </span>
+                                                </div>
                                             </div>
                                             <span class="personal-card-badge" style="background:@(color + "18"); color:@color">@rate%</span>
                                         </div>
@@ -564,6 +578,32 @@
             "dashboard" => Icons.Material.Filled.Dashboard,
             "folder_special" => Icons.Material.Filled.FolderSpecial,
             _ => Icons.Material.Filled.Folder,
+        };
+    }
+
+    private string GetStatusText(string? status)
+    {
+        return status switch
+        {
+            "Shared" => "Shared",
+            "Pending Share" => "Pending Share",
+            "Processing" => "Processing",
+            "Rejected" => "Rejected",
+            "Empty" => "Empty",
+            _ => "Private"
+        };
+    }
+
+    private (string Bg, string Color, string DotColor) GetStatusBadgeStyles(string? status)
+    {
+        return status switch
+        {
+            "Shared" => ("#eef2ff", "#4338ca", "#4f46e5"),
+            "Pending Share" => ("#fefce8", "#a16207", "#ca8a04"),
+            "Processing" => ("rgba(243,232,255,0.8)", "#7e22ce", "#9333ea"),
+            "Rejected" => ("#fef2f2", "#b91c1c", "#ef4444"),
+            "Empty" => ("#f3f4f6", "#4b5563", "#9ca3af"),
+            _ => ("#f9fafb", "#6b7280", "#9ca3af")
         };
     }
 

@@ -185,4 +185,62 @@ public class FolderServiceTests
 
         (await db.Folders.CountAsync()).Should().Be(0);
     }
+
+    private static void SeedDocumentWithStatus(AppDbContext db, Guid userId, Guid folderId, DocumentStatus status, string fileName = "doc.pdf")
+    {
+        db.Documents.Add(new Document
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            FolderId = folderId,
+            FileName = fileName,
+            StoragePath = $"users/{userId:N}/2026/{Guid.NewGuid():N}-{fileName}",
+            FileSizeBytes = 1024,
+            MimeType = "application/pdf",
+            SubjectCode = "SWP391",
+            Semester = "SU26",
+            Status = status,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        db.SaveChanges();
+    }
+
+    [Test]
+    public async Task ListPersonalSharedAsync_CalculatesFolderStatusCorrectly()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var sut = BuildSut(db);
+
+        // 1. Empty folder
+        var folderEmpty = SeedFolder(db, me.Id, "Empty Folder");
+
+        // 2. Processing folder (contains a processing document)
+        var folderProc = SeedFolder(db, me.Id, "Processing Folder");
+        SeedDocumentWithStatus(db, me.Id, folderProc.Id, DocumentStatus.Processing);
+
+        // 3. Rejected folder (contains a failed document)
+        var folderRej = SeedFolder(db, me.Id, "Rejected Folder");
+        SeedDocumentWithStatus(db, me.Id, folderRej.Id, DocumentStatus.Failed);
+        SeedDocumentWithStatus(db, me.Id, folderRej.Id, DocumentStatus.Ready);
+
+        // 4. Pending Share folder (contains ready documents, but folder is not shared)
+        var folderPending = SeedFolder(db, me.Id, "Pending Folder");
+        SeedDocumentWithStatus(db, me.Id, folderPending.Id, DocumentStatus.Ready);
+
+        // 5. Shared folder (contains ready documents, and folder is shared)
+        var folderShared = SeedFolder(db, me.Id, "Shared Folder");
+        folderShared.IsShared = true;
+        db.SaveChanges();
+        SeedDocumentWithStatus(db, me.Id, folderShared.Id, DocumentStatus.Ready);
+
+        var list = await sut.ListPersonalSharedAsync(me.SupabaseUserId);
+
+        list.Single(f => f.Id == folderEmpty.Id).Status.Should().Be("Empty");
+        list.Single(f => f.Id == folderProc.Id).Status.Should().Be("Processing");
+        list.Single(f => f.Id == folderRej.Id).Status.Should().Be("Rejected");
+        list.Single(f => f.Id == folderPending.Id).Status.Should().Be("Pending Share");
+        list.Single(f => f.Id == folderShared.Id).Status.Should().Be("Shared");
+    }
 }
