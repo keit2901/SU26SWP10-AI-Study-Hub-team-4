@@ -11,10 +11,10 @@
 <PageTitle>Document Library - AI Study Hub v2</PageTitle>
 
 <style>
-    .library-layout { display: flex; min-height: calc(100vh - 56px); background: #f8f9fc; }
-    .library-left-rail { width: 240px; flex-shrink: 0; padding: 16px; background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 16px; }
-    .library-center-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; }
-    .library-right-rail { width: 300px; flex-shrink: 0; padding: 16px; background: #fff; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 16px; }
+    .library-layout { display: flex; height: 100%; background: #f8f9fc; overflow: hidden; }
+    .library-left-rail { width: 240px; flex-shrink: 0; padding: 16px; background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
+    .library-center-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
+    .library-right-rail { width: 300px; flex-shrink: 0; padding: 16px; background: #fff; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
     .glass-card { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; padding: 16px; }
     .welcome-banner { background: linear-gradient(135deg, #eef2ff 0%, #f8f9fc 60%, #f0fdf4 100%); padding: 24px 32px; border-bottom: 1px solid #e2e8f0; position: relative; overflow: hidden; }
     .banner-orb { position: absolute; border-radius: 50%; pointer-events: none; }

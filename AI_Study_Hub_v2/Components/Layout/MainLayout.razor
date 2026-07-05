@@ -4,7 +4,7 @@
 
 <MudThemeProvider Theme="@_theme" IsDarkMode="false" />
 
-<div class="page app-shell @(IsDashboard ? "dashboard-shell" : "")">
+<div class="page app-shell @(IsFullBleed ? "page-fullbleed" : "") @(IsDashboard ? "dashboard-shell" : "")">
     <NavMenu />
 
     <main class="main-stage @(IsFullBleed || IsDashboard ? "main-stage-fullbleed" : "")">
@@ -36,8 +36,17 @@
         Nav.LocationChanged -= OnLocationChanged;
     }
 
-    private bool IsFullBleed =>
-        Nav.ToBaseRelativePath(Nav.Uri).StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
+    private bool IsFullBleed
+    {
+        get
+        {
+            var path = Nav.ToBaseRelativePath(Nav.Uri);
+            var cleanPath = path.Split('?')[0];
+            return cleanPath.Equals("documents", StringComparison.OrdinalIgnoreCase)
+                || cleanPath.Equals("community", StringComparison.OrdinalIgnoreCase)
+                || cleanPath.StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
+        }
+    }
 
     private bool IsDashboard =>
         Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);

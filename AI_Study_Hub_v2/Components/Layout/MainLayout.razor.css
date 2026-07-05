@@ -2,7 +2,8 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    min-height: 100vh;
+    height: 100vh;
+    overflow: hidden;
     background: transparent;
 }
 
@@ -11,7 +12,12 @@
     flex: 1 1 auto;
     min-height: 0;
     overflow-x: hidden;
-    overflow-y: visible;
+    overflow-y: auto;
+}
+
+.page-fullbleed {
+    height: 100vh !important;
+    overflow: hidden !important;
 }
 
 /* AI Chat: main-stage full-bleed */
