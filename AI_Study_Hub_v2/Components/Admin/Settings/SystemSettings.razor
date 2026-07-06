@@ -71,7 +71,7 @@
     <div class="filter-row-custom mb-6">
         <div class="search-input-wrapper">
             <input type="text" class="search-input" placeholder="Search configs, logs, or sessions..."
-                   value="@_searchText" @oninput="OnSearchInput" />
+                   @bind-value="_searchText" @bind-value:event="oninput" />
             <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" Size="Size.Small" />
         </div>
         <select class="filter-select" value="@_selectedCategory" @onchange="OnCategoryChanged">
@@ -1434,11 +1434,6 @@
         Snackbar.Add("Open /admin/audit-logs to review persisted CONFIG_CHANGE entries with before/after JSON.", Severity.Info);
     }
 
-    private void OnSearchInput(ChangeEventArgs args)
-    {
-        _searchText = args.Value?.ToString() ?? "";
-    }
-
     private void OnCategoryChanged(ChangeEventArgs args)
     {
         _selectedCategory = args.Value?.ToString();
@@ -1465,11 +1460,12 @@
         return Task.CompletedTask;
     }
 
-    private Task ClearFiltersAsync()
+    private async Task ClearFiltersAsync()
     {
         _selectedCategory = null;
         _selectedRisk = null;
-        return Task.CompletedTask;
+        _searchText = null;
+        await InvokeAsync(StateHasChanged);
     }
 
     private bool MatchesCategory(ConfigRow config)
