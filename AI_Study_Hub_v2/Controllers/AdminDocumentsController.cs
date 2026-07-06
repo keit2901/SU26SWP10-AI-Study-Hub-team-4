@@ -96,6 +96,50 @@ public sealed class AdminDocumentsController : ControllerBase
             ChunkingStrategy: _chunkingStrategy,
             Failures: failures));
     }
+
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<AdminDocumentDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<AdminDocumentDto>>> List(
+        [FromQuery] string? status,
+        [FromQuery] string? subject,
+        [FromQuery] string? q,
+        [FromQuery] int page = 1,
+        [FromQuery] int size = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _db.Documents
+            .Include(d => d.User)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(d => d.Status.ToString() == status);
+        if (!string.IsNullOrWhiteSpace(subject))
+            query = query.Where(d => d.SubjectCode == subject.ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(q))
+            query = query.Where(d => d.FileName.Contains(q) || d.SubjectCode.Contains(q));
+
+        var result = await query
+            .OrderByDescending(d => d.CreatedAt)
+            .Skip((page - 1) * Math.Clamp(size, 1, 100))
+            .Take(Math.Clamp(size, 1, 100))
+            .Select(d => new AdminDocumentDto(
+                d.Id,
+                d.FileName,
+                d.SubjectCode,
+                d.User.FullName,
+                d.User.Email ?? "",
+                d.Status.ToString(),
+                d.ReviewStatus.ToString(),
+                d.MimeType,
+                d.FileSizeBytes,
+                d.StoragePath,
+                d.Chunks.Count,
+                d.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+        return Ok(result);
+    }
 }
 
 public sealed record ReingestAllDocumentsResponse(
