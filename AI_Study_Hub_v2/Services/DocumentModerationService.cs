@@ -134,7 +134,7 @@ public sealed class DocumentModerationService : IDocumentModerationService
         var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc is null) return false;
 
-        doc.ReviewStatus = DocumentReviewStatus.None;
+        doc.ReviewStatus = DocumentReviewStatus.Escalated;
         doc.ErrorMessage = "Escalated to admin for final review.";
         doc.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -160,7 +160,7 @@ public sealed class DocumentModerationService : IDocumentModerationService
             .AsNoTracking()
             .Include(d => d.User)
             .Include(d => d.Chunks)
-            .Where(d => d.ErrorMessage != null && d.ErrorMessage.Contains("Escalated"))
+            .Where(d => d.ReviewStatus == DocumentReviewStatus.Escalated)
             .OrderByDescending(d => d.UpdatedAt)
             .ToListAsync(ct);
 
