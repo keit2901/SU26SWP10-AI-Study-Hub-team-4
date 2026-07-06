@@ -129,7 +129,7 @@ public sealed class AdminDocumentsController : ControllerBase
                 d.FileName,
                 d.SubjectCode,
                 d.User.FullName,
-                d.User.Email ?? "",
+                d.User.Username ?? "",
                 d.Status.ToString(),
                 d.ReviewStatus.ToString(),
                 d.MimeType,
@@ -151,37 +151,44 @@ public sealed class AdminDocumentsController : ControllerBase
     {
         var doc = await _db.Documents
             .Include(d => d.User)
-            .Include(d => d.Chunks.OrderBy(c => c.ChunkIndex))
             .AsNoTracking()
             .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
 
         if (doc is null)
             return NotFound(new ApiErrorResponse { Code = "document_not_found", Message = "Document not found." });
 
-        var chunks = doc.Chunks.Select(c => new DocumentChunkPreviewDto(
-            c.ChunkIndex,
-            c.Content.Length > 200 ? c.Content[..200] + "..." : c.Content,
-            (int)Math.Ceiling(c.Content.Length / 4.0),
-            c.PageNumber)).ToList();
+        var chunkCount = await _db.DocumentChunks
+            .CountAsync(c => c.DocumentId == id, cancellationToken);
+
+        var chunkPreviews = await _db.DocumentChunks
+            .Where(c => c.DocumentId == id)
+            .OrderBy(c => c.ChunkIndex)
+            .Take(20)
+            .Select(c => new DocumentChunkPreviewDto(
+                c.ChunkIndex,
+                c.Content.Length > 200 ? c.Content.Substring(0, 200) + "..." : c.Content,
+                (int)Math.Ceiling(c.Content.Length / 4.0),
+                c.PageNumber))
+            .ToListAsync(cancellationToken);
 
         return Ok(new AdminDocumentDetailDto(
             doc.Id,
             doc.FileName,
             doc.SubjectCode,
             doc.User.FullName,
-            doc.User.Email ?? "",
+            doc.User.Username ?? "",
             doc.Status.ToString(),
             doc.ReviewStatus.ToString(),
             doc.MimeType,
             doc.FileSizeBytes,
             doc.StoragePath,
-            doc.Chunks.Count,
+            chunkCount,
             doc.PageCount,
             doc.ErrorMessage,
             doc.Semester,
             doc.CreatedAt,
             doc.UpdatedAt,
-            chunks));
+            chunkPreviews));
     }
 }
 
