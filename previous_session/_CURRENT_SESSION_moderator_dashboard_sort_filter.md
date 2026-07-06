@@ -215,6 +215,24 @@
   - compile succeeded
   - remaining warnings are still pre-existing outside `DocumentDashboard.razor`
 
+### 2026-07-06T12:25:00+07:00 - Moderator dashboard folder table now supports header filter/sort
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`
+- Reworked the moderator dashboard folder table to mirror the newer document-table interaction style:
+  - per-column popup menus in headers
+  - text search suggestions for `Folder Name`, `Owner`, `Subject Code`, `Semester`
+  - discrete status filter choices for `Status`
+  - per-column sort choices inside each popup
+  - click-outside closes popup
+  - reset-table action in the card header
+- Removed the old placeholder filter icon button
+- Added an empty state message when no folder rows match the current filter values
+
+### 2026-07-06T12:25:00+07:00 - Compile verification after folder-table filter/sort pass
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside `FolderTable.razor`
+
 ## 4. Files changed this session
 | Path | Change |
 |---|---|
@@ -240,3 +258,73 @@ Open `DocumentDashboard.razor`, then consider whether the next iteration should:
 ## 9. Quick Facts (snapshot)
 Changed page: `DocumentDashboard.razor`
 Verification: partial compile reached app project, blocked by exe file lock and test restore/network
+
+### 2026-07-06T13:27:12+07:00 - Subject dashboard headers now support popup filter/sort
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+- Added a compact table toolbar with live result count and a `Reset table` action
+- Added header popup menus for:
+  - `Subject Code`: text search, suggestion list, all-subject reset, A-Z / Z-A sorting
+  - `Latest Upload`: from/to date range, clear-date action, newest/oldest sorting
+- Added click-outside close behavior and empty-state handling for no matching rows
+
+### 2026-07-06T13:27:12+07:00 - Semester dashboard headers now support popup filter/sort
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+- Added a matching table toolbar with live result count and a `Reset table` action
+- Added header popup menus for:
+  - `Semester`: text search, suggestion list, all-semesters reset, A-Z / Z-A sorting
+  - `Latest Upload`: from/to date range, clear-date action, newest/oldest sorting
+- Added click-outside close behavior and empty-state handling for no matching rows
+
+### 2026-07-06T13:27:12+07:00 - Compile verification after subject/semester filter-sort pass
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside these dashboard changes
+
+### 2026-07-06T13:36:05+07:00 - Dashboard status filter now supports typed suggestion search
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`
+- Reworked the `Status` header popup to match the text-filter pattern used by other dashboard columns:
+  - added a `Search status` input
+  - suggestion list now narrows live when the moderator types part of a word
+  - selecting a suggestion applies the exact status filter
+  - `All status` still clears the filter quickly
+- Kept date behavior unchanged, per current request
+
+### 2026-07-06T13:36:05+07:00 - Compile verification after dashboard status search update
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside this dashboard change
+
+### 2026-07-06T13:47:44+07:00 - Dashboard text filters now apply live and persist until reset
+- Updated:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+- Reworked non-date dashboard filters so typing now immediately filters the table rows below by partial text
+- The typed text now stays in the filter input when the popup closes/reopens and only clears on `Reset table` unless the user explicitly chooses a clear action
+- Added the same typed-search pattern to moderator document `Status` as well, so all non-date document columns now follow one interaction model
+
+### 2026-07-06T13:47:44+07:00 - Compile verification after live-persist filter update
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside these dashboard changes
+
+### 2026-07-06T14:10:32+07:00 - Dashboard filter menus tightened and all-options removed
+- Updated:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+- Removed `All ...` actions from text/status filter menus because the table already has `Reset table`
+- Added a shared filter-options list style per component so filter choices show in a compact scrollable area
+- Removed the old 6-item suggestion cap so all matching values can be reached by scrolling, while the visible area stays around 5 rows tall
+- Left date filter controls unchanged
+
+### 2026-07-06T14:10:32+07:00 - Compile verification after compact filter menu update
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside these dashboard changes

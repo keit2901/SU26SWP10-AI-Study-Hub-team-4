@@ -44,40 +44,145 @@
         }
         else
         {
-            <div style="background: #fff; border-radius: 1rem; box-shadow: 0 2px 10px -4px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: hidden;">
-                <div style="overflow-x: auto;">
+            <div style="background: #fff; border-radius: 1rem; box-shadow: 0 2px 10px -4px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: visible;">
+                <div style="padding: 1.25rem 1.5rem; display: flex; justify-content: space-between; align-items: center; gap: 1rem; flex-wrap: wrap; border-bottom: 1px solid #f1f5f9;">
+                    <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                        <h2 style="font-size: 1.125rem; font-weight: 600; color: #111827; margin: 0;">Subjects Table</h2>
+                        <span style="font-size: 0.8125rem; color: #6b7280;">Showing @VisibleSubjects.Count subject@(VisibleSubjects.Count == 1 ? string.Empty : "s")</span>
+                    </div>
+                    <button @onclick="ResetTable"
+                            style="display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; border-radius: 9999px; border: 1px solid rgba(94,92,230,0.22); background: rgba(94,92,230,0.08); color: #4441CC; padding: 0.55rem 0.95rem; font-size: 0.8125rem; font-weight: 700; cursor: pointer;">
+                        <MudIcon Icon="@Icons.Material.Filled.RestartAlt" Style="font-size: 1rem;" />
+                        <span>Reset table</span>
+                    </button>
+                </div>
+                <div style="position: relative;">
+                    @if (!string.IsNullOrWhiteSpace(OpenMenuColumn))
+                    {
+                        <button type="button"
+                                @onclick="CloseOpenMenu"
+                                aria-label="Close filter menu"
+                                style="position: fixed; inset: 0; z-index: 4; border: none; background: transparent; padding: 0; margin: 0;"></button>
+                    }
+                <div style="overflow-x: auto; overflow-y: visible;">
                     <table style="width: 100%; text-align: left; border-collapse: collapse;">
                         <thead>
                             <tr style="background: rgba(249,250,251,0.8); border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;">
-                                <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase;">Subject Code</th>
+                                <th style="padding: 1rem 1.5rem; position: relative;">
+                                    <button @onclick='() => HandleHeaderMenuClick("subject")' style='@GetHeaderButtonStyle("subject", true)'>
+                                        <span>Subject Code</span>
+                                        <MudIcon Icon='@GetSortIcon("subject")' Style='@GetSortIconStyle("subject")' />
+                                    </button>
+                                    @if (OpenMenuColumn == "subject")
+                                    {
+                                        var subjectSuggestions = GetSubjectSuggestions();
+                                        <div style='@GetHeaderMenuStyle("14rem", true)'>
+                                            <span style='@GetMenuSectionLabelStyle()'>Filter</span>
+                                            <input type="text"
+                                                   value="@SubjectSearchTerm"
+                                                   @oninput='e => UpdateTextSearch(e.Value?.ToString())'
+                                                   placeholder="Search subject code"
+                                                   style='@GetFilterInputStyle()' />
+                                            <div style='@GetFilterOptionsListStyle()'>
+                                                @if (subjectSuggestions.Count > 0)
+                                                {
+                                                    @foreach (var option in subjectSuggestions)
+                                                    {
+                                                        <button @onclick='() => ApplySubjectSuggestion(option)' style='@GetFilterMenuItemStyle(string.Equals(FilterSubjectQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                    }
+                                                }
+                                                else
+                                                {
+                                                    <span style='@GetMenuEmptyStateStyle()'>No matching subjects</span>
+                                                }
+                                            </div>
+                                            <div style='@GetMenuDividerStyle()'></div>
+                                            <span style='@GetMenuSectionLabelStyle()'>Sort</span>
+                                            <button @onclick='() => ApplySortOption("subject-asc")' style='@GetSortMenuItemStyle("subject-asc")'>A to Z</button>
+                                            <button @onclick='() => ApplySortOption("subject-desc")' style='@GetSortMenuItemStyle("subject-desc")'>Z to A</button>
+                                        </div>
+                                    }
+                                </th>
                                 <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase;">Total Documents</th>
                                 <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase;">Storage Used</th>
-                                <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase;">Latest Upload</th>
+                                <th style="padding: 1rem 1.5rem; position: relative;">
+                                    <button @onclick='() => HandleHeaderMenuClick("date")' style='@GetHeaderButtonStyle("date", true)'>
+                                        <span>Latest Upload</span>
+                                        <MudIcon Icon='@GetSortIcon("date")' Style='@GetSortIconStyle("date")' />
+                                    </button>
+                                    @if (OpenMenuColumn == "date")
+                                    {
+                                        <div style='@GetHeaderMenuStyle("18rem", true)'>
+                                            <span style='@GetMenuSectionLabelStyle()'>Filter</span>
+                                            <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                                                <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                                    <span style="font-size: 0.75rem; font-weight: 600; color: #5f6372; text-align: left;">From</span>
+                                                    <input type="datetime-local"
+                                                           value="@FilterDateFrom"
+                                                           @oninput='e => UpdateDateFilter("from", e.Value?.ToString())'
+                                                           style='@GetFilterInputStyle()' />
+                                                </div>
+                                                <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                                    <span style="font-size: 0.75rem; font-weight: 600; color: #5f6372; text-align: left;">To</span>
+                                                    <input type="datetime-local"
+                                                           value="@FilterDateTo"
+                                                           @oninput='e => UpdateDateFilter("to", e.Value?.ToString())'
+                                                           style='@GetFilterInputStyle()' />
+                                                </div>
+                                            </div>
+                                            <button @onclick="ClearDateFilter" style='@GetFilterMenuItemStyle(false)'>Clear date range</button>
+                                            <div style='@GetMenuDividerStyle()'></div>
+                                            <span style='@GetMenuSectionLabelStyle()'>Sort</span>
+                                            <button @onclick='() => ApplySortOption("date-desc")' style='@GetSortMenuItemStyle("date-desc")'>Newest first</button>
+                                            <button @onclick='() => ApplySortOption("date-asc")' style='@GetSortMenuItemStyle("date-asc")'>Oldest first</button>
+                                        </div>
+                                    }
+                                </th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var subject in subjects)
+                            @if (VisibleSubjects.Any())
                             {
-                                <tr style="border-bottom: 1px solid #f1f5f9;">
-                                    <td style="padding: 1.25rem 1.5rem; font-weight: 600; color: #1f2937;">
-                                        <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Style="color: #5e5ce6;" />
-                                            @subject.SubjectCode
+                                @foreach (var subject in VisibleSubjects)
+                                {
+                                    <tr style="border-bottom: 1px solid #f1f5f9;">
+                                        <td style="padding: 1.25rem 1.5rem; font-weight: 600; color: #1f2937;">
+                                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                <MudIcon Icon="@Icons.Material.Filled.MenuBook" Style="color: #5e5ce6;" />
+                                                @subject.SubjectCode
+                                            </div>
+                                        </td>
+                                        <td style="padding: 1.25rem 1.5rem; color: #4b5563; font-weight: 500;">
+                                            @subject.DocumentCount files
+                                        </td>
+                                        <td style="padding: 1.25rem 1.5rem; color: #4b5563; font-weight: 500;">
+                                            @subject.StorageUsedMb MB
+                                        </td>
+                                        <td style="padding: 1.25rem 1.5rem; color: #6b7280; font-size: 0.875rem;">
+                                            @(subject.LatestUploadDate?.ToString("MMM dd, yyyy HH:mm") ?? "N/A")
+                                        </td>
+                                    </tr>
+                                }
+                            }
+                            else
+                            {
+                                <tr>
+                                    <td colspan="4" style="padding: 2.25rem 1.5rem; text-align: center;">
+                                        <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                                            <MudIcon Icon="@Icons.Material.Filled.FilterAltOff" Style="font-size: 2.25rem; color: #a1a1aa;" />
+                                            <h3 style="font-size: 1rem; font-weight: 700; color: #111827; margin: 0;">No subjects available</h3>
+                                            <p style="font-size: 0.875rem; color: #6b7280; margin: 0;">
+                                                @(HasActiveFilters()
+                                                    ? "No subjects match the current filter values."
+                                                    : "No subjects were found.")
+                                            </p>
                                         </div>
-                                    </td>
-                                    <td style="padding: 1.25rem 1.5rem; color: #4b5563; font-weight: 500;">
-                                        @subject.DocumentCount files
-                                    </td>
-                                    <td style="padding: 1.25rem 1.5rem; color: #4b5563; font-weight: 500;">
-                                        @subject.StorageUsedMb MB
-                                    </td>
-                                    <td style="padding: 1.25rem 1.5rem; color: #6b7280; font-size: 0.875rem;">
-                                        @(subject.LatestUploadDate?.ToString("MMM dd, yyyy HH:mm") ?? "N/A")
                                     </td>
                                 </tr>
                             }
                         </tbody>
                     </table>
+                </div>
                 </div>
             </div>
         }
@@ -87,6 +192,23 @@
 @code {
     private bool isLoading = true;
     private List<DashboardSubjectDto>? subjects;
+    private string? OpenMenuColumn;
+    private string SubjectSearchTerm = string.Empty;
+    private string FilterSubjectQuery = string.Empty;
+    private string FilterDateFrom = string.Empty;
+    private string FilterDateTo = string.Empty;
+    private string SortBy = "date-desc";
+
+    private IReadOnlyList<DashboardSubjectDto> SourceSubjects => subjects ?? [];
+
+    private IReadOnlyList<DashboardSubjectDto> VisibleSubjects => GetVisibleSubjects();
+
+    private IReadOnlyList<string> SubjectOptions => SourceSubjects
+        .Select(subject => subject.SubjectCode)
+        .Where(code => !string.IsNullOrWhiteSpace(code))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(code => code, StringComparer.OrdinalIgnoreCase)
+        .ToList();
 
     protected override async Task OnInitializedAsync()
     {
@@ -105,4 +227,223 @@
             isLoading = false;
         }
     }
+
+    private IReadOnlyList<DashboardSubjectDto> GetVisibleSubjects()
+    {
+        IEnumerable<DashboardSubjectDto> query = SourceSubjects;
+
+        if (!string.IsNullOrWhiteSpace(FilterSubjectQuery))
+        {
+            query = query.Where(subject => subject.SubjectCode.Contains(FilterSubjectQuery, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var fromDate = ParseLocalDateTimeFilter(FilterDateFrom);
+        if (fromDate.HasValue)
+        {
+            query = query.Where(subject => subject.LatestUploadDate.HasValue && subject.LatestUploadDate.Value.ToLocalTime().DateTime >= fromDate.Value);
+        }
+
+        var toDate = ParseLocalDateTimeFilter(FilterDateTo);
+        if (toDate.HasValue)
+        {
+            query = query.Where(subject => subject.LatestUploadDate.HasValue && subject.LatestUploadDate.Value.ToLocalTime().DateTime <= toDate.Value);
+        }
+
+        query = SortBy switch
+        {
+            "subject-asc" => query.OrderBy(subject => subject.SubjectCode, StringComparer.OrdinalIgnoreCase),
+            "subject-desc" => query.OrderByDescending(subject => subject.SubjectCode, StringComparer.OrdinalIgnoreCase),
+            "date-asc" => query.OrderBy(subject => subject.LatestUploadDate ?? DateTimeOffset.MinValue),
+            "date-desc" => query.OrderByDescending(subject => subject.LatestUploadDate ?? DateTimeOffset.MinValue),
+            _ => query
+        };
+
+        return query.ToList();
+    }
+
+    private IReadOnlyList<string> GetSubjectSuggestions()
+    {
+        IEnumerable<string> query = SubjectOptions;
+        if (!string.IsNullOrWhiteSpace(SubjectSearchTerm))
+        {
+            query = query.Where(option => option.Contains(SubjectSearchTerm, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.ToList();
+    }
+
+    private void UpdateTextSearch(string? value)
+    {
+        SubjectSearchTerm = value?.Trim() ?? string.Empty;
+        FilterSubjectQuery = SubjectSearchTerm;
+    }
+
+    private void ApplySubjectSuggestion(string value)
+    {
+        FilterSubjectQuery = value;
+        SubjectSearchTerm = value;
+        CloseOpenMenu();
+    }
+
+    private void ClearSubjectFilter()
+    {
+        FilterSubjectQuery = string.Empty;
+        SubjectSearchTerm = string.Empty;
+        CloseOpenMenu();
+    }
+
+    private void UpdateDateFilter(string boundary, string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        if (string.Equals(boundary, "from", StringComparison.OrdinalIgnoreCase))
+        {
+            FilterDateFrom = normalizedValue;
+        }
+        else
+        {
+            FilterDateTo = normalizedValue;
+        }
+    }
+
+    private void ClearDateFilter()
+    {
+        FilterDateFrom = string.Empty;
+        FilterDateTo = string.Empty;
+    }
+
+    private DateTime? ParseLocalDateTimeFilter(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return DateTime.TryParseExact(
+            value,
+            "yyyy-MM-ddTHH:mm",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeLocal,
+            out var parsedDate)
+            ? parsedDate
+            : null;
+    }
+
+    private void ResetTable()
+    {
+        OpenMenuColumn = null;
+        SubjectSearchTerm = string.Empty;
+        FilterSubjectQuery = string.Empty;
+        FilterDateFrom = string.Empty;
+        FilterDateTo = string.Empty;
+        SortBy = "date-desc";
+    }
+
+    private void HandleHeaderMenuClick(string columnKey)
+    {
+        if (string.Equals(OpenMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
+        {
+            OpenMenuColumn = null;
+            return;
+        }
+
+        if (string.Equals(columnKey, "subject", StringComparison.OrdinalIgnoreCase))
+        {
+            SubjectSearchTerm = FilterSubjectQuery;
+        }
+
+        OpenMenuColumn = columnKey;
+    }
+
+    private void ApplySortOption(string sortKey)
+    {
+        SortBy = sortKey;
+        CloseOpenMenu();
+    }
+
+    private void CloseOpenMenu() =>
+        OpenMenuColumn = null;
+
+    private bool HasActiveFilters() =>
+        !string.IsNullOrWhiteSpace(FilterSubjectQuery)
+        || !string.IsNullOrWhiteSpace(FilterDateFrom)
+        || !string.IsNullOrWhiteSpace(FilterDateTo);
+
+    private bool IsSortedBy(string columnKey) =>
+        SortBy.StartsWith($"{columnKey}-", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsSortDescending(string columnKey) =>
+        string.Equals(SortBy, $"{columnKey}-desc", StringComparison.OrdinalIgnoreCase);
+
+    private string GetSortIcon(string columnKey)
+    {
+        if (!IsSortedBy(columnKey))
+        {
+            return Icons.Material.Filled.UnfoldMore;
+        }
+
+        return IsSortDescending(columnKey)
+            ? Icons.Material.Filled.KeyboardArrowDown
+            : Icons.Material.Filled.KeyboardArrowUp;
+    }
+
+    private string GetHeaderButtonStyle(string columnKey, bool alignLeft = false)
+    {
+        var isActive = IsSortedBy(columnKey) || IsColumnFiltered(columnKey);
+        var color = isActive ? "#5e5ce6" : "#464554";
+        var justifyContent = alignLeft ? "flex-start" : "center";
+        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;";
+    }
+
+    private string GetSortIconStyle(string columnKey)
+    {
+        var color = (IsSortedBy(columnKey) || IsColumnFiltered(columnKey)) ? "#5e5ce6" : "#9ca3af";
+        return $"font-size: 1rem; color: {color};";
+    }
+
+    private string GetSortMenuItemStyle(string sortKey)
+    {
+        var isActive = string.Equals(SortBy, sortKey, StringComparison.OrdinalIgnoreCase);
+        var bg = isActive ? "rgba(94,92,230,0.08)" : "transparent";
+        var color = isActive ? "#4441CC" : "#464554";
+        return $"display: block; width: 100%; border: none; background: {bg}; color: {color}; border-radius: 0.55rem; padding: 0.55rem 0.7rem; text-align: left; font-size: 0.8125rem; font-weight: 600; cursor: pointer;";
+    }
+
+    private string GetFilterMenuItemStyle(bool isActive)
+    {
+        var bg = isActive ? "rgba(94,92,230,0.08)" : "transparent";
+        var color = isActive ? "#4441CC" : "#464554";
+        return $"display: block; width: 100%; border: none; background: {bg}; color: {color}; border-radius: 0.55rem; padding: 0.5rem 0.7rem; text-align: left; font-size: 0.8125rem; font-weight: 600; cursor: pointer; white-space: normal; word-break: break-word; line-height: 1.35;";
+    }
+
+    private string GetMenuSectionLabelStyle() =>
+        "display: block; padding: 0.35rem 0.55rem 0.2rem; font-size: 0.675rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.08em;";
+
+    private string GetMenuDividerStyle() =>
+        "height: 1px; background: rgba(199,196,215,0.35); margin: 0.35rem 0;";
+
+    private string GetHeaderMenuStyle(string minWidth, bool alignLeft = false)
+    {
+        var horizontalPosition = alignLeft
+            ? "left: 1rem; transform: none;"
+            : "left: 50%; transform: translateX(-50%);";
+
+        return $"position: absolute; top: calc(100% - 0.15rem); {horizontalPosition} z-index: 5; min-width: {minWidth}; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 10px 30px rgba(26,27,31,0.12); padding: 0.45rem;";
+    }
+
+    private string GetFilterInputStyle() =>
+        "width: 100%; border: 1px solid rgba(199,196,215,0.65); border-radius: 0.6rem; background: #fbfbfe; color: #1a1b1f; padding: 0.58rem 0.7rem; font-size: 0.8125rem; outline: none; box-sizing: border-box;";
+
+    private string GetFilterOptionsListStyle() =>
+        "display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem; max-height: 12.25rem; overflow-y: auto; padding-right: 0.15rem;";
+
+    private string GetMenuEmptyStateStyle() =>
+        "display: block; padding: 0.55rem 0.7rem; font-size: 0.78125rem; color: #7c7f8f; text-align: left;";
+
+    private bool IsColumnFiltered(string columnKey) =>
+        columnKey switch
+        {
+            "subject" => !string.IsNullOrWhiteSpace(FilterSubjectQuery),
+            "date" => !string.IsNullOrWhiteSpace(FilterDateFrom) || !string.IsNullOrWhiteSpace(FilterDateTo),
+            _ => false
+        };
 }

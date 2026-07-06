@@ -101,7 +101,7 @@
                                                        @oninput='e => UpdateTextSearch("name", e.Value?.ToString())'
                                                        placeholder="Search document name"
                                                        style='@GetFilterInputStyle()' />
-                                                <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem;">
+                                                <div style='@GetFilterOptionsListStyle()'>
                                                     @if (nameSuggestions.Count > 0)
                                                     {
                                                         @foreach (var option in nameSuggestions)
@@ -114,7 +114,6 @@
                                                         <span style='@GetMenuEmptyStateStyle()'>No matching names</span>
                                                     }
                                                 </div>
-                                                <button @onclick='() => ClearTextFilter("name")' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterNameQuery))'>All names</button>
                                                 <div style='@GetMenuDividerStyle()'></div>
                                                 <span style='@GetMenuSectionLabelStyle()'>Sort</span>
                                                 <button @onclick='() => ApplySortOption("name", "name-asc")' style='@GetSortMenuItemStyle("name-asc")'>A to Z</button>
@@ -124,22 +123,22 @@
                                     </th>
                                     @if (!FolderId.HasValue)
                                     {
-                                        <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                            <button @onclick='() => HandleHeaderSortClick("folder")' style='@GetHeaderSortButtonStyle("folder")'>
+                                        <th style="padding: 0.8rem 1rem; text-align: left; position: relative;">
+                                            <button @onclick='() => HandleHeaderSortClick("folder")' style='@GetHeaderSortButtonStyle("folder", true)'>
                                                 <span>Folder</span>
                                                 <MudIcon Icon='@GetSortIcon("folder")' Style='@GetSortIconStyle("folder")' />
                                             </button>
                                             @if (OpenSortMenuColumn == "folder")
                                             {
                                                 var folderSuggestions = GetSuggestions("folder");
-                                                <div style='@GetHeaderMenuStyle("15rem")'>
+                                                <div style='@GetHeaderMenuStyle("15rem", true)'>
                                                     <span style='@GetMenuSectionLabelStyle()'>Filter</span>
                                                     <input type="text"
                                                            value="@FolderSearchTerm"
                                                            @oninput='e => UpdateTextSearch("folder", e.Value?.ToString())'
                                                            placeholder="Search folder"
                                                            style='@GetFilterInputStyle()' />
-                                                    <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem;">
+                                                    <div style='@GetFilterOptionsListStyle()'>
                                                         @if (folderSuggestions.Count > 0)
                                                         {
                                                             @foreach (var option in folderSuggestions)
@@ -152,7 +151,6 @@
                                                             <span style='@GetMenuEmptyStateStyle()'>No matching folders</span>
                                                         }
                                                     </div>
-                                                    <button @onclick='() => ClearTextFilter("folder")' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterFolderQuery))'>All folders</button>
                                                     <div style='@GetMenuDividerStyle()'></div>
                                                     <span style='@GetMenuSectionLabelStyle()'>Sort</span>
                                                     <button @onclick='() => ApplySortOption("folder", "folder-asc")' style='@GetSortMenuItemStyle("folder-asc")'>A to Z</button>
@@ -176,7 +174,7 @@
                                                        @oninput='e => UpdateTextSearch("subject", e.Value?.ToString())'
                                                        placeholder="Search subject code"
                                                        style='@GetFilterInputStyle()' />
-                                                <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem;">
+                                                <div style='@GetFilterOptionsListStyle()'>
                                                     @if (subjectSuggestions.Count > 0)
                                                     {
                                                         @foreach (var option in subjectSuggestions)
@@ -189,7 +187,6 @@
                                                         <span style='@GetMenuEmptyStateStyle()'>No matching subjects</span>
                                                     }
                                                 </div>
-                                                <button @onclick='() => ClearTextFilter("subject")' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterSubjectQuery))'>All subjects</button>
                                                 <div style='@GetMenuDividerStyle()'></div>
                                                 <span style='@GetMenuSectionLabelStyle()'>Sort</span>
                                                 <button @onclick='() => ApplySortOption("subject", "subject-asc")' style='@GetSortMenuItemStyle("subject-asc")'>A to Z</button>
@@ -212,7 +209,7 @@
                                                        @oninput='e => UpdateTextSearch("semester", e.Value?.ToString())'
                                                        placeholder="Search semester"
                                                        style='@GetFilterInputStyle()' />
-                                                <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem;">
+                                                <div style='@GetFilterOptionsListStyle()'>
                                                     @if (semesterSuggestions.Count > 0)
                                                     {
                                                         @foreach (var option in semesterSuggestions)
@@ -225,7 +222,6 @@
                                                         <span style='@GetMenuEmptyStateStyle()'>No matching semesters</span>
                                                     }
                                                 </div>
-                                                <button @onclick='() => ClearTextFilter("semester")' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterSemesterQuery))'>All semesters</button>
                                                 <div style='@GetMenuDividerStyle()'></div>
                                                 <span style='@GetMenuSectionLabelStyle()'>Sort</span>
                                                 <button @onclick='() => ApplySortOption("semester", "semester-asc")' style='@GetSortMenuItemStyle("semester-asc")'>A to Z</button>
@@ -240,12 +236,27 @@
                                         </button>
                                         @if (OpenSortMenuColumn == "status")
                                         {
-                                            <div style='@GetHeaderMenuStyle("12rem")'>
+                                            var statusSuggestions = GetSuggestions("status");
+                                            <div style='@GetHeaderMenuStyle("14rem")'>
                                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
-                                                <button @onclick='() => ApplyStatusFilter(string.Empty)' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterReviewStatus))'>All status</button>
-                                                <button @onclick='() => ApplyStatusFilter("approved")' style='@GetFilterMenuItemStyle(string.Equals(FilterReviewStatus, "approved", StringComparison.OrdinalIgnoreCase))'>Approved</button>
-                                                <button @onclick='() => ApplyStatusFilter("pending")' style='@GetFilterMenuItemStyle(string.Equals(FilterReviewStatus, "pending", StringComparison.OrdinalIgnoreCase))'>Pending</button>
-                                                <button @onclick='() => ApplyStatusFilter("rejected")' style='@GetFilterMenuItemStyle(string.Equals(FilterReviewStatus, "rejected", StringComparison.OrdinalIgnoreCase))'>Rejected</button>
+                                                <input type="text"
+                                                       value="@StatusSearchTerm"
+                                                       @oninput='e => UpdateTextSearch("status", e.Value?.ToString())'
+                                                       placeholder="Search status"
+                                                       style='@GetFilterInputStyle()' />
+                                                <div style='@GetFilterOptionsListStyle()'>
+                                                    @if (statusSuggestions.Count > 0)
+                                                    {
+                                                        @foreach (var option in statusSuggestions)
+                                                        {
+                                                            <button @onclick='() => ApplyTextSuggestion("status", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterReviewStatus, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style='@GetMenuEmptyStateStyle()'>No matching status</span>
+                                                    }
+                                                </div>
                                                 <div style='@GetMenuDividerStyle()'></div>
                                                 <span style='@GetMenuSectionLabelStyle()'>Sort</span>
                                                 <button @onclick='() => ApplySortOption("status", "status-asc")' style='@GetSortMenuItemStyle("status-asc")'>Pending first</button>
@@ -454,6 +465,7 @@
     private string FolderSearchTerm = string.Empty;
     private string SubjectSearchTerm = string.Empty;
     private string SemesterSearchTerm = string.Empty;
+    private string StatusSearchTerm = string.Empty;
     private string FilterNameQuery = string.Empty;
     private string FilterReviewStatus = string.Empty;
     private string FilterSubjectQuery = string.Empty;
@@ -513,6 +525,9 @@
             .OrderBy(semester => semester, StringComparer.OrdinalIgnoreCase)
             .ToList()
         ?? [];
+
+    private IReadOnlyList<string> StatusOptions =>
+        ["Approved", "Pending", "Rejected"];
 
     protected override async Task OnInitializedAsync()
     {
@@ -591,8 +606,7 @@
 
         if (!string.IsNullOrWhiteSpace(FilterReviewStatus))
         {
-            query = query.Where(item => string.Equals(
-                GetReviewStatusKey(item),
+            query = query.Where(item => GetReviewStatusLabel(item).Contains(
                 FilterReviewStatus,
                 StringComparison.OrdinalIgnoreCase));
         }
@@ -668,6 +682,7 @@
             "folder" => FolderNameOptions,
             "subject" => SubjectOptions,
             "semester" => SemesterOptions,
+            "status" => StatusOptions,
             _ => []
         };
 
@@ -677,6 +692,7 @@
             "folder" => FolderSearchTerm,
             "subject" => SubjectSearchTerm,
             "semester" => SemesterSearchTerm,
+            "status" => StatusSearchTerm,
             _ => string.Empty
         };
 
@@ -686,7 +702,7 @@
             query = query.Where(option => option.Contains(filterValue, StringComparison.OrdinalIgnoreCase));
         }
 
-        return query.Take(6).ToList();
+        return query.ToList();
     }
 
     private void UpdateTextSearch(string columnKey, string? value)
@@ -696,15 +712,23 @@
         {
             case "name":
                 NameSearchTerm = normalizedValue;
+                SetFilterValue(ref FilterNameQuery, normalizedValue);
                 break;
             case "folder":
                 FolderSearchTerm = normalizedValue;
+                SetFilterValue(ref FilterFolderQuery, normalizedValue);
                 break;
             case "subject":
                 SubjectSearchTerm = normalizedValue;
+                SetFilterValue(ref FilterSubjectQuery, normalizedValue);
                 break;
             case "semester":
                 SemesterSearchTerm = normalizedValue;
+                SetFilterValue(ref FilterSemesterQuery, normalizedValue);
+                break;
+            case "status":
+                StatusSearchTerm = normalizedValue;
+                SetFilterValue(ref FilterReviewStatus, normalizedValue);
                 break;
         }
     }
@@ -728,6 +752,10 @@
             case "semester":
                 SetFilterValue(ref FilterSemesterQuery, value);
                 SemesterSearchTerm = value;
+                break;
+            case "status":
+                SetFilterValue(ref FilterReviewStatus, value);
+                StatusSearchTerm = value;
                 break;
         }
 
@@ -754,6 +782,10 @@
                 SetFilterValue(ref FilterSemesterQuery, string.Empty);
                 SemesterSearchTerm = string.Empty;
                 break;
+            case "status":
+                SetFilterValue(ref FilterReviewStatus, string.Empty);
+                StatusSearchTerm = string.Empty;
+                break;
         }
 
         CloseOpenMenu();
@@ -762,6 +794,7 @@
     private void ApplyStatusFilter(string statusValue)
     {
         SetFilterValue(ref FilterReviewStatus, statusValue);
+        StatusSearchTerm = statusValue;
         CloseOpenMenu();
     }
 
@@ -861,6 +894,7 @@
         FolderSearchTerm = string.Empty;
         SubjectSearchTerm = string.Empty;
         SemesterSearchTerm = string.Empty;
+        StatusSearchTerm = string.Empty;
         FilterNameQuery = string.Empty;
         FilterReviewStatus = string.Empty;
         FilterSubjectQuery = string.Empty;
@@ -916,6 +950,9 @@
             case "semester":
                 SemesterSearchTerm = FilterSemesterQuery;
                 break;
+            case "status":
+                StatusSearchTerm = FilterReviewStatus;
+                break;
         }
     }
 
@@ -951,11 +988,12 @@
             : Icons.Material.Filled.KeyboardArrowUp;
     }
 
-    private string GetHeaderSortButtonStyle(string columnKey)
+    private string GetHeaderSortButtonStyle(string columnKey, bool alignLeft = false)
     {
         var isActive = IsSortedBy(columnKey) || IsColumnFiltered(columnKey);
         var color = isActive ? "#5e5ce6" : "#464554";
-        return $"display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;";
+        var justifyContent = alignLeft ? "flex-start" : "center";
+        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;";
     }
 
     private string GetSortIconStyle(string columnKey)
@@ -985,11 +1023,20 @@
     private string GetMenuDividerStyle() =>
         "height: 1px; background: rgba(199,196,215,0.35); margin: 0.35rem 0;";
 
-    private string GetHeaderMenuStyle(string minWidth) =>
-        $"position: absolute; top: calc(100% - 0.15rem); left: 50%; transform: translateX(-50%); z-index: 5; min-width: {minWidth}; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 10px 30px rgba(26,27,31,0.12); padding: 0.45rem;";
+    private string GetHeaderMenuStyle(string minWidth, bool alignLeft = false)
+    {
+        var horizontalPosition = alignLeft
+            ? "left: 0.9rem; transform: none;"
+            : "left: 50%; transform: translateX(-50%);";
+
+        return $"position: absolute; top: calc(100% - 0.15rem); {horizontalPosition} z-index: 5; min-width: {minWidth}; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 10px 30px rgba(26,27,31,0.12); padding: 0.45rem;";
+    }
 
     private string GetFilterInputStyle() =>
         "width: 100%; border: 1px solid rgba(199,196,215,0.65); border-radius: 0.6rem; background: #fbfbfe; color: #1a1b1f; padding: 0.58rem 0.7rem; font-size: 0.8125rem; outline: none; box-sizing: border-box;";
+
+    private string GetFilterOptionsListStyle() =>
+        "display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem; max-height: 12.25rem; overflow-y: auto; padding-right: 0.15rem;";
 
     private string GetMenuEmptyStateStyle() =>
         "display: block; padding: 0.55rem 0.7rem; font-size: 0.78125rem; color: #7c7f8f; text-align: left;";

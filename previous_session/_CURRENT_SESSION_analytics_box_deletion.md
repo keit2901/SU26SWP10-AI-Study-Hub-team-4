@@ -96,3 +96,74 @@
 - Result:
   - compile succeeded
   - remaining warnings are still pre-existing outside this change, plus the existing MudBlazor analyzer warning on `MudChart`
+
+### 2026-07-06T12:05:00+07:00 - Top moderator analytics stats aligned into one row
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Reworked the top analytics summary area into a 3-card row:
+  - `Total Documents`
+  - `Storage Used`
+  - `Upload Issues`
+- Removed the separate full-width total-documents block and merged all three summaries into one consistent layout row
+
+### 2026-07-06T12:05:00+07:00 - Compile verification after 3-card row layout
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside this change, plus the existing MudBlazor analyzer warning on `MudChart`
+
+### 2026-07-06T13:27:12+07:00 - Analytics review table now supports popup filter/sort on non-structure columns
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Added a `Reset table` action to the `Documents in Review` header
+- Added header popup menus for all requested columns except `Structure`:
+  - `Document Name`: text search, suggestion list, all-name reset, A-Z / Z-A sorting
+  - `Status`: direct status choices (`Approved`, `Pending`, `Rejected`) plus A-Z / Z-A sorting
+  - `Upload Date`: from/to date range, clear-date action, newest/oldest sorting
+- Added click-outside close behavior and empty-state messaging when filters remove all rows
+
+### 2026-07-06T13:27:12+07:00 - Compile verification after analytics table filter-sort pass
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside this change, plus the existing MudBlazor analyzer warning on `MudChart`
+
+### 2026-07-06T13:36:05+07:00 - Analytics status filter now supports typed suggestion search
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Reworked the `Status` popup inside `Documents in Review` so it now behaves like the other text filters:
+  - added a `Search status` input
+  - suggestion list narrows live when typing partial text
+  - choosing a suggestion applies the matching status value
+  - `All status` still clears the current status filter
+- Kept the date popup unchanged
+
+### 2026-07-06T13:36:05+07:00 - Compile verification after analytics status search update
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside this change, plus the existing MudBlazor analyzer warning on `MudChart`
+
+### 2026-07-06T13:47:44+07:00 - Analytics text filters now apply live and persist until reset
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Reworked non-date filters in `Documents in Review` so:
+  - typing in `Document Name` filters the table immediately by partial text
+  - typing in `Status` filters the table immediately by partial text
+  - entered text stays in the popup input until `Reset table` is used, unless the user explicitly clears it
+- Left the date-range filter behavior unchanged
+
+### 2026-07-06T13:47:44+07:00 - Compile verification after analytics live-persist filter update
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside this change, plus the existing MudBlazor analyzer warning on `MudChart`
+
+### 2026-07-06T14:10:32+07:00 - Analytics review filter menus tightened and all-options removed
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Removed `All names` and `All status` from the `Documents in Review` filter popups because `Reset table` already clears filters
+- Added a compact scrollable filter-options list so the filter section shows about 5 rows before scrolling
+- Removed the old 6-item suggestion cap so all matching filter values remain available through the internal scroll
+- Left the date range filter unchanged
+
+### 2026-07-06T14:10:32+07:00 - Compile verification after analytics compact filter menu update
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside this change, plus the existing MudBlazor analyzer warning on `MudChart`
