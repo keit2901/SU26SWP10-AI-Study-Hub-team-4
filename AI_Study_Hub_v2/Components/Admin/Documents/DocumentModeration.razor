@@ -310,8 +310,7 @@
 
     private int GetCount(string status, int fallback)
     {
-        var count = _documents.Count(document => document.ModerationStatus == status);
-        return count > 0 ? count : fallback;
+        return _documents.Count(document => document.ModerationStatus == status);
     }
 
     private int TotalDocumentsCount => _documents.Count;
