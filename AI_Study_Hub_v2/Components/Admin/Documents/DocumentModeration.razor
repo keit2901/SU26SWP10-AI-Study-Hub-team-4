@@ -314,7 +314,7 @@
         return count > 0 ? count : fallback;
     }
 
-    private int TotalDocumentsCount => _documents.Count > 0 ? _documents.Count : 12;
+    private int TotalDocumentsCount => _documents.Count;
 
     private string GetModerationClass(string status)
     {
@@ -403,67 +403,6 @@
 
             _documents.Clear();
             _documents.AddRange(rows.Select(MapRow));
-
-            // Seed mock items to match the mockup design if empty
-            if (_documents.Count == 0)
-            {
-                _documents.Add(new ReviewDocumentRow
-                {
-                    Id = Guid.Parse("11111111-1111-1111-1111-111111111111"),
-                    Title = "RAG Evaluation Notes",
-                    StoragePath = "documents/swp391/rag-eval.pdf",
-                    SubjectCode = "SWP391",
-                    OwnerName = "Dr. Nguyen Minh",
-                    OwnerEmail = "minh.nguyen@aihub.edu",
-                    FileType = "pdf",
-                    FileSizeMb = 4.8,
-                    ModerationStatus = PendingStatus,
-                    Severity = MediumSeverity,
-                    UploadedAt = DateTime.Now.AddHours(-2)
-                });
-                _documents.Add(new ReviewDocumentRow
-                {
-                    Id = Guid.Parse("22222222-2222-2222-2222-222222222222"),
-                    Title = "Exam Bank 2025",
-                    StoragePath = "documents/dbi202/exams.docx",
-                    SubjectCode = "DBI202",
-                    OwnerName = "Kiet Ngo",
-                    OwnerEmail = "kiet.ngo@aihub.edu",
-                    FileType = "docx",
-                    FileSizeMb = 12.1,
-                    ModerationStatus = ReportedStatus,
-                    Severity = HighSeverity,
-                    UploadedAt = DateTime.Now.AddDays(-1)
-                });
-                _documents.Add(new ReviewDocumentRow
-                {
-                    Id = Guid.Parse("33333333-3333-3333-3333-333333333333"),
-                    Title = "Lecture OCR Export",
-                    StoragePath = "documents/prn212/ocr-data.csv",
-                    SubjectCode = "PRN212",
-                    OwnerName = "Mai Anh Tran",
-                    OwnerEmail = "mai.tran@aihub.edu",
-                    FileType = "csv",
-                    FileSizeMb = 1.2,
-                    ModerationStatus = PendingStatus,
-                    Severity = LowSeverity,
-                    UploadedAt = DateTime.Now.AddHours(-5)
-                });
-                _documents.Add(new ReviewDocumentRow
-                {
-                    Id = Guid.Parse("44444444-4444-4444-4444-444444444444"),
-                    Title = "Legacy Slides",
-                    StoragePath = "documents/swt301/slides.pptx",
-                    SubjectCode = "SWT301",
-                    OwnerName = "Linh Pham",
-                    OwnerEmail = "linh.pham@aihub.edu",
-                    FileType = "pptx",
-                    FileSizeMb = 6.4,
-                    ModerationStatus = RejectedStatus,
-                    Severity = LowSeverity,
-                    UploadedAt = DateTime.Now.AddDays(-4)
-                });
-            }
 
             _selectedDocument = selectedId.HasValue
                 ? _documents.FirstOrDefault(document => document.Id == selectedId.Value)
