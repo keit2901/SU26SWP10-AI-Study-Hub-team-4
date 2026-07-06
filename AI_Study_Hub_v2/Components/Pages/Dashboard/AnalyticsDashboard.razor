@@ -97,12 +97,12 @@
         }
         else
         {
-            <div style="display: grid; grid-template-columns: minmax(18rem, 24rem); gap: 1rem;">
-                <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); position: relative; overflow: hidden;">
+            <div style="width: 100%;">
+                <div style="width: 100%; background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); position: relative; overflow: hidden; box-sizing: border-box;">
                     <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <div style="display: flex; flex: 1; flex-direction: column; align-items: center; justify-content: center; gap: 0.25rem; text-align: center;">
                             <p style="font-size: 0.75rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Total Documents</p>
-                            <div style="display: flex; align-items: baseline; gap: 0.25rem;">
+                            <div style="display: flex; align-items: baseline; justify-content: center; gap: 0.25rem;">
                                 <h3 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">@totalDocuments</h3>
                             </div>
                         </div>
@@ -110,7 +110,7 @@
                             <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 1.5rem; color: #5e5ce6;" />
                         </div>
                     </div>
-                    <div style="display: flex; align-items: center; gap: 0.375rem; height: 1.5rem;">
+                    <div style="display: flex; align-items: center; justify-content: center; gap: 0.375rem; height: 1.5rem;">
                         <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Style="font-size: 1rem; color: #006424;" />
                         <span style="font-size: 0.8125rem; font-weight: 600; color: #006424;">Active moderation scope</span>
                     </div>

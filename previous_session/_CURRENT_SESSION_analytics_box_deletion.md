@@ -74,3 +74,25 @@
 - Result:
   - compile still succeeded
   - only pre-existing warnings remained, including the existing MudBlazor analyzer warning for `MudChart`
+
+### 2026-07-06T11:45:00+07:00 - Total Documents card widened
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Increased the top analytics card column width for `Total Documents`
+- Card now uses a wider range so the summary block feels less cramped
+
+### 2026-07-06T11:45:00+07:00 - Compile verification after card width update
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside this change, plus the existing MudBlazor analyzer warning on `MudChart`
+
+### 2026-07-06T11:52:00+07:00 - Total Documents card changed to full-width row
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Removed the constrained top grid wrapper around `Total Documents`
+- Converted the card to a full-width block so it now spans the entire content row
+
+### 2026-07-06T11:52:00+07:00 - Compile verification after full-width card update
+- Ran `dotnet msbuild "AI_Study_Hub_v2\AI_Study_Hub_v2.csproj" /t:Compile /p:BuildProjectReferences=false /nologo`
+- Result:
+  - compile succeeded
+  - remaining warnings are still pre-existing outside this change, plus the existing MudBlazor analyzer warning on `MudChart`
