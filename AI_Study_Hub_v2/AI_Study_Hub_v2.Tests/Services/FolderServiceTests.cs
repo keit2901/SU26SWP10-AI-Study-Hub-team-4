@@ -231,7 +231,7 @@ public class FolderServiceTests
 
         // 5. Shared folder (contains ready documents, and folder is shared)
         var folderShared = SeedFolder(db, me.Id, "Shared Folder");
-        folderShared.IsShared = true;
+        folderShared.ShareStatus = FolderStatus.Approved;
         db.SaveChanges();
         SeedDocumentWithStatus(db, me.Id, folderShared.Id, DocumentStatus.Ready);
 

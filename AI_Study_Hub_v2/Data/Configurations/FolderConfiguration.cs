@@ -32,9 +32,9 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
             .HasColumnName("is_favorite")
             .HasDefaultValue(false);
 
-        builder.Property(f => f.IsShared)
-            .HasColumnName("is_shared")
-            .HasDefaultValue(false);
+        builder.Property(f => f.ShareStatus)
+            .HasColumnName("share_status")
+            .HasDefaultValue(FolderStatus.None);
 
         builder.Property(f => f.SharedAt)
             .HasColumnName("shared_at");

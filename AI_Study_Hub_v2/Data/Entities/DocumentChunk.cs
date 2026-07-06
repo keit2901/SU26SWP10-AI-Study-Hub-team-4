@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using Pgvector;
 
 namespace AI_Study_Hub_v2.Data.Entities;
@@ -30,7 +32,11 @@ public sealed class DocumentChunk
     /// <summary>Cosine-similarity vector. Null only briefly during pipeline.</summary>
     public Vector Embedding { get; set; } = null!;
 
-    public DateTimeOffset CreatedAt { get; set; }
+	[Column("embedding_model")]
+[MaxLength(50)]
+public string? EmbeddingModel { get; set; }
 
-    public Document Document { get; set; } = null!;
+	public DateTimeOffset CreatedAt { get; set; }
+
+   	public Document Document { get; set; } = null!;
 }

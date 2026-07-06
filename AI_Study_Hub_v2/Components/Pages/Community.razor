@@ -100,9 +100,33 @@
             {
                 <div class="community-loading">
                     <MudProgressCircular Indeterminate="true" Size="Size.Medium" />
-                </div>
-            }
-            else
+                    </div>
+
+                    @if (_activeTab == "personal" && _totalPages > 1)
+                    {
+                        <div class="pagination-bar">
+                            <div class="pagination-info">
+                                Showing @((_currentPage - 1) * PageSize + 1)-@Math.Min(_currentPage * PageSize, _filteredFolders.Count) of @_filteredFolders.Count folders
+                            </div>
+                            <div class="pagination-controls">
+                                <button class="pagination-btn" disabled="@(_currentPage <= 1)" @onclick="() => GoToPage(_currentPage - 1)">‹ Prev</button>
+                                @foreach (var p in GetPageNumbers())
+                                {
+                                    if (p == -1)
+                                    {
+                                        <span class="pagination-ellipsis">…</span>
+                                    }
+                                    else
+                                    {
+                                        <button class="pagination-btn @(p == _currentPage ? "active" : "")" @onclick="() => GoToPage(p)">@p</button>
+                                    }
+                                }
+                                <button class="pagination-btn" disabled="@(_currentPage >= _totalPages)" @onclick="() => GoToPage(_currentPage + 1)">Next ›</button>
+                            </div>
+                        </div>
+                    }
+                }
+                else
             {
                 <div class="community-main-header">
                     <h1 class="community-title">
@@ -150,13 +174,28 @@
                 }
 
                 <div class="community-search">
-                    <div class="search-wrapper">
-                        <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
-                        <input type="text"
-                               class="search-input"
-                               placeholder="Search folders..."
-                               @bind-value="@_searchQuery"
-                               @bind-value:event="oninput" />
+                    <div class="search-filter-row">
+                        <div class="search-wrapper">
+                            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
+                            <input type="text"
+                                   class="search-input"
+                                   placeholder="Search folders..."
+                                   value="@_searchQuery"
+                                   @oninput="HandleSearchInput" />
+                        </div>
+                        @if (_activeTab == "personal")
+                        {
+                            <div class="filter-wrapper">
+                                <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
+                                    <option value="">All Status</option>
+                                    <option value="Shared">Shared</option>
+                                    <option value="Pending Share">Pending Share</option>
+                                    <option value="Processing">Processing</option>
+                                    <option value="Rejected">Rejected</option>
+                                    <option value="Empty">Empty</option>
+                                </select>
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -222,7 +261,7 @@
                         }
                         else
                         {
-                            @foreach (var folder in _filteredFolders)
+                            @foreach (var folder in _pagedFolders)
                             {
                                 var cidx = _personalFolders.IndexOf(folder);
                                 var colors = new[] { "#7c6fcd", "#c0392b", "#2980b9", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#d35400" };
@@ -301,7 +340,11 @@
 @code {
     private string _activeTab = "community";
     private string _searchQuery = "";
+    private string? _statusFilter;
     private bool _loading = true;
+
+    private const int PageSize = 10;
+    private int _currentPage = 1;
 
     private List<FolderDto> _allCommunityFolders = new();
     private List<FolderDto> _personalFolders = new();
@@ -318,14 +361,31 @@
         get
         {
             var source = _activeTab == "community" ? _allCommunityFolders : _personalFolders;
-            if (string.IsNullOrWhiteSpace(_searchQuery))
-                return source;
-            var q = _searchQuery.Trim().ToLowerInvariant();
-            return source.Where(f =>
-                f.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                (f.OwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+
+            if (!string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                var q = _searchQuery.Trim().ToLowerInvariant();
+                source = source.Where(f =>
+                    f.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    (f.OwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(_statusFilter) && _activeTab == "personal")
+            {
+                source = source.Where(f => f.Status == _statusFilter).ToList();
+            }
+
+            return source;
         }
     }
+
+    private List<FolderDto> _pagedFolders =>
+        _filteredFolders
+            .Skip((_currentPage - 1) * PageSize)
+            .Take(PageSize)
+            .ToList();
+
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredFolders.Count / PageSize));
 
     private int _totalLikes => _personalFolders.Sum(f => f.LikeCount);
     private int _totalDislikes => _personalFolders.Sum(f => f.DislikeCount);
@@ -392,6 +452,8 @@
     {
         _activeTab = "community";
         _searchQuery = "";
+        _statusFilter = null;
+        _currentPage = 1;
         _openMenuFolderId = null;
     }
 
@@ -399,6 +461,8 @@
     {
         _activeTab = "personal";
         _searchQuery = "";
+        _statusFilter = null;
+        _currentPage = 1;
         _openMenuFolderId = null;
     }
 
@@ -411,6 +475,52 @@
     private void GoToFolder(Guid folderId)
     {
         Nav.NavigateTo("/ai/chat?folderId=" + folderId);
+    }
+
+    private void HandleSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+        _currentPage = 1;
+    }
+
+    private void HandleStatusFilterChange(ChangeEventArgs e)
+    {
+        _statusFilter = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(_statusFilter))
+            _statusFilter = null;
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages) return;
+        _currentPage = page;
+    }
+
+    private List<int> GetPageNumbers()
+    {
+        var total = _totalPages;
+        var current = _currentPage;
+        var pages = new List<int>();
+
+        if (total <= 7)
+        {
+            for (var i = 1; i <= total; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (current > 3) pages.Add(-1); // ellipsis
+
+            var start = Math.Max(2, current - 1);
+            var end = Math.Min(total - 1, current + 1);
+            for (var i = start; i <= end; i++) pages.Add(i);
+
+            if (current < total - 2) pages.Add(-1); // ellipsis
+            pages.Add(total);
+        }
+
+        return pages;
     }
 
     private void ToggleMenu(Guid folderId)

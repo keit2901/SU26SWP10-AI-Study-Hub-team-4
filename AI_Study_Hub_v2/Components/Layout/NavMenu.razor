@@ -19,7 +19,10 @@
                 {
                     <a class="nav-pill @NavClass("admin")" href="admin">Admin Panel</a>
                 }
-                <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                @if (IsModeratorOrAdmin)
+                {
+                    <a class="nav-pill @NavClass("dashboard")" href="dashboard">Dashboard</a>
+                }
                 <a class="nav-pill @NavClass("documents")" href="documents">Library</a>
                 <a class="nav-pill @NavClass("community")" href="community">Community</a>
                 <a class="nav-pill @NavClass("ai/chat")" href="ai/chat">Workspace</a>
@@ -27,10 +30,10 @@
             }
             else
             {
-                <NavLink class="nav-pill" href="" Match="NavLinkMatch.All">Dashboard</NavLink>
-                <NavLink class="nav-pill" href="#public-community">Community</NavLink>
-                <NavLink class="nav-pill" href="login">Sign In</NavLink>
-                <NavLink class="nav-pill" href="register">Get Started</NavLink>
+                <a class="nav-pill @GuestNavClass(string.Empty)" href="">Dashboard</a>
+                <button type="button" class="nav-pill nav-pill-static">Community</button>
+                <a class="nav-pill @GuestNavClass("login")" href="login">Sign In</a>
+                <a class="nav-pill @GuestNavClass("register")" href="register">Get Started</a>
             }
         </nav>
 
@@ -78,11 +81,24 @@
         return rel == href ? "active" : "";
     }
 
+    private string GuestNavClass(string href)
+    {
+        var rel = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
+        if (string.IsNullOrWhiteSpace(href))
+        {
+            return string.IsNullOrWhiteSpace(rel) ? "active" : "";
+        }
+
+        return rel.Equals(href, StringComparison.OrdinalIgnoreCase) ? "active" : "";
+    }
+
     private bool IsAdmin =>
         AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role);
 
     private bool IsModerator =>
         Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
+
+    private bool IsModeratorOrAdmin => IsAdmin || IsModerator;
 
     private string ProfileHref => IsAdmin
         ? "admin"

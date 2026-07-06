@@ -33,6 +33,10 @@ public class AppDbContext : DbContext
 
     public DbSet<CommunityReport> CommunityReports => Set<CommunityReport>();
 
+    public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
+
+    public DbSet<BenchmarkRunRecord> BenchmarkRuns => Set<BenchmarkRunRecord>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

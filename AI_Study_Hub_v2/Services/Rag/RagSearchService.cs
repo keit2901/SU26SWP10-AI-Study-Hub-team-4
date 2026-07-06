@@ -1,11 +1,11 @@
+using System.Diagnostics;
+using System.Text.RegularExpressions;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Pgvector;
-using Pgvector.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Services.Rag;
 
@@ -13,18 +13,29 @@ public sealed class RagSearchService : IRagSearchService
 {
     private const int ExcerptMaxChars = 500;
 
+    private static readonly Regex TokenRegex = new(@"[\p{L}\p{N}_]+", RegexOptions.Compiled);
+
     private readonly AppDbContext _db;
     private readonly IEmbeddingService _embeddingService;
+    private readonly IReRankService _reRankService;
     private readonly RagOptions _options;
+    private readonly string _currentModel;
+    private readonly ILogger<RagSearchService> _logger;
 
     public RagSearchService(
         AppDbContext db,
         IEmbeddingService embeddingService,
-        IOptions<RagOptions> options)
+        IReRankService reRankService,
+        IOptions<RagOptions> options,
+        IOptions<OllamaOptions> ollamaOptions,
+        ILogger<RagSearchService> logger)
     {
         _db = db;
         _embeddingService = embeddingService;
+        _reRankService = reRankService;
         _options = options.Value;
+        _currentModel = ollamaOptions.Value.Model;
+        _logger = logger;
     }
 
     public async Task<IReadOnlyList<RagSearchResultDto>> SearchAsync(
@@ -45,6 +56,7 @@ public sealed class RagSearchService : IRagSearchService
         }
 
         EnsureOptionDimensions();
+        var stopwatch = Stopwatch.StartNew();
 
         var profile = await _db.Users
             .AsNoTracking()
@@ -56,75 +68,146 @@ public sealed class RagSearchService : IRagSearchService
             throw new DocumentException(403, "user_inactive", "User account is inactive and cannot search documents.");
         }
 
+        var searchMode = ResolveSearchMode(request.SearchMode);
         var topK = ResolveTopK(request.TopK);
-        var queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(request.Query, cancellationToken);
-        ValidateEmbedding(queryEmbedding);
+        var needsEmbedding = searchMode is RagSearchMode.Vector or RagSearchMode.Hybrid;
+        float[]? queryEmbedding = null;
 
-        if (IsInMemoryProvider())
+        if (needsEmbedding)
         {
-            return await SearchInMemoryAsync(profile.Id, request, queryEmbedding, topK, cancellationToken);
+            queryEmbedding = await _embeddingService.GenerateEmbeddingAsync(request.Query, cancellationToken);
+            ValidateEmbedding(queryEmbedding);
         }
 
-        return await SearchPostgresAsync(profile.Id, request, queryEmbedding, topK, cancellationToken);
-    }
-
-    private async Task<IReadOnlyList<RagSearchResultDto>> SearchPostgresAsync(
-        Guid userId,
-        RagSearchRequest request,
-        float[] queryEmbedding,
-        int topK,
-        CancellationToken cancellationToken)
-    {
-        var queryVector = new Vector(queryEmbedding);
-        var query = ApplyFilters(_db.DocumentChunks.AsNoTracking(), userId, request);
-
-        var rows = await query
-            .OrderBy(c => c.Embedding.CosineDistance(queryVector))
-            .Select(c => new SearchRow(
-                c.DocumentId,
-                c.Document.FileName,
-                c.ChunkIndex,
-                c.PageNumber,
-                c.Content,
-                c.Embedding.CosineDistance(queryVector)))
-            .Take(topK)
+        var chunks = await ApplyFilters(_db.DocumentChunks.AsNoTracking().Include(c => c.Document), profile.Id, request)
             .ToListAsync(cancellationToken);
 
-        return rows.Select(ToDto).ToList();
-    }
-
-    private async Task<IReadOnlyList<RagSearchResultDto>> SearchInMemoryAsync(
-        Guid userId,
-        RagSearchRequest request,
-        float[] queryEmbedding,
-        int topK,
-        CancellationToken cancellationToken)
-    {
-        var query = ApplyFilters(_db.DocumentChunks.AsNoTracking().Include(c => c.Document), userId, request);
-        var chunks = await query.ToListAsync(cancellationToken);
-
-        return chunks
+        var rows = chunks
             .Select(c => new SearchRow(
                 c.DocumentId,
                 c.Document.FileName,
                 c.ChunkIndex,
                 c.PageNumber,
                 c.Content,
-                CosineDistance(c.Embedding.ToArray(), queryEmbedding)))
-            .OrderBy(r => r.Distance)
+                c.Embedding.ToArray(),
+                DenseScore: 0d,
+                KeywordScore: 0d,
+                InitialScore: 0d,
+                ReRankScore: null))
+            .ToList();
+
+        var scoredRows = ScoreRows(rows, request.Query, queryEmbedding, searchMode);
+        var candidateCount = ResolveCandidateCount(topK);
+
+        var rankedRows = scoredRows
+            .OrderByDescending(row => row.InitialScore)
+            .ThenByDescending(row => row.KeywordScore)
+            .ThenByDescending(row => row.DenseScore)
+            .ThenBy(row => row.ChunkIndex)
+            .Take(candidateCount)
+            .ToList();
+
+        if (_options.ReRankEnabled)
+        {
+            var rerankTopN = ResolveReRankTopN(topK);
+            var rerankCandidates = rankedRows
+                .Select(row => new ReRankCandidate(
+                    row.DocumentId,
+                    row.FileName,
+                    row.ChunkIndex,
+                    row.PageNumber,
+                    row.Content,
+                    row.DenseScore,
+                    row.KeywordScore,
+                    row.InitialScore))
+                .ToList();
+
+            var reranked = await _reRankService.ReRankAsync(request.Query, rerankCandidates, rerankTopN, cancellationToken);
+
+            rankedRows = reranked
+                .Select(candidate => rankedRows.First(row =>
+                    row.DocumentId == candidate.DocumentId &&
+                    row.ChunkIndex == candidate.ChunkIndex &&
+                    row.PageNumber == candidate.PageNumber) with
+                {
+                    ReRankScore = candidate.ReRankScore
+                })
+                .OrderByDescending(row => row.ReRankScore ?? row.InitialScore)
+                .ThenByDescending(row => row.InitialScore)
+                .ThenBy(row => row.ChunkIndex)
+                .ToList();
+        }
+
+        var results = rankedRows
             .Take(topK)
             .Select(ToDto)
             .ToList();
+
+        stopwatch.Stop();
+        _logger.LogInformation(
+            "RAG search completed: mode={Mode}, topK={TopK}, candidates={Candidates}, results={Results}, latency_ms={LatencyMs}",
+            searchMode.ToString().ToLowerInvariant(),
+            topK,
+            scoredRows.Count,
+            results.Count,
+            stopwatch.ElapsedMilliseconds);
+
+        if (stopwatch.ElapsedMilliseconds > 2000)
+        {
+            _logger.LogWarning(
+                "RAG search latency exceeded threshold: mode={Mode}, latency_ms={LatencyMs}, query_length={QueryLength}",
+                searchMode.ToString().ToLowerInvariant(),
+                stopwatch.ElapsedMilliseconds,
+                request.Query.Length);
+        }
+
+        return results;
     }
 
-    private static IQueryable<DocumentChunk> ApplyFilters(
+    private List<SearchRow> ScoreRows(
+        IReadOnlyList<SearchRow> rows,
+        string query,
+        float[]? queryEmbedding,
+        RagSearchMode searchMode)
+    {
+        var normalizedQuery = Normalize(query);
+        var queryTokens = Tokenize(query);
+
+        return rows
+            .Select(row =>
+            {
+                var keywordScore = ComputeKeywordScore(normalizedQuery, queryTokens, row.Content);
+                var denseScore = queryEmbedding is null
+                    ? 0d
+                    : 1d - CosineDistance(row.Embedding, queryEmbedding);
+
+                var initialScore = searchMode switch
+                {
+                    RagSearchMode.Keyword => keywordScore,
+                    RagSearchMode.Hybrid when _options.HybridSearchEnabled =>
+                        (_options.VectorWeight * denseScore) + ((1d - _options.VectorWeight) * keywordScore),
+                    _ => denseScore
+                };
+
+                return row with
+                {
+                    DenseScore = denseScore,
+                    KeywordScore = keywordScore,
+                    InitialScore = initialScore
+                };
+            })
+            .ToList();
+    }
+
+    private IQueryable<DocumentChunk> ApplyFilters(
         IQueryable<DocumentChunk> query,
         Guid userId,
         RagSearchRequest request)
     {
         query = query.Where(c =>
-            c.Document.UserId == userId
-            && c.Document.Status == DocumentStatus.Ready);
+            c.Document.UserId == userId &&
+            c.Document.Status == DocumentStatus.Ready &&
+            c.EmbeddingModel == _currentModel);
 
         if (request.DocumentId.HasValue)
         {
@@ -171,7 +254,18 @@ public sealed class RagSearchService : IRagSearchService
             ChunkIndex: row.ChunkIndex,
             PageNumber: row.PageNumber,
             ContentExcerpt: BuildExcerpt(row.Content),
-            Score: 1d - row.Distance);
+            Score: row.ReRankScore ?? row.InitialScore);
+    }
+
+    private RagSearchMode ResolveSearchMode(string? requestedMode)
+    {
+        var raw = string.IsNullOrWhiteSpace(requestedMode) ? _options.SearchMode : requestedMode;
+        return raw?.Trim().ToLowerInvariant() switch
+        {
+            "keyword" => RagSearchMode.Keyword,
+            "hybrid" when _options.HybridSearchEnabled => RagSearchMode.Hybrid,
+            _ => RagSearchMode.Vector
+        };
     }
 
     private int ResolveTopK(int requestedTopK)
@@ -180,6 +274,18 @@ public sealed class RagSearchService : IRagSearchService
         var maxTopK = _options.MaxTopK > 0 ? _options.MaxTopK : 10;
         var topK = requestedTopK > 0 ? requestedTopK : defaultTopK;
         return Math.Clamp(topK, 1, maxTopK);
+    }
+
+    private int ResolveCandidateCount(int topK)
+    {
+        var configured = _options.ReRankCandidateCount > 0 ? _options.ReRankCandidateCount : 20;
+        return Math.Max(topK, configured);
+    }
+
+    private int ResolveReRankTopN(int topK)
+    {
+        var configured = _options.ReRankTopN > 0 ? _options.ReRankTopN : topK;
+        return Math.Max(topK, configured);
     }
 
     private void EnsureOptionDimensions()
@@ -199,9 +305,6 @@ public sealed class RagSearchService : IRagSearchService
                 $"Embedding service returned {embedding.Length} dimensions; expected {DocumentChunk.EmbeddingDimension}.");
         }
     }
-
-    private bool IsInMemoryProvider() =>
-        string.Equals(_db.Database.ProviderName, "Microsoft.EntityFrameworkCore.InMemory", StringComparison.Ordinal);
 
     private static string? NormalizeFilter(string? value)
     {
@@ -226,6 +329,33 @@ public sealed class RagSearchService : IRagSearchService
             : collapsed[..ExcerptMaxChars].TrimEnd() + "...";
     }
 
+    private static double ComputeKeywordScore(string normalizedQuery, HashSet<string> queryTokens, string content)
+    {
+        var normalizedContent = Normalize(content);
+        if (string.IsNullOrWhiteSpace(normalizedContent))
+        {
+            return 0d;
+        }
+
+        var contentTokens = Tokenize(content);
+        var overlap = queryTokens.Count == 0
+            ? 0d
+            : queryTokens.Count(token => contentTokens.Contains(token)) / (double)queryTokens.Count;
+        var phraseBonus = normalizedContent.Contains(normalizedQuery, StringComparison.Ordinal) ? 1d : 0d;
+        var startsWithBonus = normalizedContent.StartsWith(normalizedQuery, StringComparison.Ordinal) ? 0.2d : 0d;
+
+        return Math.Min(1.2d, overlap + phraseBonus + startsWithBonus);
+    }
+
+    private static string Normalize(string text) =>
+        string.Join(' ', TokenRegex.Matches(text ?? string.Empty).Select(match => match.Value.ToLowerInvariant()));
+
+    private static HashSet<string> Tokenize(string text) =>
+        TokenRegex.Matches(text ?? string.Empty)
+            .Select(match => match.Value.ToLowerInvariant())
+            .Where(token => token.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+
     private static double CosineDistance(float[] left, float[] right)
     {
         double dot = 0;
@@ -248,11 +378,22 @@ public sealed class RagSearchService : IRagSearchService
         return 1d - similarity;
     }
 
+    private enum RagSearchMode
+    {
+        Vector,
+        Hybrid,
+        Keyword
+    }
+
     private sealed record SearchRow(
         Guid DocumentId,
         string FileName,
         int ChunkIndex,
         int? PageNumber,
         string Content,
-        double Distance);
+        float[] Embedding,
+        double DenseScore,
+        double KeywordScore,
+        double InitialScore,
+        double? ReRankScore);
 }

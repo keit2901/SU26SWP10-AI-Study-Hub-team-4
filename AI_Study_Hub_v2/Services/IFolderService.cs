@@ -37,8 +37,16 @@ public interface IFolderService
         Guid folderId,
         CancellationToken cancellationToken = default);
 
-    Task<FolderDto> ToggleShareAsync(
+    Task<FolderDto> RequestShareAsync(
         Guid supabaseUserId,
+        Guid folderId,
+        CancellationToken cancellationToken = default);
+
+    Task<FolderDto> ApproveFolderShareAsync(
+        Guid folderId,
+        CancellationToken cancellationToken = default);
+
+    Task<FolderDto> RejectFolderShareAsync(
         Guid folderId,
         CancellationToken cancellationToken = default);
 

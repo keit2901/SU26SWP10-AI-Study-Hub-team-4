@@ -98,6 +98,82 @@ namespace AI_Study_Hub_v2.Migrations
                     b.ToTable("ai_answer_reports", (string)null);
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.AuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("action");
+
+                    b.Property<Guid?>("ActorUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("actor_user_id");
+
+                    b.Property<string>("AfterJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("after_json");
+
+                    b.Property<string>("BeforeJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("before_json");
+
+                    b.Property<string>("ContextJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("context_json");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("EntityId")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<string>("IpAddress")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ip_address");
+
+                    b.Property<string>("RequestId")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("request_id");
+
+                    b.Property<string>("Severity")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(20)
+                        .HasColumnType("character varying(20)")
+                        .HasDefaultValue("Low")
+                        .HasColumnName("severity");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ActorUserId");
+
+                    b.HasIndex("CreatedAt");
+
+                    b.HasIndex("Action", "CreatedAt");
+
+                    b.ToTable("audit_logs", (string)null);
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.ChatMessage", b =>
                 {
                     b.Property<Guid>("Id")
@@ -307,6 +383,12 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("page_count");
 
+                    b.Property<int>("ReviewStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("review_status");
+
                     b.Property<string>("Semester")
                         .IsRequired()
                         .HasMaxLength(10)
@@ -390,6 +472,11 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("vector(384)")
                         .HasColumnName("embedding");
 
+                    b.Property<string>("EmbeddingModel")
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("embedding_model");
+
                     b.Property<int?>("PageNumber")
                         .HasColumnType("integer")
                         .HasColumnName("page_number");
@@ -437,17 +524,17 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasDefaultValue(false)
                         .HasColumnName("is_favorite");
 
-                    b.Property<bool>("IsShared")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("is_shared");
-
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
+
+                    b.Property<int>("ShareStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("share_status");
 
                     b.Property<DateTimeOffset?>("SharedAt")
                         .HasColumnType("timestamp with time zone")
@@ -722,6 +809,12 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<long>("DailyTokenQuota")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(25000L)
+                        .HasColumnName("daily_token_quota");
+
                     b.Property<string>("FullName")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -741,6 +834,18 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Property<Guid>("SupabaseUserId")
                         .HasColumnType("uuid")
                         .HasColumnName("supabase_user_id");
+
+                    b.Property<DateOnly>("TokenUsageDate")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("date")
+                        .HasColumnName("token_usage_date")
+                        .HasDefaultValueSql("CURRENT_DATE");
+
+                    b.Property<long>("TokensUsedToday")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
+                        .HasColumnName("tokens_used_today");
 
                     b.Property<long>("TotalTokensUsed")
                         .ValueGeneratedOnAdd()
@@ -782,6 +887,16 @@ namespace AI_Study_Hub_v2.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.AuditLog", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "ActorUser")
+                        .WithMany()
+                        .HasForeignKey("ActorUserId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("ActorUser");
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.ChatMessage", b =>

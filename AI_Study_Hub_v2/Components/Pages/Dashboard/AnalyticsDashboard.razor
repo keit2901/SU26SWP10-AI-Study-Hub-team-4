@@ -8,53 +8,84 @@
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
 @inject AppDbContext DbContext
+@inject ISnackbar Snackbar
+@using AI_Study_Hub_v2.Data.Entities
 
 <PageTitle>Analytics - AI Study Hub</PageTitle>
 
 <div style="display: flex; flex-direction: column; flex: 1; height: 100%;">
-    <!-- Header -->
-    <div style="display: flex; height: 4rem; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(199,196,215,0.3); background: rgba(255,255,255,0.8); backdrop-filter: blur(4px); padding: 0 2rem; position: sticky; top: 0; z-index: 10;">
-        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem;">
+    <div style="display: flex; height: 4rem; align-items: center; border-bottom: 1px solid rgba(199,196,215,0.3); background: rgba(255,255,255,0.88); backdrop-filter: blur(4px); padding: 0 2rem; position: sticky; top: 0; z-index: 10;">
+        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; min-width: 0;">
             <span style="font-weight: 600; color: #464554;">Analytics</span>
-            <span style="color: #c7c4d7;">›</span>
-            <span style="font-weight: 700; color: #1a1b1f;">@PageSubtitle</span>
-        </div>
-
-        <div style="display: flex; align-items: center; gap: 1.5rem;">
-            <div style="position: relative;">
-                <MudIcon Icon="@Icons.Material.Filled.Search" Style="position: absolute; left: 0.75rem; top: 50%; transform: translateY(-50%); font-size: 1rem; color: #464554;" />
-                <input type="text" placeholder="Search analytics..." style="background: #faf9fe; border: 1px solid #c7c4d7; border-radius: 9999px; padding: 0.5rem 1rem 0.5rem 2.5rem; font-size: 0.875rem; width: 16rem; outline: none;" />
-            </div>
-            <div style="display: flex; align-items: center; gap: 1rem;">
-                <button style="padding: 0.25rem; border-radius: 9999px; background: transparent; border: none; cursor: pointer;">
-                    <MudIcon Icon="@Icons.Material.Filled.Notifications" Style="font-size: 1.25rem; color: #464554;" />
-                </button>
-                <div style="width: 2rem; height: 2rem; border-radius: 9999px; background: #5e5ce6; border: 2px solid #c2c1ff; overflow: hidden; display: flex; align-items: center; justify-content: center;">
-                    <span style="font-size: 0.75rem; color: white; font-weight: bold;">
-                        @(Session.CurrentUser?.Username?.Substring(0, Math.Min(2, Session.CurrentUser.Username.Length)).ToUpper() ?? "US")
-                    </span>
-                </div>
-            </div>
+            <span style="color: #c7c4d7;">></span>
+            <span style="font-weight: 700; color: #1a1b1f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@PageSubtitle</span>
         </div>
     </div>
 
-    <!-- Content Area -->
-    <div style="padding: 2rem; max-width: 80rem; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 2rem;">
-        
-        <!-- Page Title Row -->
-        <div style="display: flex; align-items: flex-end; justify-content: space-between;">
+    <div style="padding: 2rem; max-width: 82rem; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 1.5rem;">
+        <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
             <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                <h2 style="font-size: 1.875rem; font-weight: 700; letter-spacing: -0.025em; margin: 0;">Performance & Processing Metrics</h2>
+                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                    <h2 style="font-size: 1.875rem; font-weight: 700; letter-spacing: -0.025em; margin: 0;">Moderation Analytics</h2>
+                    @if (FolderId.HasValue)
+                    {
+                        <span style="display: inline-flex; align-items: center; gap: 0.45rem; border-radius: 9999px; padding: 0.35rem 0.85rem; background: @FolderStatusBackground; color: @FolderStatusColor; font-size: 0.75rem; font-weight: 700;">
+                            <span style="width: 0.45rem; height: 0.45rem; border-radius: 9999px; background: @FolderStatusColor;"></span>
+                            @FolderStatusLabel
+                        </span>
+                    }
+                </div>
                 <p style="color: #464554; margin: 0; font-size: 1rem;">@PageSubtitleDescription</p>
             </div>
             @if (FolderId.HasValue)
             {
-                <button @onclick="NavigateToFolderDocuments" style="display: inline-flex; align-items: center; gap: 0.5rem; background: #5e5ce6; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(94, 92, 230, 0.25);"
-                        onmouseover="this.style.background='#4a48cc'; this.style.transform='translateY(-1px)';"
-                        onmouseout="this.style.background='#5e5ce6'; this.style.transform='none';">
-                    <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size: 1.25rem; color: white;" />
-                    Inspect Documents
-                </button>
+                <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
+                    @if (_folderShareStatus == FolderStatus.PendingShare)
+                    {
+                        @if (!_allDocumentsReviewed)
+                        {
+                            <span style="display: inline-flex; align-items: center; gap: 0.5rem; background: #e3e2e7; color: #6b7280; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.8125rem; font-weight: 600;">
+                                <MudIcon Icon="@Icons.Material.Filled.Lock" Style="font-size: 1rem;" />
+                                Review all documents before approving folder
+                            </span>
+                        }
+                        else if (_hasRejectedDocument)
+                        {
+                            <button @onclick="ApproveFolderShare" disabled
+                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #d1d5db; color: #9ca3af; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: not-allowed; box-shadow: none;">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 1.25rem;" />
+                                Approve
+                            </button>
+                            <button @onclick="RejectFolderShare"
+                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(220,38,38,0.2);"
+                                    onmouseover="this.style.background='#b91c1c'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#dc2626'; this.style.transform='none';">
+                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Style="font-size: 1.25rem; color: white;" />
+                                Reject
+                            </button>
+                        }
+                        else
+                        {
+                            <button @onclick="ApproveFolderShare"
+                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #059669; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(5,150,105,0.25);"
+                                    onmouseover="this.style.background='#047857'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#059669'; this.style.transform='none';">
+                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 1.25rem; color: white;" />
+                                Approve
+                            </button>
+                            <button @onclick="RejectFolderShare"
+                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(220,38,38,0.2);"
+                                    onmouseover="this.style.background='#b91c1c'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#dc2626'; this.style.transform='none';">
+                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Style="font-size: 1.25rem; color: white;" />
+                                Reject
+                            </button>
+                        }
+                    }
+                    <button @onclick="NavigateToFolderDocuments"
+                            style="display: inline-flex; align-items: center; gap: 0.5rem; background: #5e5ce6; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(94, 92, 230, 0.25);"
+                            onmouseover="this.style.background='#4a48cc'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#5e5ce6'; this.style.transform='none';">
+                        <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Style="font-size: 1.25rem; color: white;" />
+                        Inspect Documents
+                    </button>
+                </div>
             }
         </div>
 
@@ -66,158 +97,132 @@
         }
         else
         {
-            <!-- Stats Grid -->
-            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 1.5rem;">
-                <!-- Card 1 -->
-                <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); position: relative; overflow: hidden;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                            <p style="font-size: 0.75rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Total Documents</p>
-                            <div style="display: flex; align-items: baseline; gap: 0.25rem;">
-                                <h3 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">@totalDocuments</h3>
-                            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem;">
+                <div style="background: white; padding: 1.25rem 1.35rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); box-sizing: border-box;">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.3rem; min-width: 0;">
+                            <p style="font-size: 0.75rem; font-weight: 700; color: #616267; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Total Documents</p>
+                            <h3 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">@totalDocuments</h3>
+                            <span style="font-size: 0.8125rem; color: #6b7280;">Active moderation scope</span>
                         </div>
-                        <div style="background: rgba(94,92,230,0.1); padding: 0.5rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center;">
-                            <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 1.5rem; color: #5e5ce6;" />
+                        <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.85rem; background: rgba(94,92,230,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 1.35rem; color: #5e5ce6;" />
                         </div>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 0.375rem; height: 1.5rem;">
-                        <MudIcon Icon="@Icons.Material.Filled.TrendingUp" Style="font-size: 1rem; color: #006424;" />
-                        <span style="font-size: 0.8125rem; font-weight: 600; color: #006424;">Active documents</span>
                     </div>
                 </div>
 
-                <!-- Card 2 -->
-                <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); position: relative; overflow: hidden;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                            <p style="font-size: 0.75rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Completion Rate</p>
-                            <div style="display: flex; align-items: baseline; gap: 0.25rem;">
-                                <h3 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">@completionRate</h3>
-                                <span style="font-size: 1.125rem; font-weight: 700; color: #1a1b1f;">%</span>
-                            </div>
+                <div style="background: white; padding: 1.25rem 1.35rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); box-sizing: border-box;">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.3rem; min-width: 0;">
+                            <p style="font-size: 0.75rem; font-weight: 700; color: #616267; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Storage Used</p>
+                            <h3 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">@storageUsedMb MB</h3>
+                            <span style="font-size: 0.8125rem; color: #6b7280;">@StorageUsedPercent% of 1GB quota</span>
                         </div>
-                        <div style="background: rgba(0,100,36,0.1); padding: 0.5rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center;">
-                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 1.5rem; color: #006424;" />
+                        <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.85rem; background: rgba(0,100,36,0.1); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <MudIcon Icon="@Icons.Material.Filled.Storage" Style="font-size: 1.35rem; color: #006424;" />
                         </div>
-                    </div>
-                    <div style="width: 100%; background: #e3e2e7; height: 0.375rem; border-radius: 9999px; overflow: hidden; margin-top: 0.5rem;">
-                        <div style="background: #006424; height: 100%; width: @(completionRate)%; border-radius: 9999px;"></div>
                     </div>
                 </div>
 
-                <!-- Card 3 -->
-                <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); position: relative; overflow: hidden;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                            <p style="font-size: 0.75rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Avg Processing</p>
-                            <div style="display: flex; align-items: baseline; gap: 0.25rem;">
-                                <h3 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">@avgProcessingTimeHrs</h3>
-                                <span style="font-size: 1.125rem; font-weight: 700; color: #1a1b1f;">sec</span>
-                            </div>
+                <div style="background: white; padding: 1.25rem 1.35rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); box-sizing: border-box;">
+                    <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem;">
+                        <div style="display: flex; flex-direction: column; gap: 0.3rem; min-width: 0;">
+                            <p style="font-size: 0.75rem; font-weight: 700; color: #616267; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Upload Issues</p>
+                            <h3 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">@(HasIssues ? $"{TotalIssueIncidents}" : "0")</h3>
+                            <span style="font-size: 0.8125rem; color: #6b7280;">@(HasIssues ? $"{issuesList!.Count} issue type(s) detected" : "Everything processed cleanly")</span>
                         </div>
-                        <div style="background: rgba(223,223,228,0.3); padding: 0.5rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center;">
-                            <MudIcon Icon="@Icons.Material.Filled.Schedule" Style="font-size: 1.5rem; color: #616267;" />
+                        <div style="width: 2.75rem; height: 2.75rem; border-radius: 0.85rem; background: @IssueSummaryBackground; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                            <MudIcon Icon="@IssueSummaryIcon" Style="@IssueSummaryIconStyle" />
                         </div>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 0.375rem; height: 1.5rem;">
-                        <MudIcon Icon="@Icons.Material.Filled.Remove" Style="font-size: 1rem; color: #464554;" />
-                        <span style="font-size: 0.8125rem; font-weight: 600; color: #464554;">Stable system status</span>
-                    </div>
-                </div>
-
-                <!-- Card 4 -->
-                <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); position: relative; overflow: hidden;">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
-                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                            <p style="font-size: 0.75rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.05em; margin: 0;">Storage Used</p>
-                            <div style="display: flex; align-items: baseline; gap: 0.25rem;">
-                                <h3 style="font-size: 1.875rem; font-weight: 700; color: #1a1b1f; margin: 0;">@storageUsedMb</h3>
-                                <span style="font-size: 1.125rem; font-weight: 700; color: #1a1b1f;">MB</span>
-                            </div>
-                        </div>
-                        <div style="background: rgba(199,196,215,0.3); padding: 0.5rem; border-radius: 9999px; display: flex; align-items: center; justify-content: center;">
-                            <MudIcon Icon="@Icons.Material.Filled.Storage" Style="font-size: 1.5rem; color: #464554;" />
-                        </div>
-                    </div>
-                    <div style="display: flex; align-items: center; gap: 0.375rem; height: 1.5rem;">
-                        <span style="font-size: 0.8125rem; font-weight: 600; color: #464554;">@(System.Math.Round(storageUsedMb * 100 / 1024, 2))% of 1GB quota</span>
                     </div>
                 </div>
             </div>
 
-            <!-- Charts & Issues Section -->
-            <div style="display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem;">
-                <!-- Chart Container -->
-                <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
-                    <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2rem;">
-                        <h3 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Document Upload Progress</h3>
-                        <div style="background: #1a1b1f; color: white; font-size: 0.6875rem; font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 0.25rem; display: flex; align-items: center; gap: 0.375rem;">
-                            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #5e5ce6;"></span>
-                            Last 7 Days Activity
-                        </div>
+            <div style="background: white; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
+                <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap;">
+                    <div style="display: flex; flex-direction: column; gap: 0.3rem;">
+                        <h3 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Document Moderation Progress</h3>
+                        <p style="font-size: 0.875rem; color: #6b7280; margin: 0;">Daily moderation trend over the last 7 days.</p>
                     </div>
-                    
-                    @if (Series.Any())
-                    {
-                        <MudChart ChartType="ChartType.Line" ChartSeries="@Series" XAxisLabels="@XAxisLabels" Width="100%" Height="320px" ChartOptions="options" />
-                    }
-                    else
-                    {
-                        <div style="height: 320px; display: flex; align-items: center; justify-content: center; color: #6b7280;">
-                            No upload activity data available.
-                        </div>
-                    }
+                    <div style="background: #1a1b1f; color: white; font-size: 0.6875rem; font-weight: 700; padding: 0.25rem 0.75rem; border-radius: 0.25rem; display: flex; align-items: center; gap: 0.375rem;">
+                        <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #059669;"></span>
+                        Last 7 Days Activity
+                    </div>
                 </div>
 
-                <!-- Issues Container -->
-                <div style="background: #faf9fe; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
-                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 1.5rem;">
-                        <h3 style="font-size: 1.25rem; font-weight: 700; margin: 0;">Common Issues</h3>
-                        <MudIcon Icon="@Icons.Material.Filled.Warning" Style="font-size: 1.25rem; color: #464554;" />
+                @if (SeriesApproved.Any() || SeriesRejected.Any())
+                {
+                    <MudChart ChartType="ChartType.Line" ChartSeries="@SeriesAll" XAxisLabels="@XAxisLabels" Width="100%" Height="320px" ChartOptions="@_chartOptions" />
+                }
+                else
+                {
+                    <div style="height: 320px; display: flex; align-items: center; justify-content: center; color: #6b7280;">
+                        No moderation activity data available.
                     </div>
-                    <p style="font-size: 0.875rem; color: #464554; margin-bottom: 1.5rem;">Reasons for OCR or ingestion failures across your documents.</p>
-                    
-                    <div style="display: flex; flex-direction: column; gap: 1rem;">
-                        @if (issuesList == null || !issuesList.Any())
+                }
+            </div>
+
+            @if (HasIssues)
+            {
+                <div style="background: #faf9fe; padding: 1.5rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.5); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap;">
+                        <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                            <h3 style="font-size: 1.125rem; font-weight: 700; margin: 0;">Top Upload Issues</h3>
+                            <p style="font-size: 0.875rem; color: #464554; margin: 0;">Most common OCR or ingestion problems across this moderation scope.</p>
+                        </div>
+                        <span style="display: inline-flex; align-items: center; gap: 0.4rem; border-radius: 9999px; padding: 0.35rem 0.8rem; background: rgba(239,68,68,0.08); color: #c23c21; font-size: 0.75rem; font-weight: 700;">
+                            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Style="font-size: 1rem;" />
+                            @TotalIssueIncidents incident@(TotalIssueIncidents == 1 ? string.Empty : "s")
+                        </span>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 0.75rem;">
+                        @foreach (var issue in issuesList!.Take(4))
                         {
-                            <div style="background: white; padding: 2rem 1rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.4); text-align: center; display: flex; flex-direction: column; align-items: center; gap: 0.5rem;">
-                                <MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline" Style="font-size: 2.5rem; color: #006424;" />
-                                <h4 style="font-weight: 700; font-size: 0.875rem; margin: 0; color: #1a1b1f;">No Issues Detected</h4>
-                                <p style="font-size: 0.8125rem; color: #464554; margin: 0;">All uploaded documents processed successfully!</p>
-                            </div>
-                        }
-                        else
-                        {
-                            @foreach (var issue in issuesList)
-                            {
-                                <div style="background: white; padding: 1rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.4); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
-                                    <div style="display: flex; align-items: center; gap: 1rem;">
-                                        <div style="width: 2.5rem; height: 2.5rem; border-radius: 0.5rem; background: #faf9fe; border: 1px solid rgba(199,196,215,0.3); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
-                                            <MudIcon Icon="@Icons.Material.Filled.Error" Style="font-size: 1.25rem; color: #ef4444;" />
-                                        </div>
-                                        <div style="display: flex; flex-direction: column; gap: 0.25rem; flex: 1;">
-                                            <h4 style="font-weight: 700; font-size: 0.875rem; margin: 0; word-break: break-word;">@issue.ErrorMessage</h4>
-                                            <div style="margin-top: 0.25rem;">
-                                                <span style="font-size: 0.625rem; font-weight: 700; background: #faf9fe; border: 1px solid rgba(199,196,215,0.3); color: #464554; padding: 0.25rem 0.625rem; border-radius: 9999px; text-transform: uppercase; letter-spacing: 0.05em;">
-                                                    @issue.IncidentCount @(issue.IncidentCount == 1 ? "incident" : "incidents")
-                                                </span>
-                                            </div>
-                                        </div>
+                            <div style="background: white; padding: 1rem; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.4); box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
+                                <div style="display: flex; align-items: flex-start; gap: 0.875rem;">
+                                    <div style="width: 2.5rem; height: 2.5rem; border-radius: 0.75rem; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.12); display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
+                                        <MudIcon Icon="@Icons.Material.Filled.Error" Style="font-size: 1.15rem; color: #ef4444;" />
+                                    </div>
+                                    <div style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                                        <h4 style="font-weight: 700; font-size: 0.875rem; margin: 0; word-break: break-word; color: #1a1b1f;">@issue.ErrorMessage</h4>
+                                        <span style="font-size: 0.75rem; color: #6b7280;">@issue.IncidentCount incident@(issue.IncidentCount == 1 ? string.Empty : "s")</span>
                                     </div>
                                 </div>
-                            }
+                            </div>
                         }
                     </div>
-                </div>
-            </div>
 
-            <!-- Bottom Table Section -->
-            <div style="background: white; border-radius: 0.75rem; border: 1px solid #f1f5f9; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 2rem;">
-                <div style="padding: 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between;">
-                    <h3 style="font-size: 1.25rem; font-weight: 600; margin: 0;">Recent Documents</h3>
+                    @if (issuesList!.Count > 4)
+                    {
+                        <div style="margin-top: 0.9rem; font-size: 0.8125rem; color: #6b7280;">
+                            +@(issuesList.Count - 4) more issue type@(issuesList.Count - 4 == 1 ? string.Empty : "s")
+                        </div>
+                    }
                 </div>
-                <div style="overflow-x: auto;">
+            }
+
+            <div style="background: white; border-radius: 0.75rem; border: 1px solid #f1f5f9; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 2rem;">
+                <div style="padding: 1.5rem; border-bottom: 1px solid #f1f5f9; display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <h3 style="font-size: 1.25rem; font-weight: 600; margin: 0;">Documents in Review</h3>
+                        <p style="font-size: 0.875rem; color: #6b7280; margin: 0;">Latest files and their moderation outcome.</p>
+                    </div>
+                    <button @onclick="ResetAnalyticsTable"
+                            style="display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; border-radius: 9999px; border: 1px solid rgba(94,92,230,0.22); background: rgba(94,92,230,0.08); color: #4441CC; padding: 0.55rem 0.95rem; font-size: 0.8125rem; font-weight: 700; cursor: pointer;">
+                        <MudIcon Icon="@Icons.Material.Filled.RestartAlt" Style="font-size: 1rem;" />
+                        <span>Reset table</span>
+                    </button>
+                </div>
+                <div style="position: relative;">
+                    @if (!string.IsNullOrWhiteSpace(OpenDocumentsMenuColumn))
+                    {
+                        <button type="button"
+                                @onclick="CloseDocumentsMenu"
+                                aria-label="Close filter menu"
+                                style="position: fixed; inset: 0; z-index: 4; border: none; background: transparent; padding: 0; margin: 0;"></button>
+                    }
+                <div style="overflow-x: auto; overflow-y: visible;">
                     @if (documentsList == null || !documentsList.Any())
                     {
                         <div style="padding: 3rem; text-align: center; color: #6b7280;">
@@ -229,46 +234,212 @@
                         <table style="width: 100%; text-align: left; border-collapse: collapse;">
                             <thead style="background: #faf9fe;">
                                 <tr>
-                                    <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 700; color: #464554; text-transform: uppercase; letter-spacing: 0.05em;">Document Name</th>
-                                    <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 700; color: #464554; text-transform: uppercase; letter-spacing: 0.05em;">Status</th>
-                                    <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 700; color: #464554; text-transform: uppercase; letter-spacing: 0.05em;">Upload Date</th>
+                                    <th style="padding: 1rem 1.5rem; position: relative;">
+                                        <button @onclick='() => HandleDocumentsHeaderClick("name")' style='@GetAnalyticsHeaderButtonStyle("name", true)'>
+                                            <span>Document Name</span>
+                                            <MudIcon Icon='@GetAnalyticsSortIcon("name")' Style='@GetAnalyticsSortIconStyle("name")' />
+                                        </button>
+                                        @if (OpenDocumentsMenuColumn == "name")
+                                        {
+                                            var nameSuggestions = GetAnalyticsNameSuggestions();
+                                            <div style='@GetAnalyticsHeaderMenuStyle("16rem", true)'>
+                                                <span style='@GetAnalyticsMenuSectionLabelStyle()'>Filter</span>
+                                                <input type="text"
+                                                       value="@AnalyticsNameSearchTerm"
+                                                       @oninput='e => UpdateAnalyticsTextSearch(e.Value?.ToString())'
+                                                       placeholder="Search document name"
+                                                       style='@GetAnalyticsFilterInputStyle()' />
+                                                <div style='@GetAnalyticsFilterOptionsListStyle()'>
+                                                    @if (nameSuggestions.Count > 0)
+                                                    {
+                                                        @foreach (var option in nameSuggestions)
+                                                        {
+                                                            <button @onclick='() => ApplyAnalyticsNameSuggestion(option)' style='@GetAnalyticsFilterMenuItemStyle(string.Equals(FilterAnalyticsNameQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style='@GetAnalyticsMenuEmptyStateStyle()'>No matching names</span>
+                                                    }
+                                                </div>
+                                                <div style='@GetAnalyticsMenuDividerStyle()'></div>
+                                                <span style='@GetAnalyticsMenuSectionLabelStyle()'>Sort</span>
+                                                <button @onclick='() => ApplyAnalyticsSortOption("name-asc")' style='@GetAnalyticsSortMenuItemStyle("name-asc")'>A to Z</button>
+                                                <button @onclick='() => ApplyAnalyticsSortOption("name-desc")' style='@GetAnalyticsSortMenuItemStyle("name-desc")'>Z to A</button>
+                                            </div>
+                                        }
+                                    </th>
+                                    @if (!FolderId.HasValue)
+                                    {
+                                        <th style="padding: 1rem 1.5rem; position: relative;">
+                                            <button @onclick='() => HandleDocumentsHeaderClick("folder")' style='@GetAnalyticsHeaderButtonStyle("folder", true)'>
+                                                <span>Folder</span>
+                                                <MudIcon Icon='@GetAnalyticsSortIcon("folder")' Style='@GetAnalyticsSortIconStyle("folder")' />
+                                            </button>
+                                            @if (OpenDocumentsMenuColumn == "folder")
+                                            {
+                                                var folderSuggestions = GetAnalyticsFolderSuggestions();
+                                                <div style='@GetAnalyticsHeaderMenuStyle("15rem", true)'>
+                                                    <span style='@GetAnalyticsMenuSectionLabelStyle()'>Filter</span>
+                                                    <input type="text"
+                                                           value="@AnalyticsFolderSearchTerm"
+                                                           @oninput='e => UpdateAnalyticsFolderSearch(e.Value?.ToString())'
+                                                           placeholder="Search folder"
+                                                           style='@GetAnalyticsFilterInputStyle()' />
+                                                    <div style='@GetAnalyticsFilterOptionsListStyle()'>
+                                                        @if (folderSuggestions.Count > 0)
+                                                        {
+                                                            @foreach (var option in folderSuggestions)
+                                                            {
+                                                                <button @onclick='() => ApplyAnalyticsFolderSuggestion(option)' style='@GetAnalyticsFilterMenuItemStyle(string.Equals(FilterAnalyticsFolderQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <span style='@GetAnalyticsMenuEmptyStateStyle()'>No matching folders</span>
+                                                        }
+                                                    </div>
+                                                    <div style='@GetAnalyticsMenuDividerStyle()'></div>
+                                                    <span style='@GetAnalyticsMenuSectionLabelStyle()'>Sort</span>
+                                                    <button @onclick='() => ApplyAnalyticsSortOption("folder-asc")' style='@GetAnalyticsSortMenuItemStyle("folder-asc")'>A to Z</button>
+                                                    <button @onclick='() => ApplyAnalyticsSortOption("folder-desc")' style='@GetAnalyticsSortMenuItemStyle("folder-desc")'>Z to A</button>
+                                                </div>
+                                            }
+                                        </th>
+                                    }
+                                    <th style="padding: 1rem 1.5rem; position: relative;">
+                                        <button @onclick='() => HandleDocumentsHeaderClick("status")' style='@GetAnalyticsHeaderButtonStyle("status", true)'>
+                                            <span>Status</span>
+                                            <MudIcon Icon='@GetAnalyticsSortIcon("status")' Style='@GetAnalyticsSortIconStyle("status")' />
+                                        </button>
+                                        @if (OpenDocumentsMenuColumn == "status")
+                                        {
+                                            var statusSuggestions = GetAnalyticsStatusSuggestions();
+                                            <div style='@GetAnalyticsHeaderMenuStyle("14rem", true)'>
+                                                <span style='@GetAnalyticsMenuSectionLabelStyle()'>Filter</span>
+                                                <input type="text"
+                                                       value="@AnalyticsStatusSearchTerm"
+                                                       @oninput='e => UpdateAnalyticsStatusSearch(e.Value?.ToString())'
+                                                       placeholder="Search status"
+                                                       style='@GetAnalyticsFilterInputStyle()' />
+                                                <div style='@GetAnalyticsFilterOptionsListStyle()'>
+                                                    @if (statusSuggestions.Count > 0)
+                                                    {
+                                                        @foreach (var statusOption in statusSuggestions)
+                                                        {
+                                                            <button @onclick='() => ApplyAnalyticsStatusFilter(statusOption)' style='@GetAnalyticsFilterMenuItemStyle(string.Equals(FilterAnalyticsStatus, statusOption, StringComparison.OrdinalIgnoreCase))'>@statusOption</button>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style='@GetAnalyticsMenuEmptyStateStyle()'>No matching status</span>
+                                                    }
+                                                </div>
+                                                <div style='@GetAnalyticsMenuDividerStyle()'></div>
+                                                <span style='@GetAnalyticsMenuSectionLabelStyle()'>Sort</span>
+                                                <button @onclick='() => ApplyAnalyticsSortOption("status-asc")' style='@GetAnalyticsSortMenuItemStyle("status-asc")'>A to Z</button>
+                                                <button @onclick='() => ApplyAnalyticsSortOption("status-desc")' style='@GetAnalyticsSortMenuItemStyle("status-desc")'>Z to A</button>
+                                            </div>
+                                        }
+                                    </th>
+                                    <th style="padding: 1rem 1.5rem; position: relative;">
+                                        <button @onclick='() => HandleDocumentsHeaderClick("date")' style='@GetAnalyticsHeaderButtonStyle("date", true)'>
+                                            <span>Upload Date</span>
+                                            <MudIcon Icon='@GetAnalyticsSortIcon("date")' Style='@GetAnalyticsSortIconStyle("date")' />
+                                        </button>
+                                        @if (OpenDocumentsMenuColumn == "date")
+                                        {
+                                            <div style='@GetAnalyticsHeaderMenuStyle("18rem", true)'>
+                                                <span style='@GetAnalyticsMenuSectionLabelStyle()'>Filter</span>
+                                                <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                                                    <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                                        <span style="font-size: 0.75rem; font-weight: 600; color: #5f6372; text-align: left;">From</span>
+                                                        <input type="datetime-local"
+                                                               value="@FilterAnalyticsDateFrom"
+                                                               @oninput='e => UpdateAnalyticsDateFilter("from", e.Value?.ToString())'
+                                                               style='@GetAnalyticsFilterInputStyle()' />
+                                                    </div>
+                                                    <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                                        <span style="font-size: 0.75rem; font-weight: 600; color: #5f6372; text-align: left;">To</span>
+                                                        <input type="datetime-local"
+                                                               value="@FilterAnalyticsDateTo"
+                                                               @oninput='e => UpdateAnalyticsDateFilter("to", e.Value?.ToString())'
+                                                               style='@GetAnalyticsFilterInputStyle()' />
+                                                    </div>
+                                                </div>
+                                                <button @onclick="ClearAnalyticsDateFilter" style='@GetAnalyticsFilterMenuItemStyle(false)'>Clear date range</button>
+                                                <div style='@GetAnalyticsMenuDividerStyle()'></div>
+                                                <span style='@GetAnalyticsMenuSectionLabelStyle()'>Sort</span>
+                                                <button @onclick='() => ApplyAnalyticsSortOption("date-desc")' style='@GetAnalyticsSortMenuItemStyle("date-desc")'>Newest first</button>
+                                                <button @onclick='() => ApplyAnalyticsSortOption("date-asc")' style='@GetAnalyticsSortMenuItemStyle("date-asc")'>Oldest first</button>
+                                            </div>
+                                        }
+                                    </th>
                                     <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 700; color: #464554; text-transform: uppercase; letter-spacing: 0.05em;">Structure</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                @foreach (var doc in documentsList)
+                                @if (VisibleAnalyticsDocuments.Any())
                                 {
-                                    <tr style="border-top: 1px solid #f1f5f9;">
-                                        <td style="padding: 1rem 1.5rem;">
-                                            <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                                <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 1.25rem; color: #464554;" />
-                                                <span style="font-weight: 600; font-size: 0.875rem; color: #1a1b1f;">@doc.Name</span>
-                                            </div>
-                                        </td>
+                                    @foreach (var doc in VisibleAnalyticsDocuments)
+                                    {
+                                        <tr style="border-top: 1px solid #f1f5f9;">
+                                            <td style="padding: 1rem 1.5rem;">
+                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 1.25rem; color: #464554;" />
+                                                    <span style="font-weight: 600; font-size: 0.875rem; color: #1a1b1f;">@doc.Name</span>
+                                                </div>
+                                            </td>
+                                        @if (!FolderId.HasValue)
+                                        {
+                                            <td style="padding: 1rem 1.5rem;">
+                                                <span style="display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; font-weight: 500; color: #464554;">
+                                                    <MudIcon Icon="@Icons.Material.Filled.Folder" Style="font-size: 0.875rem; color: #5e5ce6;" />
+                                                    @(doc.FolderName ?? "-")
+                                                </span>
+                                            </td>
+                                        }
                                         <td style="padding: 1rem 1.5rem;">
                                             @{
-                                                var isReady = string.Equals(doc.Status, "Ready", StringComparison.OrdinalIgnoreCase);
-                                                var isPending = string.Equals(doc.Status, "Uploading", StringComparison.OrdinalIgnoreCase) || string.Equals(doc.Status, "Processing", StringComparison.OrdinalIgnoreCase);
-                                                
-                                                var bg = isReady ? "rgba(0,100,36,0.1)" : isPending ? "rgba(94,92,230,0.1)" : "rgba(194,60,33,0.1)";
-                                                var color = isReady ? "#006424" : isPending ? "#5e5ce6" : "#c23c21";
-                                                var text = isReady ? "Approved" : isPending ? "Pending" : "Rejected";
-                                            }
-                                            <span style="padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.375rem; background: @bg; color: @color;">
-                                                <span style="width: 0.375rem; height: 0.375rem; border-radius: 9999px; background: @color;"></span>
-                                                @text
-                                            </span>
-                                        </td>
-                                        <td style="padding: 1rem 1.5rem;">
-                                            <div style="display: flex; flex-direction: column; gap: 0.125rem;">
-                                                <span style="font-size: 0.875rem; font-weight: 500; color: #464554;">@doc.CreatedAt.ToLocalTime().ToString("MMM dd")</span>
-                                                <span style="font-size: 0.75rem; color: #9ca3af;">@doc.CreatedAt.ToLocalTime().ToString("yyyy")</span>
-                                            </div>
-                                        </td>
-                                        <td style="padding: 1rem 1.5rem;">
-                                            <div style="display: flex; align-items: center; gap: 0.75rem;">
-                                                <span style="font-size: 0.875rem; font-weight: 700; color: #5e5ce6;">@doc.ChunkCount chunks</span>
-                                                <span style="font-size: 0.75rem; color: #6b7280;">(@(doc.PageCount?.ToString() ?? "N/A") pages)</span>
+                                                var isApproved = string.Equals(doc.Status, "Approved", StringComparison.OrdinalIgnoreCase);
+                                                var isRejected = string.Equals(doc.Status, "Rejected", StringComparison.OrdinalIgnoreCase);
+
+                                                    var bg = isApproved ? "rgba(0,100,36,0.1)" : isRejected ? "rgba(194,60,33,0.1)" : "rgba(94,92,230,0.08)";
+                                                    var color = isApproved ? "#006424" : isRejected ? "#c23c21" : "#5e5ce6";
+                                                    var text = isApproved ? "Approved" : isRejected ? "Rejected" : "Pending";
+                                                }
+                                                <span style="padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.75rem; font-weight: 600; display: inline-flex; align-items: center; gap: 0.375rem; background: @bg; color: @color;">
+                                                    <span style="width: 0.375rem; height: 0.375rem; border-radius: 9999px; background: @color;"></span>
+                                                    @text
+                                                </span>
+                                            </td>
+                                            <td style="padding: 1rem 1.5rem;">
+                                                <div style="display: flex; flex-direction: column; gap: 0.125rem;">
+                                                    <span style="font-size: 0.875rem; font-weight: 500; color: #464554;">@doc.CreatedAt.ToLocalTime().ToString("MMM dd")</span>
+                                                    <span style="font-size: 0.75rem; color: #9ca3af;">@doc.CreatedAt.ToLocalTime().ToString("yyyy")</span>
+                                                </div>
+                                            </td>
+                                            <td style="padding: 1rem 1.5rem;">
+                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                                    <span style="font-size: 0.875rem; font-weight: 700; color: #5e5ce6;">@doc.ChunkCount chunks</span>
+                                                    <span style="font-size: 0.75rem; color: #6b7280;">(@(doc.PageCount?.ToString() ?? "N/A") pages)</span>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    }
+                                }
+                                else
+                                {
+                                    <tr>
+                                        <td colspan="@AnalyticsTableColumnCount" style="padding: 2.25rem 1.5rem; text-align: center;">
+                                            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                                                <MudIcon Icon="@Icons.Material.Filled.FilterAltOff" Style="font-size: 2.25rem; color: #a1a1aa;" />
+                                                <h3 style="font-size: 1rem; font-weight: 700; color: #111827; margin: 0;">No documents available</h3>
+                                                <p style="font-size: 0.875rem; color: #6b7280; margin: 0;">
+                                                    @(HasActiveAnalyticsFilters()
+                                                        ? "No documents match the current filter values."
+                                                        : "No documents were found.")
+                                                </p>
                                             </div>
                                         </td>
                                     </tr>
@@ -276,6 +447,39 @@
                             </tbody>
                         </table>
                     }
+
+                    <!-- Pagination -->
+                    @if (!FolderId.HasValue && documentsList != null && documentsList.Any() && _totalPages > 1)
+                    {
+                        <div style="display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; border-top: 1px solid #f1f5f9;">
+                            <span style="font-size: 0.8125rem; color: #6b7280;">
+                                Showing @((_currentPage - 1) * _pageSize + 1)-@(Math.Min(_currentPage * _pageSize, _totalDocumentCount)) of @_totalDocumentCount documents
+                            </span>
+                            <div style="display: flex; align-items: center; gap: 0.25rem;">
+                                <button class="analytics-pagination-btn" disabled="@(_currentPage <= 1)" @onclick="() => GoToPageAsync(_currentPage - 1)">
+                                    <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Style="font-size: 1.125rem;" />
+                                </button>
+                                @foreach (var pageNum in GetPageNumbers())
+                                {
+                                    if (pageNum == -1)
+                                    {
+                                        <span style="font-size: 0.8125rem; color: #9ca3af; padding: 0 0.25rem;">...</span>
+                                    }
+                                    else
+                                    {
+                                        <button class="analytics-pagination-btn @(pageNum == _currentPage ? "active" : "")"
+                                                @onclick="() => GoToPageAsync(pageNum)">
+                                            @pageNum
+                                        </button>
+                                    }
+                                }
+                                <button class="analytics-pagination-btn" disabled="@(_currentPage >= _totalPages)" @onclick="() => GoToPageAsync(_currentPage + 1)">
+                                    <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Style="font-size: 1.125rem;" />
+                                </button>
+                            </div>
+                        </div>
+                    }
+                </div>
                 </div>
             </div>
         }
@@ -283,11 +487,19 @@
 </div>
 
 @code {
-    private ChartOptions options = new ChartOptions
+    private ChartOptions _chartOptions = new ChartOptions
     {
-        ChartPalette = new[] { "#5e5ce6" }
+        ChartPalette = new[] { "#059669", "#dc2626" }
     };
-    public List<ChartSeries<double>> Series = new List<ChartSeries<double>>();
+
+    public List<ChartSeries<double>> SeriesAll => new()
+    {
+        new ChartSeries<double> { Name = "Approved", Data = SeriesApproved.ToArray() },
+        new ChartSeries<double> { Name = "Rejected", Data = SeriesRejected.ToArray() }
+    };
+
+    public List<double> SeriesApproved = new();
+    public List<double> SeriesRejected = new();
     public string[] XAxisLabels = Array.Empty<string>();
 
     [Parameter]
@@ -300,19 +512,87 @@
 
     private bool isLoading = true;
     private int totalDocuments;
-    private double completionRate;
-    private double avgProcessingTimeHrs;
     private double storageUsedMb;
     private List<AnalyticsIssueDto>? issuesList;
     private List<AnalyticsDocumentDto>? documentsList;
+    private string? OpenDocumentsMenuColumn;
+    private string AnalyticsNameSearchTerm = string.Empty;
+    private string AnalyticsFolderSearchTerm = string.Empty;
+    private string AnalyticsStatusSearchTerm = string.Empty;
+    private string FilterAnalyticsNameQuery = string.Empty;
+    private string FilterAnalyticsFolderQuery = string.Empty;
+    private string FilterAnalyticsStatus = string.Empty;
+    private string FilterAnalyticsDateFrom = string.Empty;
+    private string FilterAnalyticsDateTo = string.Empty;
+    private string AnalyticsSortBy = "date-desc";
+    private Guid? _previousFolderId;
+    private FolderStatus _folderShareStatus = FolderStatus.None;
+    private bool _allDocumentsReviewed;
+    private bool _hasRejectedDocument;
 
-    [SupplyParameterFromQuery]
-    public Guid? folderId { get; set; }
+    private bool HasIssues => issuesList is { Count: > 0 };
 
-    [SupplyParameterFromQuery]
-    public string? folderName { get; set; }
+    private int TotalIssueIncidents => issuesList?.Sum(issue => issue.IncidentCount) ?? 0;
 
-    private string _folderName = "";
+    private double StorageUsedPercent => System.Math.Round(storageUsedMb * 100 / 1024, 2);
+
+    private string FolderStatusLabel => _folderShareStatus switch
+    {
+        FolderStatus.PendingShare => "Pending Share",
+        FolderStatus.Approved => "Approved",
+        FolderStatus.Rejected => "Rejected",
+        _ => "Draft"
+    };
+
+    private string FolderStatusBackground => _folderShareStatus switch
+    {
+        FolderStatus.PendingShare => "rgba(245,158,11,0.12)",
+        FolderStatus.Approved => "rgba(52,199,89,0.12)",
+        FolderStatus.Rejected => "rgba(255,59,48,0.12)",
+        _ => "rgba(94,92,230,0.1)"
+    };
+
+    private string FolderStatusColor => _folderShareStatus switch
+    {
+        FolderStatus.PendingShare => "#b7791f",
+        FolderStatus.Approved => "#1a8c4a",
+        FolderStatus.Rejected => "#c23c21",
+        _ => "#5e5ce6"
+    };
+
+    private string IssueSummaryBackground => HasIssues ? "rgba(239,68,68,0.1)" : "rgba(52,199,89,0.1)";
+
+    private string IssueSummaryIcon => HasIssues
+        ? Icons.Material.Filled.WarningAmber
+        : Icons.Material.Filled.CheckCircleOutline;
+
+    private string IssueSummaryIconStyle => $"font-size: 1.2rem; color: {(HasIssues ? "#c23c21" : "#1a8c4a")};";
+
+    private IReadOnlyList<AnalyticsDocumentDto> SourceAnalyticsDocuments => documentsList ?? [];
+
+    private IReadOnlyList<AnalyticsDocumentDto> VisibleAnalyticsDocuments => GetVisibleAnalyticsDocuments();
+
+    private int AnalyticsTableColumnCount => FolderId.HasValue ? 4 : 5;
+
+    private IReadOnlyList<string> AnalyticsStatusOptions => SourceAnalyticsDocuments
+        .Select(doc => doc.Status)
+        .Where(status => !string.IsNullOrWhiteSpace(status))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(status => status, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private IReadOnlyList<string> AnalyticsFolderOptions => SourceAnalyticsDocuments
+        .Select(doc => doc.FolderName ?? string.Empty)
+        .Where(folder => !string.IsNullOrWhiteSpace(folder))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private const int DefaultPageSize = 20;
+    private int _currentPage = 1;
+    private int _pageSize = DefaultPageSize;
+    private int _totalDocumentCount;
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_totalDocumentCount / _pageSize));
 
     protected override async Task OnInitializedAsync()
     {
@@ -322,28 +602,66 @@
             return;
         }
 
+        await LoadAnalyticsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (_previousFolderId != FolderId)
+        {
+            _previousFolderId = FolderId;
+            _currentPage = 1;
+            await LoadAnalyticsAsync();
+        }
+    }
+
+    private async Task LoadAnalyticsAsync()
+    {
+        isLoading = true;
         try
         {
             if (FolderId.HasValue)
             {
-                var folder = await DbContext.Folders.FindAsync(FolderId.Value);
+                var folder = await DbContext.Folders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == FolderId.Value);
                 FolderName = folder?.Name ?? string.Empty;
+                _folderShareStatus = folder?.ShareStatus ?? FolderStatus.None;
+            }
+            else
+            {
+                FolderName = string.Empty;
+                _folderShareStatus = FolderStatus.None;
             }
 
-            var analytics = await DashboardService.GetUserAnalyticsAsync(Session.CurrentUser.Id, FolderId);
-            
+            var analytics = await DashboardService.GetAdminAnalyticsAsync(FolderId, _currentPage, _pageSize);
             totalDocuments = analytics.TotalDocuments;
-            completionRate = analytics.CompletionRate;
-            avgProcessingTimeHrs = analytics.AvgProcessingTimeHrs;
             storageUsedMb = analytics.StorageUsedMb;
 
-            Series = new List<ChartSeries<double>>
-            {
-                new ChartSeries<double> { Name = "Uploads", Data = analytics.DailyUploadCounts.ToArray() }
-            };
+            SeriesApproved = analytics.DailyApprovedCounts;
+            SeriesRejected = analytics.DailyRejectedCounts;
             XAxisLabels = analytics.DailyUploadLabels.ToArray();
             issuesList = analytics.CommonIssues;
             documentsList = analytics.RecentDocuments;
+
+            _totalDocumentCount = analytics.TotalDocumentCount > 0 ? analytics.TotalDocumentCount : (documentsList?.Count ?? 0);
+            if (analytics.PageSize > 0) _pageSize = analytics.PageSize;
+
+            // Compute folder-level document review status for button locking
+            if (FolderId.HasValue)
+            {
+                var statuses = await DbContext.Documents
+                    .AsNoTracking()
+                    .Where(d => d.FolderId == FolderId.Value)
+                    .Select(d => d.ReviewStatus)
+                    .ToListAsync();
+
+                _allDocumentsReviewed = statuses.All(s => s != Data.Entities.DocumentReviewStatus.None);
+                _hasRejectedDocument = statuses.Any(s => s == Data.Entities.DocumentReviewStatus.Rejected);
+            }
+            else
+            {
+                _allDocumentsReviewed = false;
+                _hasRejectedDocument = false;
+            }
         }
         finally
         {
@@ -351,11 +669,425 @@
         }
     }
 
+    private IReadOnlyList<AnalyticsDocumentDto> GetVisibleAnalyticsDocuments()
+    {
+        IEnumerable<AnalyticsDocumentDto> query = SourceAnalyticsDocuments;
+
+        if (!string.IsNullOrWhiteSpace(FilterAnalyticsNameQuery))
+        {
+            query = query.Where(doc => doc.Name.Contains(FilterAnalyticsNameQuery, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(FilterAnalyticsStatus))
+        {
+            query = query.Where(doc => doc.Status.Contains(FilterAnalyticsStatus, StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(FilterAnalyticsFolderQuery))
+        {
+            query = query.Where(doc => (doc.FolderName ?? string.Empty).Contains(FilterAnalyticsFolderQuery, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var fromDate = ParseAnalyticsLocalDateTimeFilter(FilterAnalyticsDateFrom);
+        if (fromDate.HasValue)
+        {
+            query = query.Where(doc => doc.CreatedAt.ToLocalTime().DateTime >= fromDate.Value);
+        }
+
+        var toDate = ParseAnalyticsLocalDateTimeFilter(FilterAnalyticsDateTo);
+        if (toDate.HasValue)
+        {
+            query = query.Where(doc => doc.CreatedAt.ToLocalTime().DateTime <= toDate.Value);
+        }
+
+        query = AnalyticsSortBy switch
+        {
+            "name-asc" => query.OrderBy(doc => doc.Name, StringComparer.OrdinalIgnoreCase),
+            "name-desc" => query.OrderByDescending(doc => doc.Name, StringComparer.OrdinalIgnoreCase),
+            "folder-asc" => query.OrderBy(doc => doc.FolderName ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            "folder-desc" => query.OrderByDescending(doc => doc.FolderName ?? string.Empty, StringComparer.OrdinalIgnoreCase),
+            "status-asc" => query.OrderBy(doc => doc.Status, StringComparer.OrdinalIgnoreCase),
+            "status-desc" => query.OrderByDescending(doc => doc.Status, StringComparer.OrdinalIgnoreCase),
+            "date-asc" => query.OrderBy(doc => doc.CreatedAt),
+            "date-desc" => query.OrderByDescending(doc => doc.CreatedAt),
+            _ => query
+        };
+
+        return query.ToList();
+    }
+
+    private IReadOnlyList<string> GetAnalyticsNameSuggestions()
+    {
+        IEnumerable<string> query = SourceAnalyticsDocuments
+            .Select(doc => doc.Name)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase);
+
+        if (!string.IsNullOrWhiteSpace(AnalyticsNameSearchTerm))
+        {
+            query = query.Where(option => option.Contains(AnalyticsNameSearchTerm, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.ToList();
+    }
+
+    private IReadOnlyList<string> GetAnalyticsStatusSuggestions()
+    {
+        IEnumerable<string> query = AnalyticsStatusOptions;
+
+        if (!string.IsNullOrWhiteSpace(AnalyticsStatusSearchTerm))
+        {
+            query = query.Where(option => option.Contains(AnalyticsStatusSearchTerm, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.ToList();
+    }
+
+    private IReadOnlyList<string> GetAnalyticsFolderSuggestions()
+    {
+        IEnumerable<string> query = AnalyticsFolderOptions;
+
+        if (!string.IsNullOrWhiteSpace(AnalyticsFolderSearchTerm))
+        {
+            query = query.Where(option => option.Contains(AnalyticsFolderSearchTerm, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.ToList();
+    }
+
+    private void UpdateAnalyticsTextSearch(string? value)
+    {
+        AnalyticsNameSearchTerm = value?.Trim() ?? string.Empty;
+        FilterAnalyticsNameQuery = AnalyticsNameSearchTerm;
+    }
+
+    private void UpdateAnalyticsFolderSearch(string? value)
+    {
+        AnalyticsFolderSearchTerm = value?.Trim() ?? string.Empty;
+        FilterAnalyticsFolderQuery = AnalyticsFolderSearchTerm;
+    }
+
+    private void UpdateAnalyticsStatusSearch(string? value)
+    {
+        AnalyticsStatusSearchTerm = value?.Trim() ?? string.Empty;
+        FilterAnalyticsStatus = AnalyticsStatusSearchTerm;
+    }
+
+    private void ApplyAnalyticsNameSuggestion(string value)
+    {
+        FilterAnalyticsNameQuery = value;
+        AnalyticsNameSearchTerm = value;
+        CloseDocumentsMenu();
+    }
+
+    private void ApplyAnalyticsFolderSuggestion(string value)
+    {
+        FilterAnalyticsFolderQuery = value;
+        AnalyticsFolderSearchTerm = value;
+        CloseDocumentsMenu();
+    }
+
+    private void ClearAnalyticsNameFilter()
+    {
+        FilterAnalyticsNameQuery = string.Empty;
+        AnalyticsNameSearchTerm = string.Empty;
+        CloseDocumentsMenu();
+    }
+
+    private void ApplyAnalyticsStatusFilter(string statusValue)
+    {
+        FilterAnalyticsStatus = statusValue;
+        AnalyticsStatusSearchTerm = statusValue;
+        CloseDocumentsMenu();
+    }
+
+    private void UpdateAnalyticsDateFilter(string boundary, string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        if (string.Equals(boundary, "from", StringComparison.OrdinalIgnoreCase))
+        {
+            FilterAnalyticsDateFrom = normalizedValue;
+        }
+        else
+        {
+            FilterAnalyticsDateTo = normalizedValue;
+        }
+    }
+
+    private void ClearAnalyticsDateFilter()
+    {
+        FilterAnalyticsDateFrom = string.Empty;
+        FilterAnalyticsDateTo = string.Empty;
+    }
+
+    private DateTime? ParseAnalyticsLocalDateTimeFilter(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return DateTime.TryParseExact(
+            value,
+            "yyyy-MM-ddTHH:mm",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeLocal,
+            out var parsedDate)
+            ? parsedDate
+            : null;
+    }
+
+    private void ResetAnalyticsTable()
+    {
+        OpenDocumentsMenuColumn = null;
+        AnalyticsNameSearchTerm = string.Empty;
+        AnalyticsFolderSearchTerm = string.Empty;
+        AnalyticsStatusSearchTerm = string.Empty;
+        FilterAnalyticsNameQuery = string.Empty;
+        FilterAnalyticsFolderQuery = string.Empty;
+        FilterAnalyticsStatus = string.Empty;
+        FilterAnalyticsDateFrom = string.Empty;
+        FilterAnalyticsDateTo = string.Empty;
+        AnalyticsSortBy = "date-desc";
+    }
+
+    private void HandleDocumentsHeaderClick(string columnKey)
+    {
+        if (string.Equals(OpenDocumentsMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
+        {
+            OpenDocumentsMenuColumn = null;
+            return;
+        }
+
+        if (string.Equals(columnKey, "name", StringComparison.OrdinalIgnoreCase))
+        {
+            AnalyticsNameSearchTerm = FilterAnalyticsNameQuery;
+        }
+        else if (string.Equals(columnKey, "folder", StringComparison.OrdinalIgnoreCase))
+        {
+            AnalyticsFolderSearchTerm = FilterAnalyticsFolderQuery;
+        }
+        else if (string.Equals(columnKey, "status", StringComparison.OrdinalIgnoreCase))
+        {
+            AnalyticsStatusSearchTerm = FilterAnalyticsStatus;
+        }
+
+        OpenDocumentsMenuColumn = columnKey;
+    }
+
+    private void ApplyAnalyticsSortOption(string sortKey)
+    {
+        AnalyticsSortBy = sortKey;
+        CloseDocumentsMenu();
+    }
+
+    private void CloseDocumentsMenu() =>
+        OpenDocumentsMenuColumn = null;
+
+    private bool HasActiveAnalyticsFilters() =>
+        !string.IsNullOrWhiteSpace(FilterAnalyticsNameQuery)
+        || !string.IsNullOrWhiteSpace(FilterAnalyticsFolderQuery)
+        || !string.IsNullOrWhiteSpace(FilterAnalyticsStatus)
+        || !string.IsNullOrWhiteSpace(FilterAnalyticsDateFrom)
+        || !string.IsNullOrWhiteSpace(FilterAnalyticsDateTo);
+
+    private bool IsAnalyticsSortedBy(string columnKey) =>
+        AnalyticsSortBy.StartsWith($"{columnKey}-", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsAnalyticsSortDescending(string columnKey) =>
+        string.Equals(AnalyticsSortBy, $"{columnKey}-desc", StringComparison.OrdinalIgnoreCase);
+
+    private string GetAnalyticsSortIcon(string columnKey)
+    {
+        if (!IsAnalyticsSortedBy(columnKey))
+        {
+            return Icons.Material.Filled.UnfoldMore;
+        }
+
+        return IsAnalyticsSortDescending(columnKey)
+            ? Icons.Material.Filled.KeyboardArrowDown
+            : Icons.Material.Filled.KeyboardArrowUp;
+    }
+
+    private string GetAnalyticsHeaderButtonStyle(string columnKey, bool alignLeft = false)
+    {
+        var isActive = IsAnalyticsSortedBy(columnKey) || IsAnalyticsColumnFiltered(columnKey);
+        var color = isActive ? "#5e5ce6" : "#464554";
+        var justifyContent = alignLeft ? "flex-start" : "center";
+        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;";
+    }
+
+    private string GetAnalyticsSortIconStyle(string columnKey)
+    {
+        var color = (IsAnalyticsSortedBy(columnKey) || IsAnalyticsColumnFiltered(columnKey)) ? "#5e5ce6" : "#9ca3af";
+        return $"font-size: 1rem; color: {color};";
+    }
+
+    private string GetAnalyticsSortMenuItemStyle(string sortKey)
+    {
+        var isActive = string.Equals(AnalyticsSortBy, sortKey, StringComparison.OrdinalIgnoreCase);
+        var bg = isActive ? "rgba(94,92,230,0.08)" : "transparent";
+        var color = isActive ? "#4441CC" : "#464554";
+        return $"display: block; width: 100%; border: none; background: {bg}; color: {color}; border-radius: 0.55rem; padding: 0.55rem 0.7rem; text-align: left; font-size: 0.8125rem; font-weight: 600; cursor: pointer;";
+    }
+
+    private string GetAnalyticsFilterMenuItemStyle(bool isActive)
+    {
+        var bg = isActive ? "rgba(94,92,230,0.08)" : "transparent";
+        var color = isActive ? "#4441CC" : "#464554";
+        return $"display: block; width: 100%; border: none; background: {bg}; color: {color}; border-radius: 0.55rem; padding: 0.5rem 0.7rem; text-align: left; font-size: 0.8125rem; font-weight: 600; cursor: pointer; white-space: normal; word-break: break-word; line-height: 1.35;";
+    }
+
+    private string GetAnalyticsMenuSectionLabelStyle() =>
+        "display: block; padding: 0.35rem 0.55rem 0.2rem; font-size: 0.675rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.08em;";
+
+    private string GetAnalyticsMenuDividerStyle() =>
+        "height: 1px; background: rgba(199,196,215,0.35); margin: 0.35rem 0;";
+
+    private string GetAnalyticsHeaderMenuStyle(string minWidth, bool alignLeft = false)
+    {
+        var horizontalPosition = alignLeft
+            ? "left: 1rem; transform: none;"
+            : "left: 50%; transform: translateX(-50%);";
+
+        return $"position: absolute; top: calc(100% - 0.15rem); {horizontalPosition} z-index: 5; min-width: {minWidth}; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 10px 30px rgba(26,27,31,0.12); padding: 0.45rem;";
+    }
+
+    private string GetAnalyticsFilterInputStyle() =>
+        "width: 100%; border: 1px solid rgba(199,196,215,0.65); border-radius: 0.6rem; background: #fbfbfe; color: #1a1b1f; padding: 0.58rem 0.7rem; font-size: 0.8125rem; outline: none; box-sizing: border-box;";
+
+    private string GetAnalyticsFilterOptionsListStyle() =>
+        "display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem; max-height: 12.25rem; overflow-y: auto; padding-right: 0.15rem;";
+
+    private string GetAnalyticsMenuEmptyStateStyle() =>
+        "display: block; padding: 0.55rem 0.7rem; font-size: 0.78125rem; color: #7c7f8f; text-align: left;";
+
+    private bool IsAnalyticsColumnFiltered(string columnKey) =>
+        columnKey switch
+        {
+            "name" => !string.IsNullOrWhiteSpace(FilterAnalyticsNameQuery),
+            "folder" => !string.IsNullOrWhiteSpace(FilterAnalyticsFolderQuery),
+            "status" => !string.IsNullOrWhiteSpace(FilterAnalyticsStatus),
+            "date" => !string.IsNullOrWhiteSpace(FilterAnalyticsDateFrom) || !string.IsNullOrWhiteSpace(FilterAnalyticsDateTo),
+            _ => false
+        };
+
     private void NavigateToFolderDocuments()
     {
         if (FolderId.HasValue)
         {
-            Nav.NavigateTo($"/documents?folderId={FolderId.Value}");
+            Nav.NavigateTo($"/dashboard/documents?folderId={FolderId.Value}");
+        }
+    }
+
+    private async Task GoToPageAsync(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, _totalPages);
+        await LoadAnalyticsAsync();
+    }
+
+    private List<int> GetPageNumbers()
+    {
+        var pages = new List<int>();
+        var total = _totalPages;
+        var current = _currentPage;
+
+        if (total <= 7)
+        {
+            for (int i = 1; i <= total; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (current > 3) pages.Add(-1); // ellipsis
+
+            var start = Math.Max(2, current - 1);
+            var end = Math.Min(total - 1, current + 1);
+            for (int i = start; i <= end; i++) pages.Add(i);
+
+            if (current < total - 2) pages.Add(-1); // ellipsis
+            pages.Add(total);
+        }
+        return pages;
+    }
+
+    private async Task ApproveFolderShare()
+    {
+        if (!FolderId.HasValue) return;
+        try
+        {
+            var folder = await DbContext.Folders.FindAsync(FolderId.Value);
+            if (folder == null) return;
+
+            folder.ShareStatus = FolderStatus.Approved;
+            folder.SharedAt = DateTimeOffset.UtcNow;
+            folder.UpdatedAt = DateTimeOffset.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            _folderShareStatus = FolderStatus.Approved;
+            Snackbar.Add("Folder approved and shared to community.", Severity.Success);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error approving folder: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task RejectFolderShare()
+    {
+        if (!FolderId.HasValue) return;
+        try
+        {
+            var folder = await DbContext.Folders.FindAsync(FolderId.Value);
+            if (folder == null) return;
+
+            folder.ShareStatus = FolderStatus.Rejected;
+            folder.SharedAt = null;
+            folder.UpdatedAt = DateTimeOffset.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            _folderShareStatus = FolderStatus.Rejected;
+            Snackbar.Add("Folder share request rejected.", Severity.Warning);
+            StateHasChanged();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error rejecting folder: {ex.Message}", Severity.Error);
         }
     }
 }
+
+<style>
+    .analytics-pagination-btn {
+        width: 2rem;
+        height: 2rem;
+        border-radius: 0.375rem;
+        border: 1px solid #e2e8f0;
+        background: #fff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: #464554;
+        transition: all 0.15s;
+        padding: 0;
+    }
+    .analytics-pagination-btn:hover:not(:disabled) {
+        border-color: #5e5ce6;
+        background: #f5f3ff;
+        color: #5e5ce6;
+    }
+    .analytics-pagination-btn:disabled {
+        opacity: 0.4;
+        cursor: default;
+    }
+    .analytics-pagination-btn.active {
+        background: #5e5ce6;
+        border-color: #5e5ce6;
+        color: white;
+    }
+</style>

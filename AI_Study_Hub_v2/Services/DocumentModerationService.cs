@@ -129,6 +129,71 @@ public sealed class DocumentModerationService : IDocumentModerationService
         return true;
     }
 
+    public async Task<bool> EscalateAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
+        if (doc is null) return false;
+
+        doc.ReviewStatus = DocumentReviewStatus.None;
+        doc.ErrorMessage = "Escalated to admin for final review.";
+        doc.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<bool> RestoreAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
+        if (doc is null) return false;
+
+        doc.Status = DocumentStatus.Processing;
+        doc.ReviewStatus = DocumentReviewStatus.None;
+        doc.ErrorMessage = null;
+        doc.UpdatedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+        return true;
+    }
+
+    public async Task<IReadOnlyList<ModerationQueueDocumentDto>> GetEscalatedQueueAsync(CancellationToken ct = default)
+    {
+        var docs = await _db.Documents
+            .AsNoTracking()
+            .Include(d => d.User)
+            .Include(d => d.Chunks)
+            .Where(d => d.ErrorMessage != null && d.ErrorMessage.Contains("Escalated"))
+            .OrderByDescending(d => d.UpdatedAt)
+            .ToListAsync(ct);
+
+        var docIds = docs.Select(d => d.Id).ToList();
+        var firstChunkByDocumentId = await _db.DocumentChunks
+            .AsNoTracking()
+            .Where(chunk => docIds.Contains(chunk.DocumentId))
+            .OrderBy(chunk => chunk.ChunkIndex)
+            .Select(chunk => new { chunk.DocumentId, chunk.Content })
+            .ToListAsync(ct);
+
+        var previewLookup = firstChunkByDocumentId
+            .GroupBy(item => item.DocumentId)
+            .ToDictionary(group => group.Key, group => group.First().Content);
+
+        return docs.Select(doc =>
+        {
+            var previewText = previewLookup.TryGetValue(doc.Id, out var chunkPreview) && !string.IsNullOrWhiteSpace(chunkPreview)
+                ? chunkPreview
+                : BuildPreviewFallback(doc);
+
+            return new ModerationQueueDocumentDto(
+                doc.Id, doc.FileName, doc.SubjectCode, doc.Semester,
+                doc.User.FullName ?? doc.User.Username, doc.User.Username,
+                GetFileType(doc.MimeType), doc.FileSizeBytes, doc.StoragePath,
+                MapProcessingStatus(doc.Status), "Escalated",
+                MapSeverity(doc.Status, doc.ErrorMessage),
+                doc.ErrorMessage ?? "Escalated for admin review.",
+                doc.Status == DocumentStatus.Failed ? (doc.ErrorMessage ?? "Escalated during moderation.") : string.Empty,
+                previewText, doc.Chunks.Count, doc.CreatedAt, doc.UpdatedAt);
+        }).ToList();
+    }
+
     private static string BuildPreviewFallback(Document doc)
     {
         if (!string.IsNullOrWhiteSpace(doc.ErrorMessage))

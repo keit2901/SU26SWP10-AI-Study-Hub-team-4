@@ -16,7 +16,7 @@ public sealed class Folder
 
     public bool IsFavorite { get; set; }
 
-    public bool IsShared { get; set; }
+    public FolderStatus ShareStatus { get; set; }
 
     public DateTimeOffset? SharedAt { get; set; }
 

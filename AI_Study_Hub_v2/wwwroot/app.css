@@ -1381,6 +1381,13 @@ h1:focus {
     padding: 0 !important;
 }
 
+.content:has(.document-upload-shell) {
+    width: 100% !important;
+    max-width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
 /* ── Quiz Dialog (global — scoped CSS doesn't reach MudBlazor portal) ── */
 .quiz-dialog-root.mud-dialog {
     width: min(95vw, 1600px) !important;

@@ -45,12 +45,35 @@ public interface IChunkingService
     IReadOnlyList<DocumentChunkDraft> Chunk(Guid documentId, IReadOnlyList<ExtractedPage> pages);
 }
 
-public sealed record DocumentChunkDraft(Guid DocumentId, int ChunkIndex, int? PageNumber, string Content);
+public sealed record DocumentChunkDraft(Guid DocumentId, int ChunkIndex, int? PageNumber, string Content)
+{
+    public string? SectionTitle { get; init; }
+}
 
 public interface IEmbeddingService
 {
     Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default);
 }
+
+public interface IReRankService
+{
+    Task<IReadOnlyList<ReRankCandidate>> ReRankAsync(
+        string query,
+        IReadOnlyList<ReRankCandidate> candidates,
+        int topN,
+        CancellationToken cancellationToken = default);
+}
+
+public sealed record ReRankCandidate(
+    Guid DocumentId,
+    string FileName,
+    int ChunkIndex,
+    int? PageNumber,
+    string Content,
+    double DenseScore,
+    double KeywordScore,
+    double InitialScore,
+    double? ReRankScore = null);
 
 public interface IRagSearchService
 {

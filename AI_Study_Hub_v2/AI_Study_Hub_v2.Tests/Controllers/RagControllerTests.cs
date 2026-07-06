@@ -17,11 +17,21 @@ public sealed class RagControllerTests
     {
         var options = new RagOptions
         {
+            ChunkingStrategy = "semantic",
             ChunkSizeChars = 1200,
             ChunkOverlapChars = 180,
+            MinChunkChars = 120,
+            MaxSectionChars = 900,
             EmbeddingDimensions = 384,
             DefaultTopK = 6,
             MaxTopK = 12,
+            EmbeddingCacheEnabled = true,
+            ReRankEnabled = true,
+            ReRankCandidateCount = 30,
+            ReRankTopN = 7,
+            HybridSearchEnabled = true,
+            VectorWeight = 0.65d,
+            SearchMode = "hybrid",
         };
         var sut = new RagController(
             Mock.Of<IRagSearchService>(),
@@ -34,9 +44,19 @@ public sealed class RagControllerTests
         var dto = ok.Value.Should().BeOfType<RagScoringInfoResponse>().Subject;
         dto.ChunkSizeChars.Should().Be(1200);
         dto.ChunkOverlapChars.Should().Be(180);
+        dto.ChunkingStrategy.Should().Be("semantic");
+        dto.MinChunkChars.Should().Be(120);
+        dto.MaxSectionChars.Should().Be(900);
         dto.EmbeddingDimensions.Should().Be(384);
         dto.DefaultTopK.Should().Be(6);
         dto.MaxTopK.Should().Be(12);
+        dto.EmbeddingCacheEnabled.Should().BeTrue();
+        dto.ReRankEnabled.Should().BeTrue();
+        dto.ReRankCandidateCount.Should().Be(30);
+        dto.ReRankTopN.Should().Be(7);
+        dto.HybridSearchEnabled.Should().BeTrue();
+        dto.VectorWeight.Should().Be(0.65d);
+        dto.SearchMode.Should().Be("hybrid");
         dto.ScoreMeaning.Should().Contain("Lower score");
     }
 
