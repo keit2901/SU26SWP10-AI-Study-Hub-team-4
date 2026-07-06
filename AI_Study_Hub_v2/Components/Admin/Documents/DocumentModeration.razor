@@ -77,8 +77,8 @@
             <div class="d-flex justify-space-between align-start" style="width: 100%;">
                 <div>
                     <span class="kpi-label">Total Indexed</span>
-                    <div class="kpi-value">1,248</div>
-                    <span class="kpi-subtext mt-2">RAG ready documents</span>
+                    <div class="kpi-value">@_documents.Count(d => d.ModerationStatus == ApprovedStatus)</div>
+                    <span class="kpi-subtext mt-2">Approved &amp; ready</span>
                 </div>
                 <div class="kpi-icon-circle purple">
                     <MudIcon Icon="@Icons.Material.Outlined.Storage" />
