@@ -4,9 +4,13 @@
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
+@using AI_Study_Hub_v2.Services
+@using AI_Study_Hub_v2.Dtos
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject AuthSessionState Session
+@inject AdminApiClient AdminApi
 
 <div class="documents-page page-enter">
     <!-- Breadcrumbs & Header -->
@@ -370,22 +374,10 @@
 
     private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredDocuments.Count() / _pageSize));
 
-    // Dynamic counts with mockup fallback
-    private int TotalDocumentsCount => string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
-        ? 1482
-        : FilteredDocuments.Count();
-
-    private int IndexedCount => string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
-        ? 1390
-        : FilteredDocuments.Count(d => d.ProcessingStatus == IndexedProcessing);
-
-    private int NeedsAttentionCount => string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
-        ? 18
-        : FilteredDocuments.Count(d => d.ModerationStatus is PendingModeration or ReportedModeration);
-
-    private int FailedCount => string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
-        ? 4
-        : FilteredDocuments.Count(d => d.ProcessingStatus == FailedProcessing);
+    private int TotalDocumentsCount => FilteredDocuments.Count();
+    private int IndexedCount => FilteredDocuments.Count(d => d.ProcessingStatus == IndexedProcessing);
+    private int NeedsAttentionCount => FilteredDocuments.Count(d => d.ModerationStatus is PendingModeration or ReportedModeration);
+    private int FailedCount => FilteredDocuments.Count(d => d.ProcessingStatus == FailedProcessing);
 
     private string GetPaginationText()
     {
@@ -404,11 +396,30 @@
         _currentPage = Math.Clamp(page, 1, _totalPages);
     }
 
-    protected override void OnInitialized()
+    protected override async void OnInitialized()
     {
+        await LoadDocumentsAsync();
+    }
+
+    private async Task LoadDocumentsAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
         try
         {
-            _documents.AddRange(BuildSeedDocuments());
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                _errorMessage = "You must be logged in as an administrator.";
+                return;
+            }
+
+            var dtos = await AdminApi.ListDocumentsAsync(Session.AccessToken, size: 100);
+            _documents.Clear();
+            foreach (var dto in dtos)
+            {
+                _documents.Add(ToRow(dto));
+            }
         }
         catch (Exception ex)
         {
@@ -717,18 +728,35 @@
             .ToList();
     }
 
-    private static IEnumerable<DocumentRow> BuildSeedDocuments()
+    private static DocumentRow ToRow(AdminDocumentDto dto)
     {
-        return new[]
+        return new DocumentRow
         {
-            new DocumentRow { Id = Guid.Parse("11111111-1111-1111-1111-111111111111"), Title = "Intro_to_Quantum_Computing.pdf", SubjectCode = "CS402", OwnerName = "Alex Rivera", OwnerEmail = "arivera@university.edu", ProcessingStatus = ProcessingProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 2.4, StoragePath = "documents/cs402/Intro_to_Quantum_Computing.pdf", Tags = new() { "quantum", "physics", "intro" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-2) },
-            new DocumentRow { Id = Guid.Parse("22222222-2222-2222-2222-222222222222"), Title = "Calculus_III_Final_Notes.docx", SubjectCode = "MATH101", OwnerName = "Sarah Chen", OwnerEmail = "schen@ai-hub.org", ProcessingStatus = IndexedProcessing, ModerationStatus = ApprovedModeration, FileType = "docx", FileSizeMb = 1.1, StoragePath = "documents/math101/Calculus_III_Final_Notes.docx", Tags = new() { "calculus", "math", "final" }, ChunkCount = 45, CreatedAt = DateTime.UtcNow.AddDays(-1) },
-            new DocumentRow { Id = Guid.Parse("33333333-3333-3333-3333-333333333333"), Title = "Advanced_Mechanics_Lecture_7.mp4", SubjectCode = "PHYS205", OwnerName = "Marcus Thorne", OwnerEmail = "m.thorne@edu.co", ProcessingStatus = FailedProcessing, ModerationStatus = RejectedModeration, FileType = "mp4", FileSizeMb = 142.0, StoragePath = "documents/phys250/Advanced_Mechanics_Lecture_7.mp4", Tags = new() { "mechanics", "physics", "video" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-3) },
-            new DocumentRow { Id = Guid.Parse("1b412df3-8e7a-4e62-97c8-e3f72a977920"), Title = "RAG Evaluation Notes.pdf", SubjectCode = "SWP391", OwnerName = "Dr. Nguyen Minh", OwnerEmail = "minh.nguyen@aistudyhub.edu", ProcessingStatus = PendingProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 4.8, StoragePath = "documents/swp391/rag-evaluation-notes.pdf", Tags = new() { "rag", "evaluation", "capstone" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-12) },
-            new DocumentRow { Id = Guid.Parse("2f9aef28-c268-4c44-940e-e3f825462c91"), Title = "Exam Bank 2025.docx", SubjectCode = "DBI202", OwnerName = "Kiet Ngo", OwnerEmail = "kiet.ngo@aistudyhub.edu", ProcessingStatus = FailedProcessing, ModerationStatus = ReportedModeration, FileType = "docx", FileSizeMb = 2.2, StoragePath = "documents/dbi202/exam-bank-2025.docx", Tags = new() { "assessment", "reported", "database" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddHours(-15) },
-            new DocumentRow { Id = Guid.Parse("95f86807-21a2-43e1-9702-2f4e190c7856"), Title = "Lecture OCR Export.pdf", SubjectCode = "PRN212", OwnerName = "Mai Anh Tran", OwnerEmail = "mai.tran@aistudyhub.edu", ProcessingStatus = FailedProcessing, ModerationStatus = PendingModeration, FileType = "pdf", FileSizeMb = 11.6, StoragePath = "documents/prn212/lecture-ocr-export.pdf", Tags = new() { "ocr", "failed-processing", "lecture" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-2) },
-            new DocumentRow { Id = Guid.Parse("60f8bb40-a9c1-4ab0-9241-ad3fc147b44a"), Title = "Supabase pgvector Guide.pdf", SubjectCode = "SWP391", OwnerName = "Dr. Nguyen Minh", OwnerEmail = "minh.nguyen@aistudyhub.edu", ProcessingStatus = IndexedProcessing, ModerationStatus = ApprovedModeration, FileType = "pdf", FileSizeMb = 5.9, StoragePath = "documents/swp391/pgvector-guide.pdf", Tags = new() { "supabase", "pgvector", "rag" }, ChunkCount = 42, CreatedAt = DateTime.UtcNow.AddDays(-6) },
-            new DocumentRow { Id = Guid.Parse("eb420566-9e06-4d16-a79f-6a1e96e943c8"), Title = "Legacy Slides.pptx", SubjectCode = "SWT301", OwnerName = "Linh Pham", OwnerEmail = "linh.pham@aistudyhub.edu", ProcessingStatus = RejectedModeration, ModerationStatus = RejectedModeration, FileType = "pptx", FileSizeMb = 7.4, StoragePath = "documents/swt301/legacy-slides.pptx", Tags = new() { "legacy", "slides", "needs-update" }, ChunkCount = 0, CreatedAt = DateTime.UtcNow.AddDays(-7) }
+            Id = dto.Id,
+            Title = dto.FileName,
+            SubjectCode = dto.SubjectCode,
+            OwnerName = dto.OwnerName,
+            OwnerEmail = dto.OwnerEmail,
+            ProcessingStatus = dto.Status,
+            ModerationStatus = dto.ReviewStatus,
+            FileType = GetFileExtension(dto.MimeType),
+            FileSizeMb = Math.Round(dto.FileSizeBytes / (1024.0 * 1024.0), 1),
+            StoragePath = dto.StoragePath,
+            ChunkCount = dto.ChunkCount,
+            CreatedAt = dto.CreatedAt.UtcDateTime
+        };
+    }
+
+    private static string GetFileExtension(string mimeType)
+    {
+        return mimeType switch
+        {
+            "application/pdf" => "pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => "pptx",
+            "application/msword" => "doc",
+            "application/vnd.ms-powerpoint" => "ppt",
+            _ => mimeType.Split('/').LastOrDefault() ?? "unknown"
         };
     }
 
