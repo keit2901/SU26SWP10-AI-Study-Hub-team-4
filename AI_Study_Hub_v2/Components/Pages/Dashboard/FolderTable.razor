@@ -1,4 +1,5 @@
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <div style="background: #fff; border-radius: 1rem; box-shadow: 0 2px 10px -4px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: visible; margin-top: 2rem;">
     <div style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
@@ -26,7 +27,7 @@
             <thead>
                 <tr style="background: rgba(249,250,251,0.8); border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;">
                     <th style="padding: 0.8rem 1rem 0.8rem 1.25rem; text-align: center; position: relative;">
-                        <button @onclick='() => HandleHeaderMenuClick("name")' style='@GetHeaderButtonStyle("name")'>
+                        <button @ref="_nameHeaderButton" @onclick='() => HandleHeaderMenuClick("name")' style='@GetHeaderButtonStyle("name")'>
                             <span>Folder Name</span>
                             <MudIcon Icon='@GetSortIcon("name")' Style='@GetSortIconStyle("name")' />
                         </button>
@@ -61,7 +62,7 @@
                         }
                     </th>
                     <th style="padding: 0.75rem 1.5rem; text-align: left; position: relative;">
-                        <button @onclick='() => HandleHeaderMenuClick("owner")' style='@GetHeaderButtonStyle("owner", true)'>
+                        <button @ref="_ownerHeaderButton" @onclick='() => HandleHeaderMenuClick("owner")' style='@GetHeaderButtonStyle("owner", true)'>
                             <span>Owner</span>
                             <MudIcon Icon='@GetSortIcon("owner")' Style='@GetSortIconStyle("owner")' />
                         </button>
@@ -96,7 +97,7 @@
                         }
                     </th>
                     <th style="padding: 0.75rem 1.5rem; text-align: left; position: relative;">
-                        <button @onclick='() => HandleHeaderMenuClick("subject")' style='@GetHeaderButtonStyle("subject", true)'>
+                        <button @ref="_subjectHeaderButton" @onclick='() => HandleHeaderMenuClick("subject")' style='@GetHeaderButtonStyle("subject", true)'>
                             <span>Subject Code</span>
                             <MudIcon Icon='@GetSortIcon("subject")' Style='@GetSortIconStyle("subject")' />
                         </button>
@@ -131,7 +132,7 @@
                         }
                     </th>
                     <th style="padding: 0.75rem 1.5rem; text-align: left; position: relative;">
-                        <button @onclick='() => HandleHeaderMenuClick("semester")' style='@GetHeaderButtonStyle("semester", true)'>
+                        <button @ref="_semesterHeaderButton" @onclick='() => HandleHeaderMenuClick("semester")' style='@GetHeaderButtonStyle("semester", true)'>
                             <span>Semester</span>
                             <MudIcon Icon='@GetSortIcon("semester")' Style='@GetSortIconStyle("semester")' />
                         </button>
@@ -166,7 +167,7 @@
                         }
                     </th>
                     <th style="padding: 0.75rem 1.5rem; text-align: left; position: relative;">
-                        <button @onclick='() => HandleHeaderMenuClick("status")' style='@GetHeaderButtonStyle("status", true)'>
+                        <button @ref="_statusHeaderButton" @onclick='() => HandleHeaderMenuClick("status")' style='@GetHeaderButtonStyle("status", true)'>
                             <span>Status</span>
                             <MudIcon Icon='@GetSortIcon("status")' Style='@GetSortIconStyle("status")' />
                         </button>
@@ -269,6 +270,14 @@
     public EventCallback<FolderViewModel> OnFolderClick { get; set; }
 
     private string? OpenMenuColumn;
+    private ElementReference _nameHeaderButton;
+    private ElementReference _ownerHeaderButton;
+    private ElementReference _subjectHeaderButton;
+    private ElementReference _semesterHeaderButton;
+    private ElementReference _statusHeaderButton;
+    private double _menuLeft = 16;
+    private double _menuTop = 112;
+    private double _menuWidth = 256;
     private string NameSearchTerm = string.Empty;
     private string OwnerSearchTerm = string.Empty;
     private string SubjectSearchTerm = string.Empty;
@@ -507,7 +516,7 @@
         OpenMenuColumn = null;
     }
 
-    private void HandleHeaderMenuClick(string columnKey)
+    private async Task HandleHeaderMenuClick(string columnKey)
     {
         if (string.Equals(OpenMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
         {
@@ -517,6 +526,7 @@
 
         SyncSearchTermToFilter(columnKey);
         OpenMenuColumn = columnKey;
+        await PositionMenuAsync(columnKey);
     }
 
     private void ApplySortOption(string columnKey, string sortKey)
@@ -612,11 +622,51 @@
 
     private string GetHeaderMenuStyle(string minWidth, bool alignLeft = false)
     {
-        var horizontalPosition = alignLeft
-            ? "left: 0.9rem; transform: none;"
-            : "left: 50%; transform: translateX(-50%);";
+        return $"position: fixed; top: {FormatMenuValue(_menuTop)}px; left: {FormatMenuValue(_menuLeft)}px; z-index: 5; width: {FormatMenuValue(_menuWidth)}px; max-width: calc(100vw - 2rem); max-height: calc(100vh - {FormatMenuValue(_menuTop + 24)}px); overflow-y: auto; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 18px 42px rgba(26,27,31,0.16); padding: 0.45rem;";
+    }
 
-        return $"position: absolute; top: calc(100% - 0.15rem); {horizontalPosition} z-index: 5; min-width: {minWidth}; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 10px 30px rgba(26,27,31,0.12); padding: 0.45rem;";
+    private async Task PositionMenuAsync(string columnKey)
+    {
+        var anchor = columnKey switch
+        {
+            "name" => _nameHeaderButton,
+            "owner" => _ownerHeaderButton,
+            "subject" => _subjectHeaderButton,
+            "semester" => _semesterHeaderButton,
+            "status" => _statusHeaderButton,
+            _ => default
+        };
+
+        var rect = await JS.InvokeAsync<MenuAnchorRect?>("codexTableFilter.getAnchorRect", anchor, GetMenuWidthPx(columnKey));
+        if (rect is null)
+        {
+            return;
+        }
+
+        _menuLeft = rect.Left;
+        _menuTop = rect.Top;
+        _menuWidth = rect.Width;
+    }
+
+    private static double GetMenuWidthPx(string columnKey) =>
+        columnKey switch
+        {
+            "name" => 256,
+            "owner" => 224,
+            "subject" => 224,
+            "semester" => 208,
+            "status" => 224,
+            _ => 240
+        };
+
+    private static string FormatMenuValue(double value) =>
+        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed class MenuAnchorRect
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
     }
 
     private string GetFilterInputStyle() =>
