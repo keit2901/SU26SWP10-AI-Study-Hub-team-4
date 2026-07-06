@@ -44,6 +44,7 @@
             var cleanPath = path.Split('?')[0];
             return cleanPath.Equals("documents", StringComparison.OrdinalIgnoreCase)
                 || cleanPath.Equals("community", StringComparison.OrdinalIgnoreCase)
+                || cleanPath.Equals("pricing", StringComparison.OrdinalIgnoreCase)
                 || cleanPath.StartsWith("ai/chat", StringComparison.OrdinalIgnoreCase);
         }
     }

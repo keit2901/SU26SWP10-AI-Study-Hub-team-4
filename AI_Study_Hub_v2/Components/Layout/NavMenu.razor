@@ -37,12 +37,18 @@
         <div class="community-actions teammate-actions">
             @if (Session.IsAuthenticated)
             {
-                <div class="teammate-user-meta">
-                    <span>@DisplayName</span>
-                    <small>Pro Plan</small>
-                </div>
-                <a class="user-chip teammate-user-chip" href="@ProfileHref">
-                    <span class="user-avatar"><MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" /></span>
+                @if (Session.CurrentPlan == "Free")
+                {
+                    <a class="btn-get-pro" href="pricing">Get Pro</a>
+                }
+                <button type="button" class="topbar-icon-btn" title="Notifications">
+                    <MudIcon Icon="@Icons.Material.Outlined.Notifications" Size="Size.Small" />
+                </button>
+                <button type="button" class="topbar-icon-btn" title="Settings">
+                    <MudIcon Icon="@Icons.Material.Outlined.Settings" Size="Size.Small" />
+                </button>
+                <a class="user-chip teammate-user-chip" href="@ProfileHref" title="@DisplayName — @(Session.CurrentPlan) Plan">
+                    <span class="user-avatar-initials">@GetInitials()</span>
                 </a>
                 <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
                     <MudIcon Icon="@Icons.Material.Filled.Logout" Size="Size.Small" />
@@ -89,6 +95,16 @@
         ?? Session.CurrentUser?.Username
         ?? Session.CurrentUser?.Email
         ?? "Student";
+
+    private string GetInitials()
+    {
+        var name = DisplayName;
+        if (string.IsNullOrWhiteSpace(name)) return "U";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            : name[..1].ToUpperInvariant();
+    }
 
     protected override void OnInitialized()
     {

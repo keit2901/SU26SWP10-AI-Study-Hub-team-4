@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @inject AuthSessionState Session
 @inject NavigationManager Nav
 
@@ -107,6 +107,93 @@
                     <p>Challenge your own documents with grounded answers and visible source citations.</p>
                 </div>
             </article>
+        </div>
+    </section>
+
+    <section class="landing-pricing-preview">
+        <div class="landing-section-heading">
+            <span class="landing-badge soft">
+                <MudIcon Icon="@Icons.Material.Filled.CreditCard" Size="Size.Small" />
+                Transparent Pricing
+            </span>
+            <h2>Choose the Plan That Fits Your Goals</h2>
+            <p>Get access to advanced AI study features, unlimited document storage, and powerful RAG search capabilities.</p>
+        </div>
+
+        <div class="pricing-cards-preview">
+            @* ─── Free Plan ─── *@
+            <div class="plan-card-preview plan-free">
+                <div class="plan-card-body">
+                    <div class="plan-header">
+                        <h2 class="plan-name">Free</h2>
+                        <p class="plan-tagline">Experience basic academic features</p>
+                    </div>
+
+                    <div class="plan-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">0</span>
+                        <span class="price-period">/ month</span>
+                    </div>
+
+                    <ul class="plan-features">
+                        <li><MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Small" Class="feature-icon free" /> 2 GB Storage</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Class="feature-icon free" /> Max 100 Documents</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="feature-icon free" /> Max 20 Folders (100MB/Folder)</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Token" Size="Size.Small" Class="feature-icon free" /> 25,000 tokens / day</li>
+                    </ul>
+                </div>
+            </div>
+
+            @* ─── Pro Plan ─── *@
+            <div class="plan-card-preview plan-popular">
+                <span class="popular-badge">POPULAR</span>
+                <div class="plan-card-body">
+                    <div class="plan-header">
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <h2 class="plan-name">Pro</h2>
+                            <span class="pro-star"><MudIcon Icon="@Icons.Material.Filled.Verified" Size="Size.Small" /></span>
+                        </div>
+                        <p class="plan-tagline">Perfect for advanced learning and academic tasks</p>
+                    </div>
+
+                    <div class="plan-price pro-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">1.99</span>
+                        <span class="price-period">/ month</span>
+                    </div>
+                    <p class="demo-price">Demo: $0.19</p>
+
+                    <ul class="plan-features">
+                        <li><MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Small" Class="feature-icon pro" /> <strong>10 GB Storage</strong></li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Class="feature-icon pro" /> <strong>Unlimited Documents</strong></li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="feature-icon pro" /> <strong>Unlimited Folders</strong></li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Token" Size="Size.Small" Class="feature-icon pro" /> <strong>100,000 tokens / day</strong></li>
+                    </ul>
+                </div>
+            </div>
+
+            @* ─── Unlimited Plan ─── *@
+            <div class="plan-card-preview plan-unlimited">
+                <div class="plan-card-body">
+                    <div class="plan-header">
+                        <h2 class="plan-name">Unlimited</h2>
+                        <p class="plan-tagline">Fully optimized for unlimited performance</p>
+                    </div>
+
+                    <div class="plan-price unlimited-price">
+                        <span class="price-amount" style="font-size:2rem;">Contact</span>
+                        <span class="price-period">/ month</span>
+                    </div>
+                    <p class="demo-price">Demo: $0.39</p>
+
+                    <ul class="plan-features">
+                        <li><MudIcon Icon="@Icons.Material.Filled.AllInclusive" Size="Size.Small" Class="feature-icon unlimited" /> Unlimited Storage</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Class="feature-icon unlimited" /> Unlimited Documents</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="feature-icon unlimited" /> Unlimited Folders</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Token" Size="Size.Small" Class="feature-icon unlimited" /> Unlimited AI tokens</li>
+                    </ul>
+                </div>
+            </div>
         </div>
     </section>
 
