@@ -32,34 +32,34 @@ else if (_authorized)
                 <p class="sidebar-subtitle">RAG ADMIN CONSOLE</p>
             </div>
             <nav class="sidebar-nav">
-                <div class="sidebar-nav-item active" @onclick="@(() => Navigation.NavigateTo("/admin/dashboard"))">
+                <div class="@NavClass("/admin/dashboard")" @onclick="@(() => Navigation.NavigateTo("/admin/dashboard"))">
                     <MudIcon Icon="@Icons.Material.Filled.GridView" Size="Size.Small" /> Dashboard
                 </div>
-                <div class="sidebar-nav-item" @onclick="@(() => Navigation.NavigateTo("/admin/users"))">
+                <div class="@NavClass("/admin/users")" @onclick="@(() => Navigation.NavigateTo("/admin/users"))">
                     <MudIcon Icon="@Icons.Material.Filled.People" Size="Size.Small" /> Users & Permissions
                 </div>
-                <div class="sidebar-nav-item" @onclick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">
+                <div class="@NavClass("/admin/documents/moderation")" @onclick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">
                     <MudIcon Icon="@Icons.Material.Filled.FactCheck" Size="Size.Small" /> Document Moderation
                 </div>
-                <div class="sidebar-nav-item" @onclick="@(() => Navigation.NavigateTo("/admin/community-reports"))">
+                <div class="@NavClass("/admin/community-reports")" @onclick="@(() => Navigation.NavigateTo("/admin/community-reports"))">
                     <MudIcon Icon="@Icons.Material.Filled.ReportProblem" Size="Size.Small" /> Community Reports
                 </div>
-                <div class="sidebar-nav-item" @onclick="@(() => Navigation.NavigateTo("/admin/documents"))">
+                <div class="@NavClass("/admin/documents")" @onclick="@(() => Navigation.NavigateTo("/admin/documents"))">
                     <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" /> Document Library
                 </div>
-                <div class="sidebar-nav-item" @onclick="@(() => Navigation.NavigateTo("/admin/subjects"))">
+                <div class="@NavClass("/admin/subjects")" @onclick="@(() => Navigation.NavigateTo("/admin/subjects"))">
                     <MudIcon Icon="@Icons.Material.Filled.MenuBook" Size="Size.Small" /> Subjects
                 </div>
-                <div class="sidebar-nav-item" @onclick="@(() => Navigation.NavigateTo("/admin/settings"))">
+                <div class="@NavClass("/admin/settings")" @onclick="@(() => Navigation.NavigateTo("/admin/settings"))">
                     <MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" /> AI System Settings
                 </div>
-                <div class="sidebar-nav-item" @onclick="@(() => Navigation.NavigateTo("/admin/audit-logs"))">
+                <div class="@NavClass("/admin/audit-logs")" @onclick="@(() => Navigation.NavigateTo("/admin/audit-logs"))">
                     <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" /> Audit Logs
                 </div>
             </nav>
             <div class="sidebar-footer">
                 <button class="sidebar-queue-btn" @onclick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">Open Queue</button>
-                <div class="sidebar-nav-item"><MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" /> Settings</div>
+                <div class="@NavClass("/admin/settings")" @onclick="@(() => Navigation.NavigateTo("/admin/settings"))"><MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" /> Settings</div>
                 <div class="sidebar-nav-item"><MudIcon Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" /> Support</div>
             </div>
         </MudDrawer>
@@ -198,6 +198,7 @@ else if (_authorized)
     protected override void OnInitialized()
     {
         Navigation.LocationChanged += OnLocationChanged;
+        UpdateActiveNav();
         BuildBreadcrumbs();
     }
 
@@ -265,8 +266,39 @@ else if (_authorized)
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
     private void ToggleTheme() => _isDarkMode = !_isDarkMode;
 
+    private static readonly string[] NavPaths =
+    [
+        "/admin/dashboard",
+        "/admin/users",
+        "/admin/documents/moderation",
+        "/admin/community-reports",
+        "/admin/documents",
+        "/admin/subjects",
+        "/admin/settings",
+        "/admin/audit-logs"
+    ];
+
+    private string _activeNavPath = "/admin/dashboard";
+
+    private string NavClass(string path)
+    {
+        var isActive = string.Equals(_activeNavPath, path, StringComparison.OrdinalIgnoreCase);
+        return isActive ? "sidebar-nav-item active" : "sidebar-nav-item";
+    }
+
+    private void UpdateActiveNav()
+    {
+        var currentPath = new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/');
+        _activeNavPath = NavPaths
+            .Where(p => currentPath.Equals(p, StringComparison.OrdinalIgnoreCase)
+                     || currentPath.StartsWith(p + "/", StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(p => p.Length)
+            .FirstOrDefault() ?? "/admin/dashboard";
+    }
+
     private void OnLocationChanged(object? sender, LocationChangedEventArgs args)
     {
+        UpdateActiveNav();
         BuildBreadcrumbs();
         _ = InvokeAsync(StateHasChanged);
     }
