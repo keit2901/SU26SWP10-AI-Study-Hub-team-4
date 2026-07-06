@@ -5,8 +5,12 @@
 @using System.Text.Json
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
+@using AI_Study_Hub_v2.Services
+@using AI_Study_Hub_v2.Dtos
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject AuthSessionState Session
+@inject SystemSettingsApiClient SettingsApi
 @implements IDisposable
 
 <div class="settings-page">
@@ -1337,22 +1341,33 @@
         }
     }
 
-    protected override void OnInitialized()
+    protected override async void OnInitialized()
     {
-        Reload();
+        await ReloadAsync();
         InitializeTerminalLogs();
         _logTimer = new System.Threading.Timer(OnLogTimerTick, null, 8000, 8000);
     }
 
-    private void Reload()
+    private async Task ReloadAsync()
     {
         _isLoading = true;
         _errorMessage = null;
 
         try
         {
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                _errorMessage = "You must be logged in as an administrator to view system settings.";
+                return;
+            }
+
+            var configs = await SettingsApi.GetAllAsync(Session.AccessToken);
             _configs.Clear();
-            _configs.AddRange(BuildSeedConfigs());
+            foreach (var dto in configs)
+            {
+                _configs.Add(ConfigRow.FromDto(dto));
+            }
+            _terminalLogs.Add($"[{DateTime.Now:HH:mm:ss}] info: Successfully fetched {_configs.Count} parameters from API.");
         }
         catch (Exception ex)
         {
@@ -1362,6 +1377,11 @@
         {
             _isLoading = false;
         }
+    }
+
+    private void Reload()
+    {
+        _ = ReloadAsync();
     }
 
     private void InitializeTerminalLogs()
@@ -1512,15 +1532,30 @@
             }
         }
 
-        var previous = config.OriginalValue;
-        config.OriginalValue = config.Value;
-        config.UpdatedAt = DateTime.UtcNow;
-        config.UpdatedBy = "admin@aistudyhub.edu";
-        _recentChanges.Insert(0, new ConfigChangePreview(config.Key, "admin@aistudyhub.edu", DateTime.UtcNow, ToBeforeAfterJson(previous, config.Value)));
-        
-        _terminalLogs.Add($"[{DateTime.Now.ToString("HH:mm:ss")}] event: User 'admin@aistudyhub.edu' updated {config.Key} to '{config.Value}'.");
-        
-        Snackbar.Add($"{config.Key} saved and CONFIG_CHANGE audit log queued.", Severity.Success);
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            Snackbar.Add("Session expired. Please log in again.", Severity.Error);
+            return;
+        }
+
+        try
+        {
+            var previous = config.OriginalValue;
+            var updated = await SettingsApi.UpdateValueAsync(Session.AccessToken, config.Key, config.Value);
+            config.OriginalValue = config.Value;
+            config.UpdatedAt = updated.UpdatedAt?.UtcDateTime ?? DateTime.UtcNow;
+            config.UpdatedBy = updated.UpdatedBy ?? "admin";
+
+            _recentChanges.Insert(0, new ConfigChangePreview(config.Key, config.UpdatedBy, config.UpdatedAt, ToBeforeAfterJson(previous, config.Value)));
+
+            _terminalLogs.Add($"[{DateTime.Now:HH:mm:ss}] event: Config '{config.Key}' saved via API to value '{config.Value}'.");
+
+            Snackbar.Add($"{config.Key} saved to server.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to save {config.Key}: {ex.Message}", Severity.Error);
+        }
     }
 
     private void ResetConfig(ConfigRow config)
@@ -1605,30 +1640,9 @@
         return value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal).Replace("\r", "", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
     }
 
-    private static string FormatDateTime(DateTime? value)
+    private static string FormatDateTime(DateTime value)
     {
-        return value?.ToLocalTime().ToString("MMM dd, HH:mm") ?? "Never";
-    }
-
-    private static IEnumerable<ConfigRow> BuildSeedConfigs()
-    {
-        return new[]
-        {
-            new ConfigRow("ai.chat_model", "Chat model", "Model identifier used by the RAG answer generation pipeline.", "Model", ConfigInputType.Text, "gpt-4o-mini", "gpt-4o-mini", true),
-            new ConfigRow("ai.embedding_model", "Embedding model", "Provider model identifier used to embed document_chunks.", "Model", ConfigInputType.Text, "text-embedding-3-small", "text-embedding-3-small", true),
-            new ConfigRow("rag.chunk_size", "Chunk size", "Maximum characters or tokens per source chunk before embedding.", "Retrieval", ConfigInputType.Number, "1000", "800", true),
-            new ConfigRow("rag.chunk_overlap", "Chunk overlap", "Overlap between consecutive chunks to preserve context.", "Retrieval", ConfigInputType.Number, "160", "120", true),
-            new ConfigRow("rag.max_chunks", "Max retrieval chunks", "Maximum document chunks sent to the answer generation pipeline.", "Retrieval", ConfigInputType.Number, "12", "8", true),
-            new ConfigRow("generation.temperature", "Temperature", "Controls answer randomness for study assistant responses.", "Generation", ConfigInputType.Number, "0.2", "0.2", true),
-            new ConfigRow("generation.top_p", "Top-p", "Nucleus sampling parameter for answer generation.", "Generation", ConfigInputType.Number, "0.85", "0.9", true),
-            new ConfigRow("generation.system_prompt", "System prompt", "Instruction block applied to every RAG chat response.", "Generation", ConfigInputType.Text, "You are AI Study Hub, a grounded academic assistant. Cite document context and avoid unsupported claims.", "You are AI Study Hub.", true, 5),
-            new ConfigRow("quota.default_student_daily_tokens", "Student daily quota", "Default UC16 daily token quota assigned to new student profiles.", "Quota", ConfigInputType.Number, "25000", "25000", false),
-            new ConfigRow("quota.default_admin_daily_tokens", "Admin daily quota", "Default UC16 daily token quota assigned to administrator profiles.", "Quota", ConfigInputType.Number, "75000", "75000", false),
-            new ConfigRow("auth.allow_self_registration", "Allow self registration", "Controls whether new users can create accounts without an invitation.", "Security", ConfigInputType.Boolean, "false", "false", true),
-            new ConfigRow("documents.allowed_extensions", "Allowed document extensions", "JSON array of file extensions accepted by upload validation.", "Documents", ConfigInputType.Json, "[\".pdf\", \".docx\", \".pptx\", \".txt\"]", "[\".pdf\", \".docx\"]", false),
-            new ConfigRow("moderation.report_reasons", "Report reasons", "JSON options shown when a user reports a document.", "Moderation", ConfigInputType.Json, "[\"Restricted assessment\", \"Copyright concern\", \"Wrong subject\", \"Low quality scan\"]", "[\"Wrong subject\"]", false),
-            new ConfigRow("audit.retention_days", "Audit retention days", "Number of days audit_logs remain visible before archival.", "Governance", ConfigInputType.Number, "365", "365", false)
-        };
+        return value.ToLocalTime().ToString("MMM dd, HH:mm");
     }
 
     public void Dispose()
@@ -1638,7 +1652,7 @@
 
     private sealed class ConfigRow
     {
-        public ConfigRow(string key, string displayName, string description, string category, ConfigInputType type, string value, string defaultValue, bool isCritical, int lines = 1)
+        private ConfigRow(string key, string displayName, string description, string category, ConfigInputType type, string value, string defaultValue, bool isCritical, int lines, DateTime updatedAt, string updatedBy)
         {
             Key = key;
             DisplayName = displayName;
@@ -1650,8 +1664,32 @@
             DefaultValue = defaultValue;
             IsCritical = isCritical;
             Lines = lines;
-            UpdatedAt = DateTime.UtcNow.AddHours(-2);
-            UpdatedBy = "admin@aistudyhub.edu";
+            UpdatedAt = updatedAt;
+            UpdatedBy = updatedBy;
+        }
+
+        public static ConfigRow FromDto(SystemConfigDto dto)
+        {
+            var type = dto.ConfigType switch
+            {
+                "Number" => ConfigInputType.Number,
+                "Boolean" => ConfigInputType.Boolean,
+                "Json" => ConfigInputType.Json,
+                _ => ConfigInputType.Text
+            };
+            var lines = dto.ConfigType is "Json" ? 4 : (dto.ConfigType is "Text" && dto.Key == "generation.system_prompt" ? 5 : 1);
+            return new ConfigRow(
+                dto.Key,
+                dto.DisplayName,
+                dto.Description ?? "",
+                dto.Category,
+                type,
+                dto.Value,
+                dto.DefaultValue,
+                dto.IsCritical,
+                lines,
+                dto.UpdatedAt?.UtcDateTime ?? DateTime.UtcNow,
+                dto.UpdatedBy ?? "admin");
         }
 
         public string Key { get; }

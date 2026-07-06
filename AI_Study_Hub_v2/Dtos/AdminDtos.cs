@@ -49,3 +49,22 @@ public sealed record AiQuotaSnapshotDto(
     long TokensUsedToday,
     long RemainingTokens,
     DateOnly UsageDate);
+
+public sealed record SystemConfigDto(
+    string Key,
+    string Value,
+    string DefaultValue,
+    string Category,
+    string DisplayName,
+    string? Description,
+    string ConfigType,
+    bool IsCritical,
+    DateTimeOffset? UpdatedAt,
+    string? UpdatedBy,
+    DateTimeOffset CreatedAt);
+
+public sealed class UpdateSystemConfigRequest
+{
+    [Required]
+    public string Value { get; set; } = string.Empty;
+}
