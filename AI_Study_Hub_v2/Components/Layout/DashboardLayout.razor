@@ -95,9 +95,16 @@
 
     private bool IsActive(string href)
     {
-        var relativePath = "/" + Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
-        if (relativePath == "/") relativePath = "/dashboard";
-        return relativePath.Equals(href, StringComparison.OrdinalIgnoreCase);
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var cleanPath = relativePath.Split('?', '#')[0].Trim('/');
+        var currentPath = "/" + cleanPath;
+
+        if (currentPath == "/")
+        {
+            currentPath = "/dashboard";
+        }
+
+        return currentPath.Equals(href, StringComparison.OrdinalIgnoreCase);
     }
 
     private string GetSidebarItemStyle(bool active)

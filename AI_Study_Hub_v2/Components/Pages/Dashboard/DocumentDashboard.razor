@@ -1,6 +1,7 @@
 @page "/dashboard/documents"
 @layout AI_Study_Hub_v2.Components.Layout.DashboardLayout
 @using AI_Study_Hub_v2.Components.Layout
+@using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
 @inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
@@ -10,17 +11,7 @@
 
 <PageTitle>Review Pending Documents - AI Study Hub</PageTitle>
 
-<div style="display: flex; flex-direction: column; flex: 1; height: 100%;">
-    <!-- Header -->
-    <div style="display: flex; height: 4rem; align-items: center; justify-content: flex-end; border-bottom: 1px solid rgba(199,196,215,0.3); background: #faf9fe; padding: 0 1.5rem; gap: 0.5rem;">
-        <button style="display: flex; align-items: center; justify-content: center; border-radius: 9999px; padding: 0.5rem; background: transparent; border: none; cursor: pointer;">
-            <MudIcon Icon="@Icons.Material.Filled.Notifications" Style="font-size: 1.25rem; color: #464554;" />
-        </button>
-    </div>
-
-    <!-- Page Content -->
-    <div style="flex: 1; overflow-y: auto; padding: 2rem 1.5rem;">
-        <!-- Page Header -->
+<div style="padding: 2rem 1.5rem; width: 100%; box-sizing: border-box;">
         <div style="margin-bottom: 2rem; display: flex; flex-direction: column; gap: 0.5rem;">
             @if (FolderId.HasValue)
             {
@@ -56,109 +47,431 @@
         }
         else
         {
-            <!-- Pending Items Card -->
-            <div style="border-radius: 0.75rem; background: #fff; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05);">
-                <!-- Card Header -->
-                <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(199,196,215,0.3); padding: 1rem 1.5rem;">
-                    <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin: 0;">
-                        Documents (@pendingDocuments.Count)
-                    </h2>
-                </div>
+            var visibleDocuments = GetVisibleDocuments();
+            var totalDocuments = pendingDocuments.Count;
+            var totalPages = GetTotalPages(visibleDocuments.Count);
+            EnsureCurrentPage(totalPages);
+            var pagedDocuments = visibleDocuments
+                .Skip((CurrentPage - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
 
-                <!-- Table -->
-                <div style="width: 100%; overflow-x: auto;">
-                    <table style="width: 100%; text-align: left; border-collapse: collapse;">
-                        <thead>
-                            <tr style="background: #f4f3f8;">
-                                <th style="padding: 1.3125rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">DOCUMENT NAME</th>
+            <div style="border-radius: 0.75rem; background: #fff; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); width: 100%; overflow: hidden;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-bottom: 1px solid rgba(199,196,215,0.3); padding: 1rem 1.5rem;">
+                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+                        <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin: 0;">
+                            Documents (@visibleDocuments.Count)
+                        </h2>
+                        <span style="font-size: 0.875rem; color: #6b7280;">
+                            Showing @visibleDocuments.Count of @totalDocuments document@(totalDocuments == 1 ? string.Empty : "s")
+                        </span>
+                    </div>
+                    <button @onclick="ResetTable"
+                            style="display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; border-radius: 9999px; border: 1px solid rgba(94,92,230,0.22); background: rgba(94,92,230,0.08); color: #4441CC; padding: 0.55rem 0.95rem; font-size: 0.8125rem; font-weight: 700; cursor: pointer;">
+                        <MudIcon Icon="@Icons.Material.Filled.RestartAlt" Style="font-size: 1rem;" />
+                        <span>Reset table</span>
+                    </button>
+                </div>
+                    <div style="position: relative;">
+                        @if (!string.IsNullOrWhiteSpace(OpenSortMenuColumn))
+                        {
+                            <button type="button"
+                                    @onclick="CloseOpenMenu"
+                                    aria-label="Close filter menu"
+                                    style="position: fixed; inset: 0; z-index: 4; border: none; background: transparent; padding: 0; margin: 0;"></button>
+                        }
+                    <div style="width: 100%; overflow-x: auto;">
+                        <table style="width: 100%; text-align: left; border-collapse: collapse; table-layout: fixed; min-width: 72rem;">
+                            <colgroup>
+                                <col style="width: 24%;" />
                                 @if (!FolderId.HasValue)
                                 {
-                                    <th style="padding: 1.3125rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">FOLDER</th>
+                                    <col style="width: 16%;" />
                                 }
-                                <th style="padding: 0.75rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">SUBJECT<br />CODE</th>
-                                <th style="padding: 1.3125rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">SEMESTER</th>
-                                <th style="padding: 0.75rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px;">UPLOAD<br />DATE</th>
-                                <th style="padding: 1.3125rem 1.5rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px; text-align: right;">ACTIONS</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            @foreach (var item in pendingDocuments)
-                            {
-                                <tr style="border-top: 1px solid rgba(199,196,215,0.2);">
-                                    <td style="padding: 1rem 1.5rem;">
-                                        <div @onclick="() => InspectDocumentAsync(item.Id)" style="display: flex; align-items: center; gap: 0.75rem; cursor: pointer; transition: opacity 0.15s;"
-                                             onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'" role="button">
-                                            <div style="display: flex; height: 2rem; align-items: center; justify-content: center; border-radius: 0.25rem; background: rgba(94,92,230,0.1); padding: 0 0.5rem;">
-                                                <MudIcon Icon="@GetFileIcon(item.MimeType)" Style="font-size: 1rem; color: #4441CC;" />
+                                <col style="width: 11%;" />
+                                <col style="width: 10%;" />
+                                <col style="width: 15%;" />
+                                <col style="width: 14%;" />
+                                <col style="width: 18%;" />
+                            </colgroup>
+                            <thead>
+                                <tr style="background: #f4f3f8;">
+                                    <th style="padding: 0.8rem 1rem 0.8rem 1.25rem; text-align: center; position: relative;">
+                                        <button @onclick='() => HandleHeaderSortClick("name")' style='@GetHeaderSortButtonStyle("name")'>
+                                            <span>Document Name</span>
+                                            <MudIcon Icon='@GetSortIcon("name")' Style='@GetSortIconStyle("name")' />
+                                        </button>
+                                        @if (OpenSortMenuColumn == "name")
+                                        {
+                                            var nameSuggestions = GetSuggestions("name");
+                                            <div style='@GetHeaderMenuStyle("16rem")'>
+                                                <span style='@GetMenuSectionLabelStyle()'>Filter</span>
+                                                <input type="text"
+                                                       value="@NameSearchTerm"
+                                                       @oninput='e => UpdateTextSearch("name", e.Value?.ToString())'
+                                                       placeholder="Search document name"
+                                                       style='@GetFilterInputStyle()' />
+                                                <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem;">
+                                                    @if (nameSuggestions.Count > 0)
+                                                    {
+                                                        @foreach (var option in nameSuggestions)
+                                                        {
+                                                            <button @onclick='() => ApplyTextSuggestion("name", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterNameQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style='@GetMenuEmptyStateStyle()'>No matching names</span>
+                                                    }
+                                                </div>
+                                                <button @onclick='() => ClearTextFilter("name")' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterNameQuery))'>All names</button>
+                                                <div style='@GetMenuDividerStyle()'></div>
+                                                <span style='@GetMenuSectionLabelStyle()'>Sort</span>
+                                                <button @onclick='() => ApplySortOption("name", "name-asc")' style='@GetSortMenuItemStyle("name-asc")'>A to Z</button>
+                                                <button @onclick='() => ApplySortOption("name", "name-desc")' style='@GetSortMenuItemStyle("name-desc")'>Z to A</button>
                                             </div>
-                                            <div style="font-size: 0.875rem; font-weight: 500; color: #1a1b1f; text-decoration: none; border-bottom: 1px dashed rgba(26,27,31,0.25);">
-                                                @item.FileName
-                                            </div>
-                                        </div>
-                                    </td>
+                                        }
+                                    </th>
                                     @if (!FolderId.HasValue)
                                     {
-                                        <td style="padding: 1rem 1.5rem;">
-                                            <span style="display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; font-weight: 500; color: #464554;">
-                                                <MudIcon Icon="@Icons.Material.Filled.Folder" Style="font-size: 0.875rem; color: #5e5ce6;" />
-                                                @(item.FolderName ?? "—")
-                                            </span>
-                                        </td>
+                                        <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
+                                            <button @onclick='() => HandleHeaderSortClick("folder")' style='@GetHeaderSortButtonStyle("folder")'>
+                                                <span>Folder</span>
+                                                <MudIcon Icon='@GetSortIcon("folder")' Style='@GetSortIconStyle("folder")' />
+                                            </button>
+                                            @if (OpenSortMenuColumn == "folder")
+                                            {
+                                                var folderSuggestions = GetSuggestions("folder");
+                                                <div style='@GetHeaderMenuStyle("15rem")'>
+                                                    <span style='@GetMenuSectionLabelStyle()'>Filter</span>
+                                                    <input type="text"
+                                                           value="@FolderSearchTerm"
+                                                           @oninput='e => UpdateTextSearch("folder", e.Value?.ToString())'
+                                                           placeholder="Search folder"
+                                                           style='@GetFilterInputStyle()' />
+                                                    <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem;">
+                                                        @if (folderSuggestions.Count > 0)
+                                                        {
+                                                            @foreach (var option in folderSuggestions)
+                                                            {
+                                                                <button @onclick='() => ApplyTextSuggestion("folder", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterFolderQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                            }
+                                                        }
+                                                        else
+                                                        {
+                                                            <span style='@GetMenuEmptyStateStyle()'>No matching folders</span>
+                                                        }
+                                                    </div>
+                                                    <button @onclick='() => ClearTextFilter("folder")' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterFolderQuery))'>All folders</button>
+                                                    <div style='@GetMenuDividerStyle()'></div>
+                                                    <span style='@GetMenuSectionLabelStyle()'>Sort</span>
+                                                    <button @onclick='() => ApplySortOption("folder", "folder-asc")' style='@GetSortMenuItemStyle("folder-asc")'>A to Z</button>
+                                                    <button @onclick='() => ApplySortOption("folder", "folder-desc")' style='@GetSortMenuItemStyle("folder-desc")'>Z to A</button>
+                                                </div>
+                                            }
+                                        </th>
                                     }
-                                    <td style="padding: 1.5rem 1.5rem;">
-                                        <div style="display: inline-flex; align-items: center; border-radius: 0.25rem; background: rgba(223,223,228,0.5); padding: 0.25rem 0.5rem;">
-                                            <span style="font-size: 0.75rem; font-weight: 500; color: #616267;">@item.SubjectCode</span>
-                                        </div>
-                                    </td>
-                                    <td style="padding: 1rem 1.5rem;">
-                                        <div style="font-size: 0.875rem; font-weight: 400; color: #464554;">
-                                            @item.Semester
-                                        </div>
-                                    </td>
-                                    <td style="padding: 1rem 1.5rem;">
-                                        <div style="font-size: 0.875rem; font-weight: 400; color: #464554;">
-                                            @item.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy HH:mm")
-                                        </div>
-                                    </td>
-                                    <td style="padding: 1rem 1.5rem;">
-                                        @if (_resolvedStatuses.TryGetValue(item.Id, out var resolvedStatus))
+                                    <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
+                                        <button @onclick='() => HandleHeaderSortClick("subject")' style='@GetHeaderSortButtonStyle("subject")'>
+                                            <span>Subject Code</span>
+                                            <MudIcon Icon='@GetSortIcon("subject")' Style='@GetSortIconStyle("subject")' />
+                                        </button>
+                                        @if (OpenSortMenuColumn == "subject")
                                         {
-                                            var isApproved = string.Equals(resolvedStatus, "Approved", StringComparison.OrdinalIgnoreCase);
-                                            var bg = isApproved ? "rgba(52,199,89,0.12)" : "rgba(255,59,48,0.1)";
-                                            var color = isApproved ? "#1a8c4a" : "#c23c21";
-                                            <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: @bg; color: @color; font-size: 0.8125rem; font-weight: 600;">
-                                                <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: @color; flex-shrink: 0;"></span>
-                                                @resolvedStatus
+                                            var subjectSuggestions = GetSuggestions("subject");
+                                            <div style='@GetHeaderMenuStyle("14rem")'>
+                                                <span style='@GetMenuSectionLabelStyle()'>Filter</span>
+                                                <input type="text"
+                                                       value="@SubjectSearchTerm"
+                                                       @oninput='e => UpdateTextSearch("subject", e.Value?.ToString())'
+                                                       placeholder="Search subject code"
+                                                       style='@GetFilterInputStyle()' />
+                                                <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem;">
+                                                    @if (subjectSuggestions.Count > 0)
+                                                    {
+                                                        @foreach (var option in subjectSuggestions)
+                                                        {
+                                                            <button @onclick='() => ApplyTextSuggestion("subject", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterSubjectQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style='@GetMenuEmptyStateStyle()'>No matching subjects</span>
+                                                    }
+                                                </div>
+                                                <button @onclick='() => ClearTextFilter("subject")' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterSubjectQuery))'>All subjects</button>
+                                                <div style='@GetMenuDividerStyle()'></div>
+                                                <span style='@GetMenuSectionLabelStyle()'>Sort</span>
+                                                <button @onclick='() => ApplySortOption("subject", "subject-asc")' style='@GetSortMenuItemStyle("subject-asc")'>A to Z</button>
+                                                <button @onclick='() => ApplySortOption("subject", "subject-desc")' style='@GetSortMenuItemStyle("subject-desc")'>Z to A</button>
                                             </div>
                                         }
-                                        else
+                                    </th>
+                                    <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
+                                        <button @onclick='() => HandleHeaderSortClick("semester")' style='@GetHeaderSortButtonStyle("semester")'>
+                                            <span>Semester</span>
+                                            <MudIcon Icon='@GetSortIcon("semester")' Style='@GetSortIconStyle("semester")' />
+                                        </button>
+                                        @if (OpenSortMenuColumn == "semester")
                                         {
-                                            <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.5rem;">
-                                                <button @onclick="() => ApproveDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(52,199,89,0.2); background: rgba(52,199,89,0.1); padding: 0.4375rem 0.8125rem; cursor: pointer; transition: background 0.2s;">
-                                                    <MudIcon Icon="@Icons.Material.Filled.Check" Style="font-size: 0.75rem; color: #34C759;" />
-                                                    <span style="font-size: 0.75rem; font-weight: 500; color: #34c759;">Approve</span>
-                                                </button>
-                                                <button @onclick="() => RejectDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(255,59,48,0.2); background: rgba(255,59,48,0.1); padding: 0.4375rem 0.8125rem; cursor: pointer; transition: background 0.2s;">
-                                                    <MudIcon Icon="@Icons.Material.Filled.Close" Style="font-size: 0.75rem; color: #FF3B30;" />
-                                                    <span style="font-size: 0.75rem; font-weight: 500; color: #ff3b30;">Reject</span>
-                                                </button>
+                                            var semesterSuggestions = GetSuggestions("semester");
+                                            <div style='@GetHeaderMenuStyle("13rem")'>
+                                                <span style='@GetMenuSectionLabelStyle()'>Filter</span>
+                                                <input type="text"
+                                                       value="@SemesterSearchTerm"
+                                                       @oninput='e => UpdateTextSearch("semester", e.Value?.ToString())'
+                                                       placeholder="Search semester"
+                                                       style='@GetFilterInputStyle()' />
+                                                <div style="display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem;">
+                                                    @if (semesterSuggestions.Count > 0)
+                                                    {
+                                                        @foreach (var option in semesterSuggestions)
+                                                        {
+                                                            <button @onclick='() => ApplyTextSuggestion("semester", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterSemesterQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                        }
+                                                    }
+                                                    else
+                                                    {
+                                                        <span style='@GetMenuEmptyStateStyle()'>No matching semesters</span>
+                                                    }
+                                                </div>
+                                                <button @onclick='() => ClearTextFilter("semester")' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterSemesterQuery))'>All semesters</button>
+                                                <div style='@GetMenuDividerStyle()'></div>
+                                                <span style='@GetMenuSectionLabelStyle()'>Sort</span>
+                                                <button @onclick='() => ApplySortOption("semester", "semester-asc")' style='@GetSortMenuItemStyle("semester-asc")'>A to Z</button>
+                                                <button @onclick='() => ApplySortOption("semester", "semester-desc")' style='@GetSortMenuItemStyle("semester-desc")'>Z to A</button>
                                             </div>
                                         }
-                                    </td>
+                                    </th>
+                                    <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
+                                        <button @onclick='() => HandleHeaderSortClick("status")' style='@GetHeaderSortButtonStyle("status")'>
+                                            <span>Status</span>
+                                            <MudIcon Icon='@GetSortIcon("status")' Style='@GetSortIconStyle("status")' />
+                                        </button>
+                                        @if (OpenSortMenuColumn == "status")
+                                        {
+                                            <div style='@GetHeaderMenuStyle("12rem")'>
+                                                <span style='@GetMenuSectionLabelStyle()'>Filter</span>
+                                                <button @onclick='() => ApplyStatusFilter(string.Empty)' style='@GetFilterMenuItemStyle(string.IsNullOrWhiteSpace(FilterReviewStatus))'>All status</button>
+                                                <button @onclick='() => ApplyStatusFilter("approved")' style='@GetFilterMenuItemStyle(string.Equals(FilterReviewStatus, "approved", StringComparison.OrdinalIgnoreCase))'>Approved</button>
+                                                <button @onclick='() => ApplyStatusFilter("pending")' style='@GetFilterMenuItemStyle(string.Equals(FilterReviewStatus, "pending", StringComparison.OrdinalIgnoreCase))'>Pending</button>
+                                                <button @onclick='() => ApplyStatusFilter("rejected")' style='@GetFilterMenuItemStyle(string.Equals(FilterReviewStatus, "rejected", StringComparison.OrdinalIgnoreCase))'>Rejected</button>
+                                                <div style='@GetMenuDividerStyle()'></div>
+                                                <span style='@GetMenuSectionLabelStyle()'>Sort</span>
+                                                <button @onclick='() => ApplySortOption("status", "status-asc")' style='@GetSortMenuItemStyle("status-asc")'>Pending first</button>
+                                                <button @onclick='() => ApplySortOption("status", "status-desc")' style='@GetSortMenuItemStyle("status-desc")'>Approved first</button>
+                                            </div>
+                                        }
+                                    </th>
+                                    <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
+                                        <button @onclick='() => HandleHeaderSortClick("date")' style='@GetHeaderSortButtonStyle("date")'>
+                                            <span>Upload Date</span>
+                                            <MudIcon Icon='@GetSortIcon("date")' Style='@GetSortIconStyle("date")' />
+                                        </button>
+                                        @if (OpenSortMenuColumn == "date")
+                                        {
+                                            <div style='@GetHeaderMenuStyle("18rem")'>
+                                                <span style='@GetMenuSectionLabelStyle()'>Filter</span>
+                                                <div style="display: flex; flex-direction: column; gap: 0.45rem;">
+                                                    <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                                        <span style="font-size: 0.75rem; font-weight: 600; color: #5f6372; text-align: left;">From</span>
+                                                        <input type="datetime-local"
+                                                               value="@FilterDateFrom"
+                                                               @oninput='e => UpdateDateFilter("from", e.Value?.ToString())'
+                                                               style='@GetFilterInputStyle()' />
+                                                    </div>
+                                                    <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                                                        <span style="font-size: 0.75rem; font-weight: 600; color: #5f6372; text-align: left;">To</span>
+                                                        <input type="datetime-local"
+                                                               value="@FilterDateTo"
+                                                               @oninput='e => UpdateDateFilter("to", e.Value?.ToString())'
+                                                               style='@GetFilterInputStyle()' />
+                                                    </div>
+                                                </div>
+                                                <button @onclick="ClearDateFilter" style='@GetFilterMenuItemStyle(false)'>Clear date range</button>
+                                                <div style='@GetMenuDividerStyle()'></div>
+                                                <span style='@GetMenuSectionLabelStyle()'>Sort</span>
+                                                <button @onclick='() => ApplySortOption("date", "date-desc")' style='@GetSortMenuItemStyle("date-desc")'>Newest first</button>
+                                                <button @onclick='() => ApplySortOption("date", "date-asc")' style='@GetSortMenuItemStyle("date-asc")'>Oldest first</button>
+                                            </div>
+                                        }
+                                    </th>
+                                    <th style="padding: 1rem 1.25rem 1rem 1rem; font-size: 0.8125rem; font-weight: 600; color: #464554; text-transform: uppercase; letter-spacing: 0.65px; text-align: center;">Actions</th>
                                 </tr>
-                            }
-                        </tbody>
-                    </table>
-                </div>
+                            </thead>
+                            <tbody>
+                                @if (pagedDocuments.Any())
+                                {
+                                    @foreach (var item in pagedDocuments)
+                                    {
+                                        var reviewStatusLabel = GetReviewStatusLabel(item);
+                                        var reviewStatusBackground = GetReviewStatusBackground(item);
+                                        var reviewStatusColor = GetReviewStatusColor(item);
+                                        <tr style="border-top: 1px solid rgba(199,196,215,0.2);">
+                                            <td style="padding: 0.9rem 1rem 0.9rem 1.25rem; vertical-align: top;">
+                                                <div @onclick="() => InspectDocumentAsync(item.Id)" style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; transition: opacity 0.15s; min-width: 0;"
+                                                     onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'" role="button">
+                                                    <div style="display: flex; height: 2rem; align-items: center; justify-content: center; border-radius: 0.25rem; background: rgba(94,92,230,0.1); padding: 0 0.5rem; flex-shrink: 0;">
+                                                        <MudIcon Icon="@GetFileIcon(item.MimeType)" Style="font-size: 1rem; color: #4441CC;" />
+                                                    </div>
+                                                    <div style="display: flex; flex-direction: column; gap: 0.18rem; min-width: 0; width: 100%;">
+                                                        <div style="font-size: 0.875rem; font-weight: 500; color: #1a1b1f; text-decoration: none; border-bottom: 1px dashed rgba(26,27,31,0.25); width: fit-content; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                                            @item.FileName
+                                                        </div>
+                                                        @if (!string.IsNullOrWhiteSpace(item.ErrorMessage))
+                                                        {
+                                                            <span style="font-size: 0.75rem; color: #8b5c2f; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                                                                @item.ErrorMessage
+                                                            </span>
+                                                        }
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            @if (!FolderId.HasValue)
+                                            {
+                                                <td style="padding: 0.9rem 1rem; vertical-align: top;">
+                                                    <span style="display: inline-flex; align-items: center; gap: 0.375rem; font-size: 0.8125rem; font-weight: 500; color: #464554; max-width: 100%;">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Folder" Style="font-size: 0.875rem; color: #5e5ce6;" />
+                                                        <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@(item.FolderName ?? "-")</span>
+                                                    </span>
+                                                </td>
+                                            }
+                                            <td style="padding: 0.9rem 1rem; vertical-align: top;">
+                                                <div style="display: inline-flex; align-items: center; border-radius: 0.25rem; background: rgba(223,223,228,0.5); padding: 0.25rem 0.5rem;">
+                                                    <span style="font-size: 0.75rem; font-weight: 500; color: #616267;">@item.SubjectCode</span>
+                                                </div>
+                                            </td>
+                                            <td style="padding: 0.9rem 1rem; vertical-align: top;">
+                                                <div style="font-size: 0.875rem; font-weight: 400; color: #464554; white-space: nowrap;">
+                                                    @item.Semester
+                                                </div>
+                                            </td>
+                                            <td style="padding: 0.9rem 1rem; vertical-align: top;">
+                                                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                                    <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.35rem 0.8rem; background: @reviewStatusBackground; color: @reviewStatusColor; font-size: 0.75rem; font-weight: 700; width: fit-content;">
+                                                        <span style="width: 0.45rem; height: 0.45rem; border-radius: 9999px; background: @reviewStatusColor; flex-shrink: 0;"></span>
+                                                        @reviewStatusLabel
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td style="padding: 0.9rem 1rem; vertical-align: top;">
+                                                <div style="font-size: 0.8125rem; font-weight: 400; color: #464554; white-space: nowrap;">
+                                                    @item.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy HH:mm")
+                                                </div>
+                                            </td>
+                                            <td style="padding: 0.9rem 1rem 0.9rem 0.75rem; vertical-align: top;">
+                                                @if (_resolvedStatuses.TryGetValue(item.Id, out var resolvedStatus))
+                                                {
+                                                    var isApproved = string.Equals(resolvedStatus, "Approved", StringComparison.OrdinalIgnoreCase);
+                                                    var bg = isApproved ? "rgba(52,199,89,0.12)" : "rgba(255,59,48,0.1)";
+                                                    var color = isApproved ? "#1a8c4a" : "#c23c21";
+                                                    <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: @bg; color: @color; font-size: 0.8125rem; font-weight: 600; float: right;">
+                                                        <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: @color; flex-shrink: 0;"></span>
+                                                        @resolvedStatus
+                                                    </div>
+                                                }
+                                                else
+                                                {
+                                                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; flex-wrap: wrap;">
+                                                        <button @onclick="() => ApproveDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(52,199,89,0.2); background: rgba(52,199,89,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Check" Style="font-size: 0.75rem; color: #34C759;" />
+                                                            <span style="font-size: 0.75rem; font-weight: 500; color: #34c759;">Approve</span>
+                                                        </button>
+                                                        <button @onclick="() => RejectDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(255,59,48,0.2); background: rgba(255,59,48,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Close" Style="font-size: 0.75rem; color: #FF3B30;" />
+                                                            <span style="font-size: 0.75rem; font-weight: 500; color: #ff3b30;">Reject</span>
+                                                        </button>
+                                                    </div>
+                                                }
+                                            </td>
+                                        </tr>
+                                    }
+
+                                }
+                                else
+                                {
+                                    <tr style="border-top: 1px solid rgba(199,196,215,0.2);">
+                                        <td colspan="@TableColumnCount" style="padding: 2.25rem 1.5rem; text-align: center;">
+                                            <div style="display: flex; flex-direction: column; align-items: center; gap: 0.75rem;">
+                                                <MudIcon Icon="@Icons.Material.Filled.FilterAltOff" Style="font-size: 2.5rem; color: #a1a1aa;" />
+                                                <h3 style="font-size: 1.05rem; font-weight: 700; color: #1a1b1f; margin: 0;">No documents available</h3>
+                                                <p style="font-size: 0.875rem; color: #6b7280; max-width: 32rem; margin: 0;">
+                                                    @(HasActiveFilters()
+                                                        ? "No documents match the current filter values."
+                                                        : "No documents were found for the current moderation view.")
+                                                </p>
+                                            </div>
+                                        </td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                    </div>
+
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-top: 1px solid rgba(199,196,215,0.2); padding: 1rem 1.25rem;">
+                        <div style="font-size: 0.8125rem; color: #6b7280;">
+                            Page @CurrentPage of @totalPages
+                            <span style="margin-left: 0.5rem;">Total @visibleDocuments.Count document@(visibleDocuments.Count == 1 ? string.Empty : "s")</span>
+                            <span style="margin-left: 0.5rem;">10 / page</span>
+                        </div>
+
+                        @if (totalPages > 1)
+                        {
+                            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end;">
+                                <button @onclick="() => GoToPage(CurrentPage - 1)"
+                                        disabled="@(CurrentPage == 1)"
+                                        style="display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; height: 2.25rem; border-radius: 9999px; border: 1px solid rgba(199,196,215,0.45); background: #fff; color: #464554; cursor: pointer;">
+                                    <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Style="font-size: 1rem;" />
+                                </button>
+
+                                @foreach (var pageNumber in GetPageWindow(totalPages))
+                                {
+                                    if (pageNumber == -1)
+                                    {
+                                        <span style="padding: 0 0.2rem; color: #6b7280; font-size: 0.875rem;">...</span>
+                                    }
+                                    else
+                                    {
+                                        var isActivePage = pageNumber == CurrentPage;
+                                        <button @onclick="() => GoToPage(pageNumber)"
+                                                style="display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; height: 2.25rem; border-radius: 9999px; border: 1px solid @(isActivePage ? "#5e5ce6" : "rgba(199,196,215,0.45)"); background: @(isActivePage ? "#5e5ce6" : "#fff"); color: @(isActivePage ? "#fff" : "#464554"); font-size: 0.8125rem; font-weight: 700; cursor: pointer;">
+                                            @pageNumber
+                                        </button>
+                                    }
+                                }
+
+                                <button @onclick="() => GoToPage(CurrentPage + 1)"
+                                        disabled="@(CurrentPage == totalPages)"
+                                        style="display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; height: 2.25rem; border-radius: 9999px; border: 1px solid rgba(199,196,215,0.45); background: #fff; color: #464554; cursor: pointer;">
+                                    <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Style="font-size: 1rem;" />
+                                </button>
+                            </div>
+                        }
+                    </div>
             </div>
         }
-    </div>
 </div>
 
 @code {
+    private const int PageSize = 10;
     private bool isLoading = true;
     private List<DocumentDto>? pendingDocuments;
     private readonly Dictionary<Guid, string> _resolvedStatuses = new();
+    private int CurrentPage = 1;
+    private string? OpenSortMenuColumn;
+    private string NameSearchTerm = string.Empty;
+    private string FolderSearchTerm = string.Empty;
+    private string SubjectSearchTerm = string.Empty;
+    private string SemesterSearchTerm = string.Empty;
+    private string FilterNameQuery = string.Empty;
+    private string FilterReviewStatus = string.Empty;
+    private string FilterSubjectQuery = string.Empty;
+    private string FilterSemesterQuery = string.Empty;
+    private string FilterFolderQuery = string.Empty;
+    private string FilterDateFrom = string.Empty;
+    private string FilterDateTo = string.Empty;
+    private string _sortBy = "date-desc";
 
     [Parameter]
     [SupplyParameterFromQuery(Name = "folderId")]
@@ -166,6 +479,50 @@
 
     private string FolderName = string.Empty;
     private Guid? _previousFolderId;
+
+    private string SortBy
+    {
+        get => _sortBy;
+        set => SetFilterValue(ref _sortBy, value);
+    }
+
+    private int TableColumnCount => FolderId.HasValue ? 6 : 7;
+
+    private IReadOnlyList<string> DocumentNameOptions =>
+        pendingDocuments?
+            .Select(d => d.FileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList()
+        ?? [];
+
+    private IReadOnlyList<string> FolderNameOptions =>
+        pendingDocuments?
+            .Select(d => d.FolderName!)
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(name => name, StringComparer.OrdinalIgnoreCase)
+            .ToList()
+        ?? [];
+
+    private IReadOnlyList<string> SubjectOptions =>
+        pendingDocuments?
+            .Select(d => d.SubjectCode)
+            .Where(code => !string.IsNullOrWhiteSpace(code))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(code => code, StringComparer.OrdinalIgnoreCase)
+            .ToList()
+        ?? [];
+
+    private IReadOnlyList<string> SemesterOptions =>
+        pendingDocuments?
+            .Select(d => d.Semester)
+            .Where(semester => !string.IsNullOrWhiteSpace(semester))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(semester => semester, StringComparer.OrdinalIgnoreCase)
+            .ToList()
+        ?? [];
 
     protected override async Task OnInitializedAsync()
     {
@@ -196,13 +553,14 @@
 
             if (FolderId.HasValue)
             {
-                // Derive folder name from the first document's FolderName, or fetch separately
                 FolderName = pendingDocuments?.FirstOrDefault()?.FolderName ?? string.Empty;
             }
             else
             {
                 FolderName = string.Empty;
             }
+
+            CurrentPage = 1;
         }
         finally
         {
@@ -227,6 +585,443 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private List<DocumentDto> GetVisibleDocuments()
+    {
+        IEnumerable<DocumentDto> query = pendingDocuments ?? [];
+
+        if (!string.IsNullOrWhiteSpace(FilterNameQuery))
+        {
+            query = query.Where(item => item.FileName.Contains(
+                FilterNameQuery,
+                StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(FilterReviewStatus))
+        {
+            query = query.Where(item => string.Equals(
+                GetReviewStatusKey(item),
+                FilterReviewStatus,
+                StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(FilterSubjectQuery))
+        {
+            query = query.Where(item => item.SubjectCode.Contains(
+                FilterSubjectQuery,
+                StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!string.IsNullOrWhiteSpace(FilterSemesterQuery))
+        {
+            query = query.Where(item => item.Semester.Contains(
+                FilterSemesterQuery,
+                StringComparison.OrdinalIgnoreCase));
+        }
+
+        if (!FolderId.HasValue && !string.IsNullOrWhiteSpace(FilterFolderQuery))
+        {
+            query = query.Where(item => (item.FolderName ?? string.Empty).Contains(
+                FilterFolderQuery,
+                StringComparison.OrdinalIgnoreCase));
+        }
+
+        var fromDate = ParseLocalDateTimeFilter(FilterDateFrom);
+        if (fromDate.HasValue)
+        {
+            query = query.Where(item => item.CreatedAt.ToLocalTime().DateTime >= fromDate.Value);
+        }
+
+        var toDate = ParseLocalDateTimeFilter(FilterDateTo);
+        if (toDate.HasValue)
+        {
+            query = query.Where(item => item.CreatedAt.ToLocalTime().DateTime <= toDate.Value);
+        }
+
+        query = SortBy switch
+        {
+            "date-asc" => query.OrderBy(item => item.CreatedAt),
+            "date-desc" => query.OrderByDescending(item => item.CreatedAt),
+            "name-asc" => query.OrderBy(item => item.FileName, StringComparer.OrdinalIgnoreCase)
+                              .ThenByDescending(item => item.CreatedAt),
+            "name-desc" => query.OrderByDescending(item => item.FileName, StringComparer.OrdinalIgnoreCase)
+                               .ThenByDescending(item => item.CreatedAt),
+            "folder-asc" => query.OrderBy(item => item.FolderName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                                .ThenBy(item => item.FileName, StringComparer.OrdinalIgnoreCase),
+            "folder-desc" => query.OrderByDescending(item => item.FolderName ?? string.Empty, StringComparer.OrdinalIgnoreCase)
+                                 .ThenBy(item => item.FileName, StringComparer.OrdinalIgnoreCase),
+            "subject-asc" => query.OrderBy(item => item.SubjectCode, StringComparer.OrdinalIgnoreCase)
+                                 .ThenByDescending(item => item.CreatedAt),
+            "subject-desc" => query.OrderByDescending(item => item.SubjectCode, StringComparer.OrdinalIgnoreCase)
+                                  .ThenByDescending(item => item.CreatedAt),
+            "semester-asc" => query.OrderBy(item => item.Semester, StringComparer.OrdinalIgnoreCase)
+                                  .ThenByDescending(item => item.CreatedAt),
+            "semester-desc" => query.OrderByDescending(item => item.Semester, StringComparer.OrdinalIgnoreCase)
+                                   .ThenByDescending(item => item.CreatedAt),
+            "status-asc" => query.OrderBy(item => GetReviewStatusSortOrder(item))
+                               .ThenByDescending(item => item.UpdatedAt),
+            "status-desc" => query.OrderByDescending(item => GetReviewStatusSortOrder(item))
+                                .ThenByDescending(item => item.UpdatedAt),
+            _ => query.OrderByDescending(item => item.CreatedAt),
+        };
+
+        return query.ToList();
+    }
+
+    private IReadOnlyList<string> GetSuggestions(string columnKey)
+    {
+        IReadOnlyList<string> options = columnKey switch
+        {
+            "name" => DocumentNameOptions,
+            "folder" => FolderNameOptions,
+            "subject" => SubjectOptions,
+            "semester" => SemesterOptions,
+            _ => []
+        };
+
+        var filterValue = columnKey switch
+        {
+            "name" => NameSearchTerm,
+            "folder" => FolderSearchTerm,
+            "subject" => SubjectSearchTerm,
+            "semester" => SemesterSearchTerm,
+            _ => string.Empty
+        };
+
+        IEnumerable<string> query = options;
+        if (!string.IsNullOrWhiteSpace(filterValue))
+        {
+            query = query.Where(option => option.Contains(filterValue, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.Take(6).ToList();
+    }
+
+    private void UpdateTextSearch(string columnKey, string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        switch (columnKey)
+        {
+            case "name":
+                NameSearchTerm = normalizedValue;
+                break;
+            case "folder":
+                FolderSearchTerm = normalizedValue;
+                break;
+            case "subject":
+                SubjectSearchTerm = normalizedValue;
+                break;
+            case "semester":
+                SemesterSearchTerm = normalizedValue;
+                break;
+        }
+    }
+
+    private void ApplyTextSuggestion(string columnKey, string value)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                SetFilterValue(ref FilterNameQuery, value);
+                NameSearchTerm = value;
+                break;
+            case "folder":
+                SetFilterValue(ref FilterFolderQuery, value);
+                FolderSearchTerm = value;
+                break;
+            case "subject":
+                SetFilterValue(ref FilterSubjectQuery, value);
+                SubjectSearchTerm = value;
+                break;
+            case "semester":
+                SetFilterValue(ref FilterSemesterQuery, value);
+                SemesterSearchTerm = value;
+                break;
+        }
+
+        CloseOpenMenu();
+    }
+
+    private void ClearTextFilter(string columnKey)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                SetFilterValue(ref FilterNameQuery, string.Empty);
+                NameSearchTerm = string.Empty;
+                break;
+            case "folder":
+                SetFilterValue(ref FilterFolderQuery, string.Empty);
+                FolderSearchTerm = string.Empty;
+                break;
+            case "subject":
+                SetFilterValue(ref FilterSubjectQuery, string.Empty);
+                SubjectSearchTerm = string.Empty;
+                break;
+            case "semester":
+                SetFilterValue(ref FilterSemesterQuery, string.Empty);
+                SemesterSearchTerm = string.Empty;
+                break;
+        }
+
+        CloseOpenMenu();
+    }
+
+    private void ApplyStatusFilter(string statusValue)
+    {
+        SetFilterValue(ref FilterReviewStatus, statusValue);
+        CloseOpenMenu();
+    }
+
+    private void UpdateDateFilter(string boundary, string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        if (string.Equals(boundary, "from", StringComparison.OrdinalIgnoreCase))
+        {
+            SetFilterValue(ref FilterDateFrom, normalizedValue);
+        }
+        else
+        {
+            SetFilterValue(ref FilterDateTo, normalizedValue);
+        }
+    }
+
+    private void ClearDateFilter()
+    {
+        SetFilterValue(ref FilterDateFrom, string.Empty);
+        SetFilterValue(ref FilterDateTo, string.Empty);
+    }
+
+    private void CloseOpenMenu() =>
+        OpenSortMenuColumn = null;
+
+    private DateTime? ParseLocalDateTimeFilter(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return DateTime.TryParseExact(
+            value,
+            "yyyy-MM-ddTHH:mm",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeLocal,
+            out var parsedDate)
+            ? parsedDate
+            : null;
+    }
+
+    private int GetTotalPages(int itemCount) =>
+        Math.Max(1, (int)Math.Ceiling(itemCount / (double)PageSize));
+
+    private void EnsureCurrentPage(int totalPages)
+    {
+        if (CurrentPage < 1)
+        {
+            CurrentPage = 1;
+        }
+        else if (CurrentPage > totalPages)
+        {
+            CurrentPage = totalPages;
+        }
+    }
+
+    private IReadOnlyList<int> GetPageWindow(int totalPages)
+    {
+        if (totalPages <= 7)
+        {
+            return Enumerable.Range(1, totalPages).ToList();
+        }
+
+        var pages = new List<int> { 1 };
+        var start = Math.Max(2, CurrentPage - 1);
+        var end = Math.Min(totalPages - 1, CurrentPage + 1);
+
+        if (start > 2)
+        {
+            pages.Add(-1);
+        }
+
+        for (var i = start; i <= end; i++)
+        {
+            pages.Add(i);
+        }
+
+        if (end < totalPages - 1)
+        {
+            pages.Add(-1);
+        }
+
+        pages.Add(totalPages);
+        return pages;
+    }
+
+    private void GoToPage(int pageNumber)
+    {
+        var totalPages = GetTotalPages(GetVisibleDocuments().Count);
+        CurrentPage = Math.Clamp(pageNumber, 1, totalPages);
+    }
+
+    private void ResetTable()
+    {
+        NameSearchTerm = string.Empty;
+        FolderSearchTerm = string.Empty;
+        SubjectSearchTerm = string.Empty;
+        SemesterSearchTerm = string.Empty;
+        FilterNameQuery = string.Empty;
+        FilterReviewStatus = string.Empty;
+        FilterSubjectQuery = string.Empty;
+        FilterSemesterQuery = string.Empty;
+        FilterFolderQuery = string.Empty;
+        FilterDateFrom = string.Empty;
+        FilterDateTo = string.Empty;
+        SortBy = "date-desc";
+        OpenSortMenuColumn = null;
+        CurrentPage = 1;
+    }
+
+    private bool HasActiveFilters() =>
+        !string.IsNullOrWhiteSpace(FilterNameQuery)
+        || !string.IsNullOrWhiteSpace(FilterReviewStatus)
+        || !string.IsNullOrWhiteSpace(FilterSubjectQuery)
+        || !string.IsNullOrWhiteSpace(FilterSemesterQuery)
+        || !string.IsNullOrWhiteSpace(FilterFolderQuery)
+        || !string.IsNullOrWhiteSpace(FilterDateFrom)
+        || !string.IsNullOrWhiteSpace(FilterDateTo);
+
+    private void HandleHeaderSortClick(string columnKey)
+    {
+        if (string.Equals(OpenSortMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
+        {
+            OpenSortMenuColumn = null;
+            return;
+        }
+
+        SyncSearchTermToFilter(columnKey);
+        OpenSortMenuColumn = columnKey;
+    }
+
+    private void ApplySortOption(string columnKey, string sortKey)
+    {
+        SortBy = sortKey;
+        CloseOpenMenu();
+    }
+
+    private void SyncSearchTermToFilter(string columnKey)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                NameSearchTerm = FilterNameQuery;
+                break;
+            case "folder":
+                FolderSearchTerm = FilterFolderQuery;
+                break;
+            case "subject":
+                SubjectSearchTerm = FilterSubjectQuery;
+                break;
+            case "semester":
+                SemesterSearchTerm = FilterSemesterQuery;
+                break;
+        }
+    }
+
+    private void ToggleSort(string columnKey)
+    {
+        SortBy = columnKey switch
+        {
+            "date" => SortBy == "date-desc" ? "date-asc" : "date-desc",
+            "name" => SortBy == "name-asc" ? "name-desc" : "name-asc",
+            "folder" => SortBy == "folder-asc" ? "folder-desc" : "folder-asc",
+            "subject" => SortBy == "subject-asc" ? "subject-desc" : "subject-asc",
+            "semester" => SortBy == "semester-asc" ? "semester-desc" : "semester-asc",
+            "status" => SortBy == "status-asc" ? "status-desc" : "status-asc",
+            _ => "date-desc"
+        };
+    }
+
+    private bool IsSortedBy(string columnKey) =>
+        SortBy.StartsWith($"{columnKey}-", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsSortDescending(string columnKey) =>
+        string.Equals(SortBy, $"{columnKey}-desc", StringComparison.OrdinalIgnoreCase);
+
+    private string GetSortIcon(string columnKey)
+    {
+        if (!IsSortedBy(columnKey))
+        {
+            return Icons.Material.Filled.UnfoldMore;
+        }
+
+        return IsSortDescending(columnKey)
+            ? Icons.Material.Filled.KeyboardArrowDown
+            : Icons.Material.Filled.KeyboardArrowUp;
+    }
+
+    private string GetHeaderSortButtonStyle(string columnKey)
+    {
+        var isActive = IsSortedBy(columnKey) || IsColumnFiltered(columnKey);
+        var color = isActive ? "#5e5ce6" : "#464554";
+        return $"display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;";
+    }
+
+    private string GetSortIconStyle(string columnKey)
+    {
+        var color = (IsSortedBy(columnKey) || IsColumnFiltered(columnKey)) ? "#5e5ce6" : "#9ca3af";
+        return $"font-size: 1rem; color: {color};";
+    }
+
+    private string GetSortMenuItemStyle(string sortKey)
+    {
+        var isActive = string.Equals(SortBy, sortKey, StringComparison.OrdinalIgnoreCase);
+        var bg = isActive ? "rgba(94,92,230,0.08)" : "transparent";
+        var color = isActive ? "#4441CC" : "#464554";
+        return $"display: block; width: 100%; border: none; background: {bg}; color: {color}; border-radius: 0.55rem; padding: 0.55rem 0.7rem; text-align: left; font-size: 0.8125rem; font-weight: 600; cursor: pointer;";
+    }
+
+    private string GetFilterMenuItemStyle(bool isActive)
+    {
+        var bg = isActive ? "rgba(94,92,230,0.08)" : "transparent";
+        var color = isActive ? "#4441CC" : "#464554";
+        return $"display: block; width: 100%; border: none; background: {bg}; color: {color}; border-radius: 0.55rem; padding: 0.5rem 0.7rem; text-align: left; font-size: 0.8125rem; font-weight: 600; cursor: pointer; white-space: normal; word-break: break-word; line-height: 1.35;";
+    }
+
+    private string GetMenuSectionLabelStyle() =>
+        "display: block; padding: 0.35rem 0.55rem 0.2rem; font-size: 0.675rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.08em;";
+
+    private string GetMenuDividerStyle() =>
+        "height: 1px; background: rgba(199,196,215,0.35); margin: 0.35rem 0;";
+
+    private string GetHeaderMenuStyle(string minWidth) =>
+        $"position: absolute; top: calc(100% - 0.15rem); left: 50%; transform: translateX(-50%); z-index: 5; min-width: {minWidth}; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 10px 30px rgba(26,27,31,0.12); padding: 0.45rem;";
+
+    private string GetFilterInputStyle() =>
+        "width: 100%; border: 1px solid rgba(199,196,215,0.65); border-radius: 0.6rem; background: #fbfbfe; color: #1a1b1f; padding: 0.58rem 0.7rem; font-size: 0.8125rem; outline: none; box-sizing: border-box;";
+
+    private string GetMenuEmptyStateStyle() =>
+        "display: block; padding: 0.55rem 0.7rem; font-size: 0.78125rem; color: #7c7f8f; text-align: left;";
+
+    private bool IsColumnFiltered(string columnKey) =>
+        columnKey switch
+        {
+            "name" => !string.IsNullOrWhiteSpace(FilterNameQuery),
+            "folder" => !string.IsNullOrWhiteSpace(FilterFolderQuery),
+            "subject" => !string.IsNullOrWhiteSpace(FilterSubjectQuery),
+            "semester" => !string.IsNullOrWhiteSpace(FilterSemesterQuery),
+            "status" => !string.IsNullOrWhiteSpace(FilterReviewStatus),
+            "date" => !string.IsNullOrWhiteSpace(FilterDateFrom) || !string.IsNullOrWhiteSpace(FilterDateTo),
+            _ => false
+        };
+
+    private void SetFilterValue(ref string field, string value)
+    {
+        if (!string.Equals(field, value, StringComparison.Ordinal))
+        {
+            field = value;
+            CurrentPage = 1;
         }
     }
 
@@ -290,4 +1085,55 @@
             _ => Icons.Material.Filled.Folder
         };
     }
+
+    private string GetReviewStatusLabel(DocumentDto item) =>
+        GetReviewStatusKey(item) switch
+        {
+            "approved" => "Approved",
+            "rejected" => "Rejected",
+            _ => "Pending"
+        };
+
+    private string GetReviewStatusKey(DocumentDto item)
+    {
+        if (_resolvedStatuses.TryGetValue(item.Id, out var resolvedStatus))
+        {
+            return resolvedStatus.Equals("Approved", StringComparison.OrdinalIgnoreCase)
+                ? "approved"
+                : "rejected";
+        }
+
+        return item.ReviewStatus switch
+        {
+            DocumentReviewStatus.Approved => "approved",
+            DocumentReviewStatus.Rejected => "rejected",
+            _ => "pending"
+        };
+    }
+
+    private string GetReviewStatusBackground(DocumentDto item) =>
+        GetReviewStatusKey(item) switch
+        {
+            "approved" => "rgba(52,199,89,0.12)",
+            "rejected" => "rgba(255,59,48,0.12)",
+            _ => "rgba(245,158,11,0.12)"
+        };
+
+    private string GetReviewStatusColor(DocumentDto item) =>
+        GetReviewStatusKey(item) switch
+        {
+            "approved" => "#1a8c4a",
+            "rejected" => "#c23c21",
+            _ => "#b7791f"
+        };
+
+    private int GetReviewStatusSortOrder(DocumentDto item) =>
+        GetReviewStatusKey(item) switch
+        {
+            "pending" => 0,
+            "rejected" => 1,
+            "approved" => 2,
+            _ => 3
+        };
+
 }
