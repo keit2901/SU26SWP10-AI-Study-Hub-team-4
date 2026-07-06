@@ -37,6 +37,10 @@ public class AppDbContext : DbContext
 
     public DbSet<BenchmarkRunRecord> BenchmarkRuns => Set<BenchmarkRunRecord>();
 
+    public DbSet<DocumentEscalation> DocumentEscalations => Set<DocumentEscalation>();
+
+    public DbSet<DocumentEscalationItem> DocumentEscalationItems => Set<DocumentEscalationItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
