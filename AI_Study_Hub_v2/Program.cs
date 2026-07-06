@@ -220,6 +220,10 @@ builder.Services.AddHttpClient<AdminApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
+builder.Services.AddHttpClient<EscalationApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
 builder.Services.AddHttpClient<AiChatApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
