@@ -140,6 +140,48 @@ public sealed class AdminDocumentsController : ControllerBase
 
         return Ok(result);
     }
+
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(AdminDocumentDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminDocumentDetailDto>> GetById(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var doc = await _db.Documents
+            .Include(d => d.User)
+            .Include(d => d.Chunks.OrderBy(c => c.ChunkIndex))
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+
+        if (doc is null)
+            return NotFound(new ApiErrorResponse { Code = "document_not_found", Message = "Document not found." });
+
+        var chunks = doc.Chunks.Select(c => new DocumentChunkPreviewDto(
+            c.ChunkIndex,
+            c.Content.Length > 200 ? c.Content[..200] + "..." : c.Content,
+            (int)Math.Ceiling(c.Content.Length / 4.0),
+            c.PageNumber)).ToList();
+
+        return Ok(new AdminDocumentDetailDto(
+            doc.Id,
+            doc.FileName,
+            doc.SubjectCode,
+            doc.User.FullName,
+            doc.User.Email ?? "",
+            doc.Status.ToString(),
+            doc.ReviewStatus.ToString(),
+            doc.MimeType,
+            doc.FileSizeBytes,
+            doc.StoragePath,
+            doc.Chunks.Count,
+            doc.PageCount,
+            doc.ErrorMessage,
+            doc.Semester,
+            doc.CreatedAt,
+            doc.UpdatedAt,
+            chunks));
+    }
 }
 
 public sealed record ReingestAllDocumentsResponse(
