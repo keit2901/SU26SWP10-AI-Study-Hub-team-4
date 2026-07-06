@@ -1,5 +1,6 @@
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
