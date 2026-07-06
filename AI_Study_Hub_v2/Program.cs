@@ -348,15 +348,6 @@ if (!app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
-if (app.Environment.IsDevelopment())
-{
-    app.UseStaticFiles(new StaticFileOptions
-    {
-        FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(
-            Path.Combine(app.Environment.ContentRootPath, "../../agentation/node_modules")),
-        RequestPath = "/agentation-static"
-    });
-}
 app.UseStaticFiles();
 
 if (app.Environment.IsDevelopment())

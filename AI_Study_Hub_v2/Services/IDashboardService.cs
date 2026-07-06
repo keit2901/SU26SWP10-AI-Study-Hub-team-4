@@ -25,8 +25,9 @@ public interface IDashboardService
     /// <summary>
     /// Admin/moderator analytics — aggregates data across all pending-share folders
     /// (or for a specific folder when folderId is set). Does not scope to a single user.
+    /// Supports server-side pagination with page/pageSize.
     /// </summary>
-    Task<UserAnalyticsDto> GetAdminAnalyticsAsync(Guid? folderId = null, CancellationToken ct = default);
+    Task<UserAnalyticsDto> GetAdminAnalyticsAsync(Guid? folderId = null, int page = 1, int pageSize = 20, CancellationToken ct = default);
 
     /// <summary>
     /// Activity trends: document uploads/chats/failures by day, week, or month.

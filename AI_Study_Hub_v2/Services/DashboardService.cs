@@ -285,7 +285,9 @@ public class DashboardService : IDashboardService
                 d.Status.ToString(),
                 d.CreatedAt,
                 d.PageCount,
-                d.Chunks.Count
+                d.Chunks.Count,
+                null,   // FolderName
+                null    // FolderSharedAt
             ))
             .ToListAsync(ct);
 
@@ -322,7 +324,7 @@ public class DashboardService : IDashboardService
         }
     }
 
-    public async Task<UserAnalyticsDto> GetAdminAnalyticsAsync(Guid? folderId = null, CancellationToken ct = default)
+    public async Task<UserAnalyticsDto> GetAdminAnalyticsAsync(Guid? folderId = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         IQueryable<Document> query;
 
@@ -331,13 +333,15 @@ public class DashboardService : IDashboardService
             // Specific folder: all its documents (any status)
             query = _context.Documents.AsNoTracking()
                 .Include(d => d.Chunks)
+                .Include(d => d.Folder)
                 .Where(d => d.FolderId == folderId.Value);
         }
         else
         {
             // Global: ALL documents across all folders (and orphans)
             query = _context.Documents.AsNoTracking()
-                .Include(d => d.Chunks);
+                .Include(d => d.Chunks)
+                .Include(d => d.Folder);
         }
 
         var totalDocuments = await query.CountAsync(ct);
@@ -381,17 +385,38 @@ public class DashboardService : IDashboardService
             .Select(g => new AnalyticsIssueDto(g.Key ?? "Unknown Error", g.Count()))
             .ToListAsync(ct);
 
-        // Recent documents (show status based on ReviewStatus)
-        var docs = await query
-            .OrderByDescending(d => d.UpdatedAt)
-            .Take(10)
+        // Total document count for pagination (before skip/take)
+        var totalDocCount = await query.CountAsync(ct);
+
+        // All documents with pagination, sorted by folder shared date (most recent first)
+        IQueryable<Document> orderedQuery;
+        if (folderId.HasValue)
+        {
+            // Folder-specific: sort by updated date desc
+            orderedQuery = query.OrderByDescending(d => d.UpdatedAt);
+        }
+        else
+        {
+            // Global: documents from shared folders first, sorted by SharedAt desc,
+            // then unshared/loose documents, then by created date desc
+            orderedQuery = query
+                .OrderBy(d => d.Folder.SharedAt == null ? 1 : 0)
+                .ThenByDescending(d => d.Folder.SharedAt)
+                .ThenByDescending(d => d.CreatedAt);
+        }
+
+        var docs = await orderedQuery
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(d => new AnalyticsDocumentDto(
                 d.Id,
                 d.FileName,
                 d.ReviewStatus.ToString(),
                 d.CreatedAt,
                 d.PageCount,
-                d.Chunks.Count
+                d.Chunks.Count,
+                d.Folder != null ? d.Folder.Name : null,
+                d.Folder != null ? d.Folder.SharedAt : null
             ))
             .ToListAsync(ct);
 
@@ -405,7 +430,10 @@ public class DashboardService : IDashboardService
             DailyApprovedCounts: dailyApproved,
             DailyRejectedCounts: dailyRejected,
             CommonIssues: issues,
-            RecentDocuments: docs
+            RecentDocuments: docs,
+            TotalDocumentCount: totalDocCount,
+            Page: page,
+            PageSize: pageSize
         );
     }
 
