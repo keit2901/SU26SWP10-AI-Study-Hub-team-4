@@ -69,6 +69,51 @@ public sealed class UpdateSystemConfigRequest
     public string Value { get; set; } = string.Empty;
 }
 
+public sealed record DocumentEscalationDto(
+    Guid Id,
+    Guid FolderId,
+    string EscalatedByName,
+    string Reason,
+    string EscalationStatus,
+    string? AdminResponse,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? ResolvedAt,
+    IReadOnlyList<DocumentEscalationItemDto> Items);
+
+public sealed record DocumentEscalationItemDto(
+    Guid DocumentId,
+    string FileName,
+    string RejectReason);
+
+public sealed class CreateEscalationRequest
+{
+    [Required]
+    public Guid FolderId { get; set; }
+    [Required]
+    [StringLength(2000)]
+    public string Reason { get; set; } = string.Empty;
+    [Required]
+    [MinLength(1)]
+    public List<EscalationItemRequest> Items { get; set; } = new();
+}
+
+public sealed class EscalationItemRequest
+{
+    [Required]
+    public Guid DocumentId { get; set; }
+    [Required]
+    [StringLength(2000)]
+    public string RejectReason { get; set; } = string.Empty;
+}
+
+public sealed class ResolveEscalationRequest
+{
+    [Required]
+    public string Status { get; set; } = string.Empty;
+    [StringLength(2000)]
+    public string? AdminResponse { get; set; }
+}
+
 public sealed record AdminDocumentDto(
     Guid Id,
     string FileName,
