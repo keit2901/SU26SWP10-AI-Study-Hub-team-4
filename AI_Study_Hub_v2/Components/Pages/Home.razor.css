@@ -4,7 +4,7 @@
     min-height: calc(100vh - 4rem);
     background: #ffffff;
     color: #1e293b;
-    overflow: hidden;
+    overflow: visible;
 }
 
 /* ════════════════════════════════════════════
@@ -165,7 +165,7 @@
 .landing-section-heading p,
 .landing-final-cta p {
     max-width: 40rem;
-    margin: 0;
+    margin: 0 auto;
     color: #64748b;
     font-size: clamp(1rem, 2vw, 1.12rem);
     line-height: 1.75;
