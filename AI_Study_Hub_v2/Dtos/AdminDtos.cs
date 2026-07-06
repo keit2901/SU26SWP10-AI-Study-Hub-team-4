@@ -49,3 +49,42 @@ public sealed record AiQuotaSnapshotDto(
     long TokensUsedToday,
     long RemainingTokens,
     DateOnly UsageDate);
+
+public sealed record AdminDocumentDto(
+    Guid Id,
+    string FileName,
+    string SubjectCode,
+    string OwnerName,
+    string OwnerEmail,
+    string Status,
+    string ReviewStatus,
+    string MimeType,
+    long FileSizeBytes,
+    string StoragePath,
+    int ChunkCount,
+    DateTimeOffset CreatedAt);
+
+public sealed record AdminDocumentDetailDto(
+    Guid Id,
+    string FileName,
+    string SubjectCode,
+    string OwnerName,
+    string OwnerEmail,
+    string Status,
+    string ReviewStatus,
+    string MimeType,
+    long FileSizeBytes,
+    string StoragePath,
+    int ChunkCount,
+    int? PageCount,
+    string? ErrorMessage,
+    string Semester,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset UpdatedAt,
+    IReadOnlyList<DocumentChunkPreviewDto> Chunks);
+
+public sealed record DocumentChunkPreviewDto(
+    int ChunkIndex,
+    string ContentPreview,
+    int TokenCount,
+    int? PageNumber);
