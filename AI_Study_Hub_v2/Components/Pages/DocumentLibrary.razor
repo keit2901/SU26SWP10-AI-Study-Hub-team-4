@@ -67,16 +67,34 @@
     .folder-card-subject { margin-bottom: 4px; }
     .folder-card-semester { font-size: 11px !important; color: #94a3b8; margin-bottom: 2px; }
     .folder-card-docs { font-size: 11px !important; color: #94a3b8; display: flex; align-items: center; gap: 4px; }
-    .filter-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 0 32px; margin-bottom: 20px; }
-    .filter-select { min-width: 140px; }
-    .filter-search { flex: 1; min-width: 180px; }
-    .filter-btn { }
-    .document-table-section { padding: 0 32px 32px; }
-    .document-table { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; }
-    .table-header-cell { color: #94a3b8 !important; font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; background: #f8fafc; padding: 12px 8px !important; }
-    .table-cell { font-size: 12px !important; color: #475569; padding: 8px !important; }
+    .document-table-section { padding: 0 32px 32px; position: relative; }
+    .document-table { border: 1px solid #e2e8f0; border-radius: 12px; overflow: visible; width: 100%; }
+    .document-table .mud-table-container { overflow: visible; }
+    .document-table table { width: 100%; table-layout: fixed; }
+    .document-table-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .document-table-title { font-size: 14px; font-weight: 800; color: #1e293b; margin: 0; }
+    .document-table-count { font-size: 12px; color: #64748b; }
+    .document-reset-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #cbd5e1; background: #fff; color: #475569; border-radius: 8px; padding: 7px 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .document-reset-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .document-filter-overlay { position: fixed; inset: 0; z-index: 20; border: none; background: transparent; padding: 0; margin: 0; }
+    .table-header-cell { color: #94a3b8 !important; font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; background: #f8fafc; padding: 12px 8px !important; position: relative; overflow: visible; }
+    .table-header-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; border: none; background: transparent; color: #64748b; padding: 0; cursor: pointer; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
+    .table-header-button-active { color: #4f46e5; }
+    .table-filter-menu { position: absolute; top: calc(100% - 2px); left: 50%; transform: translateX(-50%); z-index: 30; min-width: 210px; border-radius: 12px; border: 1px solid rgba(199,196,215,0.55); background: #fff; box-shadow: 0 12px 30px rgba(15,23,42,0.14); padding: 8px; text-align: left; }
+    .table-filter-menu-left { left: 8px; transform: none; }
+    .table-filter-section-label { display: block; padding: 4px 8px 3px; font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; }
+    .table-filter-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; background: #fbfbfe; color: #1e293b; padding: 8px 10px; font-size: 12px; outline: none; box-sizing: border-box; }
+    .table-filter-options { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; max-height: 122px; overflow-y: auto; padding-right: 2px; }
+    .table-filter-option { display: block; width: 100%; border: none; background: transparent; color: #475569; border-radius: 8px; padding: 7px 9px; text-align: left; font-size: 12px; font-weight: 650; cursor: pointer; white-space: normal; word-break: break-word; line-height: 1.3; }
+    .table-filter-option:hover { background: #f8fafc; color: #4f46e5; }
+    .table-filter-option-active { background: rgba(99,102,241,0.1); color: #4f46e5; }
+    .table-filter-empty { display: block; padding: 8px 9px; font-size: 12px; color: #94a3b8; }
+    .table-menu-divider { height: 1px; background: #e2e8f0; margin: 7px 0; }
+    .table-cell { font-size: 12px !important; color: #475569; padding: 8px !important; overflow: hidden; text-overflow: ellipsis; }
+    .table-header-cell:last-child, .table-cell:last-child { text-align: center; padding-left: 4px !important; padding-right: 4px !important; overflow: visible; }
     .doc-name { font-weight: 600; color: #1e293b; font-size: 13px; }
-    .table-actions { display: flex; gap: 4px; }
+    .table-actions { display: inline-flex; align-items: center; justify-content: center; gap: 2px; width: 100%; min-width: 58px; }
+    .table-actions .mud-icon-button { width: 28px; height: 28px; padding: 4px; }
     .pagination-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; gap: 16px; flex-wrap: wrap; }
     .pagination-left { flex: 1; }
     .pagination-center { display: flex; align-items: center; gap: 4px; }
@@ -372,76 +390,6 @@ else
                 }
             </section>
 
-            <section class="filter-toolbar" aria-label="Document filters">
-                <MudSelect T="string"
-                           Label="Subject"
-                           @bind-Value="_filterSubject"
-                           Variant="Variant.Outlined"
-                           Margin="Margin.Dense"
-                           Clearable="true"
-                           Class="filter-select">
-                    <MudSelectItem T="string" Value="@null">All Subjects</MudSelectItem>
-                    @foreach (var subject in _uniqueSubjects)
-                    {
-                        <MudSelectItem T="string" Value="@subject">@subject</MudSelectItem>
-                    }
-                </MudSelect>
-
-                <MudSelect T="string"
-                           Label="Semester"
-                           @bind-Value="_filterSemester"
-                           Variant="Variant.Outlined"
-                           Margin="Margin.Dense"
-                           Clearable="true"
-                           Class="filter-select">
-                    <MudSelectItem T="string" Value="@null">All Semesters</MudSelectItem>
-                    @foreach (var semester in _uniqueSemesters)
-                    {
-                        <MudSelectItem T="string" Value="@semester">@semester</MudSelectItem>
-                    }
-                </MudSelect>
-
-                <MudSelect T="Guid?"
-                           Label="Folder"
-                           @bind-Value="_filterFolderId"
-                           Variant="Variant.Outlined"
-                           Margin="Margin.Dense"
-                           Clearable="true"
-                           Class="filter-select">
-                    <MudSelectItem T="Guid?" Value="@null">All Folders</MudSelectItem>
-                    @foreach (var folder in _folders)
-                    {
-                        <MudSelectItem T="Guid?" Value="@folder.Id">@folder.Name</MudSelectItem>
-                    }
-                </MudSelect>
-
-                <MudTextField T="string"
-                              @bind-Value="_searchQuery"
-                              Placeholder="Search documents..."
-                              Variant="Variant.Outlined"
-                              Margin="Margin.Dense"
-                              Immediate="true"
-                              Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Search"
-                              Class="filter-search" />
-
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Primary"
-                           Size="Size.Small"
-                           OnClick="ApplyFilters"
-                           Class="filter-btn">
-                            FILTER
-                </MudButton>
-
-                <MudButton Variant="Variant.Outlined"
-                           Color="Color.Secondary"
-                           Size="Size.Small"
-                           OnClick="ClearFilters"
-                           Class="filter-btn">
-                    CLEAR FILTER
-                </MudButton>
-            </section>
-
             @if (!string.IsNullOrEmpty(_error))
             {
                 <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true" Class="my-3">
@@ -450,6 +398,25 @@ else
             }
 
             <section class="document-table-section" aria-label="Document list">
+                <div class="document-table-toolbar">
+                    <div>
+                        <h2 class="document-table-title">Documents Table</h2>
+                        <span class="document-table-count">Showing @_filteredDocuments.Count of @_documents.Count document@(_documents.Count == 1 ? string.Empty : "s")</span>
+                    </div>
+                    <button type="button" class="document-reset-btn" @onclick="ResetDocumentTable">
+                        <MudIcon Icon="@Icons.Material.Filled.RestartAlt" Size="Size.Small" />
+                        <span>Reset table</span>
+                    </button>
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_openDocumentMenuColumn))
+                {
+                    <button type="button"
+                            class="document-filter-overlay"
+                            aria-label="Close filter menu"
+                            @onclick="CloseDocumentMenu"></button>
+                }
+
                 @if (_pagedDocuments.Count == 0)
                 {
                     <MudPaper Class="empty-table-card glass-card" Elevation="0" Outlined="false">
@@ -459,7 +426,7 @@ else
                             </div>
                             <MudText Typo="Typo.h6">No documents found</MudText>
                             <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                @if (!string.IsNullOrEmpty(_searchQuery) || !string.IsNullOrEmpty(_filterSubject) || !string.IsNullOrEmpty(_filterSemester) || _filterFolderId.HasValue)
+                                @if (HasActiveDocumentFilters())
                                 {
                                     <span>Try adjusting your search or filters.</span>
                                 }
@@ -468,9 +435,9 @@ else
                                     <span>Upload your first document to get started.</span>
                                 }
                             </MudText>
-                            @if (!string.IsNullOrEmpty(_searchQuery) || !string.IsNullOrEmpty(_filterSubject) || !string.IsNullOrEmpty(_filterSemester) || _filterFolderId.HasValue)
+                            @if (HasActiveDocumentFilters())
                             {
-                                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ClearFilters">Clear filters</MudButton>
+                                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="ResetDocumentTable">Reset table</MudButton>
                             }
                             else
                             {
@@ -490,23 +457,222 @@ else
                               Class="document-table"
                               Dense="true">
                         <ColGroup>
-                            <col style="width: 26%" />
-                            <col style="width: 11%" />
-                            <col style="width: 9%" />
-                            <col style="width: 13%" />
-                            <col style="width: 9%" />
+                            <col style="width: 23%" />
                             <col style="width: 10%" />
-                            <col style="width: 10%" />
+                            <col style="width: 9%" />
                             <col style="width: 12%" />
+                            <col style="width: 9%" />
+                            <col style="width: 11%" />
+                            <col style="width: 10%" />
+                            <col style="width: 16%" />
                         </ColGroup>
                         <HeaderContent>
-                            <MudTh Class="table-header-cell">NAME</MudTh>
-                            <MudTh Class="table-header-cell">SUBJECT</MudTh>
-                            <MudTh Class="table-header-cell">SEMESTER</MudTh>
-                            <MudTh Class="table-header-cell">FOLDER</MudTh>
-                            <MudTh Class="table-header-cell">SIZE</MudTh>
-                            <MudTh Class="table-header-cell">STATUS</MudTh>
-                            <MudTh Class="table-header-cell">CREATED</MudTh>
+                            <MudTh Class="table-header-cell">
+                                <button type="button" class="@GetDocumentHeaderButtonClass("name")" @onclick='() => HandleDocumentHeaderClick("name")'>
+                                    <span>NAME</span>
+                                    <MudIcon Icon="@GetDocumentSortIcon("name")" Size="Size.Small" />
+                                </button>
+                                @if (_openDocumentMenuColumn == "name")
+                                {
+                                    var nameSuggestions = GetDocumentSuggestions("name");
+                                    <div class="table-filter-menu table-filter-menu-left">
+                                        <span class="table-filter-section-label">Filter</span>
+                                        <input class="table-filter-input" value="@_searchQuery" @oninput='e => UpdateDocumentTextFilter("name", e.Value?.ToString())' placeholder="Search document name" />
+                                        <div class="table-filter-options">
+                                            @if (nameSuggestions.Count > 0)
+                                            {
+                                                @foreach (var option in nameSuggestions)
+                                                {
+                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_searchQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("name", option)'>@option</button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="table-filter-empty">No matching names</span>
+                                            }
+                                        </div>
+                                        <div class="table-menu-divider"></div>
+                                        <span class="table-filter-section-label">Sort</span>
+                                        <button type="button" class="@GetSortOptionClass("name-asc")" @onclick='() => ApplyDocumentSort("name-asc")'>A to Z</button>
+                                        <button type="button" class="@GetSortOptionClass("name-desc")" @onclick='() => ApplyDocumentSort("name-desc")'>Z to A</button>
+                                    </div>
+                                }
+                            </MudTh>
+                            <MudTh Class="table-header-cell">
+                                <button type="button" class="@GetDocumentHeaderButtonClass("subject")" @onclick='() => HandleDocumentHeaderClick("subject")'>
+                                    <span>SUBJECT</span>
+                                    <MudIcon Icon="@GetDocumentSortIcon("subject")" Size="Size.Small" />
+                                </button>
+                                @if (_openDocumentMenuColumn == "subject")
+                                {
+                                    var subjectSuggestions = GetDocumentSuggestions("subject");
+                                    <div class="table-filter-menu">
+                                        <span class="table-filter-section-label">Filter</span>
+                                        <input class="table-filter-input" value="@_filterSubject" @oninput='e => UpdateDocumentTextFilter("subject", e.Value?.ToString())' placeholder="Search subject" />
+                                        <div class="table-filter-options">
+                                            @if (subjectSuggestions.Count > 0)
+                                            {
+                                                @foreach (var option in subjectSuggestions)
+                                                {
+                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSubject, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("subject", option)'>@option</button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="table-filter-empty">No matching subjects</span>
+                                            }
+                                        </div>
+                                        <div class="table-menu-divider"></div>
+                                        <span class="table-filter-section-label">Sort</span>
+                                        <button type="button" class="@GetSortOptionClass("subject-asc")" @onclick='() => ApplyDocumentSort("subject-asc")'>A to Z</button>
+                                        <button type="button" class="@GetSortOptionClass("subject-desc")" @onclick='() => ApplyDocumentSort("subject-desc")'>Z to A</button>
+                                    </div>
+                                }
+                            </MudTh>
+                            <MudTh Class="table-header-cell">
+                                <button type="button" class="@GetDocumentHeaderButtonClass("semester")" @onclick='() => HandleDocumentHeaderClick("semester")'>
+                                    <span>SEMESTER</span>
+                                    <MudIcon Icon="@GetDocumentSortIcon("semester")" Size="Size.Small" />
+                                </button>
+                                @if (_openDocumentMenuColumn == "semester")
+                                {
+                                    var semesterSuggestions = GetDocumentSuggestions("semester");
+                                    <div class="table-filter-menu">
+                                        <span class="table-filter-section-label">Filter</span>
+                                        <input class="table-filter-input" value="@_filterSemester" @oninput='e => UpdateDocumentTextFilter("semester", e.Value?.ToString())' placeholder="Search semester" />
+                                        <div class="table-filter-options">
+                                            @if (semesterSuggestions.Count > 0)
+                                            {
+                                                @foreach (var option in semesterSuggestions)
+                                                {
+                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSemester, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("semester", option)'>@option</button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="table-filter-empty">No matching semesters</span>
+                                            }
+                                        </div>
+                                        <div class="table-menu-divider"></div>
+                                        <span class="table-filter-section-label">Sort</span>
+                                        <button type="button" class="@GetSortOptionClass("semester-asc")" @onclick='() => ApplyDocumentSort("semester-asc")'>A to Z</button>
+                                        <button type="button" class="@GetSortOptionClass("semester-desc")" @onclick='() => ApplyDocumentSort("semester-desc")'>Z to A</button>
+                                    </div>
+                                }
+                            </MudTh>
+                            <MudTh Class="table-header-cell">
+                                <button type="button" class="@GetDocumentHeaderButtonClass("folder")" @onclick='() => HandleDocumentHeaderClick("folder")'>
+                                    <span>FOLDER</span>
+                                    <MudIcon Icon="@GetDocumentSortIcon("folder")" Size="Size.Small" />
+                                </button>
+                                @if (_openDocumentMenuColumn == "folder")
+                                {
+                                    var folderSuggestions = GetDocumentSuggestions("folder");
+                                    <div class="table-filter-menu">
+                                        <span class="table-filter-section-label">Filter</span>
+                                        <input class="table-filter-input" value="@_filterFolderQuery" @oninput='e => UpdateDocumentTextFilter("folder", e.Value?.ToString())' placeholder="Search folder" />
+                                        <div class="table-filter-options">
+                                            @if (folderSuggestions.Count > 0)
+                                            {
+                                                @foreach (var option in folderSuggestions)
+                                                {
+                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterFolderQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("folder", option)'>@option</button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="table-filter-empty">No matching folders</span>
+                                            }
+                                        </div>
+                                        <div class="table-menu-divider"></div>
+                                        <span class="table-filter-section-label">Sort</span>
+                                        <button type="button" class="@GetSortOptionClass("folder-asc")" @onclick='() => ApplyDocumentSort("folder-asc")'>A to Z</button>
+                                        <button type="button" class="@GetSortOptionClass("folder-desc")" @onclick='() => ApplyDocumentSort("folder-desc")'>Z to A</button>
+                                    </div>
+                                }
+                            </MudTh>
+                            <MudTh Class="table-header-cell">
+                                <button type="button" class="@GetDocumentHeaderButtonClass("size")" @onclick='() => HandleDocumentHeaderClick("size")'>
+                                    <span>SIZE</span>
+                                    <MudIcon Icon="@GetDocumentSortIcon("size")" Size="Size.Small" />
+                                </button>
+                                @if (_openDocumentMenuColumn == "size")
+                                {
+                                    var sizeSuggestions = GetDocumentSuggestions("size");
+                                    <div class="table-filter-menu">
+                                        <span class="table-filter-section-label">Filter</span>
+                                        <input class="table-filter-input" value="@_filterSizeQuery" @oninput='e => UpdateDocumentTextFilter("size", e.Value?.ToString())' placeholder="Search size" />
+                                        <div class="table-filter-options">
+                                            @if (sizeSuggestions.Count > 0)
+                                            {
+                                                @foreach (var option in sizeSuggestions)
+                                                {
+                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSizeQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("size", option)'>@option</button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="table-filter-empty">No matching sizes</span>
+                                            }
+                                        </div>
+                                        <div class="table-menu-divider"></div>
+                                        <span class="table-filter-section-label">Sort</span>
+                                        <button type="button" class="@GetSortOptionClass("size-asc")" @onclick='() => ApplyDocumentSort("size-asc")'>Smallest first</button>
+                                        <button type="button" class="@GetSortOptionClass("size-desc")" @onclick='() => ApplyDocumentSort("size-desc")'>Largest first</button>
+                                    </div>
+                                }
+                            </MudTh>
+                            <MudTh Class="table-header-cell">
+                                <button type="button" class="@GetDocumentHeaderButtonClass("status")" @onclick='() => HandleDocumentHeaderClick("status")'>
+                                    <span>STATUS</span>
+                                    <MudIcon Icon="@GetDocumentSortIcon("status")" Size="Size.Small" />
+                                </button>
+                                @if (_openDocumentMenuColumn == "status")
+                                {
+                                    var statusSuggestions = GetDocumentSuggestions("status");
+                                    <div class="table-filter-menu">
+                                        <span class="table-filter-section-label">Filter</span>
+                                        <input class="table-filter-input" value="@_filterStatusQuery" @oninput='e => UpdateDocumentTextFilter("status", e.Value?.ToString())' placeholder="Search status" />
+                                        <div class="table-filter-options">
+                                            @if (statusSuggestions.Count > 0)
+                                            {
+                                                @foreach (var option in statusSuggestions)
+                                                {
+                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterStatusQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("status", option)'>@option</button>
+                                                }
+                                            }
+                                            else
+                                            {
+                                                <span class="table-filter-empty">No matching status</span>
+                                            }
+                                        </div>
+                                        <div class="table-menu-divider"></div>
+                                        <span class="table-filter-section-label">Sort</span>
+                                        <button type="button" class="@GetSortOptionClass("status-asc")" @onclick='() => ApplyDocumentSort("status-asc")'>A to Z</button>
+                                        <button type="button" class="@GetSortOptionClass("status-desc")" @onclick='() => ApplyDocumentSort("status-desc")'>Z to A</button>
+                                    </div>
+                                }
+                            </MudTh>
+                            <MudTh Class="table-header-cell">
+                                <button type="button" class="@GetDocumentHeaderButtonClass("created")" @onclick='() => HandleDocumentHeaderClick("created")'>
+                                    <span>CREATED</span>
+                                    <MudIcon Icon="@GetDocumentSortIcon("created")" Size="Size.Small" />
+                                </button>
+                                @if (_openDocumentMenuColumn == "created")
+                                {
+                                    <div class="table-filter-menu">
+                                        <span class="table-filter-section-label">Filter</span>
+                                        <input class="table-filter-input" type="datetime-local" value="@_filterCreatedFrom" @oninput='e => UpdateCreatedDateFilter("from", e.Value?.ToString())' />
+                                        <div style="height: 6px;"></div>
+                                        <input class="table-filter-input" type="datetime-local" value="@_filterCreatedTo" @oninput='e => UpdateCreatedDateFilter("to", e.Value?.ToString())' />
+                                        <button type="button" class="table-filter-option" @onclick="ClearCreatedDateFilter">Clear date range</button>
+                                        <div class="table-menu-divider"></div>
+                                        <span class="table-filter-section-label">Sort</span>
+                                        <button type="button" class="@GetSortOptionClass("created-desc")" @onclick='() => ApplyDocumentSort("created-desc")'>Newest first</button>
+                                        <button type="button" class="@GetSortOptionClass("created-asc")" @onclick='() => ApplyDocumentSort("created-asc")'>Oldest first</button>
+                                    </div>
+                                }
+                            </MudTh>
                             <MudTh Class="table-header-cell">ACTIONS</MudTh>
                         </HeaderContent>
                         <RowTemplate>
@@ -687,7 +853,14 @@ else
     private string? _filterSubject;
     private string? _filterSemester;
     private Guid? _filterFolderId;
+    private string _filterFolderQuery = "";
+    private string _filterSizeQuery = "";
+    private string _filterStatusQuery = "";
+    private string _filterCreatedFrom = "";
+    private string _filterCreatedTo = "";
     private string _searchQuery = "";
+    private string? _openDocumentMenuColumn;
+    private string _documentSortBy = "created-desc";
 
     private int _currentPage = 1;
     private int _pageSize = 10;
@@ -715,12 +888,108 @@ else
         .OrderByDescending(s => s)
         .ToList();
 
-    private List<DocumentDto> _filteredDocuments => _documents
-        .Where(d => string.IsNullOrEmpty(_filterSubject) || d.SubjectCode == _filterSubject)
-        .Where(d => string.IsNullOrEmpty(_filterSemester) || d.Semester == _filterSemester)
-        .Where(d => !_filterFolderId.HasValue || d.FolderId == _filterFolderId.Value)
-        .Where(d => string.IsNullOrEmpty(_searchQuery) || d.FileName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase))
+    private List<string> _documentNameOptions => _documents
+        .Select(d => d.FileName)
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
         .ToList();
+
+    private List<string> _folderNameOptions => _documents
+        .Select(d => GetFolderName(d.FolderId))
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private List<string> _fileSizeOptions => _documents
+        .Select(d => FormatFileSize(d.FileSizeBytes))
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private List<string> _statusOptions => _documents
+        .Select(d => GetStatusText(d.Status))
+        .Where(value => !string.IsNullOrWhiteSpace(value))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    private List<DocumentDto> _filteredDocuments
+    {
+        get
+        {
+            IEnumerable<DocumentDto> query = _documents;
+
+            if (!string.IsNullOrWhiteSpace(_filterSubject))
+            {
+                query = query.Where(d => d.SubjectCode.Contains(_filterSubject, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_filterSemester))
+            {
+                query = query.Where(d => d.Semester.Contains(_filterSemester, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (_filterFolderId.HasValue)
+            {
+                query = query.Where(d => d.FolderId == _filterFolderId.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_filterFolderQuery))
+            {
+                query = query.Where(d => GetFolderName(d.FolderId).Contains(_filterFolderQuery, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                query = query.Where(d => d.FileName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_filterSizeQuery))
+            {
+                query = query.Where(d => FormatFileSize(d.FileSizeBytes).Contains(_filterSizeQuery, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_filterStatusQuery))
+            {
+                query = query.Where(d => GetStatusText(d.Status).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
+            }
+
+            var createdFrom = ParseDocumentLocalDateTimeFilter(_filterCreatedFrom);
+            if (createdFrom.HasValue)
+            {
+                query = query.Where(d => d.CreatedAt.ToLocalTime().DateTime >= createdFrom.Value);
+            }
+
+            var createdTo = ParseDocumentLocalDateTimeFilter(_filterCreatedTo);
+            if (createdTo.HasValue)
+            {
+                query = query.Where(d => d.CreatedAt.ToLocalTime().DateTime <= createdTo.Value);
+            }
+
+            query = _documentSortBy switch
+            {
+                "name-asc" => query.OrderBy(d => d.FileName, StringComparer.OrdinalIgnoreCase),
+                "name-desc" => query.OrderByDescending(d => d.FileName, StringComparer.OrdinalIgnoreCase),
+                "subject-asc" => query.OrderBy(d => d.SubjectCode, StringComparer.OrdinalIgnoreCase),
+                "subject-desc" => query.OrderByDescending(d => d.SubjectCode, StringComparer.OrdinalIgnoreCase),
+                "semester-asc" => query.OrderBy(d => d.Semester, StringComparer.OrdinalIgnoreCase),
+                "semester-desc" => query.OrderByDescending(d => d.Semester, StringComparer.OrdinalIgnoreCase),
+                "folder-asc" => query.OrderBy(d => GetFolderName(d.FolderId), StringComparer.OrdinalIgnoreCase),
+                "folder-desc" => query.OrderByDescending(d => GetFolderName(d.FolderId), StringComparer.OrdinalIgnoreCase),
+                "size-asc" => query.OrderBy(d => d.FileSizeBytes),
+                "size-desc" => query.OrderByDescending(d => d.FileSizeBytes),
+                "status-asc" => query.OrderBy(d => GetStatusText(d.Status), StringComparer.OrdinalIgnoreCase),
+                "status-desc" => query.OrderByDescending(d => GetStatusText(d.Status), StringComparer.OrdinalIgnoreCase),
+                "created-asc" => query.OrderBy(d => d.CreatedAt),
+                _ => query.OrderByDescending(d => d.CreatedAt),
+            };
+
+            return query.ToList();
+        }
+    }
 
     private List<DocumentDto> _pagedDocuments => _filteredDocuments
         .Skip((_currentPage - 1) * _pageSize)
@@ -807,12 +1076,239 @@ else
 
     private void ClearFilters()
     {
+        ResetDocumentTable();
+    }
+
+    private void ResetDocumentTable()
+    {
         _filterSubject = null;
         _filterSemester = null;
         _filterFolderId = null;
+        _filterFolderQuery = "";
+        _filterSizeQuery = "";
+        _filterStatusQuery = "";
+        _filterCreatedFrom = "";
+        _filterCreatedTo = "";
         _searchQuery = "";
+        _documentSortBy = "created-desc";
+        _openDocumentMenuColumn = null;
         _currentPage = 1;
     }
+
+    private bool HasActiveDocumentFilters() =>
+        !string.IsNullOrWhiteSpace(_searchQuery)
+        || !string.IsNullOrWhiteSpace(_filterSubject)
+        || !string.IsNullOrWhiteSpace(_filterSemester)
+        || _filterFolderId.HasValue
+        || !string.IsNullOrWhiteSpace(_filterFolderQuery)
+        || !string.IsNullOrWhiteSpace(_filterSizeQuery)
+        || !string.IsNullOrWhiteSpace(_filterStatusQuery)
+        || !string.IsNullOrWhiteSpace(_filterCreatedFrom)
+        || !string.IsNullOrWhiteSpace(_filterCreatedTo);
+
+    private void HandleDocumentHeaderClick(string columnKey)
+    {
+        _openDocumentMenuColumn = string.Equals(_openDocumentMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : columnKey;
+    }
+
+    private void CloseDocumentMenu()
+    {
+        _openDocumentMenuColumn = null;
+    }
+
+    private void UpdateDocumentTextFilter(string columnKey, string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        switch (columnKey)
+        {
+            case "name":
+                SetDocumentFilterValue(ref _searchQuery, normalizedValue);
+                break;
+            case "subject":
+                SetNullableDocumentFilterValue(ref _filterSubject, normalizedValue);
+                break;
+            case "semester":
+                SetNullableDocumentFilterValue(ref _filterSemester, normalizedValue);
+                break;
+            case "folder":
+                SetDocumentFilterValue(ref _filterFolderQuery, normalizedValue);
+                break;
+            case "size":
+                SetDocumentFilterValue(ref _filterSizeQuery, normalizedValue);
+                break;
+            case "status":
+                SetDocumentFilterValue(ref _filterStatusQuery, normalizedValue);
+                break;
+        }
+    }
+
+    private void ApplyDocumentSuggestion(string columnKey, string value)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                SetDocumentFilterValue(ref _searchQuery, value);
+                break;
+            case "subject":
+                SetNullableDocumentFilterValue(ref _filterSubject, value);
+                break;
+            case "semester":
+                SetNullableDocumentFilterValue(ref _filterSemester, value);
+                break;
+            case "folder":
+                SetDocumentFilterValue(ref _filterFolderQuery, value);
+                break;
+            case "size":
+                SetDocumentFilterValue(ref _filterSizeQuery, value);
+                break;
+            case "status":
+                SetDocumentFilterValue(ref _filterStatusQuery, value);
+                break;
+        }
+
+        CloseDocumentMenu();
+    }
+
+    private void UpdateCreatedDateFilter(string boundary, string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        if (string.Equals(boundary, "from", StringComparison.OrdinalIgnoreCase))
+        {
+            SetDocumentFilterValue(ref _filterCreatedFrom, normalizedValue);
+        }
+        else
+        {
+            SetDocumentFilterValue(ref _filterCreatedTo, normalizedValue);
+        }
+    }
+
+    private void ClearCreatedDateFilter()
+    {
+        SetDocumentFilterValue(ref _filterCreatedFrom, string.Empty);
+        SetDocumentFilterValue(ref _filterCreatedTo, string.Empty);
+    }
+
+    private void ApplyDocumentSort(string sortKey)
+    {
+        _documentSortBy = sortKey;
+        _currentPage = 1;
+        CloseDocumentMenu();
+    }
+
+    private IReadOnlyList<string> GetDocumentSuggestions(string columnKey)
+    {
+        IReadOnlyList<string> options = columnKey switch
+        {
+            "name" => _documentNameOptions,
+            "subject" => _uniqueSubjects,
+            "semester" => _uniqueSemesters,
+            "folder" => _folderNameOptions,
+            "size" => _fileSizeOptions,
+            "status" => _statusOptions,
+            _ => []
+        };
+
+        var filterValue = columnKey switch
+        {
+            "name" => _searchQuery,
+            "subject" => _filterSubject ?? string.Empty,
+            "semester" => _filterSemester ?? string.Empty,
+            "folder" => _filterFolderQuery,
+            "size" => _filterSizeQuery,
+            "status" => _filterStatusQuery,
+            _ => string.Empty
+        };
+
+        IEnumerable<string> query = options;
+        if (!string.IsNullOrWhiteSpace(filterValue))
+        {
+            query = query.Where(option => option.Contains(filterValue, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return query.ToList();
+    }
+
+    private DateTime? ParseDocumentLocalDateTimeFilter(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        return DateTime.TryParseExact(
+            value,
+            "yyyy-MM-ddTHH:mm",
+            System.Globalization.CultureInfo.InvariantCulture,
+            System.Globalization.DateTimeStyles.AssumeLocal,
+            out var parsedDate)
+            ? parsedDate
+            : null;
+    }
+
+    private void SetDocumentFilterValue(ref string field, string value)
+    {
+        if (!string.Equals(field, value, StringComparison.Ordinal))
+        {
+            field = value;
+            _currentPage = 1;
+        }
+    }
+
+    private void SetNullableDocumentFilterValue(ref string? field, string value)
+    {
+        var normalizedValue = string.IsNullOrWhiteSpace(value) ? null : value;
+        if (!string.Equals(field, normalizedValue, StringComparison.Ordinal))
+        {
+            field = normalizedValue;
+            _currentPage = 1;
+        }
+    }
+
+    private bool IsDocumentSortedBy(string columnKey) =>
+        _documentSortBy.StartsWith($"{columnKey}-", StringComparison.OrdinalIgnoreCase);
+
+    private bool IsDocumentColumnFiltered(string columnKey) =>
+        columnKey switch
+        {
+            "name" => !string.IsNullOrWhiteSpace(_searchQuery),
+            "subject" => !string.IsNullOrWhiteSpace(_filterSubject),
+            "semester" => !string.IsNullOrWhiteSpace(_filterSemester),
+            "folder" => _filterFolderId.HasValue || !string.IsNullOrWhiteSpace(_filterFolderQuery),
+            "size" => !string.IsNullOrWhiteSpace(_filterSizeQuery),
+            "status" => !string.IsNullOrWhiteSpace(_filterStatusQuery),
+            "created" => !string.IsNullOrWhiteSpace(_filterCreatedFrom) || !string.IsNullOrWhiteSpace(_filterCreatedTo),
+            _ => false
+        };
+
+    private string GetDocumentHeaderButtonClass(string columnKey)
+    {
+        var activeClass = IsDocumentSortedBy(columnKey) || IsDocumentColumnFiltered(columnKey)
+            ? " table-header-button-active"
+            : string.Empty;
+        return $"table-header-button{activeClass}";
+    }
+
+    private string GetDocumentSortIcon(string columnKey)
+    {
+        if (!IsDocumentSortedBy(columnKey))
+        {
+            return Icons.Material.Filled.UnfoldMore;
+        }
+
+        return _documentSortBy.EndsWith("-desc", StringComparison.OrdinalIgnoreCase)
+            ? Icons.Material.Filled.KeyboardArrowDown
+            : Icons.Material.Filled.KeyboardArrowUp;
+    }
+
+    private string GetFilterOptionClass(bool isActive) =>
+        isActive ? "table-filter-option table-filter-option-active" : "table-filter-option";
+
+    private string GetSortOptionClass(string sortKey) =>
+        string.Equals(_documentSortBy, sortKey, StringComparison.OrdinalIgnoreCase)
+            ? "table-filter-option table-filter-option-active"
+            : "table-filter-option";
 
     private void ToggleFolderMenu(Guid folderId)
     {
