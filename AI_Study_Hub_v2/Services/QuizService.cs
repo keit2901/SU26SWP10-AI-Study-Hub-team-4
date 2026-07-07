@@ -24,6 +24,9 @@ public sealed class QuizService : IQuizService
     private const int MaxQuestions = 12;
     private const int MaxQuestionsJsonBytes = 200 * 1024;
 
+    private const string DefaultLlamaModel = "llama-3.3-70b-versatile";
+    private const string DefaultGeminiModel = "gemini-2.5-flash";
+
     private readonly AppDbContext _db;
     private readonly IRagSearchService _ragSearch;
     private readonly IAiChatCompletionClientFactory _clientFactory;
@@ -147,8 +150,8 @@ public sealed class QuizService : IQuizService
 
         var activeModel = request.Model;
         var altModel = activeModel?.StartsWith("gemini", StringComparison.OrdinalIgnoreCase) == true
-            ? "llama-3.3-70b-versatile"
-            : "gemini-2.5-flash";
+            ? DefaultLlamaModel
+            : DefaultGeminiModel;
 
         string rawJson;
         Exception? fallbackError = null;
@@ -224,8 +227,8 @@ public sealed class QuizService : IQuizService
                     _logger.LogError(ex, "AI provider failed on retry {Attempt} (model: {Model}). Trying fallback model.", attempt, activeModel);
                     // Switch to the alternative model on provider failure
                     activeModel = activeModel?.StartsWith("gemini", StringComparison.OrdinalIgnoreCase) == true
-                        ? "llama-3.3-70b-versatile"
-                        : "gemini-2.5-flash";
+                        ? DefaultLlamaModel
+                        : DefaultGeminiModel;
                     currentProvider = _clientFactory.GetClient(activeModel);
                     _logger.LogInformation("Quiz retry switched to fallback model {Model}", activeModel);
                 }
