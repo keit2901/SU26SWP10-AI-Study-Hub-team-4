@@ -7,6 +7,7 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService Dialogs
+@inject IJSRuntime JS
 
 <PageTitle>Document Library - AI Study Hub v2</PageTitle>
 
@@ -80,8 +81,8 @@
     .table-header-cell { color: #94a3b8 !important; font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; background: #f8fafc; padding: 12px 8px !important; position: relative; overflow: visible; }
     .table-header-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; border: none; background: transparent; color: #64748b; padding: 0; cursor: pointer; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
     .table-header-button-active { color: #4f46e5; }
-    .table-filter-menu { position: absolute; top: calc(100% - 2px); left: 50%; transform: translateX(-50%); z-index: 30; min-width: 210px; border-radius: 12px; border: 1px solid rgba(199,196,215,0.55); background: #fff; box-shadow: 0 12px 30px rgba(15,23,42,0.14); padding: 8px; text-align: left; }
-    .table-filter-menu-left { left: 8px; transform: none; }
+    .table-filter-menu { position: fixed; z-index: 30; overflow-y: auto; border-radius: 12px; border: 1px solid rgba(199,196,215,0.55); background: #fff; box-shadow: 0 18px 42px rgba(15,23,42,0.18); padding: 8px; text-align: left; }
+    .table-filter-menu-left { left: auto; transform: none; }
     .table-filter-section-label { display: block; padding: 4px 8px 3px; font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; }
     .table-filter-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; background: #fbfbfe; color: #1e293b; padding: 8px 10px; font-size: 12px; outline: none; box-sizing: border-box; }
     .table-filter-options { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; max-height: 122px; overflow-y: auto; padding-right: 2px; }
@@ -468,14 +469,14 @@ else
                         </ColGroup>
                         <HeaderContent>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("name")" @onclick='() => HandleDocumentHeaderClick("name")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("name")" @ref="_nameHeaderButton" @onclick='() => HandleDocumentHeaderClick("name")'>
                                     <span>NAME</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("name")" Size="Size.Small" />
                                 </button>
                                 @if (_openDocumentMenuColumn == "name")
                                 {
                                     var nameSuggestions = GetDocumentSuggestions("name");
-                                    <div class="table-filter-menu table-filter-menu-left">
+                                    <div class="table-filter-menu table-filter-menu-left" style='@GetDocumentMenuStyle("name")'>
                                         <span class="table-filter-section-label">Filter</span>
                                         <input class="table-filter-input" value="@_searchQuery" @oninput='e => UpdateDocumentTextFilter("name", e.Value?.ToString())' placeholder="Search document name" />
                                         <div class="table-filter-options">
@@ -499,14 +500,14 @@ else
                                 }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("subject")" @onclick='() => HandleDocumentHeaderClick("subject")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("subject")" @ref="_subjectHeaderButton" @onclick='() => HandleDocumentHeaderClick("subject")'>
                                     <span>SUBJECT</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("subject")" Size="Size.Small" />
                                 </button>
                                 @if (_openDocumentMenuColumn == "subject")
                                 {
                                     var subjectSuggestions = GetDocumentSuggestions("subject");
-                                    <div class="table-filter-menu">
+                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("subject")'>
                                         <span class="table-filter-section-label">Filter</span>
                                         <input class="table-filter-input" value="@_filterSubject" @oninput='e => UpdateDocumentTextFilter("subject", e.Value?.ToString())' placeholder="Search subject" />
                                         <div class="table-filter-options">
@@ -530,14 +531,14 @@ else
                                 }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("semester")" @onclick='() => HandleDocumentHeaderClick("semester")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("semester")" @ref="_semesterHeaderButton" @onclick='() => HandleDocumentHeaderClick("semester")'>
                                     <span>SEMESTER</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("semester")" Size="Size.Small" />
                                 </button>
                                 @if (_openDocumentMenuColumn == "semester")
                                 {
                                     var semesterSuggestions = GetDocumentSuggestions("semester");
-                                    <div class="table-filter-menu">
+                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("semester")'>
                                         <span class="table-filter-section-label">Filter</span>
                                         <input class="table-filter-input" value="@_filterSemester" @oninput='e => UpdateDocumentTextFilter("semester", e.Value?.ToString())' placeholder="Search semester" />
                                         <div class="table-filter-options">
@@ -561,14 +562,14 @@ else
                                 }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("folder")" @onclick='() => HandleDocumentHeaderClick("folder")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("folder")" @ref="_folderHeaderButton" @onclick='() => HandleDocumentHeaderClick("folder")'>
                                     <span>FOLDER</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("folder")" Size="Size.Small" />
                                 </button>
                                 @if (_openDocumentMenuColumn == "folder")
                                 {
                                     var folderSuggestions = GetDocumentSuggestions("folder");
-                                    <div class="table-filter-menu">
+                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("folder")'>
                                         <span class="table-filter-section-label">Filter</span>
                                         <input class="table-filter-input" value="@_filterFolderQuery" @oninput='e => UpdateDocumentTextFilter("folder", e.Value?.ToString())' placeholder="Search folder" />
                                         <div class="table-filter-options">
@@ -592,14 +593,14 @@ else
                                 }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("size")" @onclick='() => HandleDocumentHeaderClick("size")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("size")" @ref="_sizeHeaderButton" @onclick='() => HandleDocumentHeaderClick("size")'>
                                     <span>SIZE</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("size")" Size="Size.Small" />
                                 </button>
                                 @if (_openDocumentMenuColumn == "size")
                                 {
                                     var sizeSuggestions = GetDocumentSuggestions("size");
-                                    <div class="table-filter-menu">
+                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("size")'>
                                         <span class="table-filter-section-label">Filter</span>
                                         <input class="table-filter-input" value="@_filterSizeQuery" @oninput='e => UpdateDocumentTextFilter("size", e.Value?.ToString())' placeholder="Search size" />
                                         <div class="table-filter-options">
@@ -623,14 +624,14 @@ else
                                 }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("status")" @onclick='() => HandleDocumentHeaderClick("status")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("status")" @ref="_statusHeaderButton" @onclick='() => HandleDocumentHeaderClick("status")'>
                                     <span>STATUS</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("status")" Size="Size.Small" />
                                 </button>
                                 @if (_openDocumentMenuColumn == "status")
                                 {
                                     var statusSuggestions = GetDocumentSuggestions("status");
-                                    <div class="table-filter-menu">
+                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("status")'>
                                         <span class="table-filter-section-label">Filter</span>
                                         <input class="table-filter-input" value="@_filterStatusQuery" @oninput='e => UpdateDocumentTextFilter("status", e.Value?.ToString())' placeholder="Search status" />
                                         <div class="table-filter-options">
@@ -654,13 +655,13 @@ else
                                 }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("created")" @onclick='() => HandleDocumentHeaderClick("created")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("created")" @ref="_createdHeaderButton" @onclick='() => HandleDocumentHeaderClick("created")'>
                                     <span>CREATED</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("created")" Size="Size.Small" />
                                 </button>
                                 @if (_openDocumentMenuColumn == "created")
                                 {
-                                    <div class="table-filter-menu">
+                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("created")'>
                                         <span class="table-filter-section-label">Filter</span>
                                         <input class="table-filter-input" type="datetime-local" value="@_filterCreatedFrom" @oninput='e => UpdateCreatedDateFilter("from", e.Value?.ToString())' />
                                         <div style="height: 6px;"></div>
@@ -861,6 +862,16 @@ else
     private string _searchQuery = "";
     private string? _openDocumentMenuColumn;
     private string _documentSortBy = "created-desc";
+    private ElementReference _nameHeaderButton;
+    private ElementReference _subjectHeaderButton;
+    private ElementReference _semesterHeaderButton;
+    private ElementReference _folderHeaderButton;
+    private ElementReference _sizeHeaderButton;
+    private ElementReference _statusHeaderButton;
+    private ElementReference _createdHeaderButton;
+    private double _documentMenuLeft = 16;
+    private double _documentMenuTop = 112;
+    private double _documentMenuWidth = 256;
 
     private int _currentPage = 1;
     private int _pageSize = 10;
@@ -1106,11 +1117,16 @@ else
         || !string.IsNullOrWhiteSpace(_filterCreatedFrom)
         || !string.IsNullOrWhiteSpace(_filterCreatedTo);
 
-    private void HandleDocumentHeaderClick(string columnKey)
+    private async Task HandleDocumentHeaderClick(string columnKey)
     {
-        _openDocumentMenuColumn = string.Equals(_openDocumentMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase)
-            ? null
-            : columnKey;
+        if (string.Equals(_openDocumentMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
+        {
+            _openDocumentMenuColumn = null;
+            return;
+        }
+
+        _openDocumentMenuColumn = columnKey;
+        await PositionDocumentMenuAsync(columnKey);
     }
 
     private void CloseDocumentMenu()
@@ -1309,6 +1325,57 @@ else
         string.Equals(_documentSortBy, sortKey, StringComparison.OrdinalIgnoreCase)
             ? "table-filter-option table-filter-option-active"
             : "table-filter-option";
+
+    private string GetDocumentMenuStyle(string columnKey) =>
+        $"top: {FormatDocumentMenuValue(_documentMenuTop)}px; left: {FormatDocumentMenuValue(_documentMenuLeft)}px; width: {FormatDocumentMenuValue(_documentMenuWidth)}px; max-width: calc(100vw - 32px); max-height: calc(100vh - {FormatDocumentMenuValue(_documentMenuTop + 24)}px);";
+
+    private async Task PositionDocumentMenuAsync(string columnKey)
+    {
+        var anchor = columnKey switch
+        {
+            "name" => _nameHeaderButton,
+            "subject" => _subjectHeaderButton,
+            "semester" => _semesterHeaderButton,
+            "folder" => _folderHeaderButton,
+            "size" => _sizeHeaderButton,
+            "status" => _statusHeaderButton,
+            "created" => _createdHeaderButton,
+            _ => default
+        };
+
+        var rect = await JS.InvokeAsync<MenuAnchorRect?>("codexTableFilter.getAnchorRect", anchor, GetDocumentMenuWidthPx(columnKey));
+        if (rect is null)
+        {
+            return;
+        }
+
+        _documentMenuLeft = rect.Left;
+        _documentMenuTop = rect.Top;
+        _documentMenuWidth = rect.Width;
+    }
+
+    private static double GetDocumentMenuWidthPx(string columnKey) =>
+        columnKey switch
+        {
+            "name" => 256,
+            "subject" => 224,
+            "semester" => 224,
+            "folder" => 224,
+            "size" => 224,
+            "status" => 224,
+            "created" => 288,
+            _ => 240
+        };
+
+    private static string FormatDocumentMenuValue(double value) =>
+        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed class MenuAnchorRect
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
+    }
 
     private void ToggleFolderMenu(Guid folderId)
     {

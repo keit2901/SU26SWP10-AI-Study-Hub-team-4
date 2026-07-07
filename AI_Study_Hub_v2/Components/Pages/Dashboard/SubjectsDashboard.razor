@@ -5,6 +5,7 @@
 @inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
+@inject IJSRuntime JS
 
 <PageTitle>Subjects - AI Study Hub</PageTitle>
 
@@ -69,7 +70,7 @@
                         <thead>
                             <tr style="background: rgba(249,250,251,0.8); border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;">
                                 <th style="padding: 1rem 1.5rem; position: relative;">
-                                    <button @onclick='() => HandleHeaderMenuClick("subject")' style='@GetHeaderButtonStyle("subject", true)'>
+                                    <button @ref="_subjectHeaderButton" @onclick='() => HandleHeaderMenuClick("subject")' style='@GetHeaderButtonStyle("subject", true)'>
                                         <span>Subject Code</span>
                                         <MudIcon Icon='@GetSortIcon("subject")' Style='@GetSortIconStyle("subject")' />
                                     </button>
@@ -106,7 +107,7 @@
                                 <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase;">Total Documents</th>
                                 <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase;">Storage Used</th>
                                 <th style="padding: 1rem 1.5rem; position: relative;">
-                                    <button @onclick='() => HandleHeaderMenuClick("date")' style='@GetHeaderButtonStyle("date", true)'>
+                                    <button @ref="_dateHeaderButton" @onclick='() => HandleHeaderMenuClick("date")' style='@GetHeaderButtonStyle("date", true)'>
                                         <span>Latest Upload</span>
                                         <MudIcon Icon='@GetSortIcon("date")' Style='@GetSortIconStyle("date")' />
                                     </button>
@@ -193,6 +194,11 @@
     private bool isLoading = true;
     private List<DashboardSubjectDto>? subjects;
     private string? OpenMenuColumn;
+    private ElementReference _subjectHeaderButton;
+    private ElementReference _dateHeaderButton;
+    private double _menuLeft = 16;
+    private double _menuTop = 112;
+    private double _menuWidth = 224;
     private string SubjectSearchTerm = string.Empty;
     private string FilterSubjectQuery = string.Empty;
     private string FilterDateFrom = string.Empty;
@@ -338,7 +344,7 @@
         SortBy = "date-desc";
     }
 
-    private void HandleHeaderMenuClick(string columnKey)
+    private async Task HandleHeaderMenuClick(string columnKey)
     {
         if (string.Equals(OpenMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
         {
@@ -352,6 +358,7 @@
         }
 
         OpenMenuColumn = columnKey;
+        await PositionMenuAsync(columnKey);
     }
 
     private void ApplySortOption(string sortKey)
@@ -423,11 +430,37 @@
 
     private string GetHeaderMenuStyle(string minWidth, bool alignLeft = false)
     {
-        var horizontalPosition = alignLeft
-            ? "left: 1rem; transform: none;"
-            : "left: 50%; transform: translateX(-50%);";
+        return $"position: fixed; top: {FormatMenuValue(_menuTop)}px; left: {FormatMenuValue(_menuLeft)}px; z-index: 5; width: {FormatMenuValue(_menuWidth)}px; max-width: calc(100vw - 2rem); max-height: calc(100vh - {FormatMenuValue(_menuTop + 24)}px); overflow-y: auto; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 18px 42px rgba(26,27,31,0.16); padding: 0.45rem;";
+    }
 
-        return $"position: absolute; top: calc(100% - 0.15rem); {horizontalPosition} z-index: 5; min-width: {minWidth}; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 10px 30px rgba(26,27,31,0.12); padding: 0.45rem;";
+    private async Task PositionMenuAsync(string columnKey)
+    {
+        var anchor = string.Equals(columnKey, "subject", StringComparison.OrdinalIgnoreCase)
+            ? _subjectHeaderButton
+            : _dateHeaderButton;
+
+        var rect = await JS.InvokeAsync<MenuAnchorRect?>("codexTableFilter.getAnchorRect", anchor, GetMenuWidthPx(columnKey));
+        if (rect is null)
+        {
+            return;
+        }
+
+        _menuLeft = rect.Left;
+        _menuTop = rect.Top;
+        _menuWidth = rect.Width;
+    }
+
+    private static double GetMenuWidthPx(string columnKey) =>
+        string.Equals(columnKey, "date", StringComparison.OrdinalIgnoreCase) ? 288 : 224;
+
+    private static string FormatMenuValue(double value) =>
+        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed class MenuAnchorRect
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
     }
 
     private string GetFilterInputStyle() =>
