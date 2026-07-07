@@ -14,7 +14,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         $"Current date: {DateTimeOffset.UtcNow:yyyy-MM-dd}. " +
         "Your training data covers events and facts up to December 2023. You can confidently answer questions about people, events, and facts from 2023 and earlier. " +
         "If the question asks about events after December 2023 that you have no source context for, clearly say your training data does not cover that period. " +
-        "Below you will find a student question and optionally some source excerpts from their documents. " +
+        "Below you will find the recent conversation history (if any), a student question, and optionally some source excerpts from their documents. " +
         "If source excerpts are provided, answer using ONLY those excerpts and cite every factual claim " +
         "with source markers like [S1]. Do not invent citations — only cite what's in the provided excerpts. " +
         "If the excerpts do not contain enough information, say the indexed documents do not contain enough information. " +
@@ -231,10 +231,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         return sources;
     }
 
-    private const int MaxHistoryExchanges = 5;
-    private const int MaxAssistantAnswerChars = 300;
-
-    private static string BuildChatHistorySection(IReadOnlyList<ChatMessageDto>? history)
+    private string BuildChatHistorySection(IReadOnlyList<ChatMessageDto>? history)
     {
         if (history is null or { Count: 0 })
         {
@@ -244,7 +241,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         // Take only the most recent exchanges (last MaxHistoryExchanges * 2 messages)
         var recentMessages = history
             .OrderBy(m => m.SequenceNumber)
-            .TakeLast(MaxHistoryExchanges * 2)
+            .TakeLast(_ragOptions.MaxHistoryExchanges * 2)
             .ToList();
 
         if (recentMessages.Count == 0)
@@ -257,8 +254,8 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         foreach (var msg in recentMessages)
         {
             var role = msg.Role == "user" ? "User" : "Assistant";
-            var content = msg.Role == "assistant" && msg.Content.Length > MaxAssistantAnswerChars
-                ? Truncate(msg.Content, MaxAssistantAnswerChars)
+            var content = msg.Role == "assistant" && msg.Content.Length > _ragOptions.MaxAssistantAnswerChars
+                ? Truncate(msg.Content, _ragOptions.MaxAssistantAnswerChars)
                 : msg.Content;
             sb.Append(role).Append(": ").AppendLine(content);
         }
@@ -266,7 +263,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         return sb.ToString();
     }
 
-    private static string BuildUserPrompt(
+    private string BuildUserPrompt(
         string question,
         IReadOnlyList<AiChatSourceDto> sources,
         IReadOnlyList<ChatMessageDto>? chatHistory = null,

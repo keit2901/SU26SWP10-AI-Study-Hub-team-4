@@ -119,6 +119,8 @@ public sealed class QuizService : IQuizService
         var previousQuestions = await _db.Quizzes
             .AsNoTracking()
             .Where(q => q.UserId == profile.Id)
+            .OrderByDescending(q => q.CreatedAt)
+            .Take(20)
             .Select(q => q.QuestionsJson)
             .ToListAsync(ct);
 
