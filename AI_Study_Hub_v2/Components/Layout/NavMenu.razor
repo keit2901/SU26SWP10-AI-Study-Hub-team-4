@@ -149,6 +149,4 @@
         Session.OnChange -= OnSessionChanged;
         Nav.LocationChanged -= OnLocationChanged;
     }
-
-    private bool IsDashboard => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
 }
