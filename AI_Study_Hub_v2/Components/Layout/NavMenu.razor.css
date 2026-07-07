@@ -322,3 +322,61 @@ button.nav-pill {
         width: 100%;
     }
 }
+
+/* ── Get Pro Button ── */
+.btn-get-pro {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem 1rem;
+    background: #4F46E5;
+    color: #fff;
+    font-size: 0.8rem;
+    font-weight: 700;
+    border-radius: 999px;
+    text-decoration: none;
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-get-pro:hover {
+    background: #4338CA;
+    box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
+    color: #fff;
+}
+
+/* ── Topbar Icon Buttons ── */
+.topbar-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border: none;
+    border-radius: 50%;
+    background: transparent;
+    color: #64748B;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+}
+
+.topbar-icon-btn:hover {
+    background: #F1F5F9;
+    color: #4F46E5;
+}
+
+/* ── User Initials Avatar ── */
+.user-avatar-initials {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4F46E5, #7C3AED);
+    color: #fff;
+    font-size: 0.7rem;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-decoration: none;
+}

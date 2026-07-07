@@ -45,7 +45,10 @@ public record UserAnalyticsDto(
     System.Collections.Generic.List<double> DailyApprovedCounts,
     System.Collections.Generic.List<double> DailyRejectedCounts,
     System.Collections.Generic.List<AnalyticsIssueDto> CommonIssues,
-    System.Collections.Generic.List<AnalyticsDocumentDto> RecentDocuments
+    System.Collections.Generic.List<AnalyticsDocumentDto> RecentDocuments,
+    int TotalDocumentCount = 0,
+    int Page = 1,
+    int PageSize = 0
 );
 
 public record AnalyticsIssueDto(
@@ -59,7 +62,9 @@ public record AnalyticsDocumentDto(
     string Status,
     System.DateTimeOffset CreatedAt,
     int? PageCount,
-    int ChunkCount
+    int ChunkCount,
+    string? FolderName = null,
+    System.DateTimeOffset? FolderSharedAt = null
 );
 
 public record ActivityTrendPoint(

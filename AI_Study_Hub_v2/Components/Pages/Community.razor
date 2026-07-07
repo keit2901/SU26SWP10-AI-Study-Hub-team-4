@@ -57,11 +57,14 @@
                                     <span class="sidebar-item-name">@folder.Name</span>
                                     @if (_activeTab == "personal")
                                     {
-                                        <span class="sidebar-item-meta">
-                                            <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small" />
-                                            @folder.LikeCount
-                                            <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Size="Size.Small" />
-                                            @folder.DislikeCount
+                                        <span class="sidebar-item-meta" style="display: flex; align-items: center; gap: 0.25rem; width: 100%;">
+                                            <span>@folder.DocumentCount sources</span>
+                                            <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 0.15rem;">
+                                                <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Style="font-size: 0.75rem;" />
+                                                @folder.LikeCount
+                                                <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Style="font-size: 0.75rem;" />
+                                                @folder.DislikeCount
+                                            </span>
                                         </span>
                                     }
                                     else
@@ -97,9 +100,33 @@
             {
                 <div class="community-loading">
                     <MudProgressCircular Indeterminate="true" Size="Size.Medium" />
-                </div>
-            }
-            else
+                    </div>
+
+                    @if (_activeTab == "personal" && _totalPages > 1)
+                    {
+                        <div class="pagination-bar">
+                            <div class="pagination-info">
+                                Showing @((_currentPage - 1) * PageSize + 1)-@Math.Min(_currentPage * PageSize, _filteredFolders.Count) of @_filteredFolders.Count folders
+                            </div>
+                            <div class="pagination-controls">
+                                <button class="pagination-btn" disabled="@(_currentPage <= 1)" @onclick="() => GoToPage(_currentPage - 1)">‹ Prev</button>
+                                @foreach (var p in GetPageNumbers())
+                                {
+                                    if (p == -1)
+                                    {
+                                        <span class="pagination-ellipsis">…</span>
+                                    }
+                                    else
+                                    {
+                                        <button class="pagination-btn @(p == _currentPage ? "active" : "")" @onclick="() => GoToPage(p)">@p</button>
+                                    }
+                                }
+                                <button class="pagination-btn" disabled="@(_currentPage >= _totalPages)" @onclick="() => GoToPage(_currentPage + 1)">Next ›</button>
+                            </div>
+                        </div>
+                    }
+                }
+                else
             {
                 <div class="community-main-header">
                     <h1 class="community-title">
@@ -147,13 +174,28 @@
                 }
 
                 <div class="community-search">
-                    <div class="search-wrapper">
-                        <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
-                        <input type="text"
-                               class="search-input"
-                               placeholder="Search folders..."
-                               @bind-value="@_searchQuery"
-                               @bind-value:event="oninput" />
+                    <div class="search-filter-row">
+                        <div class="search-wrapper">
+                            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
+                            <input type="text"
+                                   class="search-input"
+                                   placeholder="Search folders..."
+                                   value="@_searchQuery"
+                                   @oninput="HandleSearchInput" />
+                        </div>
+                        @if (_activeTab == "personal")
+                        {
+                            <div class="filter-wrapper">
+                                <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
+                                    <option value="">All Status</option>
+                                    <option value="Shared">Shared</option>
+                                    <option value="Pending Share">Pending Share</option>
+                                    <option value="Processing">Processing</option>
+                                    <option value="Rejected">Rejected</option>
+                                    <option value="Empty">Empty</option>
+                                </select>
+                            </div>
+                        }
                     </div>
                 </div>
 
@@ -219,7 +261,7 @@
                         }
                         else
                         {
-                            @foreach (var folder in _filteredFolders)
+                            @foreach (var folder in _pagedFolders)
                             {
                                 var cidx = _personalFolders.IndexOf(folder);
                                 var colors = new[] { "#7c6fcd", "#c0392b", "#2980b9", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#d35400" };
@@ -235,7 +277,18 @@
                                             </div>
                                             <div class="personal-card-info">
                                                 <h3 class="personal-card-title">@folder.Name</h3>
-                                                <span class="personal-card-sources">@folder.DocumentCount sources</span>
+                                                <div style="display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
+                                                    <span class="personal-card-sources">@folder.DocumentCount sources</span>
+                                                    @{
+                                                        var badgeStyles = GetStatusBadgeStyles(folder.Status);
+                                                        var badgeStyleAttr = $"display: inline-flex; align-items: center; padding: 0.125rem 0.375rem; border-radius: 9999px; font-size: 0.65rem; font-weight: 600; background: {badgeStyles.Bg}; color: {badgeStyles.Color}; line-height: 1;";
+                                                        var dotStyleAttr = $"display: inline-block; width: 0.3125rem; height: 0.3125rem; border-radius: 9999px; margin-right: 0.1875rem; background: {badgeStyles.DotColor};";
+                                                    }
+                                                    <span style="@badgeStyleAttr">
+                                                        <span style="@dotStyleAttr"></span>
+                                                        @GetStatusText(folder.Status)
+                                                    </span>
+                                                </div>
                                             </div>
                                             <span class="personal-card-badge" style="background:@(color + "18"); color:@color">@rate%</span>
                                         </div>
@@ -287,7 +340,11 @@
 @code {
     private string _activeTab = "community";
     private string _searchQuery = "";
+    private string? _statusFilter;
     private bool _loading = true;
+
+    private const int PageSize = 10;
+    private int _currentPage = 1;
 
     private List<FolderDto> _allCommunityFolders = new();
     private List<FolderDto> _personalFolders = new();
@@ -304,14 +361,31 @@
         get
         {
             var source = _activeTab == "community" ? _allCommunityFolders : _personalFolders;
-            if (string.IsNullOrWhiteSpace(_searchQuery))
-                return source;
-            var q = _searchQuery.Trim().ToLowerInvariant();
-            return source.Where(f =>
-                f.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
-                (f.OwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+
+            if (!string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                var q = _searchQuery.Trim().ToLowerInvariant();
+                source = source.Where(f =>
+                    f.Name.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                    (f.OwnerName?.Contains(q, StringComparison.OrdinalIgnoreCase) ?? false)).ToList();
+            }
+
+            if (!string.IsNullOrWhiteSpace(_statusFilter) && _activeTab == "personal")
+            {
+                source = source.Where(f => f.Status == _statusFilter).ToList();
+            }
+
+            return source;
         }
     }
+
+    private List<FolderDto> _pagedFolders =>
+        _filteredFolders
+            .Skip((_currentPage - 1) * PageSize)
+            .Take(PageSize)
+            .ToList();
+
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredFolders.Count / PageSize));
 
     private int _totalLikes => _personalFolders.Sum(f => f.LikeCount);
     private int _totalDislikes => _personalFolders.Sum(f => f.DislikeCount);
@@ -378,6 +452,8 @@
     {
         _activeTab = "community";
         _searchQuery = "";
+        _statusFilter = null;
+        _currentPage = 1;
         _openMenuFolderId = null;
     }
 
@@ -385,6 +461,8 @@
     {
         _activeTab = "personal";
         _searchQuery = "";
+        _statusFilter = null;
+        _currentPage = 1;
         _openMenuFolderId = null;
     }
 
@@ -397,6 +475,52 @@
     private void GoToFolder(Guid folderId)
     {
         Nav.NavigateTo("/ai/chat?folderId=" + folderId);
+    }
+
+    private void HandleSearchInput(ChangeEventArgs e)
+    {
+        _searchQuery = e.Value?.ToString() ?? "";
+        _currentPage = 1;
+    }
+
+    private void HandleStatusFilterChange(ChangeEventArgs e)
+    {
+        _statusFilter = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(_statusFilter))
+            _statusFilter = null;
+        _currentPage = 1;
+    }
+
+    private void GoToPage(int page)
+    {
+        if (page < 1 || page > _totalPages) return;
+        _currentPage = page;
+    }
+
+    private List<int> GetPageNumbers()
+    {
+        var total = _totalPages;
+        var current = _currentPage;
+        var pages = new List<int>();
+
+        if (total <= 7)
+        {
+            for (var i = 1; i <= total; i++) pages.Add(i);
+        }
+        else
+        {
+            pages.Add(1);
+            if (current > 3) pages.Add(-1); // ellipsis
+
+            var start = Math.Max(2, current - 1);
+            var end = Math.Min(total - 1, current + 1);
+            for (var i = start; i <= end; i++) pages.Add(i);
+
+            if (current < total - 2) pages.Add(-1); // ellipsis
+            pages.Add(total);
+        }
+
+        return pages;
     }
 
     private void ToggleMenu(Guid folderId)
@@ -564,6 +688,32 @@
             "dashboard" => Icons.Material.Filled.Dashboard,
             "folder_special" => Icons.Material.Filled.FolderSpecial,
             _ => Icons.Material.Filled.Folder,
+        };
+    }
+
+    private string GetStatusText(string? status)
+    {
+        return status switch
+        {
+            "Shared" => "Shared",
+            "Pending Share" => "Pending Share",
+            "Processing" => "Processing",
+            "Rejected" => "Rejected",
+            "Empty" => "Empty",
+            _ => "Private"
+        };
+    }
+
+    private (string Bg, string Color, string DotColor) GetStatusBadgeStyles(string? status)
+    {
+        return status switch
+        {
+            "Shared" => ("#eef2ff", "#4338ca", "#4f46e5"),
+            "Pending Share" => ("#fefce8", "#a16207", "#ca8a04"),
+            "Processing" => ("rgba(243,232,255,0.8)", "#7e22ce", "#9333ea"),
+            "Rejected" => ("#fef2f2", "#b91c1c", "#ef4444"),
+            "Empty" => ("#f3f4f6", "#4b5563", "#9ca3af"),
+            _ => ("#f9fafb", "#6b7280", "#9ca3af")
         };
     }
 
