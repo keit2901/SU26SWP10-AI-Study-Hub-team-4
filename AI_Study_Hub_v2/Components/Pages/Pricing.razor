@@ -1,0 +1,173 @@
+@page "/pricing"
+@inject AuthSessionState Session
+@inject NavigationManager Nav
+@inject IDialogService DialogService
+
+<PageTitle>Pricing - AI Study Hub</PageTitle>
+
+<div class="pricing-page">
+    <div class="pricing-content-wrapper">
+        <section class="pricing-hero">
+            <h1>Elevate your learning with AI Study Hub</h1>
+            <p class="pricing-subtitle">Choose the subscription plan that fits your study and research goals.</p>
+        </section>
+
+        <section class="pricing-cards">
+            @* ─── Free Plan ─── *@
+            <div class="plan-card plan-free @(Session.CurrentPlan == "Free" ? "plan-active" : "")">
+                <div class="plan-card-body">
+                    <div class="plan-header">
+                        <h2 class="plan-name">Free</h2>
+                        <p class="plan-tagline">Experience basic academic features</p>
+                    </div>
+
+                    <div class="plan-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">0</span>
+                        <span class="price-period">/ month</span>
+                    </div>
+
+                    <div class="plan-cta">
+                        @if (Session.CurrentPlan == "Free")
+                        {
+                            <button class="btn-plan btn-plan-current" disabled>Current Plan</button>
+                        }
+                        else
+                        {
+                            <button class="btn-plan btn-plan-outline" @onclick='() => HandleSelectPlan("Free")'>Downgrade to Free</button>
+                        }
+                    </div>
+
+                    <ul class="plan-features">
+                        <li><MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Small" Class="feature-icon free" /> 2 GB Storage</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Class="feature-icon free" /> Max 100 Documents</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="feature-icon free" /> Max 20 Folders (100MB/Folder)</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Token" Size="Size.Small" Class="feature-icon free" /> 25,000 tokens / day</li>
+                    </ul>
+                </div>
+            </div>
+
+            @* ─── Pro Plan ─── *@
+            <div class="plan-card plan-popular @(Session.CurrentPlan == "Pro" ? "plan-active" : "")">
+                <span class="popular-badge">POPULAR</span>
+                <div class="plan-card-body">
+                    <div class="plan-header">
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <h2 class="plan-name">Pro</h2>
+                            <span class="pro-star"><MudIcon Icon="@Icons.Material.Filled.Verified" Size="Size.Small" /></span>
+                        </div>
+                        <p class="plan-tagline">Perfect for advanced learning and academic tasks</p>
+                    </div>
+
+                    <div class="plan-price pro-price">
+                        <span class="price-currency">$</span>
+                        <span class="price-amount">1.99</span>
+                        <span class="price-period">/ month</span>
+                    </div>
+                    <p class="demo-price">Demo: $0.19</p>
+
+                    <div class="plan-cta">
+                        @if (Session.CurrentPlan == "Pro")
+                        {
+                            <button class="btn-plan btn-plan-current-pro" disabled>Current Plan</button>
+                        }
+                        else
+                        {
+                            <button class="btn-plan btn-plan-primary" @onclick='() => HandleSelectPlan("Pro")'>Upgrade to Pro</button>
+                        }
+                    </div>
+
+                    <ul class="plan-features">
+                        <li><MudIcon Icon="@Icons.Material.Filled.Cloud" Size="Size.Small" Class="feature-icon pro" /> <strong>10 GB Storage</strong></li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Class="feature-icon pro" /> <strong>Unlimited Documents</strong></li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="feature-icon pro" /> <strong>Unlimited Folders</strong></li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Token" Size="Size.Small" Class="feature-icon pro" /> <strong>100,000 tokens / day</strong></li>
+                    </ul>
+                </div>
+            </div>
+
+            @* ─── Unlimited Plan ─── *@
+            <div class="plan-card plan-unlimited @(Session.CurrentPlan == "Unlimited" ? "plan-active" : "")">
+                <div class="plan-card-body">
+                    <div class="plan-header">
+                        <h2 class="plan-name">Unlimited</h2>
+                        <p class="plan-tagline">Fully optimized for unlimited performance</p>
+                    </div>
+
+                    <div class="plan-price unlimited-price">
+                        <span class="price-amount" style="font-size:2rem;">Contact</span>
+                        <span class="price-period">/ month</span>
+                    </div>
+                    <p class="demo-price">Demo: $0.39</p>
+
+                    <div class="plan-cta">
+                        @if (Session.CurrentPlan == "Unlimited")
+                        {
+                            <button class="btn-plan btn-plan-current-unlimited" disabled>Current Plan</button>
+                        }
+                        else
+                        {
+                            <button class="btn-plan btn-plan-dark" @onclick='() => HandleSelectPlan("Unlimited")'>Contact Us</button>
+                        }
+                    </div>
+
+                    <ul class="plan-features">
+                        <li><MudIcon Icon="@Icons.Material.Filled.AllInclusive" Size="Size.Small" Class="feature-icon unlimited" /> Unlimited Storage</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" Class="feature-icon unlimited" /> Unlimited Documents</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" Class="feature-icon unlimited" /> Unlimited Folders</li>
+                        <li><MudIcon Icon="@Icons.Material.Filled.Token" Size="Size.Small" Class="feature-icon unlimited" /> Unlimited AI tokens</li>
+                    </ul>
+                </div>
+            </div>
+        </section>
+    </div>
+</div>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Session.OnChange += StateHasChanged;
+    }
+
+    private async Task HandleSelectPlan(string plan)
+    {
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo("/login", replace: false);
+            return;
+        }
+
+        if (plan == "Free")
+        {
+            Session.SetPlan("Free");
+            return;
+        }
+
+        var demoPrice = plan == "Pro" ? "$0.19" : "$0.39";
+        var parameters = new DialogParameters<PricingCheckoutDialog>
+        {
+            { x => x.PlanName, plan },
+            { x => x.DemoPrice, demoPrice },
+        };
+        var options = new DialogOptions
+        {
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true,
+            CloseOnEscapeKey = true,
+            NoHeader = true,
+        };
+
+        var dialog = await DialogService.ShowAsync<PricingCheckoutDialog>($"Upgrade to {plan}", parameters, options);
+        var result = await dialog.Result;
+
+        if (result is not null && !result.Canceled)
+        {
+            Session.SetPlan(plan);
+        }
+    }
+
+    public void Dispose()
+    {
+        Session.OnChange -= StateHasChanged;
+    }
+}
