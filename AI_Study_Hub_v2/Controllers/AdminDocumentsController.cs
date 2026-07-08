@@ -1,5 +1,6 @@
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -95,6 +96,99 @@ public sealed class AdminDocumentsController : ControllerBase
             Failed: failed,
             ChunkingStrategy: _chunkingStrategy,
             Failures: failures));
+    }
+
+    [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<AdminDocumentDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<AdminDocumentDto>>> List(
+        [FromQuery] string? status,
+        [FromQuery] string? subject,
+        [FromQuery] string? q,
+        [FromQuery] int page = 1,
+        [FromQuery] int size = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var query = _db.Documents
+            .Include(d => d.User)
+            .AsNoTracking()
+            .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(status))
+            query = query.Where(d => d.Status.ToString() == status);
+        if (!string.IsNullOrWhiteSpace(subject))
+            query = query.Where(d => d.SubjectCode == subject.ToUpperInvariant());
+        if (!string.IsNullOrWhiteSpace(q))
+            query = query.Where(d => d.FileName.Contains(q) || d.SubjectCode.Contains(q));
+
+        var result = await query
+            .OrderByDescending(d => d.CreatedAt)
+            .Skip((page - 1) * Math.Clamp(size, 1, 100))
+            .Take(Math.Clamp(size, 1, 100))
+            .Select(d => new AdminDocumentDto(
+                d.Id,
+                d.FileName,
+                d.SubjectCode,
+                d.User.FullName,
+                d.User.Username ?? "",
+                d.Status.ToString(),
+                d.ReviewStatus.ToString(),
+                d.MimeType,
+                d.FileSizeBytes,
+                d.StoragePath,
+                d.Chunks.Count,
+                d.CreatedAt))
+            .ToListAsync(cancellationToken);
+
+        return Ok(result);
+    }
+
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(AdminDocumentDetailDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminDocumentDetailDto>> GetById(
+        Guid id,
+        CancellationToken cancellationToken)
+    {
+        var doc = await _db.Documents
+            .Include(d => d.User)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+
+        if (doc is null)
+            return NotFound(new ApiErrorResponse { Code = "document_not_found", Message = "Document not found." });
+
+        var chunkCount = await _db.DocumentChunks
+            .CountAsync(c => c.DocumentId == id, cancellationToken);
+
+        var chunkPreviews = await _db.DocumentChunks
+            .Where(c => c.DocumentId == id)
+            .OrderBy(c => c.ChunkIndex)
+            .Take(20)
+            .Select(c => new DocumentChunkPreviewDto(
+                c.ChunkIndex,
+                c.Content.Length > 200 ? c.Content.Substring(0, 200) + "..." : c.Content,
+                (int)Math.Ceiling(c.Content.Length / 4.0),
+                c.PageNumber))
+            .ToListAsync(cancellationToken);
+
+        return Ok(new AdminDocumentDetailDto(
+            doc.Id,
+            doc.FileName,
+            doc.SubjectCode,
+            doc.User.FullName,
+            doc.User.Username ?? "",
+            doc.Status.ToString(),
+            doc.ReviewStatus.ToString(),
+            doc.MimeType,
+            doc.FileSizeBytes,
+            doc.StoragePath,
+            chunkCount,
+            doc.PageCount,
+            doc.ErrorMessage,
+            doc.Semester,
+            doc.CreatedAt,
+            doc.UpdatedAt,
+            chunkPreviews));
     }
 }
 
