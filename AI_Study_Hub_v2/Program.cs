@@ -41,6 +41,7 @@ builder.Services
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
 builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
+builder.Services.ConfigureOptions<ConfigureRagOptions>();
 builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
@@ -640,8 +641,8 @@ static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
     {
         new SystemConfig { Key = "ai.chat_model", Value = "gpt-4o-mini", DefaultValue = "gpt-4o-mini", Category = "Model", DisplayName = "Chat model", Description = "Model identifier used by the RAG answer generation pipeline.", ConfigType = "Text", IsCritical = true },
         new SystemConfig { Key = "ai.embedding_model", Value = "text-embedding-3-small", DefaultValue = "text-embedding-3-small", Category = "Model", DisplayName = "Embedding model", Description = "Provider model identifier used to embed document_chunks.", ConfigType = "Text", IsCritical = true },
-        new SystemConfig { Key = "rag.chunk_size", Value = "800", DefaultValue = "800", Category = "Retrieval", DisplayName = "Chunk size", Description = "Maximum characters or tokens per source chunk before embedding.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "rag.chunk_overlap", Value = "120", DefaultValue = "120", Category = "Retrieval", DisplayName = "Chunk overlap", Description = "Overlap between consecutive chunks to preserve context.", ConfigType = "Number", IsCritical = true },
+        new SystemConfig { Key = "rag.chunk_size", Value = "700", DefaultValue = "700", Category = "Retrieval", DisplayName = "Chunk size", Description = "Maximum characters or tokens per source chunk before embedding.", ConfigType = "Number", IsCritical = true },
+        new SystemConfig { Key = "rag.chunk_overlap", Value = "70", DefaultValue = "70", Category = "Retrieval", DisplayName = "Chunk overlap", Description = "Overlap between consecutive chunks to preserve context.", ConfigType = "Number", IsCritical = true },
         new SystemConfig { Key = "rag.max_chunks", Value = "8", DefaultValue = "8", Category = "Retrieval", DisplayName = "Max retrieval chunks", Description = "Maximum document chunks sent to the answer generation pipeline.", ConfigType = "Number", IsCritical = true },
         new SystemConfig { Key = "generation.temperature", Value = "0.2", DefaultValue = "0.2", Category = "Generation", DisplayName = "Temperature", Description = "Controls answer randomness for study assistant responses.", ConfigType = "Number", IsCritical = true },
         new SystemConfig { Key = "generation.top_p", Value = "0.9", DefaultValue = "0.9", Category = "Generation", DisplayName = "Top-p", Description = "Nucleus sampling parameter for answer generation.", ConfigType = "Number", IsCritical = true },
