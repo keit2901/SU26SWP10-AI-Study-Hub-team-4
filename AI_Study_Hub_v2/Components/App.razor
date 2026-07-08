@@ -25,6 +25,32 @@
     <script src="recaptcha.js"></script>
     <script src="aichat.js"></script>
     <script>window.openFilePicker=id=>document.getElementById(id).click()</script>
+    <script>
+        window.codexTableFilter = {
+            getAnchorRect: function (element, preferredWidth) {
+                if (!element) {
+                    return null;
+                }
+
+                const rect = element.getBoundingClientRect();
+                const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
+                const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+                const margin = 16;
+                const requestedWidth = typeof preferredWidth === "number" && preferredWidth > 0
+                    ? preferredWidth
+                    : rect.width;
+                const width = Math.min(requestedWidth, Math.max(220, viewportWidth - margin * 2));
+                const left = Math.min(Math.max(rect.left, margin), Math.max(margin, viewportWidth - width - margin));
+                const top = Math.min(rect.bottom + 8, Math.max(96, viewportHeight - 96));
+
+                return {
+                    left: left,
+                    top: top,
+                    width: width
+                };
+            }
+        };
+    </script>
     <script src="_framework/blazor.web.js"></script>
     @if (Env.IsDevelopment())
     {

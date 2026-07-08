@@ -97,7 +97,7 @@
                             <thead>
                                 <tr style="background: #f4f3f8;">
                                     <th style="padding: 0.8rem 1rem 0.8rem 1.25rem; text-align: center; position: relative;">
-                                        <button @onclick='() => HandleHeaderSortClick("name")' style='@GetHeaderSortButtonStyle("name")'>
+                                        <button @ref="_nameHeaderButton" @onclick='() => HandleHeaderSortClick("name")' style='@GetHeaderSortButtonStyle("name")'>
                                             <span>Document Name</span>
                                             <MudIcon Icon='@GetSortIcon("name")' Style='@GetSortIconStyle("name")' />
                                         </button>
@@ -134,7 +134,7 @@
                                     @if (!FolderId.HasValue)
                                     {
                                         <th style="padding: 0.8rem 1rem; text-align: left; position: relative;">
-                                            <button @onclick='() => HandleHeaderSortClick("folder")' style='@GetHeaderSortButtonStyle("folder", true)'>
+                                            <button @ref="_folderHeaderButton" @onclick='() => HandleHeaderSortClick("folder")' style='@GetHeaderSortButtonStyle("folder", true)'>
                                                 <span>Folder</span>
                                                 <MudIcon Icon='@GetSortIcon("folder")' Style='@GetSortIconStyle("folder")' />
                                             </button>
@@ -170,7 +170,7 @@
                                         </th>
                                     }
                                     <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                        <button @onclick='() => HandleHeaderSortClick("subject")' style='@GetHeaderSortButtonStyle("subject")'>
+                                        <button @ref="_subjectHeaderButton" @onclick='() => HandleHeaderSortClick("subject")' style='@GetHeaderSortButtonStyle("subject")'>
                                             <span>Subject Code</span>
                                             <MudIcon Icon='@GetSortIcon("subject")' Style='@GetSortIconStyle("subject")' />
                                         </button>
@@ -205,7 +205,7 @@
                                         }
                                     </th>
                                     <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                        <button @onclick='() => HandleHeaderSortClick("semester")' style='@GetHeaderSortButtonStyle("semester")'>
+                                        <button @ref="_semesterHeaderButton" @onclick='() => HandleHeaderSortClick("semester")' style='@GetHeaderSortButtonStyle("semester")'>
                                             <span>Semester</span>
                                             <MudIcon Icon='@GetSortIcon("semester")' Style='@GetSortIconStyle("semester")' />
                                         </button>
@@ -240,7 +240,7 @@
                                         }
                                     </th>
                                     <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                        <button @onclick='() => HandleHeaderSortClick("status")' style='@GetHeaderSortButtonStyle("status")'>
+                                        <button @ref="_statusHeaderButton" @onclick='() => HandleHeaderSortClick("status")' style='@GetHeaderSortButtonStyle("status")'>
                                             <span>Status</span>
                                             <MudIcon Icon='@GetSortIcon("status")' Style='@GetSortIconStyle("status")' />
                                         </button>
@@ -275,7 +275,7 @@
                                         }
                                     </th>
                                     <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                        <button @onclick='() => HandleHeaderSortClick("date")' style='@GetHeaderSortButtonStyle("date")'>
+                                        <button @ref="_dateHeaderButton" @onclick='() => HandleHeaderSortClick("date")' style='@GetHeaderSortButtonStyle("date")'>
                                             <span>Upload Date</span>
                                             <MudIcon Icon='@GetSortIcon("date")' Style='@GetSortIconStyle("date")' />
                                         </button>
@@ -471,6 +471,15 @@
     private readonly Dictionary<Guid, string> _resolvedStatuses = new();
     private int CurrentPage = 1;
     private string? OpenSortMenuColumn;
+    private ElementReference _nameHeaderButton;
+    private ElementReference _folderHeaderButton;
+    private ElementReference _subjectHeaderButton;
+    private ElementReference _semesterHeaderButton;
+    private ElementReference _statusHeaderButton;
+    private ElementReference _dateHeaderButton;
+    private double _menuLeft = 16;
+    private double _menuTop = 112;
+    private double _menuWidth = 256;
     private string NameSearchTerm = string.Empty;
     private string FolderSearchTerm = string.Empty;
     private string SubjectSearchTerm = string.Empty;
@@ -926,7 +935,7 @@
         || !string.IsNullOrWhiteSpace(FilterDateFrom)
         || !string.IsNullOrWhiteSpace(FilterDateTo);
 
-    private void HandleHeaderSortClick(string columnKey)
+    private async Task HandleHeaderSortClick(string columnKey)
     {
         if (string.Equals(OpenSortMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
         {
@@ -936,6 +945,7 @@
 
         SyncSearchTermToFilter(columnKey);
         OpenSortMenuColumn = columnKey;
+        await PositionMenuAsync(columnKey);
     }
 
     private void ApplySortOption(string columnKey, string sortKey)
@@ -1035,11 +1045,53 @@
 
     private string GetHeaderMenuStyle(string minWidth, bool alignLeft = false)
     {
-        var horizontalPosition = alignLeft
-            ? "left: 0.9rem; transform: none;"
-            : "left: 50%; transform: translateX(-50%);";
+        return $"position: fixed; top: {FormatMenuValue(_menuTop)}px; left: {FormatMenuValue(_menuLeft)}px; z-index: 5; width: {FormatMenuValue(_menuWidth)}px; max-width: calc(100vw - 2rem); max-height: calc(100vh - {FormatMenuValue(_menuTop + 24)}px); overflow-y: auto; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 18px 42px rgba(26,27,31,0.16); padding: 0.45rem;";
+    }
 
-        return $"position: absolute; top: calc(100% - 0.15rem); {horizontalPosition} z-index: 5; min-width: {minWidth}; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.45); background: #fff; box-shadow: 0 10px 30px rgba(26,27,31,0.12); padding: 0.45rem;";
+    private async Task PositionMenuAsync(string columnKey)
+    {
+        var anchor = columnKey switch
+        {
+            "name" => _nameHeaderButton,
+            "folder" => _folderHeaderButton,
+            "subject" => _subjectHeaderButton,
+            "semester" => _semesterHeaderButton,
+            "status" => _statusHeaderButton,
+            "date" => _dateHeaderButton,
+            _ => default
+        };
+
+        var rect = await JS.InvokeAsync<MenuAnchorRect?>("codexTableFilter.getAnchorRect", anchor, GetMenuWidthPx(columnKey));
+        if (rect is null)
+        {
+            return;
+        }
+
+        _menuLeft = rect.Left;
+        _menuTop = rect.Top;
+        _menuWidth = rect.Width;
+    }
+
+    private static double GetMenuWidthPx(string columnKey) =>
+        columnKey switch
+        {
+            "name" => 256,
+            "folder" => 240,
+            "subject" => 224,
+            "semester" => 208,
+            "status" => 224,
+            "date" => 288,
+            _ => 240
+        };
+
+    private static string FormatMenuValue(double value) =>
+        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+
+    private sealed class MenuAnchorRect
+    {
+        public double Left { get; set; }
+        public double Top { get; set; }
+        public double Width { get; set; }
     }
 
     private string GetFilterInputStyle() =>

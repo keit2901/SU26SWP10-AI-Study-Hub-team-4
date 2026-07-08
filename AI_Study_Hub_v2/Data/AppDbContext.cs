@@ -33,9 +33,17 @@ public class AppDbContext : DbContext
 
     public DbSet<CommunityReport> CommunityReports => Set<CommunityReport>();
 
+    public DbSet<Plan> Plans => Set<Plan>();
+
+    public DbSet<UserPlan> UserPlans => Set<UserPlan>();
+
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     public DbSet<BenchmarkRunRecord> BenchmarkRuns => Set<BenchmarkRunRecord>();
+
+    public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -105,6 +113,14 @@ public class AppDbContext : DbContext
         }
 
         foreach (var entry in ChangeTracker.Entries<Quiz>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAt = now;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<SystemConfig>())
         {
             if (entry.State == EntityState.Modified)
             {

@@ -18,6 +18,8 @@ public sealed class User
 
     public long TotalTokensUsed { get; set; }
 
+    public long StorageUsedBytes { get; set; }
+
     public long DailyTokenQuota { get; set; } = 25_000;
 
     public long TokensUsedToday { get; set; }
