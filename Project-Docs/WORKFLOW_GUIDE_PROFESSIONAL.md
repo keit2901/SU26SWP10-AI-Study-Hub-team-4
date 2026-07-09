@@ -4,29 +4,30 @@
 
 ## SWP391 — Quy trình làm việc Admin Backend
 
-> **Branch:** Tạo từ `main`, tên: `fix/<tên-tab>`  
-> **PR:** Push + tự mở link, title + description tiếng Việt có dấu  
+> **Branch:** 1 branch duy nhất: `feature/admin-upgrade` từ `main`  
+> **Nguyên tắc:** Các phần chạy đồng bộ, không tách lẻ. Code phần sau kế thừa phần trước.  
+> **PR:** Xong phần nào PR phần đó (mỗi tab 1 PR riêng)  
 > **Todo:** File `previous_session/_CURRENT_TODO.md` — cập nhật real-time  
-> **List làm việc:** Chỉ tick ✅ khi PR merged
+> **List làm việc:** Chỉ tick ✅ khi tab đó hoàn thành
 
 | # | Bước | Mô tả |
 |---|------|-------|
-| 0 | **Todo** | Tạo list Todo real-time trong `_CURRENT_TODO.md`, cập nhật liên tục |
+| 0 | **Todo** | Tạo list Todo real-time, cập nhật liên tục khi làm |
 | 1 | **Pull** | `git checkout main && git pull origin main` |
-| 2 | **Branch** | `git checkout -b fix/<tên>` từ main |
-| 3 | **Code** | Backend + UI, mỗi phần commit nhỏ riêng |
+| 2 | **Branch** | `git checkout -b feature/admin-upgrade` từ main (dùng chung 1 branch) |
+| 3 | **Code** | Backend + UI từng tab, mỗi tab commit nhỏ riêng, các tab chạy đồng bộ với nhau |
 | 4 | **Build** | `dotnet build` — 0 errors |
 | 5 | **Unit test** | NUnit test + bảng kết quả |
-| 6 | **API test** | PowerShell từng bước + bảng evidence (ID, test, expected, actual, status) |
-| 7 | **UI test flow** | Bảng test flow cho user (| # | Bước | Thao tác | Expected |), xong mới bật app cho user test |
-| 8 | **Push + PR** | `git push --force`, tự mở link PR, title + description tiếng Việt có dấu |
-| 9 | **Update** | Cập nhật List làm việc khi PR merged |
+| 6 | **API test** | PowerShell từng bước + bảng evidence |
+| 7 | **UI test flow** | Bảng test flow cho user test trên browser |
+| 8 | **Push + PR** | Xong tab nào PR tab đó, 1 branch nhiều PR, title + description tiếng Việt có dấu |
+| 9 | **Update** | Cập nhật List làm việc khi tab done |
 
 ### Quy tắc
 - Chỉ làm khi có lệnh, không tự ý
-- Mọi mô tả (PR, code, test) đều tiếng Việt có dấu
+- 1 branch duy nhất cho tất cả admin tabs
+- Các tab code sau kế thừa code tab trước, chạy đồng bộ
 - Icon Todo: ✅ done, 🔄 in progress, ⏳ pending
-- Mỗi PR là 1 tab admin riêng biệt
 
 ---
 
