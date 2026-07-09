@@ -212,7 +212,7 @@
                                 @(_metrics.TokenUsagePercent >= 85 ? "High daily token usage detected." : "Monitor daily token usage across users.")
                             </span>
                         </div>
-                        <MudButton Variant="Variant.Outlined" Color="@(_metrics.TokenUsagePercent >= 85 ? Color.Error : Color.Primary)" Size="Size.Small" OnClick="@(() => Navigation.NavigateTo("/admin/users"))" Style="text-transform:none;font-size:12px;white-space:nowrap;">
+                        <MudButton Variant="Variant.Outlined" Color="@(_metrics.TokenUsagePercent >= 85 ? Color.Error : Color.Primary)" Size="Size.Small" OnClick="@(() => Navigation.NavigateTo("/admin/users?quota=warning"))" Style="text-transform:none;font-size:12px;white-space:nowrap;">
                             View usage details
                         </MudButton>
                     </div>
