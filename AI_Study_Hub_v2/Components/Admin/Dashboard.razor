@@ -323,8 +323,8 @@
             foreach (var doc in queue.Take(5))
             {
                 _attentionDocuments.Add(new AttentionDocument(
-                    doc.FileName, doc.SubjectCode, doc.OwnerName, doc.OwnerEmail,
-                    doc.ProcessingStatus, doc.Severity, doc.CreatedAt.ToString("d")));
+                    doc.Title, doc.SubjectCode, doc.OwnerName, doc.OwnerEmail,
+                    doc.ProcessingStatus, doc.Severity, doc.UploadedAt.ToString("d")));
             }
 
             _documentStatuses.Clear();
