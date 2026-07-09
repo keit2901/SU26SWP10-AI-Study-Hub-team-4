@@ -8,10 +8,9 @@
            Variant="DrawerVariant.Temporary"
            Elevation="8"
            Width="@Width"
-           Height="100%"
            Class="entity-sheet-drawer">
-    <MudStack Class="entity-sheet" Spacing="0">
-        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="entity-sheet-header">
+    <div class="entity-sheet">
+        <div class="entity-sheet-header">
             <div>
                 <MudText Typo="Typo.h5">@Title</MudText>
                 @if (!string.IsNullOrWhiteSpace(Subtitle))
@@ -20,7 +19,7 @@
                 }
             </div>
             <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="Close" />
-        </MudStack>
+        </div>
 
         <MudDivider />
 
@@ -31,11 +30,11 @@
         @if (FooterContent is not null)
         {
             <MudDivider />
-            <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.FlexEnd" Spacing="2" Class="entity-sheet-footer">
+            <div class="entity-sheet-footer">
                 @FooterContent
-            </MudStack>
+            </div>
         }
-    </MudStack>
+    </div>
 </MudDrawer>
 
 @code {
@@ -51,30 +50,33 @@
 }
 
 <style>
-    .entity-sheet-drawer .mud-drawer {
-        max-width: 100vw;
-        height: 100vh;
-    }
-
     .entity-sheet-drawer .mud-drawer-content {
-        height: 100%;
+        max-height: 100vh;
+        overflow-y: auto;
     }
 
     .entity-sheet {
+        background: #fafafb;
         min-height: 100%;
-        background:
-            radial-gradient(circle at top right, rgba(20, 184, 166, .16), transparent 18rem),
-            #fffcf6;
     }
 
-    .entity-sheet-header,
+    .entity-sheet-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 1.25rem;
+    }
+
     .entity-sheet-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 0.5rem;
         padding: 1.25rem;
     }
 
     .entity-sheet-body {
         flex: 1;
-        overflow-y: auto;
         padding: 1.25rem;
     }
 </style>
