@@ -391,81 +391,49 @@
     {
         _isLoading = true;
         _errorMessage = null;
+        var partialErrors = false;
+
         try
         {
-            AdminDashboardStatsDto? stats = null;
             if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
-                stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
-
-            var queue = await ModerationService.GetQueueAsync();
-
-            IReadOnlyList<AuditLogDto> auditLogs = new List<AuditLogDto>();
-            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
-                auditLogs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 5);
-
-            ActivityTrendsDto? trends = null;
-            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
-                trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken);
-
-            if (trends is not null && trends.Points.Any())
             {
-                _activitySeries.Clear();
-                _activitySeries.Add(new ChartSeries<double> { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToArray() });
-                _activitySeries.Add(new ChartSeries<double> { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToArray() });
-                _activitySeries.Add(new ChartSeries<double> { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToArray() });
+                try { var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken); ApplyStats(stats); }
+                catch { partialErrors = true; }
+            }
 
-                var labels = trends.Points.Select(p => p.Label).ToArray();
-                if (labels.Length > 0)
+            try { var queue = await ModerationService.GetQueueAsync(); ApplyModerationQueue(queue); }
+            catch { partialErrors = true; }
+
+            try
+            {
+                if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
                 {
-                    _activityLabels = labels;
+                    var auditLogs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 5);
+                    ApplyAuditLogs(auditLogs);
                 }
             }
+            catch { partialErrors = true; }
 
-            if (stats is not null)
+            try
             {
-                _metrics = new DashboardMetrics
+                if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
                 {
-                    TotalUsers = stats.TotalUsers,
-                    TotalDocuments = stats.TotalDocuments,
-                    ActiveSessions = stats.TotalActiveSessions,
-                    FailedJobs = stats.TotalFailedJobs,
-                    DailyTokensUsed = stats.DailyTokensUsed,
-                    DailyTokenQuota = stats.DailyTokenQuota > 0 ? stats.DailyTokenQuota : 500_000,
-                    NewUsersThisWeek = 0,
-                    ProcessingDocuments = 0
-                };
+                    var trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken);
+                    if (trends is not null && trends.Points.Any())
+                    {
+                        _activitySeries.Clear();
+                        _activitySeries.Add(new ChartSeries<double> { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToArray() });
+                        _activitySeries.Add(new ChartSeries<double> { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToArray() });
+                        _activitySeries.Add(new ChartSeries<double> { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToArray() });
+                        var labels = trends.Points.Select(p => p.Label).ToArray();
+                        if (labels.Length > 0) _activityLabels = labels;
+                    }
+                }
             }
+            catch { partialErrors = true; }
 
-            _attentionDocuments.Clear();
-            foreach (var doc in queue.Take(5))
-            {
-                _attentionDocuments.Add(new AttentionDocument(
-                    doc.Title, doc.SubjectCode, doc.OwnerName, doc.OwnerEmail,
-                    doc.ProcessingStatus, doc.Severity, doc.UploadedAt.ToString("d")));
-            }
-
-            _recentActivities.Clear();
-            foreach (var log in auditLogs.Take(5))
-            {
-                _recentActivities.Add(new ActivityFeedItem(
-                    log.Action, log.EntityType + (log.EntityId is not null ? " " + log.EntityId : ""),
-                    log.CreatedAt.LocalDateTime, Icons.Material.Filled.History,
-                    log.Severity == "High" ? Color.Error : log.Severity == "Medium" ? Color.Warning : Color.Info));
-            }
-
-            _documentStatuses.Clear();
-            var indexed = stats?.IndexedCount ?? queue.Count(d => d.ProcessingStatus == "Ready" || d.ProcessingStatus == "Indexed");
-            var processing = stats?.ProcessingCount ?? queue.Count(d => d.ProcessingStatus == "Processing");
-            var pending = stats?.PendingCount ?? queue.Count(d => d.ProcessingStatus == "Pending");
-            var failed = stats?.TotalFailedJobs ?? queue.Count(d => d.ProcessingStatus == "Failed");
-            _documentStatuses.Add(new DocumentStatusMetric("Indexed", indexed, "indexed"));
-            _documentStatuses.Add(new DocumentStatusMetric("Processing", processing, "processing"));
-            _documentStatuses.Add(new DocumentStatusMetric("Pending", pending, "pending"));
-            _documentStatuses.Add(new DocumentStatusMetric("Failed", failed, "failed"));
-
-            _statusSeries.Clear();
-            _statusSeries.Add(new ChartSeries<double> { Name = "Documents", Data = _documentStatuses.Select(s => (double)s.Count).ToArray() });
-            await InvokeAsync(StateHasChanged);
+            if (partialErrors)
+                _errorMessage = "Một số dữ liệu không tải được. Hiển thị kết quả một phần.";
         }
         catch (Exception ex)
         {
@@ -474,6 +442,52 @@
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private void ApplyStats(AdminDashboardStatsDto? stats)
+    {
+        if (stats is null) return;
+        _metrics = new DashboardMetrics
+        {
+            TotalUsers = stats.TotalUsers,
+            TotalDocuments = stats.TotalDocuments,
+            ActiveSessions = stats.TotalActiveSessions,
+            FailedJobs = stats.TotalFailedJobs,
+            DailyTokensUsed = stats.DailyTokensUsed,
+            DailyTokenQuota = stats.DailyTokenQuota > 0 ? stats.DailyTokenQuota : 500_000,
+            NewUsersThisWeek = 0,
+            ProcessingDocuments = 0
+        };
+        _documentStatuses.Clear();
+        _documentStatuses.Add(new DocumentStatusMetric("Indexed", stats.IndexedCount, "indexed"));
+        _documentStatuses.Add(new DocumentStatusMetric("Processing", stats.ProcessingCount, "processing"));
+        _documentStatuses.Add(new DocumentStatusMetric("Pending", stats.PendingCount, "pending"));
+        _documentStatuses.Add(new DocumentStatusMetric("Failed", stats.TotalFailedJobs, "failed"));
+        _statusSeries.Clear();
+        _statusSeries.Add(new ChartSeries<double> { Name = "Documents", Data = _documentStatuses.Select(s => (double)s.Count).ToArray() });
+    }
+
+    private void ApplyModerationQueue(IReadOnlyList<ModerationQueueDocumentDto> queue)
+    {
+        _attentionDocuments.Clear();
+        foreach (var doc in queue.Take(5))
+        {
+            _attentionDocuments.Add(new AttentionDocument(
+                doc.Title, doc.SubjectCode, doc.OwnerName, doc.OwnerEmail,
+                doc.ProcessingStatus, doc.Severity, doc.UploadedAt.ToString("d")));
+        }
+    }
+
+    private void ApplyAuditLogs(IReadOnlyList<AuditLogDto> logs)
+    {
+        _recentActivities.Clear();
+        foreach (var log in logs.Take(5))
+        {
+            _recentActivities.Add(new ActivityFeedItem(
+                log.Action, log.EntityType + (log.EntityId is not null ? " " + log.EntityId : ""),
+                log.CreatedAt.LocalDateTime, Icons.Material.Filled.History,
+                log.Severity == "High" ? Color.Error : log.Severity == "Medium" ? Color.Warning : Color.Info));
         }
     }
 
