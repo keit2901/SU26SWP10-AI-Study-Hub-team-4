@@ -393,23 +393,19 @@
         _errorMessage = null;
         try
         {
-            var statsTask = Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken)
-                ? DashboardApi.GetAdminStatsAsync(Session.AccessToken)
-                : Task.FromResult<AdminDashboardStatsDto?>(null);
-            var queueTask = ModerationService.GetQueueAsync();
-            var auditTask = Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken)
-                ? AdminApi.ListAuditLogsAsync(Session.AccessToken, 5)
-                : Task.FromResult<IReadOnlyList<AuditLogDto>>(new List<AuditLogDto>());
-            var trendsTask = Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken)
-                ? DashboardApi.GetActivityTrendsAsync(Session.AccessToken)
-                : Task.FromResult<ActivityTrendsDto?>(null);
+            AdminDashboardStatsDto? stats = null;
+            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+                stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
 
-            await Task.WhenAll(statsTask, queueTask, auditTask, trendsTask);
+            var queue = await ModerationService.GetQueueAsync();
 
-            var stats = statsTask.Result;
-            var queue = queueTask.Result;
-            var auditLogs = auditTask.Result;
-            var trends = trendsTask.Result;
+            IReadOnlyList<AuditLogDto> auditLogs = new List<AuditLogDto>();
+            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+                auditLogs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 5);
+
+            ActivityTrendsDto? trends = null;
+            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+                trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken);
 
             if (trends is not null && trends.Points.Any())
             {
@@ -433,8 +429,8 @@
                     TotalDocuments = stats.TotalDocuments,
                     ActiveSessions = stats.TotalActiveSessions,
                     FailedJobs = stats.TotalFailedJobs,
-                    DailyTokensUsed = (int)stats.DailyTokensUsed,
-                    DailyTokenQuota = (int)(stats.DailyTokenQuota > 0 ? stats.DailyTokenQuota : 500_000),
+                    DailyTokensUsed = stats.DailyTokensUsed,
+                    DailyTokenQuota = stats.DailyTokenQuota > 0 ? stats.DailyTokenQuota : 500_000,
                     NewUsersThisWeek = 0,
                     ProcessingDocuments = 0
                 };
@@ -570,8 +566,8 @@
         public int ProcessingDocuments { get; set; }
         public int ActiveSessions { get; set; }
         public int FailedJobs { get; set; }
-        public int DailyTokensUsed { get; set; }
-        public int DailyTokenQuota { get; set; } = 1;
+        public long DailyTokensUsed { get; set; }
+        public long DailyTokenQuota { get; set; } = 1;
         public double TokenUsagePercent => DailyTokenQuota == 0 ? 0 : DailyTokensUsed * 100d / DailyTokenQuota;
     }
 
