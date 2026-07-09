@@ -10,6 +10,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IDocumentModerationService ModerationService
+@inject AuthSessionState Session
+@inject EscalationApiClient EscalationClient
 
 <div class="admin-moderation-page page-enter">
     <!-- Breadcrumbs & Header -->
@@ -196,6 +198,7 @@
                                                 <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" Disabled="@(!CanApprove(doc))" OnClick="@(() => ModerateAsync(doc, ApprovedStatus))">Approve</MudMenuItem>
                                                 <MudMenuItem Icon="@Icons.Material.Filled.Cancel" Disabled="@(doc.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(doc, RejectedStatus))">Reject with reason</MudMenuItem>
                                                 <MudMenuItem Icon="@Icons.Material.Filled.DeleteForever" Disabled="@(doc.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(doc, RemovedStatus))">Remove with reason</MudMenuItem>
+                                                <MudMenuItem Icon="@Icons.Material.Filled.Flag" Disabled="@(doc.ModerationStatus != RejectedStatus)" OnClick="@(() => { _selectedDocument = doc; OpenEscalationDialog(); })">Escalate to Admin</MudMenuItem>
                                             </ChildContent>
                                         </MudMenu>
                                     </td>
@@ -279,6 +282,10 @@
                                     Remove
                                 </button>
                             </div>
+                            <button class="escalate-btn" @onclick="OpenEscalationDialog">
+                                <MudIcon Icon="@Icons.Material.Filled.Flag" Class="me-1" Style="font-size: 16px;" />
+                                Escalate to Admin
+                            </button>
                         </div>
                     </div>
                 }
@@ -582,6 +589,69 @@
 
         _selectedDocument = document;
         Snackbar.Add($"{document.Title} rejected and kept in the queue for follow-up.", Severity.Warning);
+    }
+
+    private async Task OpenEscalationDialog()
+    {
+        if (_selectedDocument is null) return;
+
+        // Collect all rejected documents in the same folder
+        var folderRejectedDocs = _documents
+            .Where(d => d.ModerationStatus == RejectedStatus)
+            .Select(d => new EscalationDialog.RejectedDocItem
+            {
+                DocumentId = d.Id,
+                FileName = d.Title,
+                RejectReason = string.IsNullOrWhiteSpace(d.ModerationReason)
+                    ? "Rejected by moderator."
+                    : d.ModerationReason
+            })
+            .ToList();
+
+        if (folderRejectedDocs.Count == 0)
+        {
+            Snackbar.Add("No rejected documents to escalate.", Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["FolderName"] = "Current Moderation Queue",
+            ["FolderId"] = Guid.Empty,
+            ["RejectedDocuments"] = folderRejectedDocs
+        };
+
+        var dialog = await DialogService.ShowAsync<EscalationDialog>("Escalate to Admin", parameters);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false })
+            return;
+
+        var data = result.Data as EscalationDialog.EscalationDialogResult;
+        if (data is null) return;
+
+        try
+        {
+            var token = Session.AccessToken;
+            if (string.IsNullOrEmpty(token))
+            {
+                Snackbar.Add("Authentication required.", Severity.Error);
+                return;
+            }
+
+            var request = new CreateEscalationRequest
+            {
+                FolderId = Guid.Empty,
+                Reason = data.Reason,
+                Items = data.Items
+            };
+
+            await EscalationClient.CreateAsync(token, request);
+            Snackbar.Add($"Escalation created with {data.Items.Count} document(s).", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to create escalation: {ex.Message}", Severity.Error);
+        }
     }
 
     private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
@@ -1217,6 +1287,28 @@
         color: #ba1a1a;
         border-color: #feb2b2;
         background-color: #fff5f5;
+    }
+
+    .escalate-btn {
+        background-color: transparent;
+        border: 1px solid #d97706;
+        border-radius: 8px;
+        height: 38px;
+        font-weight: 700;
+        font-size: 13px;
+        color: #d97706;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        cursor: pointer;
+        transition: background-color 0.2s, border-color 0.2s;
+    }
+
+    .escalate-btn:hover {
+        background-color: #fffbeb;
+        border-color: #b45309;
+        color: #b45309;
     }
 
     /* Dark Mode Overrides */

@@ -1,0 +1,335 @@
+@namespace AI_Study_Hub_v2.Components.Admin.Documents
+@page "/admin/escalations"
+@layout AdminLayout
+@using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Services
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject AuthSessionState Session
+@inject EscalationApiClient EscalationClient
+
+<div class="admin-escalations-page page-enter">
+    <!-- Header -->
+    <div class="d-flex justify-space-between align-center mb-6 flex-wrap" style="gap: 1rem;">
+        <div>
+            <h2 class="text-[32px] font-extrabold text-on-background" style="font-size: 28px; font-weight: 800; color: #191c1e; font-family: 'Hanken Grotesk', sans-serif; line-height: 1.2;">Escalations</h2>
+            <p class="text-body-md text-on-surface-variant mt-1" style="font-size: 14px; color: #575e72; font-family: 'Hanken Grotesk', sans-serif;">Review and resolve moderator escalations for folders with rejected documents.</p>
+        </div>
+        <div class="d-flex align-center" style="gap: 0.75rem;">
+            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Class="refresh-btn" Style="background-color: #4648d4; color: #ffffff; border-radius: 8px; font-weight: 700; text-transform: none; font-size: 13px;">
+                Refresh
+            </MudButton>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="kpi-grid-container mb-6">
+        <div class="kpi-card-custom">
+            <div class="d-flex justify-space-between align-start" style="width: 100%;">
+                <div>
+                    <span class="kpi-label">Pending</span>
+                    <div class="kpi-value">@_pendingCount</div>
+                    <span class="kpi-subtext mt-2">Awaiting admin review</span>
+                </div>
+                <div class="kpi-icon-circle orange">
+                    <MudIcon Icon="@Icons.Material.Outlined.Flag" />
+                </div>
+            </div>
+        </div>
+        <div class="kpi-card-custom">
+            <div class="d-flex justify-space-between align-start" style="width: 100%;">
+                <div>
+                    <span class="kpi-label">Resolved</span>
+                    <div class="kpi-value">@_resolvedCount</div>
+                    <span class="kpi-subtext mt-2">Total resolved</span>
+                </div>
+                <div class="kpi-icon-circle green">
+                    <MudIcon Icon="@Icons.Material.Outlined.CheckCircle" />
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading / Error / Empty -->
+    @if (_isLoading)
+    {
+        <div class="pa-6">
+            <MudSkeleton Height="44px" Animation="Animation.Wave" />
+            <MudSkeleton Height="44px" Animation="Animation.Wave" />
+            <MudSkeleton Height="44px" Animation="Animation.Wave" />
+        </div>
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="ma-4">
+            @_errorMessage
+        </MudAlert>
+    }
+    else if (_escalations.Count == 0)
+    {
+        <div class="d-flex flex-column align-center justify-center py-10" style="text-align: center; gap: 0.5rem;">
+            <MudIcon Icon="@Icons.Material.Filled.Flag" Size="Size.Large" Color="Color.Secondary" />
+            <div class="font-bold text-lg" style="color: #191c1e;">No pending escalations</div>
+            <div class="text-sm" style="color: #767586;">All escalations have been resolved.</div>
+        </div>
+    }
+    else
+    {
+        <!-- Escalation Cards -->
+        <div class="d-flex flex-column" style="gap: 1rem;">
+            @foreach (var escalation in _escalations)
+            {
+                <MudPaper Class="pa-4 escalation-card" Style="border-radius: 12px; border: 1px solid rgba(199, 196, 215, 0.3);">
+                    <div class="d-flex justify-space-between align-start mb-3">
+                        <div>
+                            <div class="d-flex align-center" style="gap: 0.5rem;">
+                                <span class="status-badge @(escalation.EscalationStatus == "Pending" ? "pending" : "resolved")">
+                                    @escalation.EscalationStatus.ToUpper()
+                                </span>
+                                <span class="font-bold" style="font-size: 16px; color: #191c1e;">@escalation.EscalatedByName</span>
+                            </div>
+                            <div style="font-size: 12px; color: #767586; margin-top: 4px;">
+                                @escalation.CreatedAt.LocalDateTime.ToString("MMM dd, yyyy HH:mm")
+                            </div>
+                        </div>
+                        @if (escalation.EscalationStatus == "Pending")
+                        {
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                       OnClick="@(() => ResolveAsync(escalation))"
+                                       Style="background-color: #4648d4; border-radius: 8px; font-weight: 700; text-transform: none; font-size: 12px;">
+                                Resolve
+                            </MudButton>
+                        }
+                    </div>
+
+                    <!-- Reason -->
+                    <div class="mb-3" style="background: #f8fafc; border-radius: 8px; padding: 12px;">
+                        <div class="font-bold mb-1" style="font-size: 11px; color: #767586; letter-spacing: 0.05em;">ESCALATION REASON</div>
+                        <div style="font-size: 13px; color: #191c1e;">@escalation.Reason</div>
+                    </div>
+
+                    <!-- Admin Response (if resolved) -->
+                    @if (!string.IsNullOrEmpty(escalation.AdminResponse))
+                    {
+                        <div class="mb-3" style="background: rgba(70, 72, 212, 0.04); border-radius: 8px; padding: 12px; border-left: 3px solid #4648d4;">
+                            <div class="font-bold mb-1" style="font-size: 11px; color: #4648d4; letter-spacing: 0.05em;">ADMIN RESPONSE</div>
+                            <div style="font-size: 13px; color: #191c1e;">@escalation.AdminResponse</div>
+                        </div>
+                    }
+
+                    <!-- Documents -->
+                    <div>
+                        <div class="font-bold mb-2" style="font-size: 12px; color: #767586;">
+                            Documents (@escalation.Items.Count)
+                        </div>
+                        <div class="d-flex flex-column" style="gap: 4px;">
+                            @foreach (var item in escalation.Items)
+                            {
+                                <div class="d-flex align-center pa-2" style="background: #f8fafc; border-radius: 6px; gap: 0.5rem;">
+                                    <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 16px; color: #767586;" />
+                                    <div style="flex: 1; overflow: hidden;">
+                                        <div class="font-bold" style="font-size: 12px; color: #191c1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@item.FileName</div>
+                                        <div style="font-size: 11px; color: #767586;">@item.RejectReason</div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    </div>
+                </MudPaper>
+            }
+        </div>
+    }
+</div>
+
+<style>
+    .admin-escalations-page {
+        font-family: 'Hanken Grotesk', sans-serif;
+        animation: pageRise 0.4s ease-out;
+        color: #191c1e;
+    }
+
+    .kpi-grid-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        gap: 1.25rem;
+    }
+
+    .kpi-card-custom {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        padding: 1.25rem;
+        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
+        display: flex;
+        align-items: center;
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .kpi-card-custom:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    }
+
+    .kpi-label {
+        font-size: 11px;
+        font-weight: 700;
+        color: #767586;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+    }
+
+    .kpi-value {
+        font-size: 28px;
+        font-weight: 800;
+        color: #191c1e;
+        margin-top: 4px;
+        line-height: 1;
+    }
+
+    .kpi-subtext {
+        font-size: 12px;
+        color: #767586;
+        font-weight: 500;
+        display: block;
+    }
+
+    .kpi-icon-circle {
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .kpi-icon-circle.orange {
+        background-color: rgba(245, 158, 11, 0.1);
+        color: #d97706;
+    }
+
+    .kpi-icon-circle.green {
+        background-color: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+    }
+
+    .status-badge {
+        font-size: 10px;
+        font-weight: 700;
+        padding: 3px 8px;
+        border-radius: 4px;
+        display: inline-block;
+        letter-spacing: 0.02em;
+    }
+
+    .status-badge.pending {
+        background: #fffdf5;
+        border: 1px solid #fef3c7;
+        color: #d97706;
+    }
+
+    .status-badge.resolved {
+        background: rgba(16, 185, 129, 0.05);
+        border: 1px solid rgba(16, 185, 129, 0.2);
+        color: #10b981;
+    }
+
+    .escalation-card {
+        transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .escalation-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+    }
+
+    @@keyframes pageRise {
+        from {
+            opacity: 0;
+            transform: translateY(14px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
+@code {
+    private List<DocumentEscalationDto> _escalations = new();
+    private bool _isLoading = true;
+    private string? _errorMessage;
+
+    private int _pendingCount;
+    private int _resolvedCount;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
+        try
+        {
+            var token = Session.AccessToken;
+            if (string.IsNullOrEmpty(token))
+            {
+                _errorMessage = "Authentication required. Please log in.";
+                return;
+            }
+
+            var all = await EscalationClient.GetPendingAsync(token);
+            _escalations = all.ToList();
+            _pendingCount = _escalations.Count(e => e.EscalationStatus == "Pending");
+            _resolvedCount = _escalations.Count(e => e.EscalationStatus != "Pending");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Unable to load escalations: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task ResolveAsync(DocumentEscalationDto escalation)
+    {
+        var parameters = new DialogParameters
+        {
+            ["EscalationId"] = escalation.Id,
+            ["FolderName"] = $"Folder #{escalation.FolderId.ToString()[..8]}",
+            ["EscalatedByName"] = escalation.EscalatedByName,
+            ["Reason"] = escalation.Reason,
+            ["DocumentCount"] = escalation.Items.Count
+        };
+
+        var dialog = await DialogService.ShowAsync<ResolveEscalationDialog>("Resolve Escalation", parameters);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false })
+            return;
+
+        var request = result.Data as ResolveEscalationRequest;
+        if (request is null) return;
+
+        try
+        {
+            var token = Session.AccessToken;
+            if (string.IsNullOrEmpty(token)) return;
+
+            await EscalationClient.ResolveAsync(token, escalation.Id, request);
+            Snackbar.Add("Escalation resolved successfully.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to resolve escalation: {ex.Message}", Severity.Error);
+        }
+    }
+}

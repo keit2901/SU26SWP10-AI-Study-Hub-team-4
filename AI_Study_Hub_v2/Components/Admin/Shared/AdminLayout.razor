@@ -94,6 +94,7 @@ else if (_authorized)
                     <MudNavLink Href="/admin/documents/moderation" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Gavel">Document Moderation</MudNavLink>
                     <MudNavLink Href="/admin/community-reports" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Community Reports</MudNavLink>
                     <MudNavLink Href="/admin/documents" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Description">Document Library</MudNavLink>
+                    <MudNavLink Href="/admin/escalations" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Escalations</MudNavLink>
                 </MudNavGroup>
                 <MudNavGroup Title="Governance" Icon="@Icons.Material.Filled.Policy" Expanded="true">
                     <MudNavLink Href="/admin/settings" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Tune">AI System Settings</MudNavLink>
@@ -337,6 +338,11 @@ else if (_authorized)
         {
             _breadcrumbs.Add(new BreadcrumbItem("Governance", null, disabled: true));
             _breadcrumbs.Add(new BreadcrumbItem("Benchmark History", null, disabled: true));
+        }
+        else if (relative.Equals("admin/escalations", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Operations", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Escalations", null, disabled: true));
         }
         else if (relative.Equals("admin/audit-logs", StringComparison.OrdinalIgnoreCase))
         {
