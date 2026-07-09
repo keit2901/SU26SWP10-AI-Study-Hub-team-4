@@ -57,6 +57,29 @@ public sealed class PlanApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    /// <summary>Purchases (or upgrades to) a plan for the calling user.</summary>
+    public async Task<UserPlanDto> PurchasePlanAsync(
+        string accessToken,
+        string planKey,
+        string billingCycle = "monthly",
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "api/plans/purchase");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        req.Content = JsonContent.Create(new { planKey, billingCycle });
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            return await resp.Content.ReadFromJsonAsync<UserPlanDto>(cancellationToken: ct)
+                ?? throw new PlanApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     private static async Task ThrowFromResponseAsync(HttpResponseMessage resp, CancellationToken ct)
     {
         var status = (int)resp.StatusCode;

@@ -1,8 +1,10 @@
 using System.Security.Claims;
 using AI_Study_Hub_v2.Controllers;
+using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -16,12 +18,20 @@ public class PlansControllerTests
 {
     private Mock<IPlanService> _planServiceMock = null!;
     private Mock<IStorageQuotaService> _quotaServiceMock = null!;
+    private AppDbContext _db = null!;
 
     [SetUp]
     public void SetUp()
     {
         _planServiceMock = new Mock<IPlanService>();
         _quotaServiceMock = new Mock<IStorageQuotaService>();
+        _db = TestDb.CreateInMemory();
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _db.Dispose();
     }
 
     private PlansController BuildSut(ClaimsPrincipal? user = null)
@@ -29,6 +39,7 @@ public class PlansControllerTests
         var ctrl = new PlansController(
             _planServiceMock.Object,
             _quotaServiceMock.Object,
+            _db,
             NullLogger<PlansController>.Instance);
 
         var http = new DefaultHttpContext();

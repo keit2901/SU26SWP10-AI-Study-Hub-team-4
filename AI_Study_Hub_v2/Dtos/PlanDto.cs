@@ -25,6 +25,8 @@ public sealed class UpdatePlanRequest
 
 public sealed record AssignPlanRequest(string PlanKey);
 
+public sealed record PurchasePlanRequest(string PlanKey, string BillingCycle = "monthly");
+
 public sealed record UserPlanDto(
     Guid Id,
     Guid PlanId,

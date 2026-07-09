@@ -33,6 +33,31 @@ public sealed class AuthSessionState
         NotifyChanged();
     }
 
+    /// <summary>
+    /// Loads the user's current plan from the API and updates <see cref="CurrentPlan"/>.
+    /// No-op if the user is not authenticated.
+    /// </summary>
+    public async Task LoadCurrentPlanAsync(PlanApiClient planApiClient, CancellationToken ct = default)
+    {
+        if (!IsAuthenticated || string.IsNullOrWhiteSpace(AccessToken))
+        {
+            CurrentPlan = "Free";
+            return;
+        }
+
+        try
+        {
+            var snapshot = await planApiClient.GetCurrentPlanAsync(AccessToken, ct);
+            CurrentPlan = snapshot.PlanKey;
+        }
+        catch
+        {
+            // Keep whatever the current plan is if the API call fails
+        }
+
+        NotifyChanged();
+    }
+
     public void Set(AuthResponse session)
     {
         Session = session;
