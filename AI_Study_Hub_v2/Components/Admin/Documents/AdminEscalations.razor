@@ -284,7 +284,7 @@
                 return;
             }
 
-            var all = await EscalationClient.GetPendingAsync(token);
+            var all = await EscalationClient.GetAllAsync(token);
             _escalations = all.ToList();
             _pendingCount = _escalations.Count(e => e.EscalationStatus == "Pending");
             _resolvedCount = _escalations.Count(e => e.EscalationStatus != "Pending");
