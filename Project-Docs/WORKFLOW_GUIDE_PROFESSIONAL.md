@@ -29,7 +29,7 @@
 - 1 branch duy nhất cho tất cả admin tabs
 - Các tab code sau kế thừa code trước, chạy đồng bộ
 - Mọi mô tả (PR, commit, code, test) đều tiếng Việt có dấu (UTF-8)
-- Mỗi khi làm phần mới: cập nhật `_CURRENT_TODO.md` + file Project-Docs liên quan
+- Mỗi khi làm phần mới: cập nhật `_CURRENT_TODO.md` + tất cả file Project-Docs liên quan (ADMIN_BACKEND_ANALYSIS.md, ONBOARDING.md, BUSINESS_RULES.md, COMPREHENSIVE_TEST_GUIDE.md...)
 - Icon Todo: ✅ done, 🔄 in progress, ⏳ pending
 
 ---
