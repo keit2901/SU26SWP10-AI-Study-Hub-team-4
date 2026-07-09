@@ -196,15 +196,27 @@
                         <span class="text-headline-md font-headline-md">@_metrics.DailyTokensUsed.ToString("N0") <span class="text-label-md font-normal" style="font-size: 14px; font-weight: normal; color: #464554;">used</span></span>
                         <span class="text-label-md text-on-surface-variant" style="font-size: 12px; font-weight: 600;">@_metrics.DailyTokenQuota.ToString("N0") quota</span>
                     </div>
+                    <div class="text-label-sm text-on-surface-variant mb-2" style="font-size:12px;color:#767586;">
+                        @((_metrics.DailyTokenQuota - _metrics.DailyTokensUsed).ToString("N0")) remaining today
+                    </div>
                     
-                    <div class="w-full h-3 bg-surface-container rounded-full overflow-hidden mb-8" style="background-color: #eceef0; height: 12px; border-radius: 9999px;">
+                    <div class="w-full h-3 bg-surface-container rounded-full overflow-hidden mb-4 position-relative" style="background-color: #eceef0; height: 12px; border-radius: 9999px;">
                         <div class="h-full bg-gradient-to-r" style="height: 100%; border-radius: 9999px; background: linear-gradient(90deg, #4648d4, #6b38d4); width: @($"{_metrics.TokenUsagePercent:0}%");"></div>
                     </div>
+                    <div class="d-flex justify-end mb-4" style="font-size:13px;font-weight:700;color:#4648d4;">@($"{_metrics.TokenUsagePercent:0}%")</div>
                     
-                    <div class="p-sm bg-error-container/20 border border-error/10 rounded-lg d-flex gap-3 align-start" style="background-color: #ffdad6; border: 1px solid rgba(186, 26, 26, 0.1); border-radius: 0.5rem; padding: 12px;">
-                        <MudIcon Icon="@Icons.Material.Filled.Warning" Class="text-error mt-0.5" Style="color: #ba1a1a;" />
-                        <p class="text-body-md text-on-error-container mb-0" style="color: #93000a; font-size: 13px; line-height: 1.4;">12 users are above 85% of their assigned quotas. Review UC16 controls in Users &amp; Permissions.</p>
-                    </div>
+                    @if (_metrics.TokenUsagePercent >= 85)
+                    {
+                        <div class="p-sm bg-error-container/20 border border-error/10 rounded-lg d-flex gap-3 align-start flex-column" style="background-color: #ffdad6; border: 1px solid rgba(186, 26, 26, 0.1); border-radius: 0.5rem; padding: 12px;">
+                            <div class="d-flex align-center" style="gap:8px;">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Style="color: #ba1a1a;" />
+                                <span style="color: #93000a; font-size: 13px;">High daily token usage detected.</span>
+                            </div>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small" OnClick="@(() => Navigation.NavigateTo("/admin/users"))" Style="text-transform:none;font-size:12px;">
+                                View Users &amp; Permissions
+                            </MudButton>
+                        </div>
+                    }
                 </MudPaper>
             </MudItem>
 
@@ -236,20 +248,23 @@
                             </label>
                         </div>
                     </div>
-                    
-                    <div class="mt-8 pt-6 border-t d-flex align-center justify-space-between" style="border-top: 1px solid #e0e3e5;">
-                        <div class="d-flex flex-column">
-                            <span class="text-label-md text-on-surface-variant uppercase" style="font-size: 11px; font-weight: 700;">Retrieval readiness</span>
-                            <div class="d-flex align-center" style="gap: 0.5rem; margin-top: 2px;">
-                                <span class="text-headline-sm font-bold text-primary" style="font-size: 18px; font-weight: 700; color: #4648d4;">@GetReadinessPercent()%</span>
-                                <div class="w-16 h-1.5 bg-surface-container rounded-full overflow-hidden" style="width: 64px; height: 6px; background-color: #eceef0; border-radius: 9999px;">
-                                    <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: @(GetReadinessPercent())%;"></div>
-                                </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+        <MudGrid>
+            <MudItem xs="12" lg="4">
+                <MudPaper Elevation="0" Class="dashboard-card">
+                    <span class="text-label-md text-on-surface-variant uppercase d-block mb-3" style="font-size: 11px; font-weight: 700;">Retrieval readiness</span>
+                    <div class="d-flex align-center justify-space-between">
+                        <div class="d-flex align-center" style="gap: 0.75rem;">
+                            <span class="text-headline-sm font-bold text-primary" style="font-size: 22px; font-weight: 700; color: #4648d4;">@GetReadinessPercent()%</span>
+                            <div class="w-20 h-2 bg-surface-container rounded-full overflow-hidden" style="width: 120px; height: 8px; background-color: #eceef0; border-radius: 9999px;">
+                                <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: @(GetReadinessPercent())%;border-radius:9999px;"></div>
                             </div>
                         </div>
                         <div class="text-right">
-                            <div class="text-[10px] text-on-surface-variant uppercase leading-none font-bold" style="font-size: 10px; color: #464554;">Status summary</div>
-                            <div class="text-[10px] font-bold text-on-surface mt-1" style="font-size: 10px; font-weight: 700; color: #191c1e;">@(_metrics.TotalDocuments - _metrics.FailedJobs) INDEXED, @_metrics.FailedJobs FAILED</div>
+                            <div class="text-[10px] font-bold text-on-surface" style="font-size: 11px; font-weight: 700; color: #191c1e;">@(_metrics.TotalDocuments - _metrics.FailedJobs) INDEXED</div>
+                            <div class="text-[10px] text-on-surface-variant" style="font-size: 10px; color: #767586;">@_metrics.FailedJobs FAILED</div>
                         </div>
                     </div>
                 </MudPaper>
