@@ -335,13 +335,14 @@
             }
 
             _documentStatuses.Clear();
-            if (queue.Any())
-            {
-                _documentStatuses.Add(new DocumentStatusMetric("Indexed", queue.Count(d => d.ProcessingStatus == "Ready" || d.ProcessingStatus == "Indexed"), "indexed"));
-                _documentStatuses.Add(new DocumentStatusMetric("Processing", queue.Count(d => d.ProcessingStatus == "Processing"), "processing"));
-                _documentStatuses.Add(new DocumentStatusMetric("Pending", queue.Count(d => d.ProcessingStatus == "Pending"), "pending"));
-                _documentStatuses.Add(new DocumentStatusMetric("Failed", queue.Count(d => d.ProcessingStatus == "Failed"), "failed"));
-            }
+            var indexed = queue.Count(d => d.ProcessingStatus == "Ready" || d.ProcessingStatus == "Indexed");
+            var processing = queue.Count(d => d.ProcessingStatus == "Processing");
+            var pending = queue.Count(d => d.ProcessingStatus == "Pending");
+            var failed = queue.Count(d => d.ProcessingStatus == "Failed");
+            _documentStatuses.Add(new DocumentStatusMetric("Indexed", indexed, "indexed"));
+            _documentStatuses.Add(new DocumentStatusMetric("Processing", processing, "processing"));
+            _documentStatuses.Add(new DocumentStatusMetric("Pending", pending, "pending"));
+            _documentStatuses.Add(new DocumentStatusMetric("Failed", failed, "failed"));
         }
         catch (Exception ex)
         {
