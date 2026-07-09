@@ -16,7 +16,7 @@
 | 1 | **Pull** | `git checkout main && git pull origin main` |
 | 2 | **Branch** | `git checkout -b feature/admin-upgrade` từ main (dùng chung 1 branch) |
 | 3 | **Code** | Backend + UI từng tab, mỗi tab commit nhỏ riêng, các tab chạy đồng bộ với nhau |
-| 4 | **Build** | `dotnet build` — 0 errors |
+| 4 | **Build** | `dotnet build` — 0 errors. Build xong phải thông báo "Build OK" hoặc "App đã chạy", không được để output chết |
 | 5 | **Unit test** | NUnit test + bảng kết quả |
 | 6 | **API test** | PowerShell từng bước + bảng evidence |
 | 7 | **UI test flow** | Bảng test flow cho user test trên browser |
