@@ -55,6 +55,14 @@ public class DashboardService : IDashboardService
             .Where(d => d.Status == DocumentStatus.Uploading)
             .CountAsync(ct);
 
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var dailyTokensUsed = await _context.Users.AsNoTracking()
+            .Where(u => u.TokenUsageDate == today)
+            .SumAsync(u => (long)u.TokensUsedToday, ct);
+
+        var dailyTokenQuota = await _context.Users.AsNoTracking()
+            .SumAsync(u => (long)u.DailyTokenQuota, ct);
+
         return new AdminDashboardStatsDto(
             TotalUsers: totalUsers,
             TotalDocuments: totalDocs,
@@ -63,7 +71,9 @@ public class DashboardService : IDashboardService
             TotalFailedJobs: failedJobs,
             IndexedCount: indexedCount,
             ProcessingCount: processingCount,
-            PendingCount: pendingCount
+            PendingCount: pendingCount,
+            DailyTokensUsed: dailyTokensUsed,
+            DailyTokenQuota: dailyTokenQuota
         );
     }
 

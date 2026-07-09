@@ -11,7 +11,9 @@ public record AdminDashboardStatsDto(
     int TotalFailedJobs,
     int IndexedCount,
     int ProcessingCount,
-    int PendingCount
+    int PendingCount,
+    long DailyTokensUsed,
+    long DailyTokenQuota
 );
 
 public record UserDashboardStatsDto(
