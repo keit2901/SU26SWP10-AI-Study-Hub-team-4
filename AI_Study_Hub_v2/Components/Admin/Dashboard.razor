@@ -84,7 +84,7 @@
                     <span class="text-label-md font-label-md text-on-surface-variant uppercase mb-6 d-block">Pipeline state for indexed knowledge</span>
                     
                     <div style="position: relative; display: flex; align-items: center; justify-content: center; height: 200px;">
-                        <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@StatusSeries" ChartLabels="@_statusLabels" ChartOptions="@_statusChartOptions" Width="100%" Height="200px" />
+                        <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@_statusSeries" ChartLabels="@_statusLabels" ChartOptions="@_statusChartOptions" Width="100%" Height="200px" />
                         <div class="donut-center-overlay" style="position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center;">
                             <span class="donut-center-val" style="font-size: 26px; font-weight: 800; line-height: 1; font-family: 'Hanken Grotesk', sans-serif;">155</span>
                             <span class="donut-center-lbl" style="font-size: 10px; font-weight: 700; color: #767586; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">Total</span>
@@ -290,6 +290,8 @@
             ? new List<ChartSeries<double>> { new() { Name = "Documents", Data = _documentStatuses.Select(s => (double)s.Count).ToArray() } }
             : new List<ChartSeries<double>> { new() { Name = "Documents", Data = new double[] { 0, 0, 0, 0 } } };
 
+    private readonly List<ChartSeries<double>> _statusSeries = new();
+
     protected override async Task OnInitializedAsync()
     {
         await LoadDashboardAsync();
@@ -343,6 +345,9 @@
             _documentStatuses.Add(new DocumentStatusMetric("Processing", processing, "processing"));
             _documentStatuses.Add(new DocumentStatusMetric("Pending", pending, "pending"));
             _documentStatuses.Add(new DocumentStatusMetric("Failed", failed, "failed"));
+
+            _statusSeries.Clear();
+            _statusSeries.Add(new ChartSeries<double> { Name = "Documents", Data = _documentStatuses.Select(s => (double)s.Count).ToArray() });
         }
         catch (Exception ex)
         {
