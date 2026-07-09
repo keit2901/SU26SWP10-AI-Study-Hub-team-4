@@ -6,6 +6,9 @@
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @inject NavigationManager Navigation
+@inject IDocumentModerationService ModerationService
+@inject AuthSessionState Session
+@inject AdminDashboardApiClient DashboardApi
 
 <div class="dashboard-page page-enter">
     <!-- Page Header -->
@@ -287,32 +290,51 @@
         new ChartSeries<double> { Name = "Documents", Data = new double[] { 7, 18, 126, 4 } }
     };
 
-    protected override void OnInitialized()
+    protected override async void OnInitialized()
     {
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
         try
         {
-            _metrics = new DashboardMetrics
+            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
             {
-                TotalUsers = 1248,
-                NewUsersThisWeek = 27,
-                TotalDocuments = 155,
-                ProcessingDocuments = 18,
-                ActiveSessions = 86,
-                FailedJobs = 4,
-                DailyTokensUsed = 356_800,
-                DailyTokenQuota = 500_000
-            };
+                var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
+                _metrics = new DashboardMetrics
+                {
+                    TotalUsers = stats?.TotalUsers ?? 0,
+                    TotalDocuments = stats?.TotalDocuments ?? 0,
+                    ActiveSessions = stats?.TotalActiveSessions ?? 0,
+                    FailedJobs = stats?.TotalFailedJobs ?? 0,
+                    DailyTokensUsed = 0,
+                    DailyTokenQuota = 500_000,
+                    NewUsersThisWeek = 0,
+                    ProcessingDocuments = 0
+                };
+            }
 
-            _documentStatuses.AddRange(new[]
+            var queue = await ModerationService.GetQueueAsync();
+            _attentionDocuments.Clear();
+            foreach (var doc in queue.Take(5))
             {
-                new DocumentStatusMetric("Indexed", 126, "indexed"),
-                new DocumentStatusMetric("Processing", 18, "processing"),
-                new DocumentStatusMetric("Pending", 7, "pending"),
-                new DocumentStatusMetric("Failed", 4, "failed")
-            });
+                _attentionDocuments.Add(new AttentionDocument(
+                    doc.FileName, doc.SubjectCode, doc.OwnerName, doc.OwnerEmail,
+                    doc.ProcessingStatus, doc.Severity, doc.CreatedAt.ToString("d")));
+            }
 
-            _attentionDocuments.AddRange(BuildAttentionDocuments());
-            _recentActivities.AddRange(BuildRecentActivities());
+            _documentStatuses.Clear();
+            if (queue.Any())
+            {
+                _documentStatuses.Add(new DocumentStatusMetric("Indexed", queue.Count(d => d.ProcessingStatus == "Ready" || d.ProcessingStatus == "Indexed"), "indexed"));
+                _documentStatuses.Add(new DocumentStatusMetric("Processing", queue.Count(d => d.ProcessingStatus == "Processing"), "processing"));
+                _documentStatuses.Add(new DocumentStatusMetric("Pending", queue.Count(d => d.ProcessingStatus == "Pending"), "pending"));
+                _documentStatuses.Add(new DocumentStatusMetric("Failed", queue.Count(d => d.ProcessingStatus == "Failed"), "failed"));
+            }
         }
         catch (Exception ex)
         {
@@ -376,27 +398,6 @@
     private static Color GetTokenProgressColor(double usagePercent)
     {
         return usagePercent >= 90 ? Color.Error : usagePercent >= 75 ? Color.Warning : Color.Success;
-    }
-
-    private static IEnumerable<AttentionDocument> BuildAttentionDocuments()
-    {
-        return new[]
-        {
-            new AttentionDocument("RAG Evaluation Notes", "SWP391", "Dr. Nguyen Minh", "minh.nguyen@aistudyhub.edu", "Pending Review", "Medium", "2h"),
-            new AttentionDocument("Exam Bank 2025", "DBI202", "Kiet Ngo", "kiet.ngo@aistudyhub.edu", "Reported", "High", "5h"),
-            new AttentionDocument("Lecture OCR Export", "PRN212", "Mai Anh Tran", "mai.tran@aistudyhub.edu", "Failed", "High", "1d"),
-            new AttentionDocument("Legacy Slides", "SWT301", "Linh Pham", "linh.pham@aistudyhub.edu", "Pending Review", "Low", "2d")
-        };
-    }
-
-    private static IEnumerable<ActivityFeedItem> BuildRecentActivities()
-    {
-        return new[]
-        {
-            new ActivityFeedItem("Document reported", "Exam Bank 2025 was reported for policy review before indexing.", new DateTime(2026, 6, 30, 11, 21, 0, DateTimeKind.Unspecified), Icons.Material.Filled.Gavel, Color.Error),
-            new ActivityFeedItem("Failed processing job", "Embedding worker failed on Lecture OCR Export after 3 retries.", new DateTime(2026, 6, 30, 10, 47, 0, DateTimeKind.Unspecified), Icons.Material.Filled.ReportProblem, Color.Warning),
-            new ActivityFeedItem("Configuration changed", "rag.chunk_size changed from 800 to 1,000 with audit log entry.", new DateTime(2026, 6, 30, 6, 39, 0, DateTimeKind.Unspecified), Icons.Material.Filled.Tune, Color.Info)
-        };
     }
 
     private sealed class DashboardMetrics
