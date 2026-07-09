@@ -606,21 +606,36 @@
     {
         var parameters = new DialogParameters
         {
-            ["Title"] = "Remove document record",
-            ["Message"] = $"Remove {document.Title} from the library view? Use moderation removal when owner notification and reason capture are required.",
-            ["ConfirmText"] = "Remove",
+            ["Title"] = "Delete document",
+            ["Message"] = $"Delete {document.Title}? This will permanently remove the document from the system.",
+            ["ConfirmText"] = "Delete",
             ["ConfirmationText"] = document.Title,
             ["ConfirmColor"] = Color.Error
         };
 
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Remove document", parameters);
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete document", parameters);
         var result = await dialog.Result;
 
         if (result is { Canceled: false })
         {
-            _documents.Remove(document);
-            Snackbar.Add($"{document.Title} removed from the library view.", Severity.Warning);
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                Snackbar.Add("Session expired. Please log in again.", Severity.Error);
+                return;
+            }
+
+            try
+            {
+                await AdminApi.DeleteDocumentAsync(Session.AccessToken, document.Id);
+                _documents.Remove(document);
+                Snackbar.Add($"Document {document.Title} deleted.", Severity.Warning);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to delete: {ex.Message}", Severity.Error);
+            }
         }
+    }
     }
 
     private static bool CanModerate(DocumentRow document)

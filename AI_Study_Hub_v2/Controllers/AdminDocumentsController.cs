@@ -142,6 +142,21 @@ public sealed class AdminDocumentsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpDelete("{id:guid}")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> Delete(Guid id, CancellationToken cancellationToken)
+    {
+        var doc = await _db.Documents.FindAsync(new object[] { id }, cancellationToken);
+        if (doc is null)
+            return NotFound(new ApiErrorResponse { Code = "document_not_found", Message = "Document not found." });
+
+        _db.Documents.Remove(doc);
+        await _db.SaveChangesAsync(cancellationToken);
+        _logger.LogInformation("Admin deleted document {DocumentId} ({FileName})", id, doc.FileName);
+        return NoContent();
+    }
+
     [HttpGet("{id:guid}")]
     [ProducesResponseType(typeof(AdminDocumentDetailDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]

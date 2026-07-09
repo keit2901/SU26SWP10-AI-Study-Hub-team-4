@@ -109,6 +109,17 @@ public sealed class AdminApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public async Task DeleteDocumentAsync(
+        string accessToken,
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Delete, $"api/admin/documents/{id}", accessToken);
+        using var response = await _http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode) return;
+        await ThrowFromResponseAsync(response, cancellationToken);
+    }
+
     private async Task<IReadOnlyList<T>> GetListAsync<T>(
         string url,
         string accessToken,
