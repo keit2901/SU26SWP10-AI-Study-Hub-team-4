@@ -391,49 +391,38 @@
     {
         _isLoading = true;
         _errorMessage = null;
-        var partialErrors = false;
 
         try
         {
-            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
             {
-                try { var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken); ApplyStats(stats); }
-                catch { partialErrors = true; }
+                _errorMessage = "Đang xác thực...";
+                return;
             }
 
-            try { var queue = await ModerationService.GetQueueAsync(); ApplyModerationQueue(queue); }
-            catch { partialErrors = true; }
+            var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
+            ApplyStats(stats);
 
-            try
+            var queue = await ModerationService.GetQueueAsync();
+            ApplyModerationQueue(queue);
+
+            var auditLogs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 5);
+            ApplyAuditLogs(auditLogs);
+
+            var trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken);
+            if (trends is not null && trends.Points.Any())
             {
-                if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
-                {
-                    var auditLogs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 5);
-                    ApplyAuditLogs(auditLogs);
-                }
+                _activitySeries.Clear();
+                _activitySeries.Add(new ChartSeries<double> { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToArray() });
+                _activitySeries.Add(new ChartSeries<double> { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToArray() });
+                _activitySeries.Add(new ChartSeries<double> { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToArray() });
+                var labels = trends.Points.Select(p => p.Label).ToArray();
+                if (labels.Length > 0) _activityLabels = labels;
             }
-            catch { partialErrors = true; }
-
-            try
-            {
-                if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
-                {
-                    var trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken);
-                    if (trends is not null && trends.Points.Any())
-                    {
-                        _activitySeries.Clear();
-                        _activitySeries.Add(new ChartSeries<double> { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToArray() });
-                        _activitySeries.Add(new ChartSeries<double> { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToArray() });
-                        _activitySeries.Add(new ChartSeries<double> { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToArray() });
-                        var labels = trends.Points.Select(p => p.Label).ToArray();
-                        if (labels.Length > 0) _activityLabels = labels;
-                    }
-                }
-            }
-            catch { partialErrors = true; }
-
-            if (partialErrors)
-                _errorMessage = "Một số dữ liệu không tải được. Hiển thị kết quả một phần.";
+        }
+        catch (Npgsql.NpgsqlOperationInProgressException)
+        {
+            _errorMessage = "Hệ thống đang bận, vui lòng thử lại.";
         }
         catch (Exception ex)
         {
