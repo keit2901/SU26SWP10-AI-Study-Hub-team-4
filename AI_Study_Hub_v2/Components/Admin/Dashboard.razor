@@ -9,6 +9,7 @@
 @inject IDocumentModerationService ModerationService
 @inject AuthSessionState Session
 @inject AdminDashboardApiClient DashboardApi
+@inject AdminApiClient AdminApi
 
 <div class="dashboard-page page-enter">
     <!-- Page Header -->
@@ -163,16 +164,23 @@
                         <MudButton Variant="Variant.Text" Color="Color.Primary" Class="font-bold text-label-md" OnClick="OpenAuditLogs" Style="padding: 0; min-width: auto;">VIEW LOGS</MudButton>
                     </div>
                     <div class="space-y-6 timeline-custom pl-2">
-                        @foreach (var item in _recentActivities)
+                        @if (_recentActivities.Any())
                         {
-                            <div class="timeline-item">
-                                <div class="timeline-dot @item.Color.ToString().ToLower()"></div>
-                                <div class="timeline-content">
-                                    <div class="text-body-md font-bold text-on-surface">@item.Title</div>
-                                    <div class="text-[11px] font-bold timeline-desc mt-0.5 mb-1">@item.Description</div>
-                                    <div class="text-[10px] text-on-surface-variant">@FormatDateTime(item.CreatedAt)</div>
+                            @foreach (var item in _recentActivities)
+                            {
+                                <div class="timeline-item">
+                                    <div class="timeline-dot @item.Color.ToString().ToLower()"></div>
+                                    <div class="timeline-content">
+                                        <div class="text-body-md font-bold text-on-surface">@item.Title</div>
+                                        <div class="text-[11px] font-bold timeline-desc mt-0.5 mb-1">@item.Description</div>
+                                        <div class="text-[10px] text-on-surface-variant">@FormatDateTime(item.CreatedAt)</div>
+                                    </div>
                                 </div>
-                            </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-body-sm text-on-surface-variant" style="font-size:13px;color:#767586;">No critical events</div>
                         }
                     </div>
                 </MudPaper>
@@ -307,11 +315,15 @@
                 ? DashboardApi.GetAdminStatsAsync(Session.AccessToken)
                 : Task.FromResult<AdminDashboardStatsDto?>(null);
             var queueTask = ModerationService.GetQueueAsync();
+            var auditTask = Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken)
+                ? AdminApi.ListAuditLogsAsync(Session.AccessToken, 5)
+                : Task.FromResult<IReadOnlyList<AuditLogDto>>(new List<AuditLogDto>());
 
-            await Task.WhenAll(statsTask, queueTask);
+            await Task.WhenAll(statsTask, queueTask, auditTask);
 
             var stats = statsTask.Result;
             var queue = queueTask.Result;
+            var auditLogs = auditTask.Result;
 
             if (stats is not null)
             {
@@ -334,6 +346,15 @@
                 _attentionDocuments.Add(new AttentionDocument(
                     doc.Title, doc.SubjectCode, doc.OwnerName, doc.OwnerEmail,
                     doc.ProcessingStatus, doc.Severity, doc.UploadedAt.ToString("d")));
+            }
+
+            _recentActivities.Clear();
+            foreach (var log in auditLogs.Take(5))
+            {
+                _recentActivities.Add(new ActivityFeedItem(
+                    log.Action, log.EntityType + (log.EntityId is not null ? " " + log.EntityId : ""),
+                    log.CreatedAt.UtcDateTime, Icons.Material.Filled.History,
+                    log.Severity == "High" ? Color.Error : log.Severity == "Medium" ? Color.Warning : Color.Info));
             }
 
             _documentStatuses.Clear();
