@@ -1,9 +1,11 @@
 using System.Security.Claims;
+using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Controllers;
 
@@ -15,11 +17,23 @@ public sealed class EscalationController : ControllerBase
 {
     private readonly IEscalationService _escalation;
     private readonly ILogger<EscalationController> _logger;
+    private readonly AppDbContext _db;
 
-    public EscalationController(IEscalationService escalation, ILogger<EscalationController> logger)
+    public EscalationController(IEscalationService escalation, ILogger<EscalationController> logger, AppDbContext db)
     {
         _escalation = escalation;
         _logger = logger;
+        _db = db;
+    }
+
+    private async Task<Guid?> GetLocalUserIdAsync()
+    {
+        var supabaseUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+        if (supabaseUserIdClaim is null || !Guid.TryParse(supabaseUserIdClaim.Value, out var supabaseUserId))
+            return null;
+
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+        return user?.Id;
     }
 
     [HttpPost]
@@ -31,11 +45,11 @@ public sealed class EscalationController : ControllerBase
     {
         try
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-            if (userIdClaim is null || !Guid.TryParse(userIdClaim.Value, out var userId))
+            var userId = await GetSupabaseUserIdAsync();
+            if (userId is null)
                 return Unauthorized();
 
-            var result = await _escalation.CreateAsync(userId, request, cancellationToken);
+            var result = await _escalation.CreateAsync(userId.Value, request, cancellationToken);
             return CreatedAtAction(nameof(GetPending), null, result);
         }
         catch (AdminException ex)
@@ -54,6 +68,34 @@ public sealed class EscalationController : ControllerBase
     [ProducesResponseType(typeof(IReadOnlyList<DocumentEscalationDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<DocumentEscalationDto>>> GetPending(CancellationToken cancellationToken)
         => Ok(await _escalation.GetPendingAsync(cancellationToken));
+
+    [HttpGet("all")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(IReadOnlyList<DocumentEscalationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<DocumentEscalationDto>>> GetAll(CancellationToken cancellationToken)
+        => Ok(await _escalation.GetAllAsync(cancellationToken));
+
+    [HttpGet("my")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(IReadOnlyList<DocumentEscalationDto>), StatusCodes.Status200OK)]
+    public async Task<ActionResult<IReadOnlyList<DocumentEscalationDto>>> GetMy(CancellationToken cancellationToken)
+    {
+        var userId = await GetSupabaseUserIdAsync();
+        if (userId is null)
+            return Unauthorized();
+
+        return Ok(await _escalation.GetMyAsync(userId.Value, cancellationToken));
+    }
+
+    private async Task<Guid?> GetSupabaseUserIdAsync()
+    {
+        var supabaseUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+        if (supabaseUserIdClaim is null || !Guid.TryParse(supabaseUserIdClaim.Value, out var supabaseUserId))
+            return null;
+
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+        return user?.Id;
+    }
 
     [HttpPatch("{id:guid}")]
     [Authorize(Roles = "Admin")]

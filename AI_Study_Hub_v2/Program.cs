@@ -254,6 +254,10 @@ builder.Services.AddHttpClient<PlanApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
+builder.Services.AddHttpClient<EscalationApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
 builder.Services.AddHttpClient<IRecaptchaVerificationService, RecaptchaVerificationService>(http =>
 {
     http.Timeout = TimeSpan.FromSeconds(10);

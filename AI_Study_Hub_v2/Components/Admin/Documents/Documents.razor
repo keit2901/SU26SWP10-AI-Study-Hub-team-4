@@ -396,7 +396,7 @@
         _currentPage = Math.Clamp(page, 1, _totalPages);
     }
 
-    protected override async void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         await LoadDocumentsAsync();
     }
@@ -618,8 +618,21 @@
 
         if (result is { Canceled: false })
         {
-            _documents.Remove(document);
-            Snackbar.Add($"{document.Title} removed from the library view.", Severity.Warning);
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                Snackbar.Add("Session expired.", Severity.Error);
+                return;
+            }
+            try
+            {
+                await AdminApi.DeleteDocumentAsync(Session.AccessToken, document.Id);
+                _documents.Remove(document);
+                Snackbar.Add($"Deleted {document.Title}.", Severity.Warning);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed: {ex.Message}", Severity.Error);
+            }
         }
     }
 

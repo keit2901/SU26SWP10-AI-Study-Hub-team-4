@@ -1,0 +1,126 @@
+@namespace AI_Study_Hub_v2.Components.Pages.Dashboard
+@using AI_Study_Hub_v2.Dtos
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<MudDialog>
+    <TitleContent>
+        <div class="d-flex align-center" style="gap: 0.75rem;">
+            <MudIcon Icon="@Icons.Material.Filled.Flag" Color="Color.Error" Style="font-size: 24px;" />
+            <div>
+                <span class="font-bold" style="font-size: 18px; color: #191c1e;">Escalate to Admin</span>
+                <div style="font-size: 12px; color: #767586; font-weight: 500;">Folder: @FolderName</div>
+            </div>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <!-- Reason -->
+            <MudTextField @bind-Value="_reason"
+                          Label="Escalation Reason"
+                          Variant="Variant.Outlined"
+                          MaxLines="4"
+                          Lines="3"
+                          Required="true"
+                          HelperText="Explain why this folder needs admin attention" />
+
+            <!-- Rejected Documents List -->
+            <div>
+                <div class="font-bold mb-2" style="font-size: 13px; color: #191c1e;">
+                    Rejected Documents in this Folder
+                    <span class="text-sm ml-1" style="color: #767586; font-weight: 500;">(@_rejectedDocs.Count)</span>
+                </div>
+                <MudPaper Class="pa-2" Style="max-height: 240px; overflow-y: auto; border: 1px solid #e0e3e5; border-radius: 8px;">
+                    @if (_rejectedDocs.Count == 0)
+                    {
+                        <div class="pa-4 text-center" style="color: #767586; font-size: 13px;">
+                            No rejected documents found in this folder.
+                        </div>
+                    }
+                    else
+                    {
+                        @foreach (var doc in _rejectedDocs)
+                        {
+                            <div class="d-flex align-center justify-space-between pa-2" style="border-bottom: 1px solid #f1f3f5;">
+                                <div class="d-flex align-center" style="gap: 0.75rem; flex: 1;">
+                                    <input type="checkbox" checked="@doc.Selected" @onchange="@((ChangeEventArgs e) => doc.Selected = (bool)(e.Value ?? false))" style="width: 18px; height: 18px; accent-color: #4648d4; cursor: pointer;" />
+                                    <div style="overflow: hidden;">
+                                        <div class="font-bold" style="font-size: 13px; color: #191c1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@doc.FileName</div>
+                                        <div style="font-size: 11px; color: #767586;">@doc.RejectReason</div>
+                                    </div>
+                                </div>
+                            </div>
+                        }
+                    }
+                </MudPaper>
+            </div>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Error"
+                   Disabled="@(!CanSubmit)"
+                   OnClick="Submit">
+            <MudIcon Icon="@Icons.Material.Filled.Flag" Class="me-1" Style="font-size: 18px;" />
+            Escalate to Admin
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public string FolderName { get; set; } = string.Empty;
+    [Parameter] public Guid FolderId { get; set; }
+    [Parameter] public List<RejectedDocItem> RejectedDocuments { get; set; } = new();
+
+    private string _reason = string.Empty;
+    private List<RejectedDocItem> _rejectedDocs = new();
+
+    private bool CanSubmit =>
+        !string.IsNullOrWhiteSpace(_reason) &&
+        _rejectedDocs.Any(d => d.Selected);
+
+    protected override void OnInitialized()
+    {
+        _rejectedDocs = RejectedDocuments.Select(d => new RejectedDocItem
+        {
+            DocumentId = d.DocumentId,
+            FileName = d.FileName,
+            RejectReason = d.RejectReason,
+            Selected = true
+        }).ToList();
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        var selected = _rejectedDocs.Where(d => d.Selected).ToList();
+        var result = new EscalationDialogResult
+        {
+            Reason = _reason.Trim(),
+            Items = selected.Select(s => new EscalationItemRequest
+            {
+                DocumentId = s.DocumentId,
+                RejectReason = s.RejectReason
+            }).ToList()
+        };
+        MudDialog.Close(DialogResult.Ok(result));
+    }
+
+    public sealed class RejectedDocItem
+    {
+        public Guid DocumentId { get; set; }
+        public string FileName { get; set; } = string.Empty;
+        public string RejectReason { get; set; } = string.Empty;
+        public bool Selected { get; set; } = true;
+    }
+
+    public sealed class EscalationDialogResult
+    {
+        public string FolderName { get; set; } = string.Empty;
+        public string Reason { get; set; } = string.Empty;
+        public List<EscalationItemRequest> Items { get; set; } = new();
+    }
+}

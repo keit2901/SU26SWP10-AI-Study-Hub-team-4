@@ -10,6 +10,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IDocumentModerationService ModerationService
+@inject AuthSessionState Session
+
 
 <div class="admin-moderation-page page-enter">
     <!-- Breadcrumbs & Header -->
@@ -196,6 +198,7 @@
                                                 <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" Disabled="@(!CanApprove(doc))" OnClick="@(() => ModerateAsync(doc, ApprovedStatus))">Approve</MudMenuItem>
                                                 <MudMenuItem Icon="@Icons.Material.Filled.Cancel" Disabled="@(doc.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(doc, RejectedStatus))">Reject with reason</MudMenuItem>
                                                 <MudMenuItem Icon="@Icons.Material.Filled.DeleteForever" Disabled="@(doc.ModerationStatus == RemovedStatus)" OnClick="@(() => ModerateAsync(doc, RemovedStatus))">Remove with reason</MudMenuItem>
+                                                
                                             </ChildContent>
                                         </MudMenu>
                                     </td>
@@ -279,7 +282,7 @@
                                     Remove
                                 </button>
                             </div>
-                        </div>
+                            </div>
                     </div>
                 }
             </div>
@@ -1218,6 +1221,8 @@
         border-color: #feb2b2;
         background-color: #fff5f5;
     }
+
+    
 
     /* Dark Mode Overrides */
     .dark-theme .kpi-card-custom,
