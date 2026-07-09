@@ -60,6 +60,8 @@ public sealed class PlanExpiryHostedService : BackgroundService
 
         if (expiredPlans.Count == 0)
         {
+            // B4: compensatory scan — catch users with status='expired' but no active plan
+            await AssignFreeToExpiredOrphansAsync(db, planService, now, ct);
             return;
         }
 
@@ -67,12 +69,11 @@ public sealed class PlanExpiryHostedService : BackgroundService
 
         var freePlan = planService.GetFreePlan();
 
+        // Mark expired plans
         foreach (var expiredPlan in expiredPlans)
         {
             expiredPlan.Status = "expired";
         }
-
-        await db.SaveChangesAsync(ct);
 
         // Assign Free plan to users who no longer have any active plan
         var affectedUserIds = expiredPlans.Select(up => up.UserId).Distinct().ToList();
@@ -97,8 +98,60 @@ public sealed class PlanExpiryHostedService : BackgroundService
             }
         }
 
+        // B4: single SaveChanges — both expiry and Free assignment atomically
         await db.SaveChangesAsync(ct);
+
+        // B4: compensatory scan for previously broken state
+        await AssignFreeToExpiredOrphansAsync(db, planService, now, ct);
+
         _logger.LogInformation("Plan expiry scan complete. Expired {Count} plans, assigned Free plan to affected users.",
             expiredPlans.Count);
+    }
+
+    /// <summary>
+    /// B4: Compensatory scan — finds users whose plan status is "expired" but have no active plan,
+    /// and assigns them the Free plan. This repairs state left broken by previous bugs.
+    /// </summary>
+    private async Task AssignFreeToExpiredOrphansAsync(
+        AppDbContext db,
+        IPlanService planService,
+        DateTimeOffset now,
+        CancellationToken ct)
+    {
+        var orphanUserIds = await db.UserPlans
+            .Where(up => up.Status == "expired")
+            .Select(up => up.UserId)
+            .Distinct()
+            .ToListAsync(ct);
+
+        var fixedCount = 0;
+        foreach (var userId in orphanUserIds)
+        {
+            var hasActivePlan = await db.UserPlans
+                .AnyAsync(up => up.UserId == userId && up.Status == "active", ct);
+
+            if (!hasActivePlan)
+            {
+                var freePlan = planService.GetFreePlan();
+                var freeUserPlan = new UserPlan
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = userId,
+                    PlanId = freePlan.Id,
+                    Status = "active",
+                    AssignedAt = now,
+                    ExpiresAt = null,
+                    PaidAt = null,
+                };
+                db.UserPlans.Add(freeUserPlan);
+                fixedCount++;
+            }
+        }
+
+        if (fixedCount > 0)
+        {
+            await db.SaveChangesAsync(ct);
+            _logger.LogInformation("Compensatory scan: assigned Free plan to {Count} orphaned users.", fixedCount);
+        }
     }
 }

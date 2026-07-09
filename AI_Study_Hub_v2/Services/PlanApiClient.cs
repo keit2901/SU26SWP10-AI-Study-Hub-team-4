@@ -62,13 +62,16 @@ public sealed class PlanApiClient
         string accessToken,
         string planKey,
         string billingCycle = "monthly",
+        string? idempotencyKey = null,
         CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
 
+        idempotencyKey ??= Guid.NewGuid().ToString("N");
+
         using var req = new HttpRequestMessage(HttpMethod.Post, "api/plans/purchase");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        req.Content = JsonContent.Create(new { planKey, billingCycle });
+        req.Content = JsonContent.Create(new { planKey, billingCycle, idempotencyKey });
 
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)

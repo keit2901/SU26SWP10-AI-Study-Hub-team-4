@@ -216,7 +216,9 @@
                 return;
             }
 
-            await PlanApi.PurchasePlanAsync(accessToken, Plan.PlanKey, _billingCycle);
+            await PlanApi.PurchasePlanAsync(
+                accessToken, Plan.PlanKey, _billingCycle,
+                idempotencyKey: Guid.NewGuid().ToString("N"));
             _completed = true;
         }
         catch (PlanApiException ex)

@@ -127,6 +127,15 @@ public sealed class PlansController : ControllerBase
                     .FirstOrDefaultAsync(pt => pt.TxnRef == request.IdempotencyKey && pt.UserId == user.Id, ct);
                 if (existingTxn is not null)
                 {
+                    if (existingTxn.UserPlanId is null)
+                    {
+                        return Conflict(new ApiErrorResponse
+                        {
+                            Code = "incomplete_transaction",
+                            Message = "A previous transaction was not completed. Please contact support."
+                        });
+                    }
+
                     var existingUserPlan = await _db.UserPlans
                         .Include(up => up.Plan)
                         .FirstOrDefaultAsync(up => up.Id == existingTxn.UserPlanId, ct);

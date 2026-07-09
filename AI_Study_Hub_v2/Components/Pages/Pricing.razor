@@ -355,7 +355,7 @@ else if (_plans is { Count: > 0 })
         if (plan.MaxFolderCount.HasValue)
         {
             var folderLimit = plan.MaxDocsPerFolder.HasValue
-                ? $"{plan.MaxFolderCount.Value:N0} Folders ({FormatBytes(plan.MaxDocsPerFolder.Value)}/Folder)"
+                ? $"{plan.MaxFolderCount.Value:N0} Folders ({plan.MaxDocsPerFolder.Value:N0} docs/Folder)"
                 : $"{plan.MaxFolderCount.Value:N0} Folders";
             features.Add(new PlanFeature(Icons.Material.Filled.Folder, folderLimit));
         }
