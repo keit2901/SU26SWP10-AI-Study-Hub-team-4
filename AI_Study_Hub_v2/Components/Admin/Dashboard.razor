@@ -348,6 +348,7 @@
 
             _statusSeries.Clear();
             _statusSeries.Add(new ChartSeries<double> { Name = "Documents", Data = _documentStatuses.Select(s => (double)s.Count).ToArray() });
+            await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
