@@ -142,12 +142,15 @@ public class PlansControllerTests
     [Test]
     public async Task PurchasePlan_InvalidBillingCycle_ReturnsBadRequest()
     {
+        // In production, [ApiController] automatically applies DTO validation
+        // (e.g. [RegularExpression] on BillingCycle) and populates ModelState
+        // before the action runs. This test simulates that behavior by manually
+        // adding a ModelState error, then verifying the controller rejects it.
         var supabaseUserId = Guid.NewGuid();
         SeedUser(supabaseUserId);
         var sut = BuildSut(Principal(supabaseUserId));
 
         var request = new PurchasePlanRequest("pro", "weekly");
-        // Simulate model validation failure
         sut.ModelState.AddModelError("BillingCycle", "Invalid billing cycle.");
 
         var result = await sut.PurchasePlan(request, CancellationToken.None);
@@ -156,7 +159,7 @@ public class PlansControllerTests
     }
 
     [Test]
-    public async Task PurchasePlan_Unauthenticated_ReturnsUnauthorized()
+    public async Task PurchasePlan_Unauthenticated_ReturnsInternalServerError()
     {
         // Without a ClaimsPrincipal, GetSupabaseUserIdFromClaims throws
         // InvalidOperationException, which is caught by the catch-all and returns 500.

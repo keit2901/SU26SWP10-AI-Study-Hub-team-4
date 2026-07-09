@@ -8,7 +8,18 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
 {
     public void Configure(EntityTypeBuilder<PaymentTransaction> builder)
     {
-        builder.ToTable("payment_transactions");
+        builder.ToTable("payment_transactions", t =>
+        {
+            // W1.1: CHECK constraint — amount must be non-negative
+            t.HasCheckConstraint("ck_payment_transactions_amount_non_negative",
+                "amount_vnd >= 0");
+
+            // W1.2: CHECK constraints on status and billing_cycle
+            t.HasCheckConstraint("ck_payment_transactions_status",
+                "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded')");
+            t.HasCheckConstraint("ck_payment_transactions_billing_cycle",
+                "billing_cycle IN ('monthly', 'yearly')");
+        });
 
         builder.HasKey(pt => pt.Id);
 
@@ -42,10 +53,6 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
             .HasColumnName("amount_vnd")
             .IsRequired();
 
-        // W1.1: CHECK constraint — amount must be non-negative
-        builder.HasCheckConstraint("ck_payment_transactions_amount_non_negative",
-            "amount_vnd >= 0");
-
         builder.Property(pt => pt.Status)
             .HasColumnName("status")
             .HasMaxLength(50)
@@ -66,12 +73,6 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
             .HasColumnName("completed_at");
 
         builder.HasIndex(pt => pt.TxnRef);
-
-        // W1.2: CHECK constraints on status and billing_cycle
-        builder.HasCheckConstraint("ck_payment_transactions_status",
-            "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded')");
-        builder.HasCheckConstraint("ck_payment_transactions_billing_cycle",
-            "billing_cycle IN ('monthly', 'yearly')");
 
         // W5.1: change User cascade delete → Restrict
         builder.HasOne(pt => pt.User)

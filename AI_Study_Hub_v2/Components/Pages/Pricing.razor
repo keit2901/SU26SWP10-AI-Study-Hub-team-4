@@ -199,21 +199,21 @@ else if (_plans is { Count: > 0 })
             try
             {
                 await PlanApi.PurchasePlanAsync(Session.AccessToken!, plan.PlanKey, "monthly");
+                try
+                {
+                    await Session.LoadCurrentPlanAsync(PlanApi);
+                }
+                catch (Exception ex)
+                {
+                    Snackbar.Add($"Failed to refresh plan: {ex.Message}", Severity.Error);
+                    return;
+                }
+                Snackbar.Add("Plan downgraded to Free.", Severity.Success);
             }
             catch
             {
-                // Fall through — still update local state if API fails
+                Snackbar.Add("Failed to downgrade plan. Please try again.", Severity.Error);
             }
-            try
-            {
-                await Session.LoadCurrentPlanAsync(PlanApi);
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Failed to refresh plan: {ex.Message}", Severity.Error);
-                return;
-            }
-            Snackbar.Add("Plan downgraded to Free.", Severity.Success);
             return;
         }
 
