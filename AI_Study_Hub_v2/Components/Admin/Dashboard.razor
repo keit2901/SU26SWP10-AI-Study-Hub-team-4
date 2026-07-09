@@ -84,7 +84,7 @@
                     <span class="text-label-md font-label-md text-on-surface-variant uppercase mb-6 d-block">Pipeline state for indexed knowledge</span>
                     
                     <div style="position: relative; display: flex; align-items: center; justify-content: center; height: 200px;">
-                        <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@_statusSeries" ChartLabels="@_statusLabels" ChartOptions="@_statusChartOptions" Width="100%" Height="200px" />
+                        <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@StatusSeries" ChartLabels="@_statusLabels" ChartOptions="@_statusChartOptions" Width="100%" Height="200px" />
                         <div class="donut-center-overlay" style="position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center;">
                             <span class="donut-center-val" style="font-size: 26px; font-weight: 800; line-height: 1; font-family: 'Hanken Grotesk', sans-serif;">155</span>
                             <span class="donut-center-lbl" style="font-size: 10px; font-weight: 700; color: #767586; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">Total</span>
@@ -233,15 +233,15 @@
                         <div class="d-flex flex-column">
                             <span class="text-label-md text-on-surface-variant uppercase" style="font-size: 11px; font-weight: 700;">Retrieval readiness</span>
                             <div class="d-flex align-center" style="gap: 0.5rem; margin-top: 2px;">
-                                <span class="text-headline-sm font-bold text-primary" style="font-size: 18px; font-weight: 700; color: #4648d4;">82%</span>
+                                <span class="text-headline-sm font-bold text-primary" style="font-size: 18px; font-weight: 700; color: #4648d4;">@($"{_metrics.TotalDocuments > 0 ? Math.Min(100, (_metrics.TotalDocuments - _metrics.FailedJobs) * 100 / Math.Max(1, _metrics.TotalDocuments)) : 0}%")</span>
                                 <div class="w-16 h-1.5 bg-surface-container rounded-full overflow-hidden" style="width: 64px; height: 6px; background-color: #eceef0; border-radius: 9999px;">
-                                    <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: 82%;"></div>
+                                    <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: @($"{(_metrics.TotalDocuments > 0 ? (_metrics.TotalDocuments - _metrics.FailedJobs) * 100 / _metrics.TotalDocuments : 0)}%");"></div>
                                 </div>
                             </div>
                         </div>
                         <div class="text-right">
                             <div class="text-[10px] text-on-surface-variant uppercase leading-none font-bold" style="font-size: 10px; color: #464554;">Status summary</div>
-                            <div class="text-[10px] font-bold text-on-surface mt-1" style="font-size: 10px; font-weight: 700; color: #191c1e;">126 INDEXED, 4 FAILED</div>
+                            <div class="text-[10px] font-bold text-on-surface mt-1" style="font-size: 10px; font-weight: 700; color: #191c1e;">@($"{_metrics.TotalDocuments - _metrics.FailedJobs} INDEXED, {_metrics.FailedJobs} FAILED")</div>
                         </div>
                     </div>
                 </MudPaper>
@@ -285,10 +285,10 @@
 
     private readonly string[] _activityLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
     private readonly string[] _statusLabels = { "Pending", "Processing", "Indexed", "Failed" };
-    private readonly List<ChartSeries<double>> _statusSeries = new()
-    {
-        new ChartSeries<double> { Name = "Documents", Data = new double[] { 7, 18, 126, 4 } }
-    };
+    private List<ChartSeries<double>> StatusSeries =>
+        _documentStatuses.Any()
+            ? new List<ChartSeries<double>> { new() { Name = "Documents", Data = _documentStatuses.Select(s => (double)s.Count).ToArray() } }
+            : new List<ChartSeries<double>> { new() { Name = "Documents", Data = new double[] { 0, 0, 0, 0 } } };
 
     protected override async Task OnInitializedAsync()
     {
