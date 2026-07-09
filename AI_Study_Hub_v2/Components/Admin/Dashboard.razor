@@ -338,7 +338,7 @@
             var indexed = stats?.IndexedCount ?? queue.Count(d => d.ProcessingStatus == "Ready" || d.ProcessingStatus == "Indexed");
             var processing = stats?.ProcessingCount ?? queue.Count(d => d.ProcessingStatus == "Processing");
             var pending = stats?.PendingCount ?? queue.Count(d => d.ProcessingStatus == "Pending");
-            var failed = stats?.FailedJobs ?? queue.Count(d => d.ProcessingStatus == "Failed");
+            var failed = stats?.TotalFailedJobs ?? queue.Count(d => d.ProcessingStatus == "Failed");
             _documentStatuses.Add(new DocumentStatusMetric("Indexed", indexed, "indexed"));
             _documentStatuses.Add(new DocumentStatusMetric("Processing", processing, "processing"));
             _documentStatuses.Add(new DocumentStatusMetric("Pending", pending, "pending"));
