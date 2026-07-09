@@ -353,7 +353,7 @@
             {
                 _recentActivities.Add(new ActivityFeedItem(
                     log.Action, log.EntityType + (log.EntityId is not null ? " " + log.EntityId : ""),
-                    log.CreatedAt.UtcDateTime, Icons.Material.Filled.History,
+                    log.CreatedAt.LocalDateTime, Icons.Material.Filled.History,
                     log.Severity == "High" ? Color.Error : log.Severity == "Medium" ? Color.Warning : Color.Info));
             }
 
