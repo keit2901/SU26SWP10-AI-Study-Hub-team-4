@@ -26,7 +26,8 @@
 ### Quy tắc
 - Chỉ làm khi có lệnh, không tự ý
 - 1 branch duy nhất cho tất cả admin tabs
-- Các tab code sau kế thừa code tab trước, chạy đồng bộ
+- Các tab code sau kế thừa code trước, chạy đồng bộ
+- Mọi mô tả (PR, commit, code, test) đều tiếng Việt có dấu (UTF-8)
 - Icon Todo: ✅ done, 🔄 in progress, ⏳ pending
 
 ---
