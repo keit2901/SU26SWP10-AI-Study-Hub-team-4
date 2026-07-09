@@ -22,12 +22,14 @@
 | 7 | **UI test flow** | Bảng test flow cho user test trên browser |
 | 8 | **Push + PR** | Xong tab nào PR tab đó, 1 branch nhiều PR, title + description tiếng Việt có dấu |
 | 9 | **Update** | Cập nhật List làm việc khi tab done |
+| 10 | **Session** | Cập nhật `_CURRENT_TODO.md` + file Project-Docs mỗi khi làm phần mới |
 
 ### Quy tắc
 - Chỉ làm khi có lệnh, không tự ý
 - 1 branch duy nhất cho tất cả admin tabs
 - Các tab code sau kế thừa code trước, chạy đồng bộ
 - Mọi mô tả (PR, commit, code, test) đều tiếng Việt có dấu (UTF-8)
+- Mỗi khi làm phần mới: cập nhật `_CURRENT_TODO.md` + file Project-Docs liên quan
 - Icon Todo: ✅ done, 🔄 in progress, ⏳ pending
 
 ---
