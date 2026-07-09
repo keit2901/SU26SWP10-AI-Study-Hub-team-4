@@ -351,8 +351,8 @@
                     TotalDocuments = stats.TotalDocuments,
                     ActiveSessions = stats.TotalActiveSessions,
                     FailedJobs = stats.TotalFailedJobs,
-                    DailyTokensUsed = stats.DailyTokensUsed,
-                    DailyTokenQuota = stats.DailyTokenQuota > 0 ? stats.DailyTokenQuota : 500_000,
+                    DailyTokensUsed = (int)stats.DailyTokensUsed,
+                    DailyTokenQuota = (int)(stats.DailyTokenQuota > 0 ? stats.DailyTokenQuota : 500_000),
                     NewUsersThisWeek = 0,
                     ProcessingDocuments = 0
                 };
