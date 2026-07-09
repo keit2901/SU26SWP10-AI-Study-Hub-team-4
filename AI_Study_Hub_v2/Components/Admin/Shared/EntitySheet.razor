@@ -8,6 +8,7 @@
            Variant="DrawerVariant.Temporary"
            Elevation="8"
            Width="@Width"
+           Height="100%"
            Class="entity-sheet-drawer">
     <MudStack Class="entity-sheet" Spacing="0">
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="entity-sheet-header">
@@ -52,6 +53,11 @@
 <style>
     .entity-sheet-drawer .mud-drawer {
         max-width: 100vw;
+        height: 100vh;
+    }
+
+    .entity-sheet-drawer .mud-drawer-content {
+        height: 100%;
     }
 
     .entity-sheet {
