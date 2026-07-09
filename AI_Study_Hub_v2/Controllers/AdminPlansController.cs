@@ -95,6 +95,9 @@ public sealed class AdminPlansController : ControllerBase
 
         await _db.SaveChangesAsync(ct);
 
+        // M5.6: invalidate the plan cache so users see updated values immediately
+        _planService.InvalidateCache();
+
         var afterJson = JsonSerializer.Serialize(new
         {
             plan.StorageQuotaBytes,
@@ -261,6 +264,30 @@ public sealed class AdminPlansController : ControllerBase
             GetSupabaseUserId(), discrepancies.Count);
 
         return Ok(discrepancies);
+    }
+
+    /// <summary>Returns recent payment transactions for admin review.</summary>
+    [HttpGet("payments")]
+    [ProducesResponseType(typeof(IReadOnlyList<PaymentTransactionDto>), StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetPaymentTransactions(CancellationToken ct)
+    {
+        var payments = await _db.PaymentTransactions
+            .Include(pt => pt.User)
+            .OrderByDescending(pt => pt.CreatedAt)
+            .Take(100)
+            .Select(pt => new PaymentTransactionDto(
+                pt.Id,
+                pt.UserId,
+                pt.User.Username,
+                pt.PlanKey,
+                pt.BillingCycle,
+                pt.AmountVnd,
+                pt.Status,
+                pt.CreatedAt,
+                pt.CompletedAt))
+            .ToListAsync(ct);
+
+        return Ok(payments);
     }
 
     private Guid GetSupabaseUserId()

@@ -13,8 +13,24 @@
                 <p class="checkout-subtitle">Confirm your plan upgrade</p>
 
                 <div class="checkout-amount-box">
-                    <span class="checkout-label">Payment Amount (Demo)</span>
-                    <span class="checkout-amount">@FormatPrice(Plan.MonthlyPriceVnd)</span>
+                    <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.5rem;">
+                        <span class="checkout-label">Payment Amount (Demo)</span>
+                        <div class="billing-cycle-selector">
+                            <MudButton Variant="@(_billingCycle == "monthly" ? Variant.Filled : Variant.Outlined)"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => _billingCycle = "monthly")"
+                                       Style="text-transform:none; font-weight:600; flex:1; min-width:0;">
+                                Monthly
+                            </MudButton>
+                            <MudButton Variant="@(_billingCycle == "yearly" ? Variant.Filled : Variant.Outlined)"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => _billingCycle = "yearly")"
+                                       Style="text-transform:none; font-weight:600; flex:1; min-width:0;">
+                                Yearly
+                            </MudButton>
+                        </div>
+                    </div>
+                    <span class="checkout-amount">@FormatPrice(SelectedPrice)</span>
                 </div>
 
                 @if (!string.IsNullOrEmpty(_error))
@@ -143,6 +159,11 @@
     .checkout-actions {
         margin-top: 0.5rem;
     }
+    .billing-cycle-selector {
+        display: flex;
+        gap: 0.5rem;
+        width: 100%;
+    }
     .checkout-success {
         padding: 1rem 0;
     }
@@ -173,6 +194,11 @@
     private bool _completed;
     private bool _isLoading;
     private string? _error;
+    private string _billingCycle = "monthly";
+
+    private long? SelectedPrice => _billingCycle == "yearly"
+        ? Plan.YearlyPriceVnd
+        : Plan.MonthlyPriceVnd;
 
     private async Task ConfirmPayment()
     {
@@ -190,7 +216,7 @@
                 return;
             }
 
-            await PlanApi.PurchasePlanAsync(accessToken, Plan.PlanKey, "monthly");
+            await PlanApi.PurchasePlanAsync(accessToken, Plan.PlanKey, _billingCycle);
             _completed = true;
         }
         catch (PlanApiException ex)

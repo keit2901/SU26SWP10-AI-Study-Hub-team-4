@@ -41,6 +41,15 @@ public sealed class UserPlanConfiguration : IEntityTypeConfiguration<UserPlan>
 
         builder.HasIndex(up => new { up.UserId, up.Status });
 
+        // F1.1: unique filtered index — one active UserPlan per user
+        builder.HasIndex(up => up.UserId)
+            .HasFilter("status = 'active'")
+            .IsUnique();
+
+        // W1.3: CHECK constraint on status
+        builder.HasCheckConstraint("ck_user_plans_status",
+            "status IN ('active', 'deactivated', 'expired')");
+
         builder.HasOne(up => up.User)
             .WithMany()
             .HasForeignKey(up => up.UserId)

@@ -3,6 +3,7 @@
 @inject NavigationManager Nav
 @inject IDialogService DialogService
 @inject PlanApiClient PlanApi
+@inject ISnackbar Snackbar
 
 <PageTitle>Pricing - AI Study Hub</PageTitle>
 
@@ -90,7 +91,8 @@ else if (_plans is { Count: > 0 })
                                 }
                                 else if (plan.PlanKey == "unlimited")
                                 {
-                                    <button class="btn-plan btn-plan-dark" @onclick='() => HandleSelectPlan(plan)'>Contact Us</button>
+                                    <button class="btn-plan btn-plan-dark" disabled>Contact Us</button>
+                                    <p class="contact-note">Reach out at <strong>support@aistudyhub.com</strong> for the Unlimited plan.</p>
                                 }
                                 else
                                 {
@@ -168,7 +170,32 @@ else if (_plans is { Count: > 0 })
 
         if (plan.PlanKey == "free")
         {
-            // Downgrade to free — straight swap, no dialog
+            // Downgrade to free — show confirmation dialog first
+            var confirmParams = new DialogParameters<ConfirmDialog>
+            {
+                { x => x.Title, "Downgrade to Free" },
+                { x => x.Message, "Are you sure you want to downgrade to Free? You will lose Pro features." },
+                { x => x.ConfirmText, "Downgrade" },
+                { x => x.ConfirmColor, Color.Warning },
+                { x => x.Icon, Icons.Material.Filled.ArrowDownward },
+                { x => x.IconColor, Color.Warning },
+            };
+            var confirmOptions = new DialogOptions
+            {
+                MaxWidth = MaxWidth.ExtraSmall,
+                FullWidth = true,
+                CloseOnEscapeKey = true,
+                NoHeader = true,
+            };
+
+            var confirmDialog = await DialogService.ShowAsync<ConfirmDialog>("Downgrade to Free", confirmParams, confirmOptions);
+            var confirmResult = await confirmDialog.Result;
+
+            if (confirmResult is null || confirmResult.Canceled)
+            {
+                return;
+            }
+
             try
             {
                 await PlanApi.PurchasePlanAsync(Session.AccessToken!, plan.PlanKey, "monthly");
@@ -177,7 +204,16 @@ else if (_plans is { Count: > 0 })
             {
                 // Fall through — still update local state if API fails
             }
-            await Session.LoadCurrentPlanAsync(PlanApi);
+            try
+            {
+                await Session.LoadCurrentPlanAsync(PlanApi);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to refresh plan: {ex.Message}", Severity.Error);
+                return;
+            }
+            Snackbar.Add("Plan downgraded to Free.", Severity.Success);
             return;
         }
 
@@ -198,7 +234,16 @@ else if (_plans is { Count: > 0 })
 
         if (result is not null && !result.Canceled)
         {
-            await Session.LoadCurrentPlanAsync(PlanApi);
+            try
+            {
+                await Session.LoadCurrentPlanAsync(PlanApi);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to refresh plan: {ex.Message}", Severity.Error);
+                return;
+            }
+            Snackbar.Add("Plan upgraded successfully!", Severity.Success);
         }
     }
 
@@ -357,5 +402,11 @@ else if (_plans is { Count: > 0 })
         min-height: 50vh;
         gap: 1rem;
         color: var(--mud-palette-text-secondary);
+    }
+    .contact-note {
+        font-size: 0.75rem;
+        color: var(--mud-palette-text-secondary);
+        margin-top: 0.5rem;
+        text-align: center;
     }
 </style>

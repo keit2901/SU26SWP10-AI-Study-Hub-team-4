@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
@@ -6,6 +7,7 @@ using AI_Study_Hub_v2.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Controllers;
@@ -23,17 +25,20 @@ public sealed class PlansController : ControllerBase
     private readonly IPlanService _planService;
     private readonly IStorageQuotaService _quotaService;
     private readonly AppDbContext _db;
+    private readonly IAuditLogService _audit;
     private readonly ILogger<PlansController> _logger;
 
     public PlansController(
         IPlanService planService,
         IStorageQuotaService quotaService,
         AppDbContext db,
+        IAuditLogService audit,
         ILogger<PlansController> logger)
     {
         _planService = planService;
         _quotaService = quotaService;
         _db = db;
+        _audit = audit;
         _logger = logger;
     }
 
@@ -86,12 +91,20 @@ public sealed class PlansController : ControllerBase
 
     /// <summary>Self-service plan purchase / upgrade for the authenticated user.</summary>
     [HttpPost("purchase")]
+    [EnableRateLimiting("purchase")]
     [ProducesResponseType(typeof(UserPlanDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> PurchasePlan(
         [FromBody] PurchasePlanRequest request,
         CancellationToken ct)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
         try
         {
             var supabaseUserId = GetSupabaseUserIdFromClaims();
@@ -107,17 +120,58 @@ public sealed class PlansController : ControllerBase
                 });
             }
 
+            // M5.2: idempotency check
+            if (!string.IsNullOrWhiteSpace(request.IdempotencyKey))
+            {
+                var existingTxn = await _db.PaymentTransactions
+                    .FirstOrDefaultAsync(pt => pt.TxnRef == request.IdempotencyKey && pt.UserId == user.Id, ct);
+                if (existingTxn is not null)
+                {
+                    var existingUserPlan = await _db.UserPlans
+                        .Include(up => up.Plan)
+                        .FirstOrDefaultAsync(up => up.Id == existingTxn.UserPlanId, ct);
+                    if (existingUserPlan is not null)
+                    {
+                        var existingSnapshot = await _quotaService.GetSnapshotAsync(supabaseUserId, ct);
+                        return Ok(new UserPlanDto(
+                            existingUserPlan.Id,
+                            existingUserPlan.PlanId,
+                            existingUserPlan.Plan.PlanKey,
+                            existingUserPlan.Plan.DisplayName,
+                            existingUserPlan.Status,
+                            existingUserPlan.AssignedAt,
+                            existingUserPlan.ExpiresAt,
+                            existingUserPlan.PaidAt,
+                            existingSnapshot));
+                    }
+                }
+            }
+
             var plan = _planService.GetPlanByKey(request.PlanKey);
             if (plan is null)
             {
+                // W3.1: don't echo user input in error messages
                 return NotFound(new ApiErrorResponse
                 {
                     Code = "plan_not_found",
-                    Message = $"Plan '{request.PlanKey}' not found."
+                    Message = "The requested plan was not found."
                 });
             }
 
             var now = DateTimeOffset.UtcNow;
+
+            // F2.1: calculate ExpiresAt based on billing cycle
+            DateTimeOffset? expiresAt = request.BillingCycle switch
+            {
+                "monthly" => now.AddMonths(1),
+                "yearly" => now.AddYears(1),
+                _ => now.AddMonths(1),
+            };
+            // Free plan never expires
+            if (plan.PlanKey == "free")
+            {
+                expiresAt = null;
+            }
 
             // Deactivate all existing active plan assignments for this user
             var existingActivePlans = await _db.UserPlans
@@ -136,7 +190,7 @@ public sealed class PlansController : ControllerBase
                 PlanId = plan.Id,
                 Status = "active",
                 AssignedAt = now,
-                ExpiresAt = null,
+                ExpiresAt = expiresAt,
                 PaidAt = now,
             };
             _db.UserPlans.Add(newUserPlan);
@@ -145,7 +199,8 @@ public sealed class PlansController : ControllerBase
                 ? (plan.YearlyPriceVnd ?? 0)
                 : (plan.MonthlyPriceVnd ?? 0);
 
-            var txnRef = $"demo_{Guid.NewGuid():N}"[..20];
+            // M5.2: use idempotency key as txnRef if provided
+            var txnRef = request.IdempotencyKey ?? $"demo_{Guid.NewGuid():N}"[..20];
 
             var paymentTransaction = new PaymentTransaction
             {
@@ -164,6 +219,22 @@ public sealed class PlansController : ControllerBase
 
             await _db.SaveChangesAsync(ct);
 
+            // F5.1: audit logging on self-service purchases
+            _audit.Add(
+                supabaseUserId,
+                "SelfServicePlanPurchase",
+                "UserPlan",
+                newUserPlan.Id.ToString(),
+                severity: "Medium",
+                contextJson: JsonSerializer.Serialize(new
+                {
+                    planKey = plan.PlanKey,
+                    billingCycle = request.BillingCycle,
+                    amountVnd = amountVnd,
+                }),
+                ipAddress: HttpContext.Connection.RemoteIpAddress?.ToString(),
+                requestId: HttpContext.TraceIdentifier);
+
             var snapshot = await _quotaService.GetSnapshotAsync(supabaseUserId, ct);
 
             _logger.LogInformation(
@@ -180,6 +251,15 @@ public sealed class PlansController : ControllerBase
                 newUserPlan.ExpiresAt,
                 newUserPlan.PaidAt,
                 snapshot));
+        }
+        // F2.2: handle concurrent purchase race condition
+        catch (DbUpdateException)
+        {
+            return Conflict(new ApiErrorResponse
+            {
+                Code = "concurrent_purchase",
+                Message = "Another purchase is being processed. Please try again."
+            });
         }
         catch (Exception ex)
         {

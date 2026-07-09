@@ -41,6 +41,17 @@ public sealed class PlanService : IPlanService
         return _activePlans ?? Array.Empty<Plan>();
     }
 
+    public void InvalidateCache()
+    {
+        lock (PlanByKeyCache)
+        {
+            PlanByKeyCache.Clear();
+            _freePlan = null;
+            _activePlans = null;
+            _cache.Remove(CacheKey);
+        }
+    }
+
     private void EnsureLoaded()
     {
         // Fast path: already cached in the static dictionary.

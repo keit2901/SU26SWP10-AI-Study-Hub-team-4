@@ -29,5 +29,7 @@ public sealed class PaymentTransaction
     // Navigation
     public User User { get; set; } = null!;
 
+    public Plan Plan { get; set; } = null!;
+
     public UserPlan? UserPlan { get; set; }
 }

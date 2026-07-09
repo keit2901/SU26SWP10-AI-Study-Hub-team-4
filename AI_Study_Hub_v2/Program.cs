@@ -1,6 +1,7 @@
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 using AI_Study_Hub_v2.Components;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
@@ -10,6 +11,7 @@ using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -263,6 +265,21 @@ builder.Services.AddScoped<AiChatSessionState>();
 builder.Services.AddScoped<IChatPersistenceService, ChatPersistenceService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 
+// F2.1: background service to handle plan expiry
+builder.Services.AddHostedService<PlanExpiryHostedService>();
+
+// F3.1: Rate limiting on purchase endpoint
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("purchase", config =>
+    {
+        config.PermitLimit = 3;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+});
+
 // Authentication / Authorization ---------------------------------------------
 builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
@@ -383,6 +400,8 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+
+app.UseRateLimiter();
 
 app.MapControllers();
 app.MapRazorComponents<App>()

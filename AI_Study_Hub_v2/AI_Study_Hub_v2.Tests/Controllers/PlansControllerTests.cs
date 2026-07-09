@@ -7,6 +7,7 @@ using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NUnit.Framework;
@@ -18,6 +19,7 @@ public class PlansControllerTests
 {
     private Mock<IPlanService> _planServiceMock = null!;
     private Mock<IStorageQuotaService> _quotaServiceMock = null!;
+    private Mock<IAuditLogService> _auditServiceMock = null!;
     private AppDbContext _db = null!;
 
     [SetUp]
@@ -25,6 +27,7 @@ public class PlansControllerTests
     {
         _planServiceMock = new Mock<IPlanService>();
         _quotaServiceMock = new Mock<IStorageQuotaService>();
+        _auditServiceMock = new Mock<IAuditLogService>();
         _db = TestDb.CreateInMemory();
     }
 
@@ -40,6 +43,7 @@ public class PlansControllerTests
             _planServiceMock.Object,
             _quotaServiceMock.Object,
             _db,
+            _auditServiceMock.Object,
             NullLogger<PlansController>.Instance);
 
         var http = new DefaultHttpContext();
@@ -114,5 +118,136 @@ public class PlansControllerTests
         statusResult.StatusCode.Should().Be(500);
         var err = statusResult.Value.Should().BeOfType<ApiErrorResponse>().Subject;
         err.Code.Should().Be("unexpected_error");
+    }
+
+    // ── PurchasePlan tests ──
+
+    [Test]
+    public async Task PurchasePlan_InvalidPlanKey_ReturnsNotFound()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        _planServiceMock.Setup(s => s.GetPlanByKey("nonexistent")).Returns((Plan?)null);
+
+        SeedUser(supabaseUserId);
+        var sut = BuildSut(Principal(supabaseUserId));
+
+        var request = new PurchasePlanRequest("nonexistent");
+        var result = await sut.PurchasePlan(request, CancellationToken.None);
+
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        var err = notFound.Value.Should().BeOfType<ApiErrorResponse>().Subject;
+        err.Code.Should().Be("plan_not_found");
+    }
+
+    [Test]
+    public async Task PurchasePlan_InvalidBillingCycle_ReturnsBadRequest()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        SeedUser(supabaseUserId);
+        var sut = BuildSut(Principal(supabaseUserId));
+
+        var request = new PurchasePlanRequest("pro", "weekly");
+        // Simulate model validation failure
+        sut.ModelState.AddModelError("BillingCycle", "Invalid billing cycle.");
+
+        var result = await sut.PurchasePlan(request, CancellationToken.None);
+
+        result.Should().BeOfType<BadRequestObjectResult>();
+    }
+
+    [Test]
+    public async Task PurchasePlan_Unauthenticated_ReturnsUnauthorized()
+    {
+        // Without a ClaimsPrincipal, GetSupabaseUserIdFromClaims throws
+        // InvalidOperationException, which is caught by the catch-all and returns 500.
+        // In production, [Authorize] at the middleware level returns 401 before
+        // the controller method runs. This test validates the fallback behavior.
+        var sut = BuildSut(); // no ClaimsPrincipal
+
+        var request = new PurchasePlanRequest("pro");
+        var ct = CancellationToken.None;
+        var result = await sut.PurchasePlan(request, ct);
+
+        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(500);
+    }
+
+    [Test]
+    public async Task PurchasePlan_ValidRequest_ReturnsUserPlanDto()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        SeedUser(supabaseUserId);
+
+        var dbPlan = new Plan
+        {
+            Id = Guid.NewGuid(),
+            PlanKey = "pro",
+            DisplayName = "Pro Plan",
+            MonthlyPriceVnd = 49_000,
+            YearlyPriceVnd = 490_000,
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        _db.Plans.Add(dbPlan);
+        await _db.SaveChangesAsync();
+
+        _planServiceMock.Setup(s => s.GetPlanByKey("pro")).Returns(dbPlan);
+        _quotaServiceMock
+            .Setup(s => s.GetSnapshotAsync(supabaseUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StorageQuotaSnapshotDto(0, 10L * 1024 * 1024 * 1024, "pro", "Pro Plan"));
+
+        var sut = BuildSut(Principal(supabaseUserId));
+
+        var request = new PurchasePlanRequest("pro");
+        var result = await sut.PurchasePlan(request, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var dto = okResult.Value.Should().BeOfType<UserPlanDto>().Subject;
+        dto.PlanKey.Should().Be("pro");
+        dto.Status.Should().Be("active");
+        dto.AssignedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
+
+        // Verify UserPlan was created
+        var userPlan = await _db.UserPlans.FirstOrDefaultAsync();
+        userPlan.Should().NotBeNull();
+        userPlan!.Status.Should().Be("active");
+
+        // Verify PaymentTransaction was created
+        var txn = await _db.PaymentTransactions.FirstOrDefaultAsync();
+        txn.Should().NotBeNull();
+        txn!.Status.Should().Be("demo_completed");
+        txn.AmountVnd.Should().Be(49_000);
+
+        // Verify audit was logged
+        _auditServiceMock.Verify(a => a.Add(
+            supabaseUserId,
+            "SelfServicePlanPurchase",
+            "UserPlan",
+            userPlan.Id.ToString(),
+            "Medium",
+            null,
+            null,
+            It.Is<string?>(s => s != null && s.Contains("planKey")),
+            It.IsAny<string?>(),
+            It.IsAny<string?>()), Times.Once);
+    }
+
+    // ── Helpers ──
+
+    private void SeedUser(Guid supabaseUserId)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            SupabaseUserId = supabaseUserId,
+            Username = "testuser",
+            FullName = "Test User",
+            RoleId = 2, // Student
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        _db.Users.Add(user);
+        _db.SaveChanges();
     }
 }

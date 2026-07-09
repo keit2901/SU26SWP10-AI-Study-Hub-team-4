@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations;
+
 namespace AI_Study_Hub_v2.Dtos;
 
 public sealed record PlanDto(
@@ -25,7 +27,10 @@ public sealed class UpdatePlanRequest
 
 public sealed record AssignPlanRequest(string PlanKey);
 
-public sealed record PurchasePlanRequest(string PlanKey, string BillingCycle = "monthly");
+public sealed record PurchasePlanRequest(
+    [Required] [StringLength(50)] string PlanKey,
+    [Required] [RegularExpression(@"^(monthly|yearly)$")] string BillingCycle = "monthly",
+    [StringLength(64)] string? IdempotencyKey = null);
 
 public sealed record UserPlanDto(
     Guid Id,
@@ -37,3 +42,14 @@ public sealed record UserPlanDto(
     DateTimeOffset? ExpiresAt,
     DateTimeOffset? PaidAt,
     StorageQuotaSnapshotDto QuotaSnapshot);
+
+public sealed record PaymentTransactionDto(
+    Guid Id,
+    Guid UserId,
+    string UserName,
+    string PlanKey,
+    string BillingCycle,
+    long AmountVnd,
+    string Status,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? CompletedAt);
