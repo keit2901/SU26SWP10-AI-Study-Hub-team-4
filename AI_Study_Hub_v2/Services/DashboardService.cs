@@ -43,12 +43,27 @@ public class DashboardService : IDashboardService
             .Where(d => d.Status == DocumentStatus.Failed)
             .CountAsync(ct);
 
+        var indexedCount = await _context.Documents.AsNoTracking()
+            .Where(d => d.Status == DocumentStatus.Ready)
+            .CountAsync(ct);
+
+        var processingCount = await _context.Documents.AsNoTracking()
+            .Where(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing)
+            .CountAsync(ct);
+
+        var pendingCount = await _context.Documents.AsNoTracking()
+            .Where(d => d.Status == DocumentStatus.Uploading)
+            .CountAsync(ct);
+
         return new AdminDashboardStatsDto(
             TotalUsers: totalUsers,
             TotalDocuments: totalDocs,
             TotalStorageUsedMb: totalStorageMb,
             TotalActiveSessions: activeJobs,
-            TotalFailedJobs: failedJobs
+            TotalFailedJobs: failedJobs,
+            IndexedCount: indexedCount,
+            ProcessingCount: processingCount,
+            PendingCount: pendingCount
         );
     }
 

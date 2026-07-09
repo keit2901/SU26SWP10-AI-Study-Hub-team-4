@@ -30,6 +30,7 @@
 - Các tab code sau kế thừa code trước, chạy đồng bộ
 - Mọi mô tả (PR, commit, code, test) đều tiếng Việt có dấu (UTF-8)
 - Mỗi khi làm phần mới: cập nhật `_CURRENT_TODO.md` + tất cả file Project-Docs liên quan
+- Backend và frontend phải hoạt động mượt mà với nhau — dữ liệu UI phải khớp với API, không được lệch nguồn
 - Icon Todo: ✅ done, 🔄 in progress, ⏳ pending
 
 ### List làm việc vs List Todo
