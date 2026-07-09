@@ -233,15 +233,15 @@
                         <div class="d-flex flex-column">
                             <span class="text-label-md text-on-surface-variant uppercase" style="font-size: 11px; font-weight: 700;">Retrieval readiness</span>
                             <div class="d-flex align-center" style="gap: 0.5rem; margin-top: 2px;">
-                                <span class="text-headline-sm font-bold text-primary" style="font-size: 18px; font-weight: 700; color: #4648d4;">@($"{_metrics.TotalDocuments > 0 ? Math.Min(100, (_metrics.TotalDocuments - _metrics.FailedJobs) * 100 / Math.Max(1, _metrics.TotalDocuments)) : 0}%")</span>
+                                <span class="text-headline-sm font-bold text-primary" style="font-size: 18px; font-weight: 700; color: #4648d4;">@GetReadinessPercent()%</span>
                                 <div class="w-16 h-1.5 bg-surface-container rounded-full overflow-hidden" style="width: 64px; height: 6px; background-color: #eceef0; border-radius: 9999px;">
-                                    <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: @($"{(_metrics.TotalDocuments > 0 ? (_metrics.TotalDocuments - _metrics.FailedJobs) * 100 / _metrics.TotalDocuments : 0)}%");"></div>
+                                    <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: @(GetReadinessPercent())%;"></div>
                                 </div>
                             </div>
                         </div>
                         <div class="text-right">
                             <div class="text-[10px] text-on-surface-variant uppercase leading-none font-bold" style="font-size: 10px; color: #464554;">Status summary</div>
-                            <div class="text-[10px] font-bold text-on-surface mt-1" style="font-size: 10px; font-weight: 700; color: #191c1e;">@($"{_metrics.TotalDocuments - _metrics.FailedJobs} INDEXED, {_metrics.FailedJobs} FAILED")</div>
+                            <div class="text-[10px] font-bold text-on-surface mt-1" style="font-size: 10px; font-weight: 700; color: #191c1e;">@(_metrics.TotalDocuments - _metrics.FailedJobs) INDEXED, @_metrics.FailedJobs FAILED</div>
                         </div>
                     </div>
                 </MudPaper>
@@ -358,6 +358,12 @@
     private void OpenAuditLogs() => Navigation.NavigateTo("/admin/audit-logs");
 
     private static string FormatDateTime(DateTime value) => value.ToString("MMM dd, yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
+
+    private int GetReadinessPercent()
+    {
+        if (_metrics.TotalDocuments == 0) return 0;
+        return Math.Min(100, (_metrics.TotalDocuments - _metrics.FailedJobs) * 100 / _metrics.TotalDocuments);
+    }
 
     private static string GetStatusClass(string status)
     {
