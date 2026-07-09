@@ -291,7 +291,7 @@
         new ChartSeries<double> { Name = "Tokens", Data = new double[] { 18, 21, 17, 26, 31, 29, 36 } }
     };
 
-    private readonly string[] _activityLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
+    private string[] _activityLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
     private readonly string[] _statusLabels = { "Pending", "Processing", "Indexed", "Failed" };
     private List<ChartSeries<double>> StatusSeries =>
         _documentStatuses.Any()
@@ -318,12 +318,30 @@
             var auditTask = Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken)
                 ? AdminApi.ListAuditLogsAsync(Session.AccessToken, 5)
                 : Task.FromResult<IReadOnlyList<AuditLogDto>>(new List<AuditLogDto>());
+            var trendsTask = Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken)
+                ? DashboardApi.GetActivityTrendsAsync(Session.AccessToken)
+                : Task.FromResult<ActivityTrendsDto?>(null);
 
-            await Task.WhenAll(statsTask, queueTask, auditTask);
+            await Task.WhenAll(statsTask, queueTask, auditTask, trendsTask);
 
             var stats = statsTask.Result;
             var queue = queueTask.Result;
             var auditLogs = auditTask.Result;
+            var trends = trendsTask.Result;
+
+            if (trends is not null && trends.Points.Any())
+            {
+                _activitySeries.Clear();
+                _activitySeries.Add(new ChartSeries<double> { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToArray() });
+                _activitySeries.Add(new ChartSeries<double> { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToArray() });
+                _activitySeries.Add(new ChartSeries<double> { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToArray() });
+
+                var labels = trends.Points.Select(p => p.Label).ToArray();
+                if (labels.Length > 0)
+                {
+                    _activityLabels = labels;
+                }
+            }
 
             if (stats is not null)
             {
