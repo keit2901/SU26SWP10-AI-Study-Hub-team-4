@@ -205,10 +205,10 @@
                     </div>
                     <div class="d-flex justify-end mb-4" style="font-size:13px;font-weight:700;color:#4648d4;">@($"{_metrics.TokenUsagePercent:0}%")</div>
 
-                    <div class="p-sm rounded-lg d-flex align-center justify-space-between" style="background-color: @(_metrics.TokenUsagePercent >= 85 ? "#ffdad6" : "#f1f5f9"); border-radius: 0.5rem; padding: 12px;">
+                    <div class="p-sm rounded-lg d-flex align-center justify-space-between" style="@GetTokenWarningStyle()">
                         <div class="d-flex align-center" style="gap:8px;">
-                            <MudIcon Icon="@(_metrics.TokenUsagePercent >= 85 ? Icons.Material.Filled.Warning : Icons.Material.Filled.Info)" Style="color: @(_metrics.TokenUsagePercent >= 85 ? "#ba1a1a" : "#4648d4");" />
-                            <span style="color: @(_metrics.TokenUsagePercent >= 85 ? "#93000a" : "#191c1e"); font-size: 13px;">
+                            <MudIcon Icon="@(_metrics.TokenUsagePercent >= 85 ? Icons.Material.Filled.Warning : Icons.Material.Filled.Info)" Style="@(GetTokenWarningIconColor())" />
+                            <span style="@GetTokenWarningTextColor() font-size:13px;">
                                 @(_metrics.TokenUsagePercent >= 85 ? "High daily token usage detected." : "Monitor daily token usage across users.")
                             </span>
                         </div>
@@ -423,6 +423,22 @@
     {
         if (_metrics.TotalDocuments == 0) return 0;
         return Math.Min(100, (_metrics.TotalDocuments - _metrics.FailedJobs) * 100 / _metrics.TotalDocuments);
+    }
+
+    private string GetTokenWarningStyle()
+    {
+        var bg = _metrics.TokenUsagePercent >= 85 ? "#ffdad6" : "#f1f5f9";
+        return $"background-color:{bg};border-radius:0.5rem;padding:12px;";
+    }
+
+    private string GetTokenWarningIconColor()
+    {
+        return _metrics.TokenUsagePercent >= 85 ? "color:#ba1a1a;" : "color:#4648d4;";
+    }
+
+    private string GetTokenWarningTextColor()
+    {
+        return _metrics.TokenUsagePercent >= 85 ? "color:#93000a;" : "color:#191c1e;";
     }
 
     private static string GetStatusClass(string status)
