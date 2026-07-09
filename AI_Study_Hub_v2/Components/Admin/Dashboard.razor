@@ -290,7 +290,7 @@
         new ChartSeries<double> { Name = "Documents", Data = new double[] { 7, 18, 126, 4 } }
     };
 
-    protected override async void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         await LoadDashboardAsync();
     }
@@ -301,15 +301,24 @@
         _errorMessage = null;
         try
         {
-            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+            var statsTask = Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken)
+                ? DashboardApi.GetAdminStatsAsync(Session.AccessToken)
+                : Task.FromResult<AdminDashboardStatsDto?>(null);
+            var queueTask = ModerationService.GetQueueAsync();
+
+            await Task.WhenAll(statsTask, queueTask);
+
+            var stats = statsTask.Result;
+            var queue = queueTask.Result;
+
+            if (stats is not null)
             {
-                var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
                 _metrics = new DashboardMetrics
                 {
-                    TotalUsers = stats?.TotalUsers ?? 0,
-                    TotalDocuments = stats?.TotalDocuments ?? 0,
-                    ActiveSessions = stats?.TotalActiveSessions ?? 0,
-                    FailedJobs = stats?.TotalFailedJobs ?? 0,
+                    TotalUsers = stats.TotalUsers,
+                    TotalDocuments = stats.TotalDocuments,
+                    ActiveSessions = stats.TotalActiveSessions,
+                    FailedJobs = stats.TotalFailedJobs,
                     DailyTokensUsed = 0,
                     DailyTokenQuota = 500_000,
                     NewUsersThisWeek = 0,
@@ -317,7 +326,6 @@
                 };
             }
 
-            var queue = await ModerationService.GetQueueAsync();
             _attentionDocuments.Clear();
             foreach (var doc in queue.Take(5))
             {
