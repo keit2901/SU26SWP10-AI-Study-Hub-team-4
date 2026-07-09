@@ -17,15 +17,31 @@ public sealed record PlanDto(
 
 public sealed class UpdatePlanRequest
 {
+    [Range(0, long.MaxValue)]
     public long? StorageQuotaBytes { get; set; }
+    
+    [Range(0, int.MaxValue)]
     public int? MaxDocumentCount { get; set; }
+    
+    [Range(0, int.MaxValue)]
     public int? MaxFolderCount { get; set; }
+    
+    [Range(0, long.MaxValue)]
     public long? DailyTokenQuota { get; set; }
+    
+    [Range(0, long.MaxValue)]
     public long? MaxFileSizeBytes { get; set; }
+    
+    [Range(0, int.MaxValue)]
     public int? MaxDocsPerFolder { get; set; }
 }
 
-public sealed record AssignPlanRequest(string PlanKey);
+public sealed class AssignPlanRequest
+{
+    [Required]
+    [StringLength(50)]
+    public string PlanKey { get; set; } = string.Empty;
+}
 
 public sealed record PurchasePlanRequest(
     [Required] [StringLength(50)] string PlanKey,

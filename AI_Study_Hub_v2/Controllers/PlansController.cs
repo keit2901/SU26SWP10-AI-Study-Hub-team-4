@@ -102,9 +102,6 @@ public sealed class PlansController : ControllerBase
         [FromBody] PurchasePlanRequest request,
         CancellationToken ct)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
         try
         {
             var supabaseUserId = GetSupabaseUserIdFromClaims();

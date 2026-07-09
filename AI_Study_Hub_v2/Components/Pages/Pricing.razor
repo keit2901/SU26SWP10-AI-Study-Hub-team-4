@@ -199,6 +199,7 @@ else if (_plans is { Count: > 0 })
             try
             {
                 await PlanApi.PurchasePlanAsync(Session.AccessToken!, plan.PlanKey, "monthly");
+                Session.SetPlan(plan.PlanKey);
                 try
                 {
                     await Session.LoadCurrentPlanAsync(PlanApi);
@@ -236,6 +237,7 @@ else if (_plans is { Count: > 0 })
         {
             try
             {
+                Session.SetPlan(plan.PlanKey);
                 await Session.LoadCurrentPlanAsync(PlanApi);
             }
             catch (Exception ex)

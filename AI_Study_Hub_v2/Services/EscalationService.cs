@@ -9,7 +9,6 @@ public interface IEscalationService
 {
     Task<DocumentEscalationDto> CreateAsync(Guid escalatedByUserId, CreateEscalationRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetPendingAsync(CancellationToken ct = default);
-    Task<IReadOnlyList<DocumentEscalationDto>> GetPendingAsync(CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(Guid userId, CancellationToken ct = default);
     Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, Guid resolvedByUserId, ResolveEscalationRequest request, CancellationToken ct = default);

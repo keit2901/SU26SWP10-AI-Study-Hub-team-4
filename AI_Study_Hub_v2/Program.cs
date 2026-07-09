@@ -5,12 +5,14 @@ using System.Threading.RateLimiting;
 using AI_Study_Hub_v2.Components;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
@@ -272,16 +274,49 @@ builder.Services.AddScoped<IDashboardService, DashboardService>();
 // F2.1: background service to handle plan expiry
 builder.Services.AddHostedService<PlanExpiryHostedService>();
 
-// F3.1: Rate limiting on purchase endpoint
+// F3.1: Rate limiting on purchase endpoint (per-user)
 builder.Services.AddRateLimiter(options =>
 {
-    options.AddFixedWindowLimiter("purchase", config =>
+    options.AddPolicy("purchase", context =>
     {
-        config.PermitLimit = 3;
-        config.Window = TimeSpan.FromMinutes(1);
-        config.QueueProcessingOrder = System.Threading.RateLimiting.QueueProcessingOrder.OldestFirst;
-        config.QueueLimit = 0;
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetSlidingWindowLimiter(userId, _ => new SlidingWindowRateLimiterOptions
+        {
+            PermitLimit = 2,
+            Window = TimeSpan.FromMinutes(1),
+            SegmentsPerWindow = 6,
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0
+        });
     });
+    options.RejectionStatusCode = 429;
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            System.Text.Json.JsonSerializer.Serialize(new { code = "rate_limited", message = "Too many requests." }), ct);
+    };
+});
+
+// H5: Unified 400 validation error format
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(kv => kv.Value?.Errors.Count > 0)
+            .ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray());
+
+        return new BadRequestObjectResult(new ApiErrorResponse
+        {
+            Code = "validation_error",
+            Message = "One or more validation errors occurred.",
+            Errors = errors,
+        });
+    };
 });
 
 // Authentication / Authorization ---------------------------------------------

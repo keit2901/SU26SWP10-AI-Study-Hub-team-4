@@ -26,21 +26,25 @@ public sealed class PlanExpiryHostedService : BackgroundService
     {
         _logger.LogInformation("PlanExpiryHostedService started. Scan interval: {Interval}", ScanInterval);
 
+        // Initial short delay to let app fully start, then immediate first scan
+        await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken);
+
         while (!stoppingToken.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(ScanInterval, stoppingToken);
                 await ExpirePlansAsync(stoppingToken);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
-                break;
+                // Graceful shutdown — let the Task.Delay below propagate cancellation
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "PlanExpiryHostedService encountered an error during expiry scan.");
             }
+
+            await Task.Delay(ScanInterval, stoppingToken);
         }
 
         _logger.LogInformation("PlanExpiryHostedService stopped.");
