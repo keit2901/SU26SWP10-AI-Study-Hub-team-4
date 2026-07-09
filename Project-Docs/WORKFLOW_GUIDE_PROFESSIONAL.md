@@ -29,8 +29,18 @@
 - 1 branch duy nhất cho tất cả admin tabs
 - Các tab code sau kế thừa code trước, chạy đồng bộ
 - Mọi mô tả (PR, commit, code, test) đều tiếng Việt có dấu (UTF-8)
-- Mỗi khi làm phần mới: cập nhật `_CURRENT_TODO.md` + tất cả file Project-Docs liên quan (ADMIN_BACKEND_ANALYSIS.md, ONBOARDING.md, BUSINESS_RULES.md, COMPREHENSIVE_TEST_GUIDE.md...)
+- Mỗi khi làm phần mới: cập nhật `_CURRENT_TODO.md` + tất cả file Project-Docs liên quan
 - Icon Todo: ✅ done, 🔄 in progress, ⏳ pending
+
+### List làm việc vs List Todo
+
+| | List làm việc | List Todo |
+|---|-------------|-----------|
+| **Mục đích** | Tổng quan toàn bộ admin tabs | Từng bước nhỏ khi làm 1 tab |
+| **Khi update** | Chỉ tick ✅ khi tab hoàn thành 100% (PR merged) | Cập nhật real-time liên tục khi làm |
+| **Phạm vi** | 9 tab admin sidebar | 1 tab cụ thể đang làm |
+| **File** | `_CURRENT_TODO.md` (phần trên) | `_CURRENT_TODO.md` (phần dưới) |
+| **Icon** | ✅ Done / 🔄 In Progress / ⏳ Ready | ✅ Done / 🔄 In Progress / ⏳ Pending |
 
 ---
 
