@@ -3,12 +3,14 @@
 @implements IDisposable
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.Extensions.Logging
 @using MudBlazor
 @inject NavigationManager Navigation
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
 @inject AuthApiClient AuthApi
-@inject IDocumentModerationService ModerationService
+@inject AdminDashboardApiClient DashboardApi
+@inject ILogger<AdminLayout> Logger
 
 @if (_checkingAccess)
 {
@@ -233,12 +235,19 @@ else if (_authorized)
     {
         try
         {
-            var queue = await ModerationService.GetQueueAsync();
-            _moderationCount = queue.Count;
-            _failedCount = queue.Count(d => d.ProcessingStatus == "Failed");
+            if (string.IsNullOrWhiteSpace(Session.AccessToken))
+                return;
+
+            var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
+            _moderationCount = stats.PendingCount;
+            _failedCount = stats.TotalFailedJobs;
             await InvokeAsync(StateHasChanged);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            // Non-critical: notifications are best-effort, UI still works without them
+            Logger.LogWarning(ex, "Failed to load admin notification badges");
+        }
     }
 
     private async Task VerifyAccessAsync()
