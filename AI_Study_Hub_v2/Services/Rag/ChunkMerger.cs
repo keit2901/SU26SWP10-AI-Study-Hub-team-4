@@ -48,6 +48,19 @@ public sealed class ChunkMerger
             {
                 currentSectionTitle = block.Text;
                 nextParagraphStartsSection = true;
+                // Create a heading candidate so heading text appears in chunks.
+                // Headings are short by nature and will merge forward with the
+                // following paragraph in MergeSmallCandidates.
+                candidates.Add(new ChunkCandidate(
+                    PageNumber: block.PageNumber,
+                    Content: block.Text.Trim(),
+                    SectionTitle: currentSectionTitle,
+                    IsHeading: true,
+                    StartsNewParagraph: true,
+                    StartsNewSection: true,
+                    FirstSentence: null,
+                    LastSentence: null,
+                    ParagraphText: null));
                 continue;
             }
 
@@ -170,7 +183,7 @@ public sealed class ChunkMerger
         for (var i = 0; i < working.Count; i++)
         {
             var current = working[i];
-            if (current.IsHeading || current.Content.Length >= _minChunkChars)
+            if (current.Content.Length >= _minChunkChars)
             {
                 merged.Add(current);
                 continue;
@@ -178,7 +191,7 @@ public sealed class ChunkMerger
 
             if (i + 1 >= working.Count
                 || working[i + 1].IsHeading
-                || working[i + 1].StartsNewSection
+                || (!current.IsHeading && working[i + 1].StartsNewSection)
                 || !string.Equals(current.SectionTitle, working[i + 1].SectionTitle, StringComparison.Ordinal))
             {
                 merged.Add(current);

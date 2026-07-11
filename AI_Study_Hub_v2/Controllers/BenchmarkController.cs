@@ -39,6 +39,7 @@ public sealed class BenchmarkController : ControllerBase
     }
 
     [HttpPost("run")]
+    [Authorize(Roles = Role.AdminRoleName, AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     [ProducesResponseType(typeof(BenchmarkResult), StatusCodes.Status200OK)]
     public async Task<ActionResult<BenchmarkResult>> Run(
         [FromBody] BenchmarkRunRequest request,
@@ -119,6 +120,7 @@ public sealed class BenchmarkController : ControllerBase
     }
 
     [HttpPost("chunking-compare")]
+    [Authorize(Roles = Role.AdminRoleName, AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
     [ProducesResponseType(typeof(ChunkingBenchmarkComparisonResult), StatusCodes.Status200OK)]
     public async Task<ActionResult<ChunkingBenchmarkComparisonResult>> CompareChunking(
         [FromBody] ChunkingBenchmarkRunRequest? request,

@@ -44,12 +44,20 @@
                 {
                     <a class="btn-get-pro" href="pricing">Get Pro</a>
                 }
+                else
+                {
+                    <a class="btn-get-pro btn-plans" href="pricing">Plans</a>
+                }
                 <button type="button" class="topbar-icon-btn" title="Notifications">
                     <MudIcon Icon="@Icons.Material.Outlined.Notifications" Size="Size.Small" />
                 </button>
                 <button type="button" class="topbar-icon-btn" title="Settings">
                     <MudIcon Icon="@Icons.Material.Outlined.Settings" Size="Size.Small" />
                 </button>
+                <div class="teammate-user-meta">
+                    <span>@DisplayName</span>
+                    <small>@(Session.CurrentPlan ?? "Free") Plan</small>
+                </div>
                 <a class="user-chip teammate-user-chip" href="@ProfileHref" title="@DisplayName — @(Session.CurrentPlan) Plan">
                     <span class="user-avatar-initials">@GetInitials()</span>
                 </a>
@@ -149,6 +157,5 @@
         Session.OnChange -= OnSessionChanged;
         Nav.LocationChanged -= OnLocationChanged;
     }
-
-    private bool IsDashboard => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
+    private bool IsDashboard => AdminAccessPolicy.IsDashboardPath(Nav.ToBaseRelativePath(Nav.Uri));
 }

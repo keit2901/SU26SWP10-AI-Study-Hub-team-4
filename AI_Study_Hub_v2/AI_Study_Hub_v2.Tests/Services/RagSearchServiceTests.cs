@@ -505,4 +505,67 @@ public sealed class RagSearchServiceTests
         embedding[0] = value;
         return embedding;
     }
+
+    [Test]
+    public async Task SearchAsync_ApprovedSharedFolderOfOtherUser_RetrievesChunks()
+    {
+        using var db = CreateDb();
+        var me = SeedUser(db);
+        var other = SeedUser(db);
+        var folder = new Folder
+        {
+            Id = Guid.NewGuid(),
+            UserId = other.Id,
+            Name = "Approved Share",
+            ShareStatus = FolderStatus.Approved,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.Folders.Add(folder);
+
+        var doc = SeedDocument(db, other.Id, "shared.pdf", folder.Id);
+        SeedChunk(db, doc, 0, "shared content to search", UnitAt(0));
+        await db.SaveChangesAsync();
+
+        var sut = BuildSut(db, UnitAt(0));
+
+        var results = await sut.SearchAsync(
+            me.SupabaseUserId,
+            new RagSearchRequest("search", null, folder.Id, null, null, TopK: 5),
+            CancellationToken.None);
+
+        results.Should().ContainSingle();
+        results[0].DocumentId.Should().Be(doc.Id);
+    }
+
+    [Test]
+    public async Task SearchAsync_NonApprovedSharedFolderOfOtherUser_ExcludesChunks()
+    {
+        using var db = CreateDb();
+        var me = SeedUser(db);
+        var other = SeedUser(db);
+        var folder = new Folder
+        {
+            Id = Guid.NewGuid(),
+            UserId = other.Id,
+            Name = "Private Share",
+            ShareStatus = FolderStatus.None,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow
+        };
+        db.Folders.Add(folder);
+
+        var doc = SeedDocument(db, other.Id, "private.pdf", folder.Id);
+        SeedChunk(db, doc, 0, "private content to search", UnitAt(0));
+        await db.SaveChangesAsync();
+
+        var sut = BuildSut(db, UnitAt(0));
+
+        var results = await sut.SearchAsync(
+            me.SupabaseUserId,
+            new RagSearchRequest("search", null, folder.Id, null, null, TopK: 5),
+            CancellationToken.None);
+
+        results.Should().BeEmpty();
+    }
 }
