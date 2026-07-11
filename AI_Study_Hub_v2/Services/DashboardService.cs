@@ -43,12 +43,37 @@ public class DashboardService : IDashboardService
             .Where(d => d.Status == DocumentStatus.Failed)
             .CountAsync(ct);
 
+        var indexedCount = await _context.Documents.AsNoTracking()
+            .Where(d => d.Status == DocumentStatus.Ready)
+            .CountAsync(ct);
+
+        var processingCount = await _context.Documents.AsNoTracking()
+            .Where(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing)
+            .CountAsync(ct);
+
+        var pendingCount = await _context.Documents.AsNoTracking()
+            .Where(d => d.Status == DocumentStatus.Uploading)
+            .CountAsync(ct);
+
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var dailyTokensUsed = await _context.Users.AsNoTracking()
+            .Where(u => u.TokenUsageDate == today)
+            .SumAsync(u => (long)u.TokensUsedToday, ct);
+
+        var dailyTokenQuota = await _context.Users.AsNoTracking()
+            .SumAsync(u => (long)u.DailyTokenQuota, ct);
+
         return new AdminDashboardStatsDto(
             TotalUsers: totalUsers,
             TotalDocuments: totalDocs,
             TotalStorageUsedMb: totalStorageMb,
             TotalActiveSessions: activeJobs,
-            TotalFailedJobs: failedJobs
+            TotalFailedJobs: failedJobs,
+            IndexedCount: indexedCount,
+            ProcessingCount: processingCount,
+            PendingCount: pendingCount,
+            DailyTokensUsed: dailyTokensUsed,
+            DailyTokenQuota: dailyTokenQuota
         );
     }
 
@@ -446,6 +471,11 @@ public class DashboardService : IDashboardService
 
         switch (period?.ToLowerInvariant())
         {
+            case "30day":
+                buckets = 30;
+                bucketStart = i => now.AddDays(-i).Date;
+                labelFormatter = dt => dt.ToString("M/d");
+                break;
             case "week":
                 buckets = 8;
                 bucketStart = i => now.AddDays(-(i + 1) * 7).Date;
