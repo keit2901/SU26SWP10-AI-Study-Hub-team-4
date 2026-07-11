@@ -739,6 +739,33 @@
 
             _documents = documentsTask.Result.ToList();
             _folders = foldersTask.Result.OrderBy(f => f.Name).ToList();
+
+            if (QueryFolderId.HasValue)
+            {
+                var isPersonalFolder = _folders.Any(f => f.Id == QueryFolderId.Value);
+                if (!isPersonalFolder)
+                {
+                    try
+                    {
+                        var sharedFolders = await FoldersApi.ListSharedAsync(Session.AccessToken!);
+                        var sharedFolder = sharedFolders.FirstOrDefault(f => f.Id == QueryFolderId.Value);
+                        if (sharedFolder != null)
+                        {
+                            _folders.Add(sharedFolder);
+                            var sharedDocs = await DocumentsApi.ListAsync(Session.AccessToken!, new DocumentListQuery { FolderId = QueryFolderId.Value });
+                            if (sharedDocs != null && sharedDocs.Count > 0)
+                            {
+                                _documents = _documents.Concat(sharedDocs).DistinctBy(d => d.Id).ToList();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _error = $"Could not load shared folder: {ex.Message}";
+                    }
+                }
+            }
+
             RefreshSubjectFilters();
             ApplyQueryScope();
         }

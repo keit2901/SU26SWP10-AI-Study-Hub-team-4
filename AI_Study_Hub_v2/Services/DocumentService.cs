@@ -282,7 +282,16 @@ public sealed class DocumentService : IDocumentService
             ?? throw new DocumentException(404, "user_not_found",
                 "Authenticated user has no profile in public.users.");
 
-        var q = _db.Documents.AsNoTracking().Where(d => d.UserId == profile.Id);
+        var q = _db.Documents.AsNoTracking();
+        if (query.FolderId.HasValue)
+        {
+            q = q.Where(d => d.FolderId == query.FolderId.Value &&
+                            (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)));
+        }
+        else
+        {
+            q = q.Where(d => d.UserId == profile.Id);
+        }
 
         if (!string.IsNullOrWhiteSpace(query.SubjectCode))
         {
@@ -321,7 +330,7 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 
@@ -444,7 +453,7 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 
@@ -481,7 +490,7 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 

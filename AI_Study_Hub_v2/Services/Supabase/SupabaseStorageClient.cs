@@ -150,8 +150,10 @@ public sealed class SupabaseStorageClient : ISupabaseStorageClient
         }
 
         var contentType = resp.Content.Headers.ContentType?.MediaType ?? "application/octet-stream";
-        var stream = await resp.Content.ReadAsStreamAsync(cancellationToken);
-        return (stream, contentType);
+        var ms = new System.IO.MemoryStream();
+        await resp.Content.CopyToAsync(ms, cancellationToken);
+        ms.Position = 0;
+        return (ms, contentType);
     }
 
     public async Task DeleteAsync(string bucket, string objectPath, CancellationToken cancellationToken = default)
