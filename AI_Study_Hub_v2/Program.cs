@@ -82,7 +82,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName);
         npgsql.UseVector();
     });
-});
+}, contextLifetime: ServiceLifetime.Transient, optionsLifetime: ServiceLifetime.Scoped);
 
 // Auth services ---------------------------------------------------------------
 var supabaseBootstrap = builder.Configuration.GetSection(SupabaseOptions.SectionName).Get<SupabaseOptions>()
