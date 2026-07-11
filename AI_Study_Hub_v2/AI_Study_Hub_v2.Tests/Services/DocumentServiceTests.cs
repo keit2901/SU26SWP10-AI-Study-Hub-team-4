@@ -24,7 +24,7 @@ public class DocumentServiceTests
     // -------------------------------------------------------------------------
 
     private static DocumentService BuildSut(AppDbContext db, ISupabaseStorageClient storage) =>
-        new(db, storage, NullLogger<DocumentService>.Instance);
+        new(db, storage, Mock.Of<IStorageQuotaService>(), NullLogger<DocumentService>.Instance, null);
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, Guid? profileId = null, bool isActive = true)
     {
@@ -798,7 +798,7 @@ public class DocumentServiceTests
     }
 
     [Test]
-    public async Task DeleteAsync_StorageDeleteThrows_DoesNotRemoveRow()
+    public async Task DeleteAsync_StorageDeleteThrows_RowAlreadyRemoved()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
         var me = SeedActiveStudent(db);
@@ -813,7 +813,82 @@ public class DocumentServiceTests
         var act = () => sut.DeleteAsync(me.SupabaseUserId, doc.Id);
 
         await act.Should().ThrowAsync<HttpRequestException>();
-        (await db.Documents.CountAsync()).Should().Be(1); // row preserved
+        (await db.Documents.CountAsync()).Should().Be(0, "row removed before storage delete (new order)");
         storage.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public async Task ListAsync_ApprovedSharedFolderOfOtherUser_ReturnsDocuments()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var other = SeedActiveStudent(db);
+        var folder = SeedFolder(db, other.Id);
+        folder.ShareStatus = FolderStatus.Approved;
+        db.SaveChanges();
+
+        var doc = SeedDocument(db, other.Id, folderId: folder.Id);
+
+        var sut = BuildSut(db, Mock.Of<ISupabaseStorageClient>());
+
+        var result = await sut.ListAsync(me.SupabaseUserId, new DocumentListQuery { FolderId = folder.Id });
+        result.Should().ContainSingle().Which.Id.Should().Be(doc.Id);
+    }
+
+    [Test]
+    public async Task ListAsync_NonApprovedSharedFolderOfOtherUser_ExcludesDocuments()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var other = SeedActiveStudent(db);
+        var folder = SeedFolder(db, other.Id);
+        folder.ShareStatus = FolderStatus.None;
+        db.SaveChanges();
+
+        var doc = SeedDocument(db, other.Id, folderId: folder.Id);
+
+        var sut = BuildSut(db, Mock.Of<ISupabaseStorageClient>());
+
+        var result = await sut.ListAsync(me.SupabaseUserId, new DocumentListQuery { FolderId = folder.Id });
+        result.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task GetByIdAsync_DocumentInApprovedSharedFolderOfOtherUser_ReturnsDto()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var other = SeedActiveStudent(db);
+        var folder = SeedFolder(db, other.Id);
+        folder.ShareStatus = FolderStatus.Approved;
+        db.SaveChanges();
+
+        var doc = SeedDocument(db, other.Id, folderId: folder.Id);
+
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(s => s.CreateSignedUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("https://storage.local/signed");
+        var sut = BuildSut(db, storage.Object);
+
+        var dto = await sut.GetByIdAsync(me.SupabaseUserId, doc.Id);
+        dto.Id.Should().Be(doc.Id);
+    }
+
+    [Test]
+    public async Task GetByIdAsync_DocumentInPrivateFolderOfOtherUser_Throws404()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var other = SeedActiveStudent(db);
+        var folder = SeedFolder(db, other.Id);
+        folder.ShareStatus = FolderStatus.None;
+        db.SaveChanges();
+
+        var doc = SeedDocument(db, other.Id, folderId: folder.Id);
+
+        var sut = BuildSut(db, Mock.Of<ISupabaseStorageClient>());
+
+        var act = () => sut.GetByIdAsync(me.SupabaseUserId, doc.Id);
+        await act.Should().ThrowAsync<DocumentException>().Where(ex => ex.StatusCode == 404);
     }
 }

@@ -11,12 +11,18 @@ public sealed class FolderService : IFolderService
     private readonly AppDbContext _db;
     private readonly ILogger<FolderService> _logger;
     private readonly ISupabaseStorageClient _storage;
+    private readonly IStorageQuotaService _quota;
 
-    public FolderService(AppDbContext db, ILogger<FolderService> logger, ISupabaseStorageClient storage)
+    public FolderService(
+        AppDbContext db,
+        ILogger<FolderService> logger,
+        ISupabaseStorageClient storage,
+        IStorageQuotaService quota)
     {
         _db = db;
         _logger = logger;
         _storage = storage;
+        _quota = quota;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -63,6 +69,9 @@ public sealed class FolderService : IFolderService
         var description = NormalizeDescription(request.Description);
 
         await EnsureUniqueNameAsync(profile.Id, name, excludeFolderId: null, cancellationToken);
+
+        // Enforce plan-level folder count limit.
+        await _quota.ValidateFolderCountAsync(supabaseUserId, cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         var folder = new Folder
@@ -227,7 +236,7 @@ public sealed class FolderService : IFolderService
 
         var rows = await _db.Folders
             .AsNoTracking()
-            .Where(f => f.UserId == profile.Id)
+            .Where(f => f.UserId == profile.Id && f.ShareStatus != FolderStatus.None)
             .OrderByDescending(f => f.SharedAt)
             .ThenBy(f => f.Name)
             .Select(f => new FolderDto

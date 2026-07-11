@@ -6,7 +6,7 @@
 
 | Phase | Tên | Mục tiêu | Effort | File |
 |-------|-----|----------|--------|------|
-| **P1** | Real Embedding | Thay FakeEmbeddingService bằng Ollama `all-minilm:l6-v2` | 7-9h | [RBL_PHASE1_PLAN.md](RBL_PHASE1_PLAN.md) |
+| **P1** | Real Embedding | Thay FakeEmbeddingService bằng Ollama `all-minilm:l6-v2` | ~10h | [RBL_PHASE1_PLAN.md](RBL_PHASE1_PLAN.md) |
 | **P2** | Semantic Chunking | Thay chunking cố định bằng chunking theo ngữ nghĩa (sentence/paragraph/section) | ~12h | [RBL_PHASE2_PLAN.md](RBL_PHASE2_PLAN.md) |
 | **P3** | Quality & Performance | Embedding cache, re-ranking, hybrid search, benchmark auto, observability | ~18h | [RBL_PHASE3_PLAN.md](RBL_PHASE3_PLAN.md) |
 
@@ -23,40 +23,25 @@ P2 phụ thuộc P1. P3 phụ thuộc P1 + P2.
 
 ---
 
-## Tổng effort: 37-39h (~5-6 ngày, 3 người)
+## Tổng effort: ~40h (~6 ngày, 2 người)
 
 ---
 
 ## Team
 
-| Người | GitHub | P1 (7-9h) | P2 (~9h) | P3 (~18h) | Tổng effort |
+| Người | GitHub | P1 (~10h) | P2 (~12h) | P3 (~18h) | Tổng effort |
 |-------|--------|-----------|----------|----------|-------------|
-| **Sơn** | `@ThShadow` | OllamaEmbeddingService + migration + DI swap | SentenceSplitter | Re-ranking + Observability | ~11h |
-| **Bảo** | `@TranGiaBao2005` | Health check + transaction refactor (Design B) | BlockParser | Hybrid Search | ~11h |
-| **Phước** | `@ChickMann` | Unit test + benchmark baseline + Vietnamese dataset | ChunkMerger + integrate into ChunkingService | Embedding Cache + Benchmark Automation | ~12h |
+| **Bảo** | `@TranGiaBao2005` | Service + migration + DI + health check + docker | Đợi replan 2 người | Đợi replan 2 người | ~5.5h (P1) |
+| **Phước** | `@ChickMann` | Transaction refactor + test + benchmark + dataset | Đợi replan 2 người | Đợi replan 2 người | ~4.5h (P1) |
 
-### Phân công chi tiết theo từng phase
+> **P2 và P3 cần replan cho 2 người** — hiện tại chỉ P1 đã cập nhật. P2/P3 giữ nguyên nội dung, chưa phân công lại.
 
-#### P1 — Real Embedding
+### Phân công chi tiết P1
+
 | Người | Việc | Effort |
 |-------|------|--------|
-| Sơn | `OllamaEmbeddingService.cs` + `OllamaOptions.cs` + migration `embedding_model` + `Program.cs` DI swap + `RagSearchService` filter | 3h |
-| Bảo | `OllamaHealthCheck.cs` + error handling/friendly messages + refactor `DocumentIngestionService` (Design B) + `docker-compose.yml` | 3h |
-| Phước | Unit test mock + integration test `[Ignore]` + benchmark baseline + `appsettings.json` update | 2.5h |
-
-#### P2 — Semantic Chunking
-| Người | Việc | Effort |
-|-------|------|--------|
-| Sơn | `SentenceSplitter` — tách câu, xử lý tiếng Việt (abbreviations, dấu câu) | 3h |
-| Bảo | `BlockParser` — phát hiện heading, paragraph, list, table từ PDF text | 3h |
-| Phước | `ChunkMerger` + tích hợp vào `SemanticChunkingService` mới + test + benchmark so sánh fixed vs semantic | 3h |
-
-#### P3 — Quality & Performance
-| Người | Việc | Effort |
-|-------|------|--------|
-| Sơn | Re-ranking (cross-encoder, `ReRankService`) + Observability (metrics, structured logging) | 5h |
-| Bảo | Hybrid Search (keyword+vector fusion, migration `search_vector`, RRF scoring) | 5h |
-| Phước | Embedding Cache (`CachingEmbeddingService`, LRU) + Benchmark Automation (DB entity, scheduled job, admin dashboard) | 6h |
+| Bảo | `OllamaEmbeddingService.cs` + `OllamaOptions.cs` + migration `embedding_model` + `Program.cs` DI swap + `RagSearchService` filter + `OllamaHealthCheck.cs` + `docker-compose.yml` + model pinning | 5.5h |
+| Phước | Transaction refactor (Design B) trong `DocumentIngestionService` + error handling/friendly messages + unit test mock + integration test + benchmark baseline + Vietnamese dataset + `appsettings.json` update | 4.5h |
 
 ---
 

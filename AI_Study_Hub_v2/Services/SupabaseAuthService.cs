@@ -91,6 +91,19 @@ public sealed class SupabaseAuthService : IAuthService
             UpdatedAt = now,
         };
         _db.Users.Add(user);
+
+        var freePlan = await _db.Plans.FirstOrDefaultAsync(p => p.PlanKey == "free", cancellationToken);
+        if (freePlan is not null)
+        {
+            _db.UserPlans.Add(new UserPlan
+            {
+                UserId = user.Id,
+                PlanId = freePlan.Id,
+                Status = "active",
+                AssignedAt = now,
+            });
+        }
+
         await _db.SaveChangesAsync(cancellationToken);
         user.Role = studentRole;
 

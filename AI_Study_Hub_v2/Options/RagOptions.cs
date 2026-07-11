@@ -6,13 +6,13 @@ public sealed class RagOptions
 
     public string ChunkingStrategy { get; set; } = "semantic";
 
-    public int ChunkSizeChars { get; set; } = 1000;
+    public int ChunkSizeChars { get; set; } = 700;
 
-    public int ChunkOverlapChars { get; set; } = 200;
+    public int ChunkOverlapChars { get; set; } = 70;
 
-    public int MinChunkChars { get; set; } = 100;
+    public int MinChunkChars { get; set; } = 200;
 
-    public int MaxSectionChars { get; set; } = 1000;
+    public int MaxSectionChars { get; set; } = 700;
 
     public int DefaultTopK { get; set; } = 5;
 
