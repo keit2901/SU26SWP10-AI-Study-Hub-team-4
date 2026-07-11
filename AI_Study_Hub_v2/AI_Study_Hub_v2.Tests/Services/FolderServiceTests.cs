@@ -14,7 +14,11 @@ namespace AI_Study_Hub_v2.Tests.Services;
 public class FolderServiceTests
 {
     private static FolderService BuildSut(AppDbContext db) =>
-        new(db, NullLogger<FolderService>.Instance, Mock.Of<ISupabaseStorageClient>());
+        new(
+            db,
+            NullLogger<FolderService>.Instance,
+            Mock.Of<ISupabaseStorageClient>(),
+            new FolderShareAiModerator());
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
     {
