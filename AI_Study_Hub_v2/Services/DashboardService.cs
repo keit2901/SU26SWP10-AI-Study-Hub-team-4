@@ -471,6 +471,11 @@ public class DashboardService : IDashboardService
 
         switch (period?.ToLowerInvariant())
         {
+            case "30day":
+                buckets = 30;
+                bucketStart = i => now.AddDays(-i).Date;
+                labelFormatter = dt => dt.ToString("M/d");
+                break;
             case "week":
                 buckets = 8;
                 bucketStart = i => now.AddDays(-(i + 1) * 7).Date;
