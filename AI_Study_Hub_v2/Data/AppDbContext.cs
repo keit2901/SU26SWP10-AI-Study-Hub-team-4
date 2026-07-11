@@ -45,6 +45,10 @@ public class AppDbContext : DbContext
 
     public DbSet<SystemConfig> SystemConfigs => Set<SystemConfig>();
 
+    public DbSet<DocumentEscalation> DocumentEscalations => Set<DocumentEscalation>();
+
+    public DbSet<DocumentEscalationItem> DocumentEscalationItems => Set<DocumentEscalationItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);

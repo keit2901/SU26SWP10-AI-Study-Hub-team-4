@@ -8,7 +8,12 @@ public record AdminDashboardStatsDto(
     int TotalDocuments,
     long TotalStorageUsedMb,
     int TotalActiveSessions,
-    int TotalFailedJobs
+    int TotalFailedJobs,
+    int IndexedCount,
+    int ProcessingCount,
+    int PendingCount,
+    long DailyTokensUsed,
+    long DailyTokenQuota
 );
 
 public record UserDashboardStatsDto(

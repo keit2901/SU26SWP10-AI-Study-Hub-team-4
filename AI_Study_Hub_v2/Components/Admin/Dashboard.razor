@@ -6,6 +6,9 @@
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @inject NavigationManager Navigation
+@inject AuthSessionState Session
+@inject AdminDashboardApiClient DashboardApi
+@inject AdminApiClient AdminApi
 
 <div class="dashboard-page page-enter">
     <!-- Page Header -->
@@ -63,14 +66,29 @@
                     <div class="d-flex justify-space-between align-center mb-6 flex-wrap" style="gap: 1rem;">
                         <div>
                             <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Activity trends</h3>
-                            <span class="text-label-md font-label-md text-on-surface-variant uppercase">Uploads, sessions, and token usage</span>
+                            <span class="text-label-md font-label-md text-on-surface-variant uppercase">Uploads, documents, and failed jobs</span>
                         </div>
                         <select class="bg-surface-container border-none text-label-md font-label-md rounded-lg py-2 px-3" style="background: #eceef0; border-radius: 0.5rem; outline: none; font-weight: 600; font-size: 12px; color: #191c1e;">
                             <option>Last 7 days</option>
                             <option>Last 30 days</option>
                         </select>
                     </div>
-                    <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@_activitySeries" ChartLabels="@_activityLabels" ChartOptions="@_activityChartOptions" Width="100%" Height="305px" />
+                    @if (!string.IsNullOrEmpty(_activityError))
+                    {
+                        <div class="d-flex align-center justify-center" style="height: 305px;">
+                            <span class="text-body-md text-on-surface-variant" style="font-size: 13px; color: #767586;">@_activityError</span>
+                        </div>
+                    }
+                    else if (!_activitySeries.Any() || !_activitySeries[0].Data.Any())
+                    {
+                        <div class="d-flex align-center justify-center" style="height: 305px;">
+                            <span class="text-body-md text-on-surface-variant" style="font-size: 13px; color: #767586;">No activity data available.</span>
+                        </div>
+                    }
+                    else
+                    {
+                        <MudChart T="double" ChartType="ChartType.Bar" ChartSeries="@_activitySeries" ChartLabels="@_activityLabels" ChartOptions="@_activityChartOptions" Width="100%" Height="305px" />
+                    }
                 </MudPaper>
             </MudItem>
 
@@ -83,7 +101,7 @@
                     <div style="position: relative; display: flex; align-items: center; justify-content: center; height: 200px;">
                         <MudChart T="double" ChartType="ChartType.Donut" ChartSeries="@_statusSeries" ChartLabels="@_statusLabels" ChartOptions="@_statusChartOptions" Width="100%" Height="200px" />
                         <div class="donut-center-overlay" style="position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; text-align: center;">
-                            <span class="donut-center-val" style="font-size: 26px; font-weight: 800; line-height: 1; font-family: 'Hanken Grotesk', sans-serif;">155</span>
+                            <span class="donut-center-val" style="font-size: 26px; font-weight: 800; line-height: 1; font-family: 'Hanken Grotesk', sans-serif;">@_metrics.TotalDocuments</span>
                             <span class="donut-center-lbl" style="font-size: 10px; font-weight: 700; color: #767586; text-transform: uppercase; letter-spacing: 0.05em; margin-top: 2px;">Total</span>
                         </div>
                     </div>
@@ -104,48 +122,74 @@
             </MudItem>
         </MudGrid>
 
-        <!-- Attention Documents Row (12 columns, full width) -->
+        <!-- Documents needing attention (summary card) -->
         <MudGrid Class="mb-6">
             <MudItem xs="12">
                 <MudPaper Elevation="0" Class="dashboard-card overflow-hidden" Style="padding: 0;">
+                    @{
+                        var hasAttentionItems = _metrics.PendingDocuments > 0 || _metrics.FailedJobs > 0 || _metrics.ProcessingDocuments > 0;
+
+                        string ctaText; Variant ctaVariant; string ctaRoute;
+                        if (_metrics.FailedJobs > 0)
+                        { ctaText = $"View {_metrics.FailedJobs} failed"; ctaVariant = Variant.Outlined; ctaRoute = "/admin/documents"; }
+                        else if (_metrics.PendingDocuments > 0)
+                        { ctaText = $"Review {_metrics.PendingDocuments} pending"; ctaVariant = Variant.Filled; ctaRoute = "/admin/documents/moderation"; }
+                        else if (_metrics.ProcessingDocuments > 0)
+                        { ctaText = $"View {_metrics.ProcessingDocuments} processing"; ctaVariant = Variant.Outlined; ctaRoute = "/admin/documents"; }
+                        else
+                        { ctaText = "View queue"; ctaVariant = Variant.Text; ctaRoute = "/admin/documents/moderation"; }
+                    }
+
                     <div class="p-4 d-flex justify-space-between align-center border-b" style="border-bottom: 1px solid #e0e3e5; gap: 1rem; flex-wrap: wrap;">
                         <div>
                             <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Documents needing attention</h3>
                             <span class="text-label-md font-label-md text-on-surface-variant uppercase">Pending review, reported, or failed items</span>
                         </div>
-                        <MudButton Variant="Variant.Outlined" Class="attention-queue-btn px-4 py-2 text-label-md font-bold" StartIcon="@Icons.Material.Filled.OpenInNew" OnClick="OpenModerationQueue">
-                            OPEN QUEUE
+                        <MudButton Variant="@ctaVariant" Class="attention-queue-btn px-4 py-2 text-label-md font-bold" StartIcon="@Icons.Material.Filled.OpenInNew" OnClick="@(() => Navigation.NavigateTo(ctaRoute))">
+                            @ctaText
                         </MudButton>
                     </div>
-                    
-                    <div class="overflow-x-auto">
-                        <MudTable Items="@_attentionDocuments" Dense="true" Hover="true" Elevation="0" Class="attention-table">
-                            <HeaderContent>
-                                <MudTh>Document</MudTh>
-                                <MudTh>Owner</MudTh>
-                                <MudTh Class="text-center">Status</MudTh>
-                                <MudTh Class="text-center">Risk</MudTh>
-                                <MudTh Class="text-right">Age</MudTh>
-                            </HeaderContent>
-                            <RowTemplate>
-                                <MudTd DataLabel="Document">
-                                    <div class="font-bold text-body-md" style="color: #191c1e;">@context.Title</div>
-                                    <div class="text-[10px] text-on-surface-variant uppercase font-bold">@context.SubjectCode</div>
-                                </MudTd>
-                                <MudTd DataLabel="Owner">
-                                    <div class="text-body-md" style="color: #191c1e;">@context.OwnerName</div>
-                                    <div class="text-[11px] text-on-surface-variant">@context.OwnerEmail</div>
-                                </MudTd>
-                                <MudTd DataLabel="Status" Class="text-center">
-                                    <span class="attention-status-badge @GetStatusClass(context.Status)">@context.Status</span>
-                                </MudTd>
-                                <MudTd DataLabel="Risk" Class="text-center">
-                                    <span class="attention-risk-badge @GetSeverityClass(context.Severity)">@context.Severity</span>
-                                </MudTd>
-                                <MudTd DataLabel="Age" Class="text-right text-body-md">@context.AgeLabel</MudTd>
-                            </RowTemplate>
-                        </MudTable>
-                    </div>
+
+                    @if (hasAttentionItems)
+                    {
+                        <div class="p-4">
+                            <div class="d-flex" style="gap: 2rem; flex-wrap: wrap;">
+                                <div style="min-width: 120px;">
+                                    <div class="text-headline-md font-headline-md text-on-surface" style="font-size: 28px; line-height: 1.2;">
+                                        @_metrics.PendingDocuments
+                                    </div>
+                                    <div class="text-label-md text-on-surface-variant" style="font-size: 12px; font-weight: 600; text-transform: uppercase;">Pending</div>
+                                </div>
+                                <div style="min-width: 120px;">
+                                    <div class="text-headline-md font-headline-md text-on-surface" style="font-size: 28px; line-height: 1.2; color: #ba1a1a;">
+                                        @_metrics.FailedJobs
+                                    </div>
+                                    <div class="text-label-md text-on-surface-variant" style="font-size: 12px; font-weight: 600; text-transform: uppercase;">Failed</div>
+                                </div>
+                                <div style="min-width: 120px;">
+                                    <div class="text-headline-md font-headline-md text-on-surface" style="font-size: 28px; line-height: 1.2; color: #6b38d4;">
+                                        @_metrics.ProcessingDocuments
+                                    </div>
+                                    <div class="text-label-md text-on-surface-variant" style="font-size: 12px; font-weight: 600; text-transform: uppercase;">Processing</div>
+                                </div>
+                            </div>
+                            @if (_lastDashboardLoadedAt.HasValue)
+                            {
+                                <div style="font-size: 10px; color: #767586; margin-top: 0.5rem;">Last checked @_lastDashboardLoadedAt.Value.ToString("HH:mm")</div>
+                            }
+                        </div>
+                    }
+                    else
+                    {
+                        <div class="d-flex flex-column align-center justify-center py-6" style="text-align: center; gap: 0.75rem;">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 28px; color: #16a34a;" />
+                            <span style="font-size: 14px; font-weight: 500; color: #191c1e;">All documents are clear.</span>
+                            @if (_lastDashboardLoadedAt.HasValue)
+                            {
+                                <span style="font-size: 10px; color: #767586;">Last checked @_lastDashboardLoadedAt.Value.ToString("HH:mm")</span>
+                            }
+                        </div>
+                    }
                 </MudPaper>
             </MudItem>
         </MudGrid>
@@ -160,16 +204,23 @@
                         <MudButton Variant="Variant.Text" Color="Color.Primary" Class="font-bold text-label-md" OnClick="OpenAuditLogs" Style="padding: 0; min-width: auto;">VIEW LOGS</MudButton>
                     </div>
                     <div class="space-y-6 timeline-custom pl-2">
-                        @foreach (var item in _recentActivities)
+                        @if (_recentActivities.Any())
                         {
-                            <div class="timeline-item">
-                                <div class="timeline-dot @item.Color.ToString().ToLower()"></div>
-                                <div class="timeline-content">
-                                    <div class="text-body-md font-bold text-on-surface">@item.Title</div>
-                                    <div class="text-[11px] font-bold timeline-desc mt-0.5 mb-1">@item.Description</div>
-                                    <div class="text-[10px] text-on-surface-variant">@FormatDateTime(item.CreatedAt)</div>
+                            @foreach (var item in _recentActivities)
+                            {
+                                <div class="timeline-item">
+                                    <div class="timeline-dot @item.Color.ToString().ToLower()"></div>
+                                    <div class="timeline-content">
+                                        <div class="text-body-md font-bold text-on-surface">@item.Title</div>
+                                        <div class="text-[11px] font-bold timeline-desc mt-0.5 mb-1">@item.Description</div>
+                                        <div class="text-[10px] text-on-surface-variant">@FormatDateTime(item.CreatedAt)</div>
+                                    </div>
                                 </div>
-                            </div>
+                            }
+                        }
+                        else
+                        {
+                            <div class="text-body-sm text-on-surface-variant" style="font-size:13px;color:#767586;">No critical events</div>
                         }
                     </div>
                 </MudPaper>
@@ -185,62 +236,143 @@
                         <span class="text-headline-md font-headline-md">@_metrics.DailyTokensUsed.ToString("N0") <span class="text-label-md font-normal" style="font-size: 14px; font-weight: normal; color: #464554;">used</span></span>
                         <span class="text-label-md text-on-surface-variant" style="font-size: 12px; font-weight: 600;">@_metrics.DailyTokenQuota.ToString("N0") quota</span>
                     </div>
-                    
-                    <div class="w-full h-3 bg-surface-container rounded-full overflow-hidden mb-8" style="background-color: #eceef0; height: 12px; border-radius: 9999px;">
-                        <div class="h-full bg-gradient-to-r" style="height: 100%; border-radius: 9999px; background: linear-gradient(90deg, #4648d4, #6b38d4); width: @($"{_metrics.TokenUsagePercent:0}%");"></div>
+                    <div class="text-label-sm text-on-surface-variant mb-2" style="font-size:12px;color:#767586;">
+                        @((_metrics.DailyTokenQuota - _metrics.DailyTokensUsed).ToString("N0")) remaining today
                     </div>
                     
-                    <div class="p-sm bg-error-container/20 border border-error/10 rounded-lg d-flex gap-3 align-start" style="background-color: #ffdad6; border: 1px solid rgba(186, 26, 26, 0.1); border-radius: 0.5rem; padding: 12px;">
-                        <MudIcon Icon="@Icons.Material.Filled.Warning" Class="text-error mt-0.5" Style="color: #ba1a1a;" />
-                        <p class="text-body-md text-on-error-container mb-0" style="color: #93000a; font-size: 13px; line-height: 1.4;">12 users are above 85% of their assigned quotas. Review UC16 controls in Users &amp; Permissions.</p>
+                    <div class="w-full h-3 bg-surface-container rounded-full overflow-hidden mb-4 position-relative" style="background-color: #eceef0; height: 12px; border-radius: 9999px;">
+                        <div class="h-full bg-gradient-to-r" style="height: 100%; border-radius: 9999px; background: linear-gradient(90deg, #4648d4, #6b38d4); width: @($"{_metrics.TokenUsagePercent:0}%");"></div>
+                    </div>
+                    <div class="d-flex justify-end mb-4" style="font-size:13px;font-weight:700;color:#4648d4;">@($"{_metrics.TokenUsagePercent:0}%")</div>
+
+                    <div class="p-sm rounded-lg d-flex align-center justify-space-between" style="@GetTokenWarningStyle()">
+                        <div class="d-flex align-center" style="gap:8px;">
+                            <MudIcon Icon="@(_metrics.TokenUsagePercent >= 85 ? Icons.Material.Filled.Warning : Icons.Material.Filled.Info)" Style="@(GetTokenWarningIconColor())" />
+                            <span style="@GetTokenWarningTextColor() font-size:13px;">
+                                @(_metrics.TokenUsagePercent >= 85 ? "High daily token usage detected." : "Monitor daily token usage across users.")
+                            </span>
+                        </div>
+                        <MudButton Variant="Variant.Outlined" Color="@(_metrics.TokenUsagePercent >= 85 ? Color.Error : Color.Primary)" Size="Size.Small" OnClick="@(() => Navigation.NavigateTo("/admin/users?quota=warning"))" Style="text-transform:none;font-size:12px;white-space:nowrap;">
+                            View usage details
+                        </MudButton>
                     </div>
                 </MudPaper>
             </MudItem>
 
             <!-- Administrator Checklist -->
             <MudItem xs="12" lg="4">
-                <MudPaper Elevation="0" Class="dashboard-card d-flex flex-column justify-space-between">
-                    <div>
-                        <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Administrator checklist</h3>
-                        <span class="text-label-md font-label-md text-on-surface-variant uppercase mb-6 d-block">Recommended actions based on use-case guardrails</span>
-                        
-                        <div class="space-y-4">
-                            <label class="flex items-center gap-3 cursor-pointer group d-flex align-center">
-                                <div class="w-5 h-5 rounded flex items-center justify-center" style="width: 20px; height: 20px; background-color: #4648d4; border-radius: 4px;">
-                                    <MudIcon Icon="@Icons.Material.Filled.Check" Style="color: #ffffff; font-size: 14px;" />
-                                </div>
-                                <span class="text-body-md text-on-surface pl-2" style="font-size: 13px; font-weight: 500;">Resolve pending and reported documents before indexing.</span>
-                            </label>
-                            <label class="flex items-center gap-3 cursor-pointer group d-flex align-center">
-                                <div class="w-5 h-5 rounded border-2 border-outline flex items-center justify-center" style="width: 20px; height: 20px; border: 2px solid #767586; border-radius: 0.25rem;"></div>
-                                <span class="text-body-md text-on-surface pl-2" style="font-size: 13px; font-weight: 500;">Confirm no administrator is deactivating own account.</span>
-                            </label>
-                            <label class="flex items-center gap-3 cursor-pointer group d-flex align-center">
-                                <div class="w-5 h-5 rounded border-2 border-outline flex items-center justify-center" style="width: 20px; height: 20px; border: 2px solid #767586; border-radius: 0.25rem;"></div>
-                                <span class="text-body-md text-on-surface pl-2" style="font-size: 13px; font-weight: 500;">Adjust daily token quotas for high-usage courses.</span>
-                            </label>
-                            <label class="flex items-center gap-3 cursor-pointer group d-flex align-center">
-                                <div class="w-5 h-5 rounded border-2 border-outline flex items-center justify-center" style="width: 20px; height: 20px; border: 2px solid #767586; border-radius: 0.25rem;"></div>
-                                <span class="text-body-md text-on-surface pl-2" style="font-size: 13px; font-weight: 500;">Review critical AI configuration changes and verify audit logs.</span>
-                            </label>
+                <MudPaper Elevation="0" Class="dashboard-card">
+                    <h3 class="text-headline-sm font-headline-sm text-on-surface mb-3">Recommended Actions</h3>
+
+                    @{
+                        var pendingCount = _metrics.PendingDocuments;
+                        var failedCount = _metrics.FailedJobs;
+                        var auditCount = _recentActivities.Count;
+                        var allClear = pendingCount == 0 && failedCount == 0 && _metrics.TokenUsagePercent < 85 && auditCount == 0;
+                    }
+                    @if (allClear)
+                    {
+                        <div class="d-flex align-center mb-3" style="gap:8px;padding:10px 12px;background:#f0fdf4;border-radius:6px;">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="color:#16a34a;font-size:18px;" />
+                            <span style="font-size:13px;font-weight:600;color:#166534;">All critical admin actions are clear</span>
                         </div>
-                    </div>
-                    
-                    <div class="mt-8 pt-6 border-t d-flex align-center justify-space-between" style="border-top: 1px solid #e0e3e5;">
-                        <div class="d-flex flex-column">
-                            <span class="text-label-md text-on-surface-variant uppercase" style="font-size: 11px; font-weight: 700;">Retrieval readiness</span>
-                            <div class="d-flex align-center" style="gap: 0.5rem; margin-top: 2px;">
-                                <span class="text-headline-sm font-bold text-primary" style="font-size: 18px; font-weight: 700; color: #4648d4;">82%</span>
-                                <div class="w-16 h-1.5 bg-surface-container rounded-full overflow-hidden" style="width: 64px; height: 6px; background-color: #eceef0; border-radius: 9999px;">
-                                    <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: 82%;"></div>
-                                </div>
+                    }
+
+                    <div class="space-y-2">
+                        @* Pending documents *@
+                        <div class="d-flex align-center justify-space-between" style="padding:6px 0;border-bottom:1px solid #f1f5f9;">
+                            <div class="d-flex align-center" style="gap:8px;">
+                                <MudIcon Icon="@Icons.Material.Filled.Gavel" Style="@GetActionIconStyle(pendingCount > 0)" />
+                                <span style="font-size:13px;font-weight:500;">@pendingCount pending documents</span>
+                            </div>
+                            <div class="d-flex align-center" style="gap:6px;">
+                                <span class="moderation-badge @(pendingCount > 0 ? "pending" : "approved")" style="font-size:10px;background-color:@(pendingCount > 0 ? "#fef3c7" : "#dcfce7");color:@(pendingCount > 0 ? "#d97706" : "#16a34a");padding:2px 8px;border-radius:4px;font-weight:600;">
+                                    @(pendingCount > 0 ? "Needs review" : "All clear")
+                                </span>
+                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))" Style="text-transform:none;font-size:11px;">
+                                    Review documents
+                                </MudButton>
                             </div>
                         </div>
-                        <div class="text-right">
-                            <div class="text-[10px] text-on-surface-variant uppercase leading-none font-bold" style="font-size: 10px; color: #464554;">Status summary</div>
-                            <div class="text-[10px] font-bold text-on-surface mt-1" style="font-size: 10px; font-weight: 700; color: #191c1e;">126 INDEXED, 4 FAILED</div>
+
+                        @* Failed jobs *@
+                        <div class="d-flex align-center justify-space-between" style="padding:6px 0;border-bottom:1px solid #f1f5f9;">
+                            <div class="d-flex align-center" style="gap:8px;">
+                                <MudIcon Icon="@Icons.Material.Filled.Warning" Style="@GetActionIconStyle(failedCount > 0)" />
+                                <span style="font-size:13px;font-weight:500;">@failedCount failed processing jobs</span>
+                            </div>
+                            <div class="d-flex align-center" style="gap:6px;">
+                                <span class="moderation-badge @(failedCount > 0 ? "rejected" : "approved")" style="font-size:10px;background-color:@(failedCount > 0 ? "#fee2e2" : "#dcfce7");color:@(failedCount > 0 ? "#ba1a1a" : "#16a34a");padding:2px 8px;border-radius:4px;font-weight:600;">
+                                    @(failedCount > 0 ? "Critical" : "All clear")
+                                </span>
+                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo("/admin/documents"))" Style="text-transform:none;font-size:11px;">
+                                    View failed jobs
+                                </MudButton>
+                            </div>
+                        </div>
+
+                        @* Token usage *@
+                        <div class="d-flex align-center justify-space-between" style="padding:6px 0;border-bottom:1px solid #f1f5f9;">
+                            <div class="d-flex align-center" style="gap:8px;">
+                                <MudIcon Icon="@Icons.Material.Filled.DataUsage" Style="@GetActionIconStyle(_metrics.TokenUsagePercent >= 85)" />
+                                <div>
+                                    <div style="font-size:13px;font-weight:500;">Token usage: @($"{_metrics.TokenUsagePercent:0}%") of daily quota</div>
+                                </div>
+                            </div>
+                            <div class="d-flex align-center" style="gap:6px;">
+                                <span class="moderation-badge @(_metrics.TokenUsagePercent >= 85 ? "pending" : "approved")" style="font-size:10px;background-color:@(_metrics.TokenUsagePercent >= 85 ? "#fef3c7" : "#dcfce7");color:@(_metrics.TokenUsagePercent >= 85 ? "#d97706" : "#16a34a");padding:2px 8px;border-radius:4px;font-weight:600;">
+                                    @(_metrics.TokenUsagePercent >= 85 ? "Warning" : "All clear")
+                                </span>
+                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo("/admin/users?quota=warning"))" Style="text-transform:none;font-size:11px;">
+                                    High-usage users
+                                </MudButton>
+                            </div>
+                        </div>
+
+                        @* Audit events *@
+                        <div class="d-flex align-center justify-space-between" style="padding:6px 0;">
+                            <div class="d-flex align-center" style="gap:8px;">
+                                <MudIcon Icon="@Icons.Material.Filled.History" Style="@GetActionIconStyle(auditCount > 0)" />
+                                <span style="font-size:13px;font-weight:500;">@auditCount recent audit events</span>
+                            </div>
+                            <div class="d-flex align-center" style="gap:6px;">
+                                <span class="moderation-badge @(auditCount > 0 ? "pending" : "approved")" style="font-size:10px;background-color:@(auditCount > 0 ? "#e0e7ff" : "#dcfce7");color:@(auditCount > 0 ? "#4648d4" : "#16a34a");padding:2px 8px;border-radius:4px;font-weight:600;">
+                                    @(auditCount > 0 ? "Logs" : "All clear")
+                                </span>
+                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="OpenAuditLogs" Style="text-transform:none;font-size:11px;">
+                                    View logs
+                                </MudButton>
+                            </div>
                         </div>
                     </div>
+
+                    <div class="text-end" style="font-size:10px;color:#767586;padding-top:10px;">Updated @DateTime.Now.ToString("HH:mm")</div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+        <MudGrid>
+            <MudItem xs="12" lg="4">
+                <MudPaper Elevation="0" Class="dashboard-card">
+                    <span class="text-label-md text-on-surface-variant uppercase d-block mb-3" style="font-size: 11px; font-weight: 700;">Retrieval readiness</span>
+                    @if (_metrics.TotalDocuments == 0)
+                    {
+                        <span style="color:#767586;font-size:13px;">No documents indexed yet</span>
+                    }
+                    else
+                    {
+                        <div class="d-flex align-center justify-space-between">
+                            <div class="d-flex align-center" style="gap: 0.75rem;">
+                                <span class="text-headline-sm font-bold text-primary" style="font-size: 22px; font-weight: 700; color: #4648d4;">@GetReadinessPercent()%</span>
+                                <div class="w-20 h-2 bg-surface-container rounded-full overflow-hidden" style="width: 120px; height: 8px; background-color: #eceef0; border-radius: 9999px;">
+                                    <div class="h-full bg-primary" style="height: 100%; background-color: #4648d4; width: @(GetReadinessPercent())%;border-radius:9999px;"></div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <div class="text-[10px] font-bold text-on-surface" style="font-size: 11px; font-weight: 700; color: #191c1e;">@(_metrics.TotalDocuments - _metrics.FailedJobs) INDEXED</div>
+                                <div class="text-[10px] text-on-surface-variant" style="font-size: 10px; color: #767586;">@_metrics.FailedJobs FAILED</div>
+                            </div>
+                        </div>
+                    }
                 </MudPaper>
             </MudItem>
         </MudGrid>
@@ -252,8 +384,8 @@
     private string? _errorMessage;
     private DashboardMetrics _metrics = new();
     private readonly List<ActivityFeedItem> _recentActivities = new();
-    private readonly List<AttentionDocument> _attentionDocuments = new();
     private readonly List<DocumentStatusMetric> _documentStatuses = new();
+    private DateTime? _lastDashboardLoadedAt;
 
     private readonly ChartOptions _activityChartOptions = new()
     {
@@ -267,52 +399,72 @@
 
     private IEnumerable<KpiCard> KpiCards => new[]
     {
-        new KpiCard("Total Users", _metrics.TotalUsers.ToString("N0"), $"+{_metrics.NewUsersThisWeek} this week", Icons.Material.Outlined.People, "green"),
+        new KpiCard("Total Users", _metrics.TotalUsers.ToString("N0"), string.Empty, Icons.Material.Outlined.People, "green"),
         new KpiCard("Total Documents", _metrics.TotalDocuments.ToString("N0"), $"{_metrics.ProcessingDocuments} processing now", Icons.Material.Outlined.Description, "purple"),
-        new KpiCard("Active Sessions", _metrics.ActiveSessions.ToString("N0"), "Live sessions", Icons.Material.Outlined.Monitor, "blue"),
+        new KpiCard("Active Jobs", _metrics.ActiveSessions.ToString("N0"), "Documents processing", Icons.Material.Outlined.Autorenew, "blue"),
         new KpiCard("Daily Tokens", _metrics.DailyTokensUsed.ToString("N0"), $"{_metrics.TokenUsagePercent:0}% of quota", Icons.Material.Outlined.GeneratingTokens, "grey")
     };
 
-    private readonly List<ChartSeries<double>> _activitySeries = new()
-    {
-        new ChartSeries<double> { Name = "Uploads", Data = new double[] { 12, 18, 10, 22, 27, 19, 34 } },
-        new ChartSeries<double> { Name = "Chat sessions", Data = new double[] { 44, 51, 49, 63, 70, 58, 86 } },
-        new ChartSeries<double> { Name = "Tokens", Data = new double[] { 18, 21, 17, 26, 31, 29, 36 } }
-    };
+    private readonly List<ChartSeries<double>> _activitySeries = new();
+    private string[] _activityLabels = Array.Empty<string>();
+    private string? _activityError;
+    private readonly string[] _statusLabels = { "Indexed", "Processing", "Pending", "Failed" };
 
-    private readonly string[] _activityLabels = { "Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun" };
-    private readonly string[] _statusLabels = { "Pending", "Processing", "Indexed", "Failed" };
-    private readonly List<ChartSeries<double>> _statusSeries = new()
-    {
-        new ChartSeries<double> { Name = "Documents", Data = new double[] { 7, 18, 126, 4 } }
-    };
+    private readonly List<ChartSeries<double>> _statusSeries = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
         try
         {
-            _metrics = new DashboardMetrics
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
             {
-                TotalUsers = 1248,
-                NewUsersThisWeek = 27,
-                TotalDocuments = 155,
-                ProcessingDocuments = 18,
-                ActiveSessions = 86,
-                FailedJobs = 4,
-                DailyTokensUsed = 356_800,
-                DailyTokenQuota = 500_000
-            };
+                _errorMessage = "Đang xác thực...";
+                return;
+            }
 
-            _documentStatuses.AddRange(new[]
+            var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
+            ApplyStats(stats);
+            _lastDashboardLoadedAt = DateTime.Now;
+
+            var auditLogs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 5);
+            ApplyAuditLogs(auditLogs);
+
+            try
             {
-                new DocumentStatusMetric("Indexed", 126, "indexed"),
-                new DocumentStatusMetric("Processing", 18, "processing"),
-                new DocumentStatusMetric("Pending", 7, "pending"),
-                new DocumentStatusMetric("Failed", 4, "failed")
-            });
-
-            _attentionDocuments.AddRange(BuildAttentionDocuments());
-            _recentActivities.AddRange(BuildRecentActivities());
+                var trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken);
+                if (trends is not null && trends.Points.Any())
+                {
+                    _activitySeries.Clear();
+                    _activitySeries.Add(new ChartSeries<double> { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToArray() });
+                    _activitySeries.Add(new ChartSeries<double> { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToArray() });
+                    _activitySeries.Add(new ChartSeries<double> { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToArray() });
+                    var labels = trends.Points.Select(p => p.Label).ToArray();
+                    if (labels.Length > 0) _activityLabels = labels;
+                }
+                else
+                {
+                    _activitySeries.Clear();
+                    _activityLabels = Array.Empty<string>();
+                }
+            }
+            catch (Exception ex)
+            {
+                _activityError = "Activity trends unavailable.";
+                _activitySeries.Clear();
+                _activityLabels = Array.Empty<string>();
+            }
+        }
+        catch (Npgsql.NpgsqlOperationInProgressException)
+        {
+            _errorMessage = "Hệ thống đang bận, vui lòng thử lại.";
         }
         catch (Exception ex)
         {
@@ -324,79 +476,73 @@
         }
     }
 
+    private void ApplyStats(AdminDashboardStatsDto? stats)
+    {
+        if (stats is null) return;
+        _metrics = new DashboardMetrics
+        {
+            TotalUsers = stats.TotalUsers,
+            TotalDocuments = stats.TotalDocuments,
+            ActiveSessions = stats.TotalActiveSessions,
+            FailedJobs = stats.TotalFailedJobs,
+            DailyTokensUsed = stats.DailyTokensUsed,
+            DailyTokenQuota = stats.DailyTokenQuota > 0 ? stats.DailyTokenQuota : 500_000,
+            NewUsersThisWeek = 0,
+            ProcessingDocuments = stats.ProcessingCount,
+            PendingDocuments = stats.PendingCount
+        };
+        _documentStatuses.Clear();
+        _documentStatuses.Add(new DocumentStatusMetric("Indexed", stats.IndexedCount, "indexed"));
+        _documentStatuses.Add(new DocumentStatusMetric("Processing", stats.ProcessingCount, "processing"));
+        _documentStatuses.Add(new DocumentStatusMetric("Pending", stats.PendingCount, "pending"));
+        _documentStatuses.Add(new DocumentStatusMetric("Failed", stats.TotalFailedJobs, "failed"));
+        _statusSeries.Clear();
+        _statusSeries.Add(new ChartSeries<double> { Name = "Documents", Data = _documentStatuses.Select(s => (double)s.Count).ToArray() });
+    }
+
+    private void ApplyAuditLogs(IReadOnlyList<AuditLogDto> logs)
+    {
+        _recentActivities.Clear();
+        foreach (var log in logs.Take(5))
+        {
+            _recentActivities.Add(new ActivityFeedItem(
+                log.Action, log.EntityType + (log.EntityId is not null ? " " + log.EntityId : ""),
+                log.CreatedAt.LocalDateTime, Icons.Material.Filled.History,
+                log.Severity == "High" ? Color.Error : log.Severity == "Medium" ? Color.Warning : Color.Info));
+        }
+    }
+
     private void OpenModerationQueue() => Navigation.NavigateTo("/admin/documents/moderation");
 
     private void OpenAuditLogs() => Navigation.NavigateTo("/admin/audit-logs");
 
     private static string FormatDateTime(DateTime value) => value.ToString("MMM dd, yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
 
-    private static string GetStatusClass(string status)
+    private int GetReadinessPercent()
     {
-        return status switch
-        {
-            "Pending Review" or "Pending" => "pending-review",
-            "Reported" => "reported",
-            "Failed" => "failed",
-            _ => "pending-review"
-        };
+        if (_metrics.TotalDocuments == 0) return 0;
+        return Math.Min(100, (_metrics.TotalDocuments - _metrics.FailedJobs) * 100 / _metrics.TotalDocuments);
     }
 
-    private static string GetSeverityClass(string severity)
+    private string GetTokenWarningStyle()
     {
-        return severity switch
-        {
-            "High" => "risk-high",
-            "Medium" => "risk-medium",
-            _ => "risk-low"
-        };
+        var bg = _metrics.TokenUsagePercent >= 85 ? "#ffdad6" : "#f1f5f9";
+        return $"background-color:{bg};border-radius:0.5rem;padding:12px;";
     }
 
-    private static Color GetDocumentStatusColor(string status)
+    private string GetTokenWarningIconColor()
     {
-        return status switch
-        {
-            "Pending Review" => Color.Warning,
-            "Reported" => Color.Error,
-            "Failed" => Color.Error,
-            "Rejected" => Color.Default,
-            _ => Color.Primary
-        };
+        return _metrics.TokenUsagePercent >= 85 ? "color:#ba1a1a;" : "color:#4648d4;";
     }
 
-    private static Color GetSeverityColor(string severity)
+    private string GetTokenWarningTextColor()
     {
-        return severity switch
-        {
-            "High" => Color.Error,
-            "Medium" => Color.Warning,
-            _ => Color.Info
-        };
+        return _metrics.TokenUsagePercent >= 85 ? "color:#93000a;" : "color:#191c1e;";
     }
 
-    private static Color GetTokenProgressColor(double usagePercent)
+    private static string GetActionIconStyle(bool hasAction)
     {
-        return usagePercent >= 90 ? Color.Error : usagePercent >= 75 ? Color.Warning : Color.Success;
-    }
-
-    private static IEnumerable<AttentionDocument> BuildAttentionDocuments()
-    {
-        return new[]
-        {
-            new AttentionDocument("RAG Evaluation Notes", "SWP391", "Dr. Nguyen Minh", "minh.nguyen@aistudyhub.edu", "Pending Review", "Medium", "2h"),
-            new AttentionDocument("Exam Bank 2025", "DBI202", "Kiet Ngo", "kiet.ngo@aistudyhub.edu", "Reported", "High", "5h"),
-            new AttentionDocument("Lecture OCR Export", "PRN212", "Mai Anh Tran", "mai.tran@aistudyhub.edu", "Failed", "High", "1d"),
-            new AttentionDocument("Legacy Slides", "SWT301", "Linh Pham", "linh.pham@aistudyhub.edu", "Pending Review", "Low", "2d")
-        };
-    }
-
-    private static IEnumerable<ActivityFeedItem> BuildRecentActivities()
-    {
-        return new[]
-        {
-            new ActivityFeedItem("Document reported", "Exam Bank 2025 was reported for policy review before indexing.", new DateTime(2026, 6, 30, 11, 21, 0, DateTimeKind.Unspecified), Icons.Material.Filled.Gavel, Color.Error),
-            new ActivityFeedItem("Failed processing job", "Embedding worker failed on Lecture OCR Export after 3 retries.", new DateTime(2026, 6, 30, 10, 47, 0, DateTimeKind.Unspecified), Icons.Material.Filled.ReportProblem, Color.Warning),
-            new ActivityFeedItem("Configuration changed", "rag.chunk_size changed from 800 to 1,000 with audit log entry.", new DateTime(2026, 6, 30, 6, 39, 0, DateTimeKind.Unspecified), Icons.Material.Filled.Tune, Color.Info)
-        };
+        return hasAction ? "color:#d97706;font-size:18px;" : "color:#767586;font-size:18px;";
     }
 
     private sealed class DashboardMetrics
@@ -405,16 +551,16 @@
         public int NewUsersThisWeek { get; set; }
         public int TotalDocuments { get; set; }
         public int ProcessingDocuments { get; set; }
+        public int PendingDocuments { get; set; }
         public int ActiveSessions { get; set; }
         public int FailedJobs { get; set; }
-        public int DailyTokensUsed { get; set; }
-        public int DailyTokenQuota { get; set; } = 1;
+        public long DailyTokensUsed { get; set; }
+        public long DailyTokenQuota { get; set; } = 1;
         public double TokenUsagePercent => DailyTokenQuota == 0 ? 0 : DailyTokensUsed * 100d / DailyTokenQuota;
     }
 
     private sealed record KpiCard(string Label, string Value, string SupportingText, string Icon, string AccentClass);
     private sealed record DocumentStatusMetric(string Label, int Count, string CssClass);
-    private sealed record AttentionDocument(string Title, string SubjectCode, string OwnerName, string OwnerEmail, string Status, string Severity, string AgeLabel);
     private sealed record ActivityFeedItem(string Title, string Description, DateTime CreatedAt, string Icon, Color Color);
 }
 

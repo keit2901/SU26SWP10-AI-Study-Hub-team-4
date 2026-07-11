@@ -3,11 +3,14 @@
 @implements IDisposable
 @using Microsoft.AspNetCore.Components
 @using Microsoft.AspNetCore.Components.Routing
+@using Microsoft.Extensions.Logging
 @using MudBlazor
 @inject NavigationManager Navigation
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
 @inject AuthApiClient AuthApi
+@inject AdminDashboardApiClient DashboardApi
+@inject ILogger<AdminLayout> Logger
 
 @if (_checkingAccess)
 {
@@ -43,15 +46,15 @@ else if (_authorized)
 
             <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
                 <ActivatorContent>
-                    <MudBadge Content="5" Color="Color.Error" Overlap="true" Class="me-2">
+                    <MudBadge Content="@NotificationBadge" Color="Color.Error" Overlap="true" Class="me-2">
                         <MudIconButton Icon="@Icons.Material.Filled.Notifications" Color="Color.Inherit" />
                     </MudBadge>
                 </ActivatorContent>
                 <ChildContent>
-                    <MudMenuItem Icon="@Icons.Material.Filled.Gavel" OnClick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">7 documents need moderation</MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.ReportProblem" OnClick="@(() => Navigation.NavigateTo("/admin/dashboard"))">4 failed processing jobs</MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => Navigation.NavigateTo("/admin/users"))">12 users near token quota</MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Navigation.NavigateTo("/admin/settings"))">2 critical config drafts</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Gavel" OnClick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))">@_moderationCount documents need moderation</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.ReportProblem" OnClick="@(() => Navigation.NavigateTo("/admin/dashboard"))">@_failedCount failed processing jobs</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => Navigation.NavigateTo("/admin/users"))">Review user quotas</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Navigation.NavigateTo("/admin/settings"))">System settings</MudMenuItem>
                 </ChildContent>
             </MudMenu>
 
@@ -94,6 +97,7 @@ else if (_authorized)
                     <MudNavLink Href="/admin/documents/moderation" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Gavel">Document Moderation</MudNavLink>
                     <MudNavLink Href="/admin/community-reports" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Community Reports</MudNavLink>
                     <MudNavLink Href="/admin/documents" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Description">Document Library</MudNavLink>
+                    <MudNavLink Href="/admin/escalations" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Escalations</MudNavLink>
                 </MudNavGroup>
                 <MudNavGroup Title="Governance" Icon="@Icons.Material.Filled.Policy" Expanded="true">
                     <MudNavLink Href="/admin/settings" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Tune">AI System Settings</MudNavLink>
@@ -129,6 +133,10 @@ else if (_authorized)
     private bool _checkingAccess = true;
     private bool _authorized;
     private List<BreadcrumbItem> _breadcrumbs = new();
+    private int _moderationCount;
+    private int _failedCount;
+
+    private string NotificationBadge => (_moderationCount + _failedCount) > 0 ? (_moderationCount + _failedCount).ToString() : null!;
 
     private string ThemeIcon => _isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode;
 
@@ -218,12 +226,28 @@ else if (_authorized)
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender)
-        {
-            return;
-        }
-
+        if (!firstRender) return;
         await VerifyAccessAsync();
+        await LoadNotificationsAsync();
+    }
+
+    private async Task LoadNotificationsAsync()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(Session.AccessToken))
+                return;
+
+            var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
+            _moderationCount = stats.PendingCount;
+            _failedCount = stats.TotalFailedJobs;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            // Non-critical: notifications are best-effort, UI still works without them
+            Logger.LogWarning(ex, "Failed to load admin notification badges");
+        }
     }
 
     private async Task VerifyAccessAsync()
@@ -337,6 +361,11 @@ else if (_authorized)
         {
             _breadcrumbs.Add(new BreadcrumbItem("Governance", null, disabled: true));
             _breadcrumbs.Add(new BreadcrumbItem("Benchmark History", null, disabled: true));
+        }
+        else if (relative.Equals("admin/escalations", StringComparison.OrdinalIgnoreCase))
+        {
+            _breadcrumbs.Add(new BreadcrumbItem("Operations", null, disabled: true));
+            _breadcrumbs.Add(new BreadcrumbItem("Escalations", null, disabled: true));
         }
         else if (relative.Equals("admin/audit-logs", StringComparison.OrdinalIgnoreCase))
         {
