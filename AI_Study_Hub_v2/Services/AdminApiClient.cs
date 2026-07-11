@@ -77,6 +77,46 @@ public sealed class AdminApiClient
             accessToken,
             cancellationToken);
 
+    public async Task<IReadOnlyList<AdminDocumentDto>> ListDocumentsAsync(
+        string accessToken,
+        string? status = null,
+        string? subject = null,
+        string? q = null,
+        int page = 1,
+        int size = 20,
+        CancellationToken cancellationToken = default)
+    {
+        var url = $"api/admin/documents?page={page}&size={size}";
+        if (!string.IsNullOrWhiteSpace(status)) url += $"&status={Uri.EscapeDataString(status)}";
+        if (!string.IsNullOrWhiteSpace(subject)) url += $"&subject={Uri.EscapeDataString(subject)}";
+        if (!string.IsNullOrWhiteSpace(q)) url += $"&q={Uri.EscapeDataString(q)}";
+        return await GetListAsync<AdminDocumentDto>(url, accessToken, cancellationToken);
+    }
+
+    public async Task<AdminDocumentDetailDto> GetDocumentDetailAsync(
+        string accessToken,
+        Guid id,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Get, $"api/admin/documents/{id}", accessToken);
+        using var response = await _http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return await response.Content.ReadFromJsonAsync<AdminDocumentDetailDto>(cancellationToken: cancellationToken)
+                ?? throw new DocumentApiException(500, "empty_response", "Server returned an empty response.");
+        }
+        await ThrowFromResponseAsync(response, cancellationToken);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task DeleteDocumentAsync(string accessToken, Guid id, CancellationToken ct = default)
+    {
+        using var request = CreateAuthorizedRequest(HttpMethod.Delete, $"api/admin/documents/{id}", accessToken);
+        using var response = await _http.SendAsync(request, ct);
+        if (response.IsSuccessStatusCode) return;
+        await ThrowFromResponseAsync(response, ct);
+    }
+
     private async Task<IReadOnlyList<T>> GetListAsync<T>(
         string url,
         string accessToken,

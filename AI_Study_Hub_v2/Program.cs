@@ -83,7 +83,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
         npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName);
         npgsql.UseVector();
     });
-});
+}, contextLifetime: ServiceLifetime.Transient, optionsLifetime: ServiceLifetime.Scoped);
 
 // Auth services ---------------------------------------------------------------
 var supabaseBootstrap = builder.Configuration.GetSection(SupabaseOptions.SectionName).Get<SupabaseOptions>()
@@ -123,6 +123,7 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentModerationService, DocumentModerationService>();
+builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
@@ -248,6 +249,10 @@ builder.Services.AddHttpClient<BenchmarkApiClient>((sp, http) =>
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
 builder.Services.AddHttpClient<PlanApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
+builder.Services.AddHttpClient<EscalationApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });

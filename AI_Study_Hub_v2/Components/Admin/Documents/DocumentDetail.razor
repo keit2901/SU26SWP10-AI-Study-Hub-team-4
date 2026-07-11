@@ -4,9 +4,13 @@
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
+@using AI_Study_Hub_v2.Services
+@using AI_Study_Hub_v2.Dtos
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject AuthSessionState Session
+@inject AdminApiClient AdminApi
 
 @if (_isLoading)
 {
@@ -144,13 +148,47 @@ else
     private readonly List<ChunkPreviewRow> _chunks = new();
     private readonly List<ActivityRow> _activities = new();
 
-    protected override void OnInitialized()
+    protected override async void OnInitialized()
     {
+        await LoadDocumentAsync();
+    }
+
+    private async Task LoadDocumentAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+
         try
         {
-            _document = BuildDocument(Id);
-            _chunks.AddRange(BuildChunks());
-            _activities.AddRange(BuildActivities());
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                _errorMessage = "You must be logged in as an administrator.";
+                return;
+            }
+
+            var dto = await AdminApi.GetDocumentDetailAsync(Session.AccessToken, Id);
+            _document = new DocumentDetailRow
+            {
+                Id = dto.Id,
+                Title = dto.FileName,
+                SubjectCode = dto.SubjectCode,
+                OwnerName = dto.OwnerName,
+                OwnerEmail = dto.OwnerEmail,
+                Status = dto.Status,
+                FileType = GetFileExtension(dto.MimeType),
+                FileSizeMb = Math.Round(dto.FileSizeBytes / (1024.0 * 1024.0), 1),
+                StoragePath = dto.StoragePath,
+                ChunkCount = dto.ChunkCount,
+                Tags = new(),
+                CreatedAt = dto.CreatedAt.UtcDateTime,
+                IndexedAt = dto.UpdatedAt.UtcDateTime
+            };
+
+            _chunks.Clear();
+            foreach (var c in dto.Chunks)
+            {
+                _chunks.Add(new ChunkPreviewRow(c.ChunkIndex, c.ContentPreview, c.TokenCount));
+            }
         }
         catch (Exception ex)
         {
@@ -228,43 +266,14 @@ else
 
     private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
 
-    private static DocumentDetailRow BuildDocument(Guid id)
+    private static string GetFileExtension(string mimeType)
     {
-        return new DocumentDetailRow
+        return mimeType switch
         {
-            Id = id,
-            Title = "RAG Evaluation Notes",
-            SubjectCode = "SWP391",
-            OwnerName = "Kiet Ngo",
-            OwnerEmail = "kiet.ngo@aistudyhub.edu",
-            Status = "Indexed",
-            FileType = "pdf",
-            FileSizeMb = 4.8,
-            StoragePath = "documents/swp391/rag-evaluation-notes.pdf",
-            ChunkCount = 42,
-            Tags = new List<string> { "rag", "evaluation", "project" },
-            CreatedAt = DateTime.UtcNow.AddDays(-7),
-            IndexedAt = DateTime.UtcNow.AddDays(-6).AddHours(-3)
-        };
-    }
-
-    private static IEnumerable<ChunkPreviewRow> BuildChunks()
-    {
-        return new[]
-        {
-            new ChunkPreviewRow(1, "Retrieval augmented generation evaluates answer quality by combining semantic search with grounded context.", 146),
-            new ChunkPreviewRow(2, "Chunking strategy, embedding model choice, and metadata filters affect both latency and relevance.", 132),
-            new ChunkPreviewRow(3, "Audit trails should record re-index operations, rejected files, and administrator overrides.", 118)
-        };
-    }
-
-    private static IEnumerable<ActivityRow> BuildActivities()
-    {
-        return new[]
-        {
-            new ActivityRow("Uploaded", "Document uploaded to Supabase Storage.", DateTime.UtcNow.AddDays(-7), Icons.Material.Filled.UploadFile, Color.Primary),
-            new ActivityRow("Indexed", "42 chunks embedded and ready for semantic search.", DateTime.UtcNow.AddDays(-6), Icons.Material.Filled.CheckCircle, Color.Success),
-            new ActivityRow("Reviewed", "Administrator verified subject mapping and tags.", DateTime.UtcNow.AddDays(-5), Icons.Material.Filled.Verified, Color.Secondary)
+            "application/pdf" => "pdf",
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => "docx",
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation" => "pptx",
+            _ => mimeType.Split('/').LastOrDefault() ?? "unknown"
         };
     }
 

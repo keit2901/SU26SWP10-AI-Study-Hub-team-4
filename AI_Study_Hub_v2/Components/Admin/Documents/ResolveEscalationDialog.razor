@@ -1,0 +1,76 @@
+@namespace AI_Study_Hub_v2.Components.Admin.Documents
+@using AI_Study_Hub_v2.Dtos
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+
+<MudDialog>
+    <TitleContent>
+        <div class="d-flex align-center" style="gap: 0.75rem;">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Primary" Style="font-size: 24px;" />
+            <div>
+                <span class="font-bold" style="font-size: 18px; color: #191c1e;">Resolve Escalation</span>
+                <div style="font-size: 12px; color: #767586; font-weight: 500;">By @EscalatedByName &mdash; @DocumentCount document(s)</div>
+            </div>
+        </div>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <!-- Reason preview -->
+            <div style="background: #f8fafc; border-radius: 8px; padding: 12px;">
+                <div class="font-bold mb-1" style="font-size: 11px; color: #767586; letter-spacing: 0.05em;">ESCALATION REASON</div>
+                <div style="font-size: 13px; color: #191c1e;">@Reason</div>
+            </div>
+
+            <!-- Decision -->
+            <MudSelect @bind-Value="_status"
+                       Label="Decision"
+                       Variant="Variant.Outlined"
+                       Required="true">
+                <MudSelectItem Value="@("Approved")">Approved &mdash; Escalation is valid</MudSelectItem>
+                <MudSelectItem Value="@("Rejected")">Rejected &mdash; Escalation is not valid</MudSelectItem>
+            </MudSelect>
+
+            <!-- Admin Response -->
+            <MudTextField @bind-Value="_adminResponse"
+                          Label="Admin Response (optional)"
+                          Variant="Variant.Outlined"
+                          MaxLines="4"
+                          Lines="3"
+                          HelperText="Provide feedback to the moderator who escalated" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                   Disabled="@string.IsNullOrWhiteSpace(_status)"
+                   OnClick="Submit">
+            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="me-1" Style="font-size: 18px;" />
+            Resolve
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public Guid EscalationId { get; set; }
+    [Parameter] public string FolderName { get; set; } = string.Empty;
+    [Parameter] public string EscalatedByName { get; set; } = string.Empty;
+    [Parameter] public string Reason { get; set; } = string.Empty;
+    [Parameter] public int DocumentCount { get; set; }
+
+    private string _status = "Approved";
+    private string? _adminResponse;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private void Submit()
+    {
+        var result = new ResolveEscalationRequest
+        {
+            Status = _status,
+            AdminResponse = string.IsNullOrWhiteSpace(_adminResponse) ? null : _adminResponse.Trim()
+        };
+        MudDialog.Close(DialogResult.Ok(result));
+    }
+}

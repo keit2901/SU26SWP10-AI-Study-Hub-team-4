@@ -8,6 +8,8 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject IRoleCatalogService Roles
+@inject AuthSessionState Session
+@inject AdminApiClient AdminApi
 
 <div class="admin-users-page page-enter">
     <!-- Breadcrumbs & Header -->
@@ -31,6 +33,91 @@
         </div>
     </div>
 
+    <!-- Tab Switcher -->
+    <div class="d-flex mb-6" style="gap: 0; border-bottom: 2px solid #e0e3e5;">
+        <button class="tab-btn @(!_showHighUsageTab ? "tab-active" : "")" @onclick="() => _showHighUsageTab = false"
+                style="padding: 10px 20px; border: none; background: none; font-size: 14px; font-weight: 600; cursor: pointer; border-bottom: @(!_showHighUsageTab ? "2px solid #4648d4" : "2px solid transparent"); color: @(!_showHighUsageTab ? "#4648d4" : "#767586"); margin-bottom: -2px;">
+            All Users
+        </button>
+        <button class="tab-btn @(_showHighUsageTab ? "tab-active" : "")" @onclick="() => _showHighUsageTab = true"
+                style="padding: 10px 20px; border: none; background: none; font-size: 14px; font-weight: 600; cursor: pointer; border-bottom: @(_showHighUsageTab ? "2px solid #4648d4" : "2px solid transparent"); color: @(_showHighUsageTab ? "#4648d4" : "#767586"); margin-bottom: -2px;">
+            High-usage Users
+        </button>
+    </div>
+
+    @if (_showHighUsageTab)
+    {
+        @* High-usage Users view *@
+        <MudAlert Severity="Severity.Warning" Class="mb-4" Variant="Variant.Outlined">
+            Users at or above 85% of daily token quota. Review and adjust quotas as needed.
+        </MudAlert>
+
+        @if (!_users.Any(u => u.TokenUsagePercent >= 85))
+        {
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Không có người dùng nào đang vượt ngưỡng cảnh báo.</MudAlert>
+        }
+        else
+        {
+            <div class="document-table-container">
+                <table class="document-table">
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>Role</th>
+                            <th>Used Today</th>
+                            <th>Quota</th>
+                            <th>Usage %</th>
+                            <th>Remaining</th>
+                            <th>Status</th>
+                            <th style="width: 80px;">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var user in _users.Where(u => u.TokenUsagePercent >= 85).OrderByDescending(u => u.TokenUsagePercent))
+                        {
+                            <tr>
+                                <td>
+                                    <div class="doc-name-cell">
+                                        <div class="doc-avatar pdf" style="width: 32px; height: 32px; font-size: 12px;">
+                                            @user.FullName[0]
+                                        </div>
+                                        <div>
+                                            <div class="doc-title-text" style="font-size: 13px;">@user.FullName</div>
+                                            <div class="doc-meta-text">@user.Email</div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td><span class="subject-pill">@user.Role</span></td>
+                                <td>@user.TokensUsedToday.ToString("N0")</td>
+                                <td>@user.DailyTokenQuota.ToString("N0")</td>
+                                <td>
+                                    <div class="d-flex align-center" style="gap: 6px;">
+                                        <span style="font-weight: 700; font-size: 13px;">@($"{user.TokenUsagePercent:0}%")</span>
+                                        <div style="flex: 1; height: 6px; background: #eceef0; border-radius: 3px; min-width: 60px;">
+                                            <div style="height: 100%; border-radius: 3px; background: @(user.TokenUsagePercent >= 95 ? "#ba1a1a" : "#d97706"); width: @($"{user.TokenUsagePercent}%");"></div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>@((user.DailyTokenQuota - user.TokensUsedToday).ToString("N0"))</td>
+                                <td>
+                                    <span class="moderation-badge @(user.TokenUsagePercent >= 95 ? "rejected" : "pending")" style="background-color: @(user.TokenUsagePercent >= 95 ? "rgba(186,26,26,0.08)" : "rgba(217,119,6,0.08)"); color: @(user.TokenUsagePercent >= 95 ? "#ba1a1a" : "#d97706");">
+                                        @(user.TokenUsagePercent >= 95 ? "Critical" : "Warning")
+                                    </span>
+                                </td>
+                                <td>
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => OpenQuotaSheet(user))" Style="text-transform:none;font-size:11px;">
+                                        Adjust quota
+                                    </MudButton>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    }
+    else
+    {
     <!-- KPI Grid -->
     <div class="kpi-grid-container mb-6">
         <!-- Card 1: Total Users -->
@@ -330,6 +417,7 @@
             </div>
         </MudItem>
     </MudGrid>
+    }
 </div>
 
 <InviteUserSheet Open="@_inviteSheetOpen"
@@ -388,6 +476,7 @@
 
     private readonly List<UserRow> _users = new();
     private readonly List<RoleOption> _roles = new();
+    private bool _showHighUsageTab;
     private bool _isLoading = true;
     private bool _inviteSheetOpen;
     private bool _quotaSheetOpen;
@@ -442,7 +531,15 @@
         try
         {
             await LoadRolesAsync();
-            _users.AddRange(BuildSeedUsers());
+            await LoadUsersAsync();
+
+            var uri = new Uri(Navigation.Uri);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            if (query["quota"] == "warning")
+            {
+                _showHighUsageTab = true;
+                _selectedQuotaRisk = QuotaWarning;
+            }
         }
         catch (Exception ex)
         {
@@ -451,6 +548,30 @@
         finally
         {
             _isLoading = false;
+        }
+    }
+
+    private async Task LoadUsersAsync()
+    {
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+
+        var users = await AdminApi.ListUsersAsync(Session.AccessToken);
+        _users.Clear();
+        foreach (var dto in users)
+        {
+            _users.Add(new UserRow
+            {
+                Id = dto.Id,
+                FullName = dto.FullName,
+                Email = dto.Username,
+                Role = dto.Role,
+                IsActive = dto.IsActive,
+                DailyTokenQuota = (int)dto.DailyTokenQuota,
+                TokensUsedToday = (int)dto.TokensUsedToday,
+                DocumentCount = dto.DocumentCount,
+                CreatedAt = dto.CreatedAt.UtcDateTime,
+                LastActiveAt = dto.CreatedAt.UtcDateTime
+            });
         }
     }
 
@@ -782,16 +903,6 @@
         };
     }
 
-    private static IEnumerable<UserRow> BuildSeedUsers()
-    {
-        return new[]
-        {
-            new UserRow { Id = CurrentAdminId, FullName = "Sarah Anderson", Email = "s.anderson@studyhub.ai", StudentCode = string.Empty, Role = AdminRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-90), LastActiveAt = DateTime.UtcNow.AddHours(-2), IsActive = true, DailyTokenQuota = 100_000, TokensUsedToday = 41_200, DocumentCount = 0 },
-            new UserRow { Id = Guid.Parse("1ae950de-3a70-4a3e-864b-9609d5a59c9d"), FullName = "Mark J. Thompson", Email = "mjt@university.edu", StudentCode = string.Empty, Role = ModeratorRole, AvatarUrl = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=100&h=100&fit=crop", CreatedAt = DateTime.UtcNow.AddDays(-48), LastActiveAt = DateTime.UtcNow.AddHours(-5), IsActive = true, DailyTokenQuota = 75_000, TokensUsedToday = 63_800, DocumentCount = 42 },
-            new UserRow { Id = Guid.Parse("16d5b5b1-723e-44ab-8cd4-96010bdbe2c2"), FullName = "Elena Lopez", Email = "elena.l@scholar.org", StudentCode = "SE201001", Role = StudentRole, AvatarUrl = string.Empty, CreatedAt = DateTime.UtcNow.AddDays(-21), LastActiveAt = DateTime.UtcNow.AddDays(-2), IsActive = true, DailyTokenQuota = 25_000, TokensUsedToday = 18_400, DocumentCount = 8 }
-        };
-    }
-
     private static IEnumerable<string> GetPermissionsList(string role)
     {
         return role switch
@@ -816,7 +927,7 @@
         return $"{(int)diff.TotalDays} days ago";
     }
 
-    private int TotalUsersCount => 1284;
+    private int TotalUsersCount => _users.Count;
 
     private Task OnSearchInputChanged(ChangeEventArgs e)
     {

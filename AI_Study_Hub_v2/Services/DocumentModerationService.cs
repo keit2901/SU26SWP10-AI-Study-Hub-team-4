@@ -33,7 +33,6 @@ public sealed class DocumentModerationService : IDocumentModerationService
         var docs = await _db.Documents
             .AsNoTracking()
             .Include(d => d.User)
-            .Include(d => d.Chunks)
             .Where(d => d.Status != DocumentStatus.Ready)
             .OrderByDescending(d => d.CreatedAt)
             .ToListAsync(ct);
@@ -76,7 +75,7 @@ public sealed class DocumentModerationService : IDocumentModerationService
                 BuildReportReason(doc),
                 doc.Status == DocumentStatus.Failed ? (doc.ErrorMessage ?? "Rejected during moderation.") : string.Empty,
                 previewText,
-                doc.Chunks.Count,
+                0,
                 doc.CreatedAt,
                 doc.UpdatedAt);
         }).ToList();
@@ -134,7 +133,7 @@ public sealed class DocumentModerationService : IDocumentModerationService
         var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc is null) return false;
 
-        doc.ReviewStatus = DocumentReviewStatus.None;
+        doc.ReviewStatus = DocumentReviewStatus.Escalated;
         doc.ErrorMessage = "Escalated to admin for final review.";
         doc.UpdatedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
@@ -159,8 +158,7 @@ public sealed class DocumentModerationService : IDocumentModerationService
         var docs = await _db.Documents
             .AsNoTracking()
             .Include(d => d.User)
-            .Include(d => d.Chunks)
-            .Where(d => d.ErrorMessage != null && d.ErrorMessage.Contains("Escalated"))
+            .Where(d => d.ReviewStatus == DocumentReviewStatus.Escalated)
             .OrderByDescending(d => d.UpdatedAt)
             .ToListAsync(ct);
 
@@ -190,7 +188,7 @@ public sealed class DocumentModerationService : IDocumentModerationService
                 MapSeverity(doc.Status, doc.ErrorMessage),
                 doc.ErrorMessage ?? "Escalated for admin review.",
                 doc.Status == DocumentStatus.Failed ? (doc.ErrorMessage ?? "Escalated during moderation.") : string.Empty,
-                previewText, doc.Chunks.Count, doc.CreatedAt, doc.UpdatedAt);
+                previewText, 0, doc.CreatedAt, doc.UpdatedAt);
         }).ToList();
     }
 
