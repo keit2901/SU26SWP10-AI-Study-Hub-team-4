@@ -1,0 +1,7 @@
+Materials
+
+- Summary page
+- Some screenshots
+- A few notes copied from class
+
+The metadata in this case is intentionally weak so the AI moderator should not be fully confident.

@@ -20,6 +20,20 @@ public sealed class Folder
 
     public DateTimeOffset? SharedAt { get; set; }
 
+    public string? ShareReviewSource { get; set; }
+
+    public string? AiReviewReason { get; set; }
+
+    public double? AiReviewConfidence { get; set; }
+
+    public string? HumanReviewReason { get; set; }
+
+    public bool RequiresHumanReview { get; set; }
+
+    public DateTimeOffset? AppealRequestedAt { get; set; }
+
+    public string? AppealMessage { get; set; }
+
     public string? Icon { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

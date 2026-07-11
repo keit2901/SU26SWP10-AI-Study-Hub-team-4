@@ -365,19 +365,26 @@ else
                                         {
                                             <div @onclick="@(() => _openMenuFolderId = null)" style="position:absolute;top:0;left:0;right:0;bottom:0;background:transparent;z-index:999;border-radius:12px;" />
                                             <div class="folder-card-dropdown" @onclick:stopPropagation>
-                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ShowRenameFolderDialogAsync(folder); })">
+                                                <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowRenameFolderDialogAsync(folder); })">
                                                     <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
                                                     <span>Rename</span>
                                                 </div>
-                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ShowChangeFolderIconDialogAsync(folder); })">
+                                                <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowChangeFolderIconDialogAsync(folder); })">
                                                     <MudIcon Icon="@Icons.Material.Filled.EmojiSymbols" Size="Size.Small" />
                                                     <span>Change Icon</span>
                                                 </div>
-                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); RequestShareAsync(folder); })" style="@(folder.ShareStatus == Data.Entities.FolderStatus.PendingShare || folder.ShareStatus == Data.Entities.FolderStatus.Approved ? "opacity:0.5;cursor:default;" : "")">
+                                                <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await RequestShareAsync(folder); })" style="@(folder.ShareStatus == Data.Entities.FolderStatus.PendingShare || folder.ShareStatus == Data.Entities.FolderStatus.Approved ? "opacity:0.5;cursor:default;" : "")">
                                                     <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" Color="@(folder.ShareStatus == Data.Entities.FolderStatus.Approved ? Color.Primary : folder.ShareStatus == Data.Entities.FolderStatus.PendingShare ? Color.Warning : Color.Default)" />
-                                                    <span>@GetShareButtonText(folder.ShareStatus)</span>
+                                                    <span>@GetShareButtonText(folder)</span>
                                                 </div>
-                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ConfirmDeleteFolderAsync(folder); })">
+                                                @if (CanAppealShare(folder))
+                                                {
+                                                    <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowAppealShareDialogAsync(folder); })">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" Color="Color.Info" />
+                                                        <span>Request human review</span>
+                                                    </div>
+                                                }
+                                                <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ConfirmDeleteFolderAsync(folder); })">
                                                     <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" />
                                                     <span>Delete</span>
                                                 </div>
@@ -1828,7 +1835,7 @@ else
                 _folders = _folders.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
                 StateHasChanged();
             }
-            Snackbar.Add("Share request submitted. Waiting for moderator approval.", Severity.Success);
+            Snackbar.Add(GetShareDecisionMessage(updated), GetShareDecisionSeverity(updated));
         }
         catch (DocumentApiException ex)
         {
@@ -1836,12 +1843,90 @@ else
         }
     }
 
-    private static string GetShareButtonText(Data.Entities.FolderStatus status) => status switch
+    private async Task ShowAppealShareDialogAsync(FolderDto folder)
     {
-        Data.Entities.FolderStatus.PendingShare => "Pending Approval",
-        Data.Entities.FolderStatus.Approved => "Shared",
-        Data.Entities.FolderStatus.Rejected => "Share (Retry)",
-        _ => "Share"
+        if (!CanAppealShare(folder)) return;
+
+        var parameters = new DialogParameters
+        {
+            ["FolderName"] = folder.Name,
+            ["AiReason"] = folder.AiReviewReason,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialogRef = await Dialogs.ShowAsync<AppealFolderShareDialog>("Request human review", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+        var message = result.Data as string;
+        await AppealShareReviewAsync(folder, message);
+    }
+
+    private async Task AppealShareReviewAsync(FolderDto folder, string? message)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+
+        try
+        {
+            var updated = await FoldersApi.AppealShareReviewAsync(
+                Session.AccessToken!,
+                folder.Id,
+                new AppealFolderShareRequest { Message = message });
+            var idx = _folders.FindIndex(f => f.Id == folder.Id);
+            if (idx >= 0)
+            {
+                _folders[idx] = updated;
+                _folders = _folders.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
+                StateHasChanged();
+            }
+
+            Snackbar.Add("Human review requested. Your folder is back in the moderator queue.", Severity.Info);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+        }
+    }
+
+    private static bool CanAppealShare(FolderDto folder) =>
+        folder.ShareStatus == Data.Entities.FolderStatus.Rejected
+        && !string.Equals(folder.ShareReviewSource, "HUMAN", StringComparison.OrdinalIgnoreCase);
+
+    private static string GetShareButtonText(FolderDto folder)
+    {
+        if (folder.ShareStatus == Data.Entities.FolderStatus.PendingShare && folder.AppealRequestedAt.HasValue)
+        {
+            return "Appeal Pending";
+        }
+
+        return folder.ShareStatus switch
+        {
+            Data.Entities.FolderStatus.PendingShare => folder.RequiresHumanReview ? "Human Review" : "Pending Approval",
+            Data.Entities.FolderStatus.Approved => "Shared",
+            Data.Entities.FolderStatus.Rejected => "Retry AI Review",
+            _ => "Share"
+        };
+    }
+
+    private static string GetShareDecisionMessage(FolderDto folder)
+    {
+        var reason = string.IsNullOrWhiteSpace(folder.AiReviewReason)
+            ? string.Empty
+            : $" Reason: {folder.AiReviewReason}";
+
+        return folder.ShareStatus switch
+        {
+            Data.Entities.FolderStatus.Approved => $"AI approved this folder for community sharing.{reason}",
+            Data.Entities.FolderStatus.Rejected => $"AI rejected this folder based on a hard rule.{reason}",
+            Data.Entities.FolderStatus.PendingShare when folder.RequiresHumanReview => $"AI was not confident enough, so the folder was sent to human review.{reason}",
+            _ => $"Share request submitted.{reason}"
+        };
+    }
+
+    private static Severity GetShareDecisionSeverity(FolderDto folder) => folder.ShareStatus switch
+    {
+        Data.Entities.FolderStatus.Approved => Severity.Success,
+        Data.Entities.FolderStatus.Rejected => Severity.Warning,
+        Data.Entities.FolderStatus.PendingShare when folder.RequiresHumanReview => Severity.Info,
+        _ => Severity.Success
     };
 
     private static string GetFolderIcon(FolderDto folder)
