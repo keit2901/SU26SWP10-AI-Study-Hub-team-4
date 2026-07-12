@@ -52,22 +52,6 @@
         };
     </script>
     <script src="_framework/blazor.web.js"></script>
-    @if (Env.IsDevelopment())
-    {
-        <div id="agentation-container" style="display: block;"></div>
-        <script src="agentation-static/agentation-wc/dist/agentation-wc.js"></script>
-        <script>
-            document.addEventListener("DOMContentLoaded", function() {
-                setTimeout(function() {
-                    var container = document.getElementById("agentation-container");
-                    if (container && !document.querySelector("agentation-tool")) {
-                        var tool = document.createElement("agentation-tool");
-                        container.appendChild(tool);
-                    }
-                }, 1000);
-            });
-        </script>
-    }
 </body>
 
 </html>

@@ -50,7 +50,12 @@ public sealed class FolderService : IFolderService
                 UpdatedAt = f.UpdatedAt,
                 Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
                          f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (
+                             f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                             f.ShareStatus == FolderStatus.PendingShare ? "Pending Share" :
+                             f.ShareStatus == FolderStatus.Rejected ? "Rejected" :
+                             "Private"
+                         ) :
                          "Empty"
             })
             .ToListAsync(cancellationToken);
@@ -220,7 +225,12 @@ public sealed class FolderService : IFolderService
                     : null,
                 Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
                          f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (
+                             f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                             f.ShareStatus == FolderStatus.PendingShare ? "Pending Share" :
+                             f.ShareStatus == FolderStatus.Rejected ? "Rejected" :
+                             "Private"
+                         ) :
                          "Empty"
             })
             .ToListAsync(cancellationToken);
@@ -256,7 +266,12 @@ public sealed class FolderService : IFolderService
                 DislikeCount = f.Reactions.Count(r => !r.IsLike),
                 Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
                          f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (
+                             f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                             f.ShareStatus == FolderStatus.PendingShare ? "Pending Share" :
+                             f.ShareStatus == FolderStatus.Rejected ? "Rejected" :
+                             "Private"
+                         ) :
                          "Empty"
             })
             .ToListAsync(cancellationToken);
@@ -554,6 +569,7 @@ public sealed class FolderService : IFolderService
             Icon = source.Icon,
             CreatedAt = now,
             UpdatedAt = now,
+            Status = "Private"
         };
     }
 
@@ -695,7 +711,12 @@ public sealed class FolderService : IFolderService
         Status = folder.Documents == null ? "Empty" :
                  folder.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
                  folder.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                 folder.Documents.Any() && folder.Documents.All(d => d.Status == DocumentStatus.Ready) ? (folder.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                 folder.Documents.Any() && folder.Documents.All(d => d.Status == DocumentStatus.Ready) ? (
+                     folder.ShareStatus == FolderStatus.Approved ? "Shared" :
+                     folder.ShareStatus == FolderStatus.PendingShare ? "Pending Share" :
+                     folder.ShareStatus == FolderStatus.Rejected ? "Rejected" :
+                     "Private"
+                 ) :
                  "Empty"
     };
 }
