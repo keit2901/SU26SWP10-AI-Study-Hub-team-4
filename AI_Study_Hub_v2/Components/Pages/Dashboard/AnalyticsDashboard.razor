@@ -8,7 +8,6 @@
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
 @inject AppDbContext DbContext
-@inject IFolderService FolderService
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @using AI_Study_Hub_v2.Data.Entities
@@ -90,34 +89,6 @@
                 </div>
             }
         </div>
-
-        @if (FolderId.HasValue && HasModerationContext)
-        {
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr)); gap: 1rem;">
-                <div style="background: #fff; border: 1px solid rgba(199,196,215,0.5); border-radius: 0.75rem; padding: 1rem 1.1rem;">
-                    <div style="font-size: 0.75rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem;">Review Source</div>
-                    <div style="font-size: 0.95rem; font-weight: 700; color: #1a1b1f;">@(_shareReviewSource ?? "Unknown")</div>
-                    @if (_aiReviewConfidence.HasValue)
-                    {
-                        <div style="font-size: 0.8125rem; color: #6b7280; margin-top: 0.35rem;">AI confidence: @($"{_aiReviewConfidence:P0}")</div>
-                    }
-                </div>
-                @if (!string.IsNullOrWhiteSpace(_aiReviewReason))
-                {
-                    <div style="background: #fff; border: 1px solid rgba(199,196,215,0.5); border-radius: 0.75rem; padding: 1rem 1.1rem;">
-                        <div style="font-size: 0.75rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem;">AI Reason</div>
-                        <div style="font-size: 0.875rem; color: #1f2937; line-height: 1.5;">@_aiReviewReason</div>
-                    </div>
-                }
-                @if (!string.IsNullOrWhiteSpace(_appealMessage))
-                {
-                    <div style="background: #fff; border: 1px solid rgba(199,196,215,0.5); border-radius: 0.75rem; padding: 1rem 1.1rem;">
-                        <div style="font-size: 0.75rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 0.4rem;">Student Appeal</div>
-                        <div style="font-size: 0.875rem; color: #1f2937; line-height: 1.5;">@_appealMessage</div>
-                    </div>
-                }
-            </div>
-        }
 
         @if (isLoading)
         {
@@ -566,17 +537,8 @@
     private FolderStatus _folderShareStatus = FolderStatus.None;
     private bool _allDocumentsReviewed;
     private bool _hasRejectedDocument;
-    private string? _shareReviewSource;
-    private string? _aiReviewReason;
-    private double? _aiReviewConfidence;
-    private string? _appealMessage;
 
     private bool HasIssues => issuesList is { Count: > 0 };
-    private bool HasModerationContext =>
-        !string.IsNullOrWhiteSpace(_shareReviewSource)
-        || !string.IsNullOrWhiteSpace(_aiReviewReason)
-        || !string.IsNullOrWhiteSpace(_appealMessage)
-        || _aiReviewConfidence.HasValue;
 
     private int TotalIssueIncidents => issuesList?.Sum(issue => issue.IncidentCount) ?? 0;
 
@@ -671,19 +633,11 @@
                 var folder = await DbContext.Folders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == FolderId.Value);
                 FolderName = folder?.Name ?? string.Empty;
                 _folderShareStatus = folder?.ShareStatus ?? FolderStatus.None;
-                _shareReviewSource = folder?.ShareReviewSource;
-                _aiReviewReason = folder?.AiReviewReason;
-                _aiReviewConfidence = folder?.AiReviewConfidence;
-                _appealMessage = folder?.AppealMessage;
             }
             else
             {
                 FolderName = string.Empty;
                 _folderShareStatus = FolderStatus.None;
-                _shareReviewSource = null;
-                _aiReviewReason = null;
-                _aiReviewConfidence = null;
-                _appealMessage = null;
             }
 
             var analytics = await DashboardService.GetAdminAnalyticsAsync(FolderId, _currentPage, _pageSize);
@@ -1110,18 +1064,17 @@
         if (!FolderId.HasValue) return;
         try
         {
-            var updated = await FolderService.ApproveFolderShareAsync(FolderId.Value);
-            _folderShareStatus = updated.ShareStatus;
-            _shareReviewSource = updated.ShareReviewSource;
-            _aiReviewReason = updated.AiReviewReason;
-            _aiReviewConfidence = updated.AiReviewConfidence;
-            _appealMessage = updated.AppealMessage;
+            var folder = await DbContext.Folders.FindAsync(FolderId.Value);
+            if (folder == null) return;
+
+            folder.ShareStatus = FolderStatus.Approved;
+            folder.SharedAt = DateTimeOffset.UtcNow;
+            folder.UpdatedAt = DateTimeOffset.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            _folderShareStatus = FolderStatus.Approved;
             Snackbar.Add("Folder approved and shared to community.", Severity.Success);
             StateHasChanged();
-        }
-        catch (DocumentException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
         }
         catch (Exception ex)
         {
@@ -1134,18 +1087,17 @@
         if (!FolderId.HasValue) return;
         try
         {
-            var updated = await FolderService.RejectFolderShareAsync(FolderId.Value, "Rejected after human moderation.");
-            _folderShareStatus = updated.ShareStatus;
-            _shareReviewSource = updated.ShareReviewSource;
-            _aiReviewReason = updated.AiReviewReason;
-            _aiReviewConfidence = updated.AiReviewConfidence;
-            _appealMessage = updated.AppealMessage;
+            var folder = await DbContext.Folders.FindAsync(FolderId.Value);
+            if (folder == null) return;
+
+            folder.ShareStatus = FolderStatus.Rejected;
+            folder.SharedAt = null;
+            folder.UpdatedAt = DateTimeOffset.UtcNow;
+            await DbContext.SaveChangesAsync();
+
+            _folderShareStatus = FolderStatus.Rejected;
             Snackbar.Add("Folder share request rejected.", Severity.Warning);
             StateHasChanged();
-        }
-        catch (DocumentException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
         }
         catch (Exception ex)
         {

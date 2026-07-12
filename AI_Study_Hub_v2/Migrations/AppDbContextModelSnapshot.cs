@@ -709,29 +709,6 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("text")
                         .HasColumnName("description");
 
-                    b.Property<string>("AiReviewReason")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("ai_review_reason");
-
-                    b.Property<double?>("AiReviewConfidence")
-                        .HasColumnType("double precision")
-                        .HasColumnName("ai_review_confidence");
-
-                    b.Property<DateTimeOffset?>("AppealRequestedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("appeal_requested_at");
-
-                    b.Property<string>("AppealMessage")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("appeal_message");
-
-                    b.Property<string>("HumanReviewReason")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("human_review_reason");
-
                     b.Property<string>("Icon")
                         .HasMaxLength(50)
                         .HasColumnType("character varying(50)")
@@ -748,17 +725,6 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
-
-                    b.Property<bool>("RequiresHumanReview")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("requires_human_review");
-
-                    b.Property<string>("ShareReviewSource")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("share_review_source");
 
                     b.Property<int>("ShareStatus")
                         .ValueGeneratedOnAdd()

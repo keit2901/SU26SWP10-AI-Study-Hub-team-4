@@ -1,5 +1,0 @@
-{
-  "folderName": "Exam Leak Pack",
-  "description": "Academic pack with blocked wording that should trigger a hard reject and require appeal if the student wants manual review.",
-  "expectedOutcome": "AutoRejectedByAI"
-}
