@@ -345,6 +345,17 @@ button.nav-pill {
     color: #fff;
 }
 
+.btn-plans {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    color: var(--mud-palette-text-primary) !important;
+}
+
+.btn-plans:hover {
+    background: rgba(255, 255, 255, 0.15) !important;
+    box-shadow: 0 4px 12px rgba(255, 255, 255, 0.05);
+}
+
 /* ── Topbar Icon Buttons ── */
 .topbar-icon-btn {
     display: inline-flex;

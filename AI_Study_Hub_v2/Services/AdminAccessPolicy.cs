@@ -15,4 +15,7 @@ public static class AdminAccessPolicy
             _           => "/profile"
         };
     }
+
+    public static bool IsDashboardPath(string? relativePath)
+        => relativePath?.StartsWith("dashboard", StringComparison.OrdinalIgnoreCase) == true;
 }

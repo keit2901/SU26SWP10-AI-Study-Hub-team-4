@@ -219,18 +219,25 @@ public class FolderServiceTests
 
         // 1. Empty folder
         var folderEmpty = SeedFolder(db, me.Id, "Empty Folder");
+        folderEmpty.ShareStatus = FolderStatus.PendingShare;
 
         // 2. Processing folder (contains a processing document)
         var folderProc = SeedFolder(db, me.Id, "Processing Folder");
+        folderProc.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
         SeedDocumentWithStatus(db, me.Id, folderProc.Id, DocumentStatus.Processing);
 
         // 3. Rejected folder (contains a failed document)
         var folderRej = SeedFolder(db, me.Id, "Rejected Folder");
+        folderRej.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
         SeedDocumentWithStatus(db, me.Id, folderRej.Id, DocumentStatus.Failed);
         SeedDocumentWithStatus(db, me.Id, folderRej.Id, DocumentStatus.Ready);
 
         // 4. Pending Share folder (contains ready documents, but folder is not shared)
         var folderPending = SeedFolder(db, me.Id, "Pending Folder");
+        folderPending.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
         SeedDocumentWithStatus(db, me.Id, folderPending.Id, DocumentStatus.Ready);
 
         // 5. Shared folder (contains ready documents, and folder is shared)
@@ -246,5 +253,20 @@ public class FolderServiceTests
         list.Single(f => f.Id == folderRej.Id).Status.Should().Be("Rejected");
         list.Single(f => f.Id == folderPending.Id).Status.Should().Be("Pending Share");
         list.Single(f => f.Id == folderShared.Id).Status.Should().Be("Shared");
+    }
+
+    [Test]
+    public async Task ListPersonalSharedAsync_ExcludesNoneShareStatusFolders()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var sut = BuildSut(db);
+
+        var folderNone = SeedFolder(db, me.Id, "None Folder");
+        folderNone.ShareStatus = FolderStatus.None;
+        db.SaveChanges();
+
+        var list = await sut.ListPersonalSharedAsync(me.SupabaseUserId);
+        list.Should().BeEmpty();
     }
 }
