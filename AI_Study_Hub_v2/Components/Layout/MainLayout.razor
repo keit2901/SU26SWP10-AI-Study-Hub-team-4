@@ -69,7 +69,7 @@
         Nav.ToBaseRelativePath(Nav.Uri).StartsWith("documents/upload", StringComparison.OrdinalIgnoreCase);
 
     private bool IsDashboard =>
-        Nav.ToBaseRelativePath(Nav.Uri).StartsWith("dashboard", StringComparison.OrdinalIgnoreCase);
+        AdminAccessPolicy.IsDashboardPath(Nav.ToBaseRelativePath(Nav.Uri));
 
     private bool IsProfile =>
         Nav.ToBaseRelativePath(Nav.Uri).StartsWith("profile", StringComparison.OrdinalIgnoreCase);

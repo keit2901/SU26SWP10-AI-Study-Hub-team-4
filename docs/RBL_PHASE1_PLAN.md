@@ -3,7 +3,7 @@
 > **Status:** ✅ APPROVED — quyết định đã chốt, sẵn sàng triển khai  
 > **Ngày:** 2026-06-26  
 > **Review:** Đã qua 2 vòng challenger review + thảo luận team.  
-> **Team:** Sơn (@ThShadow), Bảo (@TranGiaBao2005), Phước (@ChickMann)
+> **Team:** Bảo (@TranGiaBao2005), Phước (@ChickMann) — 2 người
 
 ---
 
@@ -31,7 +31,7 @@ Thay `FakeEmbeddingService` (FNV-1a hash) bằng `OllamaEmbeddingService` (embed
 | 1.2 | Đảm bảo Docker Desktop chạy trên máy dev | Cả team | Ai không có Docker → không test được embedding |
 | 1.3 | Hạ `ChunkSizeChars` từ 1000 → **500** trong `appsettings.json` | Dev 1 | 500 an toàn cho 256-token model kể cả tiếng Việt có dấu; `FindChunkBoundary()` overshoot nên cần margin |
 | 1.4 | **Tạo dataset benchmark tiếng Việt:** 10 câu hỏi + 3 PDF mẫu tiếng Việt, ghi nhận expected relevant chunks | Phước | Làm baseline recall@5 trước/sau. Không có dataset → không đo được cải thiện |
-| 1.5 | **Pin model version:** ghi nhận image tag `ollama/ollama:0.3.14` + model `all-minilm:l6-v2` vào config | Sơn | Tránh auto-update làm thay đổi embedding âm thầm |
+| 1.5 | **Pin model version:** ghi nhận image tag `ollama/ollama:0.3.14` + model `all-minilm:l6-v2` vào config | Bảo | Tránh auto-update làm thay đổi embedding âm thầm |
 
 ---
 
@@ -257,11 +257,12 @@ public async Task RealOllama_Returns_384Dim_NonZero_DifferentVectors()
 
 ## Phân công cuối cùng ✅
 
-| Dev | GitHub | Round 1 (cùng làm, 30m) | Round 2 (song song, 3-4h) | Round 3 (tích hợp, 2-3h) |
-|-----|--------|--------------------------|---------------------------|---------------------------|
-| **Sơn** | `@ThShadow` | Docker Ollama + chốt thiết kế | `OllamaEmbeddingService` + migration + DI swap | Smoke test |
-| **Bảo** | `@TranGiaBao2005` | Docker Ollama + chốt thiết kế | `OllamaHealthCheck` + error handling + transaction refactor (Design B) | Integration test |
-| **Phước** | `@ChickMann` | Docker Ollama + chốt thiết kế | Unit test mock + benchmark baseline | Benchmark + verify |
+| Người | GitHub | Round 1 (cùng làm, 30m) | Round 2 (song song, 4-5h) | Round 3 (tích hợp, 2-3h) |
+|-------|--------|--------------------------|---------------------------|---------------------------|
+| **Bảo** | `@TranGiaBao2005` | Docker Ollama + chốt thiết kế | `OllamaEmbeddingService` + `OllamaOptions` + migration `embedding_model` + `Program.cs` DI swap + `RagSearchService` filter + `OllamaHealthCheck` + `docker-compose.yml` | Smoke test |
+| **Phước** | `@ChickMann` | Docker Ollama + chốt thiết kế | Transaction refactor (Design B) trong `DocumentIngestionService` + error handling/friendly messages + unit test mock + benchmark baseline + Vietnamese dataset | Integration test + benchmark verify |
+
+**Effort:** Bảo ~5.5h | Phước ~4.5h | Tổng ~10h
 
 ---
 
@@ -280,13 +281,13 @@ public async Task RealOllama_Returns_384Dim_NonZero_DifferentVectors()
 
 ## Timeline
 
-| Phase | Thời gian |
-|-------|----------|
-| Chuẩn bị (Docker, query DB, config) | 1h |
-| Round 1: Cùng chốt thiết kế | 0.5h |
-| Round 2: Code song song | 3-4h |
-| Round 3: Tích hợp, test, fix bug | 2-3h |
-| **Tổng** | **7-9h** (1-2 ngày) |
+| Phase | Thời gian | Người |
+|-------|----------|-------|
+| Chuẩn bị (Docker, query DB, config) | 1h | Cả 2 |
+| Round 1: Cùng chốt thiết kế | 0.5h | Cả 2 |
+| Round 2: Code song song | 4-5h | Bảo + Phước |
+| Round 3: Tích hợp, test, fix bug | 2-3h | Cả 2 |
+| **Tổng** | **~10h** (1-2 ngày, 2 người) | |
 
 ---
 
@@ -311,4 +312,4 @@ public async Task RealOllama_Returns_384Dim_NonZero_DifferentVectors()
 
 ---
 
-> **Next step:** Bắt đầu Round 1 — cả 3 cùng khởi tạo Docker Ollama container.
+> **Next step:** Bắt đầu Round 1 — Bảo + Phước cùng khởi tạo Docker Ollama container.

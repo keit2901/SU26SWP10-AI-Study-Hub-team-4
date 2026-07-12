@@ -77,6 +77,9 @@ public sealed class FolderService : IFolderService
 
         await EnsureUniqueNameAsync(profile.Id, name, excludeFolderId: null, cancellationToken);
 
+        // Enforce plan-level folder count limit.
+        await _quota.ValidateFolderCountAsync(supabaseUserId, cancellationToken);
+
         var now = DateTimeOffset.UtcNow;
         var folder = new Folder
         {
@@ -247,7 +250,7 @@ public sealed class FolderService : IFolderService
 
         var rows = await _db.Folders
             .AsNoTracking()
-            .Where(f => f.UserId == profile.Id)
+            .Where(f => f.UserId == profile.Id && f.ShareStatus != FolderStatus.None)
             .OrderByDescending(f => f.SharedAt)
             .ThenBy(f => f.Name)
             .Select(f => new FolderDto

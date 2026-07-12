@@ -50,16 +50,19 @@ public sealed class DocumentService : IDocumentService
     private readonly AppDbContext _db;
     private readonly ISupabaseStorageClient _storage;
     private readonly IDocumentIngestionService? _ingestion;
+    private readonly IStorageQuotaService _quota;
     private readonly ILogger<DocumentService> _logger;
 
     public DocumentService(
         AppDbContext db,
         ISupabaseStorageClient storage,
+        IStorageQuotaService quota,
         ILogger<DocumentService> logger,
         IDocumentIngestionService? ingestion = null)
     {
         _db = db;
         _storage = storage;
+        _quota = quota;
         _ingestion = ingestion;
         _logger = logger;
     }
@@ -90,7 +93,10 @@ public sealed class DocumentService : IDocumentService
                 "User account is inactive and cannot upload documents.");
         }
 
-        // 2. Validate file size + MIME against the bucket policy.
+        // 2. Enforce plan-level document count limit.
+        await _quota.ValidateDocumentCountAsync(supabaseUserId, cancellationToken);
+
+        // 3. Validate file size + MIME against the bucket policy.
         if (fileSizeBytes <= 0)
         {
             throw new DocumentException(400, "empty_file",
@@ -109,7 +115,7 @@ public sealed class DocumentService : IDocumentService
                 $"Content type '{contentType}' is not allowed. Accepted: PDF, DOC, DOCX, PPT, PPTX.");
         }
 
-        // 3. If folder specified, verify it belongs to the caller, check capacity and duplicates.
+        // 4. If folder specified, verify it belongs to the caller, check capacity and duplicates.
         if (request.FolderId.HasValue)
         {
             var folderOwned = await _db.Folders
@@ -140,105 +146,127 @@ public sealed class DocumentService : IDocumentService
             }
         }
 
-        // 4. Compose a deterministic storage path: users/{user_id}/{yyyy}/{guid}-{slug}.
+        // 5. Reserve quota before uploading to storage.
+        StorageReservation? reservation = null;
+        try
+        {
+            reservation = await _quota.ReserveUploadAsync(supabaseUserId, fileSizeBytes, cancellationToken);
+        }
+        catch (PlanException)
+        {
+            throw;
+        }
+
+        // 6. Compose a deterministic storage path: users/{user_id}/{yyyy}/{guid}-{slug}.
         // Including the user_id segment makes per-user enumeration easier in Storage UI
         // and lets us add bucket-level RLS later (e.g. only allow service-role + matching uid).
         var documentId = Guid.NewGuid();
         var slug = SanitizeFileName(fileName);
         var storagePath = $"users/{profile.Id:N}/{DateTimeOffset.UtcNow:yyyy}/{documentId:N}-{slug}";
 
-        // 5. Upload bytes to Supabase Storage. If anything below fails, we attempt
-        // a best-effort cleanup so we don't leak orphan objects.
         try
         {
-            await _storage.UploadAsync(BucketName, storagePath, content, canonicalContentType,
-                upsert: false, cancellationToken: cancellationToken);
-        }
-        catch (SupabaseStorageException ex)
-        {
-            _logger.LogWarning(ex,
-                "Supabase Storage upload failed for {Path}. Is the local storage service running?",
-                storagePath);
-            throw new DocumentException(503, "storage_unavailable",
-                "Document storage is unavailable. Start Supabase Storage and retry the upload.");
-        }
-
-        // 6. Insert metadata row. Status = Ready (file stored OK; chunking happens in D6).
-        var now = DateTimeOffset.UtcNow;
-        var doc = new Document
-        {
-            Id = documentId,
-            UserId = profile.Id,
-            FolderId = request.FolderId,
-            FileName = fileName.Trim(),
-            StoragePath = storagePath,
-            FileSizeBytes = fileSizeBytes,
-            MimeType = canonicalContentType,
-            SubjectCode = request.SubjectCode.Trim().ToUpperInvariant(),
-            Semester = request.Semester.Trim().ToUpperInvariant(),
-            PageCount = null,
-            Status = DocumentStatus.Ready,
-            ErrorMessage = null,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
-
-        if (request.FolderId.HasValue)
-        {
-            var folder = await _db.Folders.FindAsync(new object[] { request.FolderId.Value }, cancellationToken);
-            if (folder is not null)
-            {
-                folder.UpdatedAt = now;
-            }
-        }
-
-        try
-        {
-            _db.Documents.Add(doc);
-            await _db.SaveChangesAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex,
-                "Document row insert failed after storage upload succeeded. Cleaning up object {Path}.",
-                storagePath);
+            // 7. Upload bytes to Supabase Storage. If anything below fails, we attempt
+            // a best-effort cleanup so we don't leak orphan objects.
             try
             {
-                await _storage.DeleteAsync(BucketName, storagePath, CancellationToken.None);
+                await _storage.UploadAsync(BucketName, storagePath, content, canonicalContentType,
+                    upsert: false, cancellationToken: cancellationToken);
             }
-            catch (Exception cleanupEx)
+            catch (SupabaseStorageException ex)
             {
-                _logger.LogError(cleanupEx,
-                    "Storage cleanup also failed for {Path}. Manual cleanup required.", storagePath);
+                _logger.LogWarning(ex,
+                    "Supabase Storage upload failed for {Path}. Is the local storage service running?",
+                    storagePath);
+                throw new DocumentException(503, "storage_unavailable",
+                    "Document storage is unavailable. Start Supabase Storage and retry the upload.");
             }
-            throw new DocumentException(500, "upload_persist_failed",
-                "Failed to persist document metadata after storage upload.");
+
+            // 8. Insert metadata row. Status = Ready (file stored OK; chunking happens in D6).
+            var now = DateTimeOffset.UtcNow;
+            var doc = new Document
+            {
+                Id = documentId,
+                UserId = profile.Id,
+                FolderId = request.FolderId,
+                FileName = fileName.Trim(),
+                StoragePath = storagePath,
+                FileSizeBytes = fileSizeBytes,
+                MimeType = canonicalContentType,
+                SubjectCode = request.SubjectCode.Trim().ToUpperInvariant(),
+                Semester = request.Semester.Trim().ToUpperInvariant(),
+                PageCount = null,
+                Status = DocumentStatus.Ready,
+                ErrorMessage = null,
+                CreatedAt = now,
+                UpdatedAt = now,
+            };
+
+            if (request.FolderId.HasValue)
+            {
+                var folder = await _db.Folders.FindAsync(new object[] { request.FolderId.Value }, cancellationToken);
+                if (folder is not null)
+                {
+                    folder.UpdatedAt = now;
+                }
+            }
+
+            try
+            {
+                _db.Documents.Add(doc);
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "Document row insert failed after storage upload succeeded. Cleaning up object {Path}.",
+                    storagePath);
+                try
+                {
+                    await _storage.DeleteAsync(BucketName, storagePath, CancellationToken.None);
+                }
+                catch (Exception cleanupEx)
+                {
+                    _logger.LogError(cleanupEx,
+                        "Storage cleanup also failed for {Path}. Manual cleanup required.", storagePath);
+                }
+                throw new DocumentException(500, "upload_persist_failed",
+                    "Failed to persist document metadata after storage upload.");
+            }
+
+            // Storage upload + metadata insert both succeeded — confirm the quota reservation.
+            await _quota.ConfirmReservationAsync(reservation, cancellationToken);
+
+            _logger.LogInformation(
+                "Document uploaded: id={Id} user={UserId} subject={Subject} semester={Semester} size={Size}B path={Path}",
+                doc.Id, profile.Id, doc.SubjectCode, doc.Semester, doc.FileSizeBytes, doc.StoragePath);
+
+            if (_ingestion is not null && IsIngestionCandidate(canonicalContentType))
+            {
+                var ingestion = await _ingestion.IngestAsync(doc.Id, supabaseUserId, cancellationToken);
+                if (!ingestion.Success)
+                {
+                    _logger.LogWarning(
+                        "Document ingestion finished with failure after upload: id={Id} error={Error}",
+                        doc.Id, ingestion.ErrorMessage);
+                }
+
+                var reloaded = await _db.Documents
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(d => d.Id == doc.Id, cancellationToken);
+                if (reloaded is not null)
+                {
+                    return ToDto(reloaded, signedUrl: null);
+                }
+            }
+
+            return ToDto(doc, signedUrl: null);
         }
-
-        _logger.LogInformation(
-            "Document uploaded: id={Id} user={UserId} subject={Subject} semester={Semester} size={Size}B path={Path}",
-            doc.Id, profile.Id, doc.SubjectCode, doc.Semester, doc.FileSizeBytes, doc.StoragePath);
-
-        if (_ingestion is not null && IsIngestionCandidate(canonicalContentType))
+        catch
         {
-            var ingestion = await _ingestion.IngestAsync(doc.Id, supabaseUserId, cancellationToken);
-            if (!ingestion.Success)
-            {
-                _logger.LogWarning(
-                    "Document ingestion finished with failure after upload: id={Id} error={Error}",
-                    doc.Id, ingestion.ErrorMessage);
-            }
-
-            var reloaded = await _db.Documents
-                .AsNoTracking()
-                .FirstOrDefaultAsync(d => d.Id == doc.Id, cancellationToken);
-            if (reloaded is not null)
-            {
-                return ToDto(reloaded, signedUrl: null);
-            }
+            await _quota.ReleaseReservationAsync(reservation, cancellationToken);
+            throw;
         }
-
-        return ToDto(doc, signedUrl: null);
     }
 
     public async Task<IReadOnlyList<DocumentDto>> ListAsync(
@@ -254,7 +282,16 @@ public sealed class DocumentService : IDocumentService
             ?? throw new DocumentException(404, "user_not_found",
                 "Authenticated user has no profile in public.users.");
 
-        var q = _db.Documents.AsNoTracking().Where(d => d.UserId == profile.Id);
+        var q = _db.Documents.AsNoTracking();
+        if (query.FolderId.HasValue)
+        {
+            q = q.Where(d => d.FolderId == query.FolderId.Value &&
+                            (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)));
+        }
+        else
+        {
+            q = q.Where(d => d.UserId == profile.Id);
+        }
 
         if (!string.IsNullOrWhiteSpace(query.SubjectCode))
         {
@@ -293,7 +330,7 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 
@@ -389,12 +426,18 @@ public sealed class DocumentService : IDocumentService
                 "Document does not exist or does not belong to the caller.");
 
         var pathToDelete = doc.StoragePath;
+        var fileSizeBytes = doc.FileSizeBytes;
 
-        // Delete from storage before the DB row so we never orphan a storage object.
-        await _storage.DeleteAsync(BucketName, pathToDelete, cancellationToken);
-
+        // Remove the DB row first. If this fails, nothing else has changed.
         _db.Documents.Remove(doc);
         await _db.SaveChangesAsync(cancellationToken);
+
+        // Delete from storage. If this fails, the DB row is already gone (safe re-upload).
+        await _storage.DeleteAsync(BucketName, pathToDelete, cancellationToken);
+
+        // Record the storage decrease against the user's quota.
+        // Must come after DB remove to avoid double-decrement on retry.
+        await _quota.RecordDeleteAsync(supabaseUserId, fileSizeBytes, cancellationToken);
     }
 
     public async Task<DocumentContentDto> GetContentAsync(
@@ -410,7 +453,7 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 
@@ -447,7 +490,7 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 
