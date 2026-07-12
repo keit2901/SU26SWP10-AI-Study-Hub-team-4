@@ -530,6 +530,46 @@ static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
         ON document_chunks USING GIN (search_vector);
         """);
 
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_review_source character varying(32);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_reason character varying(2000);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_confidence double precision;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_failure_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS human_review_reason character varying(2000);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS requires_human_review boolean NOT NULL DEFAULT false;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS appeal_requested_at timestamp with time zone;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS appeal_message character varying(2000);
+        """);
+
     logger.LogInformation("Phase 3 schema bootstrap completed.");
 }
 

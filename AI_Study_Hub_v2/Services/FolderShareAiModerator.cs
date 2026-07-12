@@ -37,14 +37,6 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
                 0.99);
         }
 
-        if (documents.Any(document => document.Status != DocumentStatus.Ready))
-        {
-            return new FolderShareModerationDecision(
-                FolderShareModerationOutcome.AutoRejected,
-                "Folder contains documents that are not fully ready, so the share request was blocked by a hard rule.",
-                0.97);
-        }
-
         if (documents.Any(document => document.ReviewStatus == DocumentReviewStatus.Rejected))
         {
             return new FolderShareModerationDecision(
