@@ -39,32 +39,6 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.Property(f => f.SharedAt)
             .HasColumnName("shared_at");
 
-        builder.Property(f => f.ShareReviewSource)
-            .HasColumnName("share_review_source")
-            .HasMaxLength(32);
-
-        builder.Property(f => f.AiReviewReason)
-            .HasColumnName("ai_review_reason")
-            .HasMaxLength(2000);
-
-        builder.Property(f => f.AiReviewConfidence)
-            .HasColumnName("ai_review_confidence");
-
-        builder.Property(f => f.HumanReviewReason)
-            .HasColumnName("human_review_reason")
-            .HasMaxLength(2000);
-
-        builder.Property(f => f.RequiresHumanReview)
-            .HasColumnName("requires_human_review")
-            .HasDefaultValue(false);
-
-        builder.Property(f => f.AppealRequestedAt)
-            .HasColumnName("appeal_requested_at");
-
-        builder.Property(f => f.AppealMessage)
-            .HasColumnName("appeal_message")
-            .HasMaxLength(2000);
-
         builder.Property(f => f.Icon)
             .HasColumnName("icon")
             .HasMaxLength(50);

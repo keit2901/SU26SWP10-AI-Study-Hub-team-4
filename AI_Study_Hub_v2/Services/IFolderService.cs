@@ -42,19 +42,12 @@ public interface IFolderService
         Guid folderId,
         CancellationToken cancellationToken = default);
 
-    Task<FolderDto> AppealShareReviewAsync(
-        Guid supabaseUserId,
-        Guid folderId,
-        AppealFolderShareRequest request,
-        CancellationToken cancellationToken = default);
-
     Task<FolderDto> ApproveFolderShareAsync(
         Guid folderId,
         CancellationToken cancellationToken = default);
 
     Task<FolderDto> RejectFolderShareAsync(
         Guid folderId,
-        string? reason = null,
         CancellationToken cancellationToken = default);
 
     Task<FolderDto> VoteAsync(
