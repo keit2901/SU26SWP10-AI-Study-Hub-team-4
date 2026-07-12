@@ -24,6 +24,7 @@ Current moderation note:
 - AI now judges mainly whether the folder looks academically valid for study-sharing.
 - Document processing status (`Uploading` / `Processing`) no longer forces a reject by itself.
 - If the academic signals are strong enough, AI can still auto-approve even while a document is not fully ready yet.
+- Description length is no longer treated as a negative moderation signal by itself.
 - Human review is not shown immediately. The folder must fail AI review 2 times first.
 
 Notes:

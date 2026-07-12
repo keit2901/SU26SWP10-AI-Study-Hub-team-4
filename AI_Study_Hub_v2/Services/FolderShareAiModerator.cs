@@ -63,7 +63,6 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
                 0.98);
         }
 
-        var missingDescription = string.IsNullOrWhiteSpace(folder.Description) || folder.Description!.Trim().Length < 20;
         var subjectCodes = documents
             .Select(document => document.SubjectCode?.Trim().ToUpperInvariant())
             .Where(subject => !string.IsNullOrWhiteSpace(subject))
@@ -82,7 +81,6 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
 
         if (consistentSubject
             && consistentSemester
-            && !missingDescription
             && (containsSubjectCode || academicSignalCount >= 2))
         {
             var subject = subjectCodes[0];
@@ -94,10 +92,6 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
         }
 
         var reasons = new List<string>();
-        if (missingDescription)
-        {
-            reasons.Add("folder description is missing or too short");
-        }
         if (!consistentSubject)
         {
             reasons.Add("documents do not share one clear subject code");

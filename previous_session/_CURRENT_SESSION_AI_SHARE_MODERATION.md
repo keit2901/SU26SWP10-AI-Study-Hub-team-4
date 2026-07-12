@@ -142,3 +142,12 @@
 
 ## 8. Next step
 **Resume by:** run DB migration in a restore-enabled/dev environment, then seed or upload the provided test-share data to demo the new flow end-to-end in UI.
+
+## 9. 2026-07-12 follow-up
+- Relaxed AI moderation in `AI_Study_Hub_v2/Services/FolderShareAiModerator.cs`: folder description length/missing description is no longer treated as a negative signal.
+- Added regression test `RequestShareAsync_ShortDescription_ButAcademicMetadataStrong_StillAutoApproves` to confirm academically valid folders still pass AI review even with a very short description.
+- Updated `docs/test-share-moderation/README.md` to document that AI now focuses on study relevance instead of description verbosity.
+- Updated `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor` button copy so the student-facing action shows `Share` / `Share Again` instead of `AI Review` / `AI Review Again`.
+- Verification:
+- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`257 passed`, `4 skipped`)
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore` -> blocked by local app process lock on `AI_Study_Hub_v2.exe` (PID `11916`), not by a code compile error.

@@ -130,6 +130,25 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
+    public async Task RequestShareAsync_ShortDescription_ButAcademicMetadataStrong_StillAutoApproves()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        folder.Description = "ok";
+        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "swp391-lecture-notes.pdf"));
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        result.ShareStatus.Should().Be(FolderStatus.Approved);
+        result.ShareReviewSource.Should().Be("AI");
+        result.RequiresHumanReview.Should().BeFalse();
+        result.AiReviewReason.Should().Contain("approved");
+    }
+
+    [Test]
     public async Task RequestShareAsync_SecondAiFailure_UnlocksHumanReview()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
