@@ -48,6 +48,7 @@ public sealed class FolderService : IFolderService
                 ShareReviewSource = f.ShareReviewSource,
                 AiReviewReason = f.AiReviewReason,
                 AiReviewConfidence = f.AiReviewConfidence,
+                AiReviewFailureCount = f.AiReviewFailureCount,
                 HumanReviewReason = f.HumanReviewReason,
                 RequiresHumanReview = f.RequiresHumanReview,
                 AppealRequestedAt = f.AppealRequestedAt,
@@ -213,6 +214,7 @@ public sealed class FolderService : IFolderService
                 ShareReviewSource = f.ShareReviewSource,
                 AiReviewReason = f.AiReviewReason,
                 AiReviewConfidence = f.AiReviewConfidence,
+                AiReviewFailureCount = f.AiReviewFailureCount,
                 HumanReviewReason = f.HumanReviewReason,
                 RequiresHumanReview = f.RequiresHumanReview,
                 AppealRequestedAt = f.AppealRequestedAt,
@@ -262,6 +264,7 @@ public sealed class FolderService : IFolderService
                 ShareReviewSource = f.ShareReviewSource,
                 AiReviewReason = f.AiReviewReason,
                 AiReviewConfidence = f.AiReviewConfidence,
+                AiReviewFailureCount = f.AiReviewFailureCount,
                 HumanReviewReason = f.HumanReviewReason,
                 RequiresHumanReview = f.RequiresHumanReview,
                 AppealRequestedAt = f.AppealRequestedAt,
@@ -315,17 +318,14 @@ public sealed class FolderService : IFolderService
             case FolderShareModerationOutcome.AutoApproved:
                 folder.ShareStatus = FolderStatus.Approved;
                 folder.SharedAt = now;
-                folder.RequiresHumanReview = false;
-                break;
-            case FolderShareModerationOutcome.AutoRejected:
-                folder.ShareStatus = FolderStatus.Rejected;
-                folder.SharedAt = null;
+                folder.AiReviewFailureCount = 0;
                 folder.RequiresHumanReview = false;
                 break;
             default:
-                folder.ShareStatus = FolderStatus.PendingShare;
+                folder.ShareStatus = FolderStatus.Rejected;
                 folder.SharedAt = null;
-                folder.RequiresHumanReview = true;
+                folder.AiReviewFailureCount += 1;
+                folder.RequiresHumanReview = folder.AiReviewFailureCount >= 2;
                 break;
         }
 
@@ -352,17 +352,17 @@ public sealed class FolderService : IFolderService
             ?? throw new DocumentException(404, "folder_not_found",
                 "Folder does not exist or does not belong to the caller.");
 
-        if (folder.ShareStatus != FolderStatus.Rejected)
+        if (folder.ShareStatus != FolderStatus.Rejected || folder.AiReviewFailureCount < 2)
         {
             throw new DocumentException(400, "appeal_not_allowed",
-                "Only AI-rejected folders can request human review.");
+                "Human review is available only after two unsuccessful AI reviews.");
         }
 
         folder.ShareStatus = FolderStatus.PendingShare;
         folder.RequiresHumanReview = true;
         folder.AppealRequestedAt = DateTimeOffset.UtcNow;
         folder.AppealMessage = NormalizeModerationNote(request.Message);
-        folder.ShareReviewSource = "STUDENT_APPEAL";
+        folder.ShareReviewSource = "HUMAN_REQUEST";
         folder.HumanReviewReason = null;
         folder.SharedAt = null;
         folder.UpdatedAt = DateTimeOffset.UtcNow;
@@ -494,6 +494,7 @@ public sealed class FolderService : IFolderService
             ShareReviewSource = folder.ShareReviewSource,
             AiReviewReason = folder.AiReviewReason,
             AiReviewConfidence = folder.AiReviewConfidence,
+            AiReviewFailureCount = folder.AiReviewFailureCount,
             HumanReviewReason = folder.HumanReviewReason,
             RequiresHumanReview = folder.RequiresHumanReview,
             AppealRequestedAt = folder.AppealRequestedAt,
@@ -803,6 +804,7 @@ public sealed class FolderService : IFolderService
         ShareReviewSource = folder.ShareReviewSource,
         AiReviewReason = folder.AiReviewReason,
         AiReviewConfidence = folder.AiReviewConfidence,
+        AiReviewFailureCount = folder.AiReviewFailureCount,
         HumanReviewReason = folder.HumanReviewReason,
         RequiresHumanReview = folder.RequiresHumanReview,
         AppealRequestedAt = folder.AppealRequestedAt,

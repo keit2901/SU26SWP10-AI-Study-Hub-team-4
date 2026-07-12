@@ -50,6 +50,10 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.Property(f => f.AiReviewConfidence)
             .HasColumnName("ai_review_confidence");
 
+        builder.Property(f => f.AiReviewFailureCount)
+            .HasColumnName("ai_review_failure_count")
+            .HasDefaultValue(0);
+
         builder.Property(f => f.HumanReviewReason)
             .HasColumnName("human_review_reason")
             .HasMaxLength(2000);

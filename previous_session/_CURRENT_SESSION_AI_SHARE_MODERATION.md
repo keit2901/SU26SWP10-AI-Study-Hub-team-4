@@ -46,6 +46,51 @@
 - Result: build succeeded with existing unrelated warnings.
 - `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` passed: `254 passed`, `4 skipped`, `0 failed`.
 
+### 2026-07-12T03:35Z - POST-CRASH RECONCILE for feature branch runtime
+- Switched back to `feature/Dashbroad(moderator-sort-filter)-analytics(box-deletion)` and verified the AI moderation source is present.
+- Found stale dev binary on port `5240`, rebuilt the branch, then reproduced the real runtime failure on `POST /api/folders`.
+- Root cause: local `folders` table was missing AI moderation columns like `ai_review_confidence` even though startup reported migrations applied.
+- Fix in progress: extended startup schema bootstrap in `Program.cs` to add the moderation columns with `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`, so branch startup self-heals when migration history drifts.
+
+### 2026-07-12T03:48Z - Runtime fix verified
+- Stopped the stale dev app, rebuilt the branch successfully, and restarted the app on `http://localhost:5240`.
+- Live API verification passed:
+  - login with seeded local admin -> OK
+  - create folder -> OK
+  - request share on empty folder -> `Rejected` with `ShareReviewSource=AI` and AI reason returned
+  - delete folder -> OK
+- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` passed again: `254 passed`, `4 skipped`, `0 failed`.
+
+### 2026-07-12T05:05Z - Relaxed non-ready document rule
+- Updated `FolderShareAiModerator` so folders with documents still `Uploading` / `Processing` are sent to human review instead of being hard-rejected.
+- Added regression test `RequestShareAsync_DocumentsNotReady_SendsFolderToHumanReview_InsteadOfRejecting`.
+- Updated `docs/test-share-moderation/README.md` to note the new behavior for unfinished materials.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore` -> passed
+  - `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build --filter "RequestShareAsync_DocumentsNotReady_SendsFolderToHumanReview_InsteadOfRejecting"` -> passed
+  - full `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed
+
+### 2026-07-12T05:24Z - AI now judges academic validity only
+- Removed the readiness gate from `FolderShareAiModerator`, so `Uploading` / `Processing` no longer changes the AI decision by itself.
+- Adjusted the regression test to the new intent: strong academic metadata can still be auto-approved even if a document is not fully ready yet.
+- Updated moderation docs to state that AI focuses on study relevance, not processing progress.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore` -> passed
+  - full `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`255 passed`, `4 skipped`, `0 failed`)
+
+### 2026-07-12T06:02Z - Added 2-step AI retry then human review flow
+- Added `AiReviewFailureCount` to folder model/DTO/config and startup schema bootstrap.
+- Updated `FolderService.RequestShareAsync` so unsuccessful AI reviews now keep the folder in `Rejected`, increment AI failure count, and unlock human review only from the second AI failure onward.
+- Updated human review request flow so it is blocked before 2 failed AI reviews and moves the folder into moderator queue only after that threshold.
+- Updated `DocumentLibrary.razor`:
+  - primary action is now `AI Review` / `AI Review Again`
+  - `Review by human` appears only when `AiReviewFailureCount >= 2`
+  - added overview sections for `Shared Successfully` and `Share Failed`
+- Updated test docs and service tests for first-fail, second-fail, and human-review eligibility.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore` -> passed
+  - full `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`255 passed`, `4 skipped`, `0 failed`)
+
 ## 4. Files changed this session
 | Path | Change |
 |---|---|
@@ -68,6 +113,12 @@
 | `AI_Study_Hub_v2/Migrations/20260711113000_AddFolderShareAiModeration.cs` | Added manual migration for moderation metadata |
 | `AI_Study_Hub_v2/Migrations/AppDbContextModelSnapshot.cs` | Synced snapshot with new folder columns |
 | `docs/test-share-moderation/*` | Added manual demo data for auto-approve / human-review / hard-reject scenarios |
+| `AI_Study_Hub_v2/Program.cs` | Added schema self-heal bootstrap for AI moderation folder columns |
+| `AI_Study_Hub_v2/Services/FolderShareAiModerator.cs` | Non-ready documents now route to human review instead of hard reject |
+| `AI_Study_Hub_v2/AI_Study_Hub_v2.Tests/Services/PublicHubServiceTests.cs` | Added regression test for non-ready document share flow |
+| `docs/test-share-moderation/README.md` | Documented new human-review behavior for unfinished materials |
+| `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor` | Added AI retry + human review threshold UI and share overview panels |
+| `AI_Study_Hub_v2/Components/Shared/AppealFolderShareDialog.razor` | Relabeled dialog for human review flow |
 
 ## 5. Commands run
 - `Get-ChildItem` repo/session discovery
@@ -77,6 +128,8 @@
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo` -> succeeded after restore-enabled access
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore` -> succeeded
 - `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`254 passed`, `4 skipped`)
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore` -> succeeded after schema bootstrap fix
+- live API check on `http://localhost:5240/api/folders` -> create/share/delete passed after schema bootstrap fix
 
 ## 6. Decisions locked
 - Keep `ShareStatus` for compatibility and add moderation metadata instead of replacing the enum-driven flow.

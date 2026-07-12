@@ -139,6 +139,8 @@ public sealed class FolderDto
 
     public double? AiReviewConfidence { get; set; }
 
+    public int AiReviewFailureCount { get; set; }
+
     public string? HumanReviewReason { get; set; }
 
     public bool RequiresHumanReview { get; set; }

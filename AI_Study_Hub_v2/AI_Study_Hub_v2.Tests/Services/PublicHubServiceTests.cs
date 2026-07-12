@@ -92,7 +92,7 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task RequestShareAsync_MissingSignals_SendsFolderToHumanReview()
+    public async Task RequestShareAsync_MissingSignals_FirstAiFailure_KeepsFolderRejected()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
@@ -104,9 +104,51 @@ public sealed class PublicHubServiceTests
 
         var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
 
-        result.ShareStatus.Should().Be(FolderStatus.PendingShare);
-        result.RequiresHumanReview.Should().BeTrue();
+        result.ShareStatus.Should().Be(FolderStatus.Rejected);
+        result.AiReviewFailureCount.Should().Be(1);
+        result.RequiresHumanReview.Should().BeFalse();
         result.AiReviewReason.Should().Contain("not confident");
+    }
+
+    [Test]
+    public async Task RequestShareAsync_DocumentsNotReady_ButAcademicMetadataStrong_StillAutoApproves()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        folder.Description = "SWP391 lecture notes and weekly lab summaries for the summer semester.";
+        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "swp391-week-1.docx", DocumentStatus.Processing));
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        result.ShareStatus.Should().Be(FolderStatus.Approved);
+        result.ShareReviewSource.Should().Be("AI");
+        result.RequiresHumanReview.Should().BeFalse();
+        result.AiReviewReason.Should().Contain("approved");
+    }
+
+    [Test]
+    public async Task RequestShareAsync_SecondAiFailure_UnlocksHumanReview()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        folder.Description = "Short";
+        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "materials.pdf"));
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var first = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var second = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        first.ShareStatus.Should().Be(FolderStatus.Rejected);
+        first.AiReviewFailureCount.Should().Be(1);
+        first.RequiresHumanReview.Should().BeFalse();
+        second.ShareStatus.Should().Be(FolderStatus.Rejected);
+        second.AiReviewFailureCount.Should().Be(2);
+        second.RequiresHumanReview.Should().BeTrue();
     }
 
     [Test]
@@ -120,8 +162,10 @@ public sealed class PublicHubServiceTests
         db.SaveChanges();
         var sut = BuildSut(db);
 
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
         var rejected = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
         rejected.ShareStatus.Should().Be(FolderStatus.Rejected);
+        rejected.AiReviewFailureCount.Should().Be(2);
 
         var appealed = await sut.AppealShareReviewAsync(
             owner.SupabaseUserId,
@@ -132,6 +176,29 @@ public sealed class PublicHubServiceTests
         appealed.RequiresHumanReview.Should().BeTrue();
         appealed.AppealRequestedAt.Should().NotBeNull();
         appealed.AppealMessage.Should().Contain("moderator");
+    }
+
+    [Test]
+    public async Task AppealShareReviewAsync_BeforeTwoAiFailures_IsRejected()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        folder.Description = "Academic pack with blocked keyword that should be rejected by AI.";
+        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "exam-leak-checklist.pdf"));
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        var act = () => sut.AppealShareReviewAsync(
+            owner.SupabaseUserId,
+            folder.Id,
+            new AppealFolderShareRequest { Message = "Please escalate this to a moderator." });
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(400);
+        exception.Which.Code.Should().Be("appeal_not_allowed");
     }
 
     [Test]
@@ -404,7 +471,7 @@ public sealed class PublicHubServiceTests
         return folder;
     }
 
-    private static Document CreateDocument(Guid userId, Guid folderId, string fileName)
+    private static Document CreateDocument(Guid userId, Guid folderId, string fileName, DocumentStatus status = DocumentStatus.Ready)
     {
         return new Document
         {
@@ -417,7 +484,7 @@ public sealed class PublicHubServiceTests
             MimeType = "application/pdf",
             SubjectCode = "SWP391",
             Semester = "SU26",
-            Status = DocumentStatus.Ready,
+            Status = status,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
