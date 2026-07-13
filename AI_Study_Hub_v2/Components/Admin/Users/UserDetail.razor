@@ -7,6 +7,8 @@
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
+@inject AdminApiClient AdminApi
+@inject AuthSessionState Session
 
 @if (_isLoading)
 {
@@ -84,42 +86,11 @@ else
                 </MudTabPanel>
 
                 <MudTabPanel Text="Documents" Icon="@Icons.Material.Filled.Description">
-                    @if (!_documents.Any())
-                    {
-                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">This user has not uploaded documents yet.</MudAlert>
-                    }
-                    else
-                    {
-                        <MudTable Items="@_documents" Dense="true" Hover="true" Elevation="0">
-                            <HeaderContent>
-                                <MudTh>Title</MudTh>
-                                <MudTh>Subject</MudTh>
-                                <MudTh>Status</MudTh>
-                                <MudTh>Uploaded</MudTh>
-                            </HeaderContent>
-                            <RowTemplate>
-                                <MudTd DataLabel="Title">@context.Title</MudTd>
-                                <MudTd DataLabel="Subject">@context.SubjectCode</MudTd>
-                                <MudTd DataLabel="Status">
-                                    <MudChip T="string" Color="@GetDocumentColor(context.Status)" Variant="Variant.Outlined" Size="Size.Small">@context.Status</MudChip>
-                                </MudTd>
-                                <MudTd DataLabel="Uploaded">@FormatDate(context.UploadedAt)</MudTd>
-                            </RowTemplate>
-                        </MudTable>
-                    }
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Document details are not yet available for individual users.</MudAlert>
                 </MudTabPanel>
 
                 <MudTabPanel Text="Activity" Icon="@Icons.Material.Filled.History">
-                    <MudTimeline Class="activity-timeline">
-                        @foreach (var activity in _activities)
-                        {
-                            <MudTimelineItem Color="@activity.Color" Icon="@activity.Icon">
-                                <MudText Typo="Typo.subtitle2">@activity.Action</MudText>
-                                <MudText Typo="Typo.body2" Color="Color.Secondary">@activity.Description</MudText>
-                                <MudText Typo="Typo.caption">@FormatDateTime(activity.CreatedAt)</MudText>
-                            </MudTimelineItem>
-                        }
-                    </MudTimeline>
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Activity timeline is not yet available for individual users.</MudAlert>
                 </MudTabPanel>
             </MudTabs>
         </MudPaper>
@@ -132,16 +103,35 @@ else
     private UserDetailRow? _user;
     private bool _isLoading = true;
     private string? _errorMessage;
-    private readonly List<DocumentRow> _documents = new();
-    private readonly List<ActivityRow> _activities = new();
 
-    protected override void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         try
         {
-            _user = BuildUser(Id);
-            _documents.AddRange(BuildDocuments());
-            _activities.AddRange(BuildActivities());
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                _errorMessage = "Authentication required.";
+                return;
+            }
+
+            var users = await AdminApi.ListUsersAsync(Session.AccessToken);
+            var dto = users.FirstOrDefault(u => u.Id == Id);
+            if (dto is null)
+            {
+                _errorMessage = "User not found.";
+                return;
+            }
+
+            _user = new UserDetailRow
+            {
+                Id = dto.Id,
+                FullName = dto.FullName,
+                Email = dto.Username,
+                StudentCode = string.Empty,
+                Role = dto.Role,
+                CreatedAt = dto.CreatedAt.UtcDateTime,
+                IsActive = dto.IsActive
+            };
         }
         catch (Exception ex)
         {
@@ -157,18 +147,12 @@ else
 
     private void EditUser()
     {
-        if (_user is not null)
-        {
-            Snackbar.Add($"Edit profile flow selected for {_user.FullName}.", Severity.Info);
-        }
+        Snackbar.Add("Edit profile is not yet implemented.", Severity.Info);
     }
 
     private async Task ResetPasswordAsync()
     {
-        if (_user is null)
-        {
-            return;
-        }
+        if (_user is null) return;
 
         var parameters = new DialogParameters
         {
@@ -185,14 +169,15 @@ else
 
         if (result is { Canceled: false })
         {
-            Snackbar.Add($"Password reset link prepared for {_user.Email}.", Severity.Success);
+            Snackbar.Add($"Password reset is not yet implemented.", Severity.Info);
         }
     }
 
     private async Task DeactivateAsync()
     {
-        if (_user is null)
+        if (_user is null || _user.Id == (Session.CurrentUser?.Id ?? Guid.Empty))
         {
+            Snackbar.Add("You cannot deactivate your own account.", Severity.Error);
             return;
         }
 
@@ -210,8 +195,23 @@ else
 
         if (result is { Canceled: false })
         {
-            _user.IsActive = false;
-            Snackbar.Add($"{_user.FullName} has been deactivated.", Severity.Warning);
+            try
+            {
+                var token = Session.AccessToken;
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    Snackbar.Add("Authentication required.", Severity.Error);
+                    return;
+                }
+
+                await AdminApi.ToggleActiveAsync(token, _user.Id, false);
+                _user.IsActive = false;
+                Snackbar.Add($"{_user.FullName} has been deactivated.", Severity.Warning);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed to deactivate: {ex.Message}", Severity.Error);
+            }
         }
     }
 
@@ -232,40 +232,6 @@ else
         };
     }
 
-    private static UserDetailRow BuildUser(Guid id)
-    {
-        return new UserDetailRow
-        {
-            Id = id,
-            FullName = "Kiet Ngo",
-            Email = "kiet.ngo@aistudyhub.edu",
-            StudentCode = "SE203943",
-            Role = "Student",
-            CreatedAt = DateTime.UtcNow.AddDays(-12),
-            IsActive = true
-        };
-    }
-
-    private static IEnumerable<DocumentRow> BuildDocuments()
-    {
-        return new[]
-        {
-            new DocumentRow("RAG Evaluation Notes", "SWP391", "Indexed", DateTime.UtcNow.AddDays(-7)),
-            new DocumentRow("Supabase Auth Summary", "PRN212", "Processing", DateTime.UtcNow.AddDays(-2)),
-            new DocumentRow("Database Normalization Cheatsheet", "DBI202", "Indexed", DateTime.UtcNow.AddDays(-18))
-        };
-    }
-
-    private static IEnumerable<ActivityRow> BuildActivities()
-    {
-        return new[]
-        {
-            new ActivityRow("Document uploaded", "Added RAG Evaluation Notes to SWP391.", DateTime.UtcNow.AddHours(-6), Icons.Material.Filled.UploadFile, Color.Primary),
-            new ActivityRow("Profile updated", "Changed notification preferences.", DateTime.UtcNow.AddDays(-1), Icons.Material.Filled.Edit, Color.Secondary),
-            new ActivityRow("Login", "Successful sign-in from Chrome on Windows.", DateTime.UtcNow.AddDays(-2), Icons.Material.Filled.Login, Color.Success)
-        };
-    }
-
     private sealed class UserDetailRow
     {
         public Guid Id { get; set; }
@@ -282,9 +248,6 @@ else
             .Select(part => part[0]))
             .ToUpperInvariant();
     }
-
-    private sealed record DocumentRow(string Title, string SubjectCode, string Status, DateTime UploadedAt);
-    private sealed record ActivityRow(string Action, string Description, DateTime CreatedAt, string Icon, Color Color);
 }
 
 <style>

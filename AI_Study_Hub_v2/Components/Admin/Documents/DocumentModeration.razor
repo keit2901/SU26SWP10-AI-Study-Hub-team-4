@@ -114,8 +114,15 @@
                     <option value="@LowSeverity">Low</option>
                 </select>
 
-                <button class="filter-btn">
-                    <MudIcon Icon="@Icons.Material.Filled.Tune" Style="font-size: 18px; color: #575e72;" />
+                @{
+                    var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchText)
+                        || !string.IsNullOrWhiteSpace(_selectedStatus)
+                        || !string.IsNullOrWhiteSpace(_selectedSeverity);
+                    var filterIconColor = hasActiveFilters ? "#575e72" : "#c7c6d5";
+                    var filterIconStyle = $"font-size: 18px; color: {filterIconColor};";
+                }
+                <button class="filter-btn @(hasActiveFilters ? "" : "muted")" @onclick="ClearFiltersAsync" disabled="@(!hasActiveFilters)" title="@(hasActiveFilters ? "Clear all filters" : "No filters active")">
+                    <MudIcon Icon="@Icons.Material.Outlined.FilterAltOff" Style="@filterIconStyle" />
                 </button>
             </div>
 
@@ -471,6 +478,7 @@
 
     private Task ClearFiltersAsync()
     {
+        _searchText = null;
         _selectedStatus = null;
         _selectedSeverity = null;
         _selectedSubject = null;
