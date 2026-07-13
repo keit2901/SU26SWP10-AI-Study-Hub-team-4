@@ -1,5 +1,5 @@
 {
-  "folderName": "Exam Leak Pack",
-  "description": "Academic pack with blocked wording that should trigger a hard reject and require appeal if the student wants manual review.",
+  "folderName": "Dangerous Link Pack",
+  "description": "Sample folder with malware-delivery wording and a dangerous link signal that should be rejected by AI.",
   "expectedOutcome": "AutoRejectedByAI"
 }

@@ -92,13 +92,41 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task RequestShareAsync_MissingSignals_FirstAiFailure_KeepsFolderRejected()
+    public async Task RequestShareAsync_SoftwareRequirementsSpecification_IsAutoApproved()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
         var folder = SeedFolder(db, owner.Id, isShared: false);
-        folder.Description = "Short";
-        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "materials.pdf"));
+        folder.Name = "System analysis deliverables";
+        folder.Description = "SRS and use-case writeup for a software project.";
+        var document = CreateDocument(owner.Id, folder.Id, "software-requirements-specification.docx");
+        document.SubjectCode = string.Empty;
+        document.Semester = string.Empty;
+        document.MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        db.Documents.Add(document);
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        result.ShareStatus.Should().Be(FolderStatus.Approved);
+        result.AiReviewFailureCount.Should().Be(0);
+        result.RequiresHumanReview.Should().BeFalse();
+        result.AiReviewReason.Should().Contain("approved");
+    }
+
+    [Test]
+    public async Task RequestShareAsync_DocumentsNotReady_DoesNotAutoApprove()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        folder.Description = "Draft product brief and implementation notes.";
+        var document = CreateDocument(owner.Id, folder.Id, "product-brief.docx", DocumentStatus.Processing);
+        document.SubjectCode = string.Empty;
+        document.Semester = string.Empty;
+        document.MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        db.Documents.Add(document);
         db.SaveChanges();
         var sut = BuildSut(db);
 
@@ -107,36 +135,20 @@ public sealed class PublicHubServiceTests
         result.ShareStatus.Should().Be(FolderStatus.Rejected);
         result.AiReviewFailureCount.Should().Be(1);
         result.RequiresHumanReview.Should().BeFalse();
-        result.AiReviewReason.Should().Contain("not confident");
+        result.AiReviewReason.Should().Contain("still Processing");
     }
 
     [Test]
-    public async Task RequestShareAsync_DocumentsNotReady_ButAcademicMetadataStrong_StillAutoApproves()
+    public async Task RequestShareAsync_ShortDescription_ButBenignContent_StillAutoApproves()
     {
-        await using var db = TestDb.CreateInMemoryWithDocuments();
-        var owner = SeedUser(db, "Owner");
-        var folder = SeedFolder(db, owner.Id, isShared: false);
-        folder.Description = "SWP391 lecture notes and weekly lab summaries for the summer semester.";
-        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "swp391-week-1.docx", DocumentStatus.Processing));
-        db.SaveChanges();
-        var sut = BuildSut(db);
-
-        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
-
-        result.ShareStatus.Should().Be(FolderStatus.Approved);
-        result.ShareReviewSource.Should().Be("AI");
-        result.RequiresHumanReview.Should().BeFalse();
-        result.AiReviewReason.Should().Contain("approved");
-    }
-
-    [Test]
-    public async Task RequestShareAsync_ShortDescription_ButAcademicMetadataStrong_StillAutoApproves()
-    {
-        await using var db = TestDb.CreateInMemoryWithDocuments();
+        await using var db = CreateDbWithChunks();
         var owner = SeedUser(db, "Owner");
         var folder = SeedFolder(db, owner.Id, isShared: false);
         folder.Description = "ok";
-        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "swp391-lecture-notes.pdf"));
+        var document = CreateDocument(owner.Id, folder.Id, "meeting-notes.pdf");
+        document.SubjectCode = string.Empty;
+        document.Semester = string.Empty;
+        db.Documents.Add(document);
         db.SaveChanges();
         var sut = BuildSut(db);
 
@@ -146,6 +158,40 @@ public sealed class PublicHubServiceTests
         result.ShareReviewSource.Should().Be("AI");
         result.RequiresHumanReview.Should().BeFalse();
         result.AiReviewReason.Should().Contain("approved");
+    }
+
+    [Test]
+    public async Task RequestShareAsync_ExtractedDangerousLink_IsRejected()
+    {
+        await using var db = CreateDbWithChunks();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        folder.Description = "Reference pack";
+        var document = CreateDocument(owner.Id, folder.Id, "reference-links.docx");
+        document.SubjectCode = string.Empty;
+        document.Semester = string.Empty;
+        document.MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        db.Documents.Add(document);
+        db.DocumentChunks.Add(new DocumentChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = document.Id,
+            ChunkIndex = 0,
+            PageNumber = 1,
+            Content = "Download the virus payload from https://bit.ly/swp-virus for testing only.",
+            TokenCount = 12,
+            Embedding = new Vector(Enumerable.Repeat(0.1f, DocumentChunk.EmbeddingDimension).ToArray()),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        result.ShareStatus.Should().Be(FolderStatus.Rejected);
+        result.AiReviewFailureCount.Should().Be(1);
+        result.RequiresHumanReview.Should().BeFalse();
+        result.AiReviewReason.Should().Contain("rejected");
     }
 
     [Test]
@@ -154,8 +200,11 @@ public sealed class PublicHubServiceTests
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
         var folder = SeedFolder(db, owner.Id, isShared: false);
-        folder.Description = "Short";
-        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "materials.pdf"));
+        folder.Description = "Exam leak bundle that should be rejected by AI.";
+        var document = CreateDocument(owner.Id, folder.Id, "exam leak checklist.pdf");
+        document.SubjectCode = string.Empty;
+        document.Semester = string.Empty;
+        db.Documents.Add(document);
         db.SaveChanges();
         var sut = BuildSut(db);
 
@@ -176,8 +225,8 @@ public sealed class PublicHubServiceTests
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
         var folder = SeedFolder(db, owner.Id, isShared: false);
-        folder.Description = "Academic pack with blocked keyword that should be rejected by AI.";
-        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "exam-leak-checklist.pdf"));
+        folder.Description = "Exam leak bundle that should be rejected by AI.";
+        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "exam leak checklist.pdf"));
         db.SaveChanges();
         var sut = BuildSut(db);
 
@@ -203,8 +252,8 @@ public sealed class PublicHubServiceTests
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
         var folder = SeedFolder(db, owner.Id, isShared: false);
-        folder.Description = "Academic pack with blocked keyword that should be rejected by AI.";
-        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "exam-leak-checklist.pdf"));
+        folder.Description = "Exam leak bundle that should be rejected by AI.";
+        db.Documents.Add(CreateDocument(owner.Id, folder.Id, "exam leak checklist.pdf"));
         db.SaveChanges();
         var sut = BuildSut(db);
 

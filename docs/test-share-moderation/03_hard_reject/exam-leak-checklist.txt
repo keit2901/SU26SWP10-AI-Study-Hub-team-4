@@ -1,5 +1,0 @@
-Exam leak checklist
-
-- Sample blocked wording for testing only
-- This file exists to trigger the hard-rule branch in the AI moderator
-- Use it only in local moderation demos

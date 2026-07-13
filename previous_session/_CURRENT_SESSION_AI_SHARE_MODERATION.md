@@ -148,6 +148,17 @@
 - Added regression test `RequestShareAsync_ShortDescription_ButAcademicMetadataStrong_StillAutoApproves` to confirm academically valid folders still pass AI review even with a very short description.
 - Updated `docs/test-share-moderation/README.md` to document that AI now focuses on study relevance instead of description verbosity.
 - Updated `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor` button copy so the student-facing action shows `Share` / `Share Again` instead of `AI Review` / `AI Review Again`.
+- Reworked `AI_Study_Hub_v2/Services/FolderShareAiModerator.cs` again so sharing is now allow-by-default and AI only rejects when it detects strong violation signals:
+- harmful or illegal content
+- copyright-risk / pirated material
+- malware-delivery / dangerous link / executable-script naming
+- Updated `AI_Study_Hub_v2/Services/FolderService.cs` so moderation reads extracted `DocumentChunks` when available and safely falls back to metadata-only when the current context/model does not expose chunks.
+- Updated `AI_Study_Hub_v2/AI_Study_Hub_v2.Tests/Services/PublicHubServiceTests.cs` to cover:
+- benign SRS/specification approval
+- benign processing/short-description approval
+- violation rejection
+- second AI rejection unlocking human review
+- Updated `docs/test-share-moderation/*` demo data to match the new policy-based moderation behavior.
 - Verification:
-- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`257 passed`, `4 skipped`)
-- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore` -> blocked by local app process lock on `AI_Study_Hub_v2.exe` (PID `11916`), not by a code compile error.
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore -p:UseAppHost=false` -> passed
+- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`259 passed`, `4 skipped`)
