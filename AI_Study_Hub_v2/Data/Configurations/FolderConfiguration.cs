@@ -68,7 +68,6 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
         builder.Property(f => f.AppealMessage)
             .HasColumnName("appeal_message")
             .HasMaxLength(2000);
-
         builder.Property(f => f.Icon)
             .HasColumnName("icon")
             .HasMaxLength(50);

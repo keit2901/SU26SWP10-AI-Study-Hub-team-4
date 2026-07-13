@@ -148,7 +148,6 @@ public sealed class FolderDto
     public DateTimeOffset? AppealRequestedAt { get; set; }
 
     public string? AppealMessage { get; set; }
-
     public string? Icon { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }

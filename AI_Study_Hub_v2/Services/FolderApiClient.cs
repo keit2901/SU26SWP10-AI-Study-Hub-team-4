@@ -196,7 +196,7 @@ public sealed class FolderApiClient
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
         ArgumentNullException.ThrowIfNull(request);
 
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/folders/{id}/share/appeal")
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/folders/{id}/appeal-share-review")
         {
             Content = JsonContent.Create(request)
         };

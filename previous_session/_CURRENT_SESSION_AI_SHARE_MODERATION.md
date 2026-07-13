@@ -162,3 +162,17 @@
 - Verification:
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore -p:UseAppHost=false` -> passed
 - `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`259 passed`, `4 skipped`)
+
+## 10. 2026-07-13 merge reconcile with main
+- Resolved merge conflicts for the AI folder share moderation flow after merging feature work with `main`.
+- Kept the moderation metadata model/DTO/UI flow, appeal-by-human endpoint, and deterministic `FolderShareAiModerator` service.
+- Rewired the missing registrations and contracts that were lost in the merge:
+- `Program.cs` now registers `IFolderShareAiModerator`
+- `IFolderService`, `FoldersController`, and `FolderApiClient` now expose `AppealShareReviewAsync`
+- `FolderService` constructor and tests now pass the AI moderator dependency again
+- Kept the student-facing button copy as `Share` / `Share Again` instead of `AI Review`.
+- Relaxed the share request pipeline so missing extracted chunks or non-ready document processing no longer auto-reject by themselves; AI now falls back to folder/file metadata and only rejects on strong violation signals.
+- Updated moderator-side approval/rejection writes so human decisions clear appeal state and stamp `ShareReviewSource = HUMAN`.
+- Verification:
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore -p:UseAppHost=false` -> passed
+- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`290 passed`, `4 skipped`, `0 failed`)
