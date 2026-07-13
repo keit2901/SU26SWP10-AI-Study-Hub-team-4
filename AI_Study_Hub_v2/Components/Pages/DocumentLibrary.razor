@@ -461,7 +461,7 @@ else
                                                 }
                                                 <MudStack Row="true" Spacing="1">
                                                     <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="@(() => RequestShareAsync(folder))">
-                                                        AI review again
+                                                        Share Again
                                                     </MudButton>
                                                     @if (CanRequestHumanReview(folder))
                                                     {
@@ -2009,7 +2009,7 @@ else
         {
             Data.Entities.FolderStatus.Approved => $"AI approved this folder for community sharing.{reason}",
             Data.Entities.FolderStatus.Rejected when folder.AiReviewFailureCount >= 2 => $"AI did not approve this folder after {folder.AiReviewFailureCount} review attempts. Human review is now available.{reason}",
-            Data.Entities.FolderStatus.Rejected => $"AI did not approve this folder. You can try AI review again.{reason}",
+            Data.Entities.FolderStatus.Rejected => $"AI did not approve this folder. You can try sharing again.{reason}",
             Data.Entities.FolderStatus.PendingShare => $"Human review requested. Your folder is waiting in the moderator queue.{reason}",
             _ => $"Share request submitted.{reason}"
         };

@@ -4,7 +4,10 @@ namespace AI_Study_Hub_v2.Services;
 
 public interface IFolderShareAiModerator
 {
-    FolderShareModerationDecision Evaluate(Folder folder, IReadOnlyList<Document> documents);
+    FolderShareModerationDecision Evaluate(
+        Folder folder,
+        IReadOnlyList<Document> documents,
+        IReadOnlyList<string> extractedTexts);
 }
 
 public sealed record FolderShareModerationDecision(

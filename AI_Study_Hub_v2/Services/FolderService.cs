@@ -8,6 +8,15 @@ namespace AI_Study_Hub_v2.Services;
 
 public sealed class FolderService : IFolderService
 {
+    private static readonly HashSet<string> ModerationInspectableMimeTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/pdf",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/msword",
+        "application/vnd.ms-powerpoint",
+    };
+
     private readonly AppDbContext _db;
     private readonly ILogger<FolderService> _logger;
     private readonly ISupabaseStorageClient _storage;
@@ -303,7 +312,67 @@ public sealed class FolderService : IFolderService
                 "Only folders with status None or Rejected can be requested for sharing.");
         }
 
-        var decision = _shareAiModerator.Evaluate(folder, folder.Documents.ToList());
+        var documentIds = folder.Documents.Select(document => document.Id).ToList();
+        var inspectableDocuments = folder.Documents
+            .Where(document => ModerationInspectableMimeTypes.Contains(document.MimeType))
+            .ToList();
+
+        IReadOnlyList<string> extractedTexts = Array.Empty<string>();
+        var chunkDocumentIds = new HashSet<Guid>();
+        if (documentIds.Count > 0)
+        {
+            try
+            {
+                var chunkRows = await _db.DocumentChunks
+                    .Where(chunk => documentIds.Contains(chunk.DocumentId))
+                    .OrderBy(chunk => chunk.DocumentId)
+                    .ThenBy(chunk => chunk.ChunkIndex)
+                    .Select(chunk => new { chunk.DocumentId, chunk.Content })
+                    .ToListAsync(cancellationToken);
+
+                extractedTexts = chunkRows
+                    .Select(row => row.Content)
+                    .Take(24)
+                    .ToList();
+
+                chunkDocumentIds = chunkRows
+                    .Select(row => row.DocumentId)
+                    .ToHashSet();
+            }
+            catch (InvalidOperationException)
+            {
+                extractedTexts = Array.Empty<string>();
+                chunkDocumentIds.Clear();
+            }
+        }
+
+        FolderShareModerationDecision decision;
+        var pendingInspectionDocument = inspectableDocuments
+            .FirstOrDefault(document => document.Status != DocumentStatus.Ready);
+        if (pendingInspectionDocument is not null)
+        {
+            decision = new FolderShareModerationDecision(
+                FolderShareModerationOutcome.NeedsHumanReview,
+                $"AI could not inspect '{pendingInspectionDocument.FileName}' yet because the document is still {pendingInspectionDocument.Status}. Try sharing again after processing finishes.",
+                0.42);
+        }
+        else
+        {
+            var missingChunkDocument = inspectableDocuments
+                .FirstOrDefault(document => document.Status == DocumentStatus.Ready && !chunkDocumentIds.Contains(document.Id));
+            if (missingChunkDocument is not null)
+            {
+                decision = new FolderShareModerationDecision(
+                    FolderShareModerationOutcome.NeedsHumanReview,
+                    $"AI could not inspect the extracted text for '{missingChunkDocument.FileName}', so the share request cannot be auto-approved safely.",
+                    0.41);
+            }
+            else
+            {
+                decision = _shareAiModerator.Evaluate(folder, folder.Documents.ToList(), extractedTexts);
+            }
+        }
+
         var now = DateTimeOffset.UtcNow;
 
         folder.ShareReviewSource = "AI";
