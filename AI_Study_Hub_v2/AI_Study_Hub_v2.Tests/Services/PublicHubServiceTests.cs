@@ -116,7 +116,7 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task RequestShareAsync_DocumentsNotReady_DoesNotAutoApprove()
+    public async Task RequestShareAsync_DocumentsNotReady_ButBenignMetadata_StillAutoApproves()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
@@ -132,10 +132,10 @@ public sealed class PublicHubServiceTests
 
         var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
 
-        result.ShareStatus.Should().Be(FolderStatus.Rejected);
-        result.AiReviewFailureCount.Should().Be(1);
+        result.ShareStatus.Should().Be(FolderStatus.Approved);
+        result.AiReviewFailureCount.Should().Be(0);
         result.RequiresHumanReview.Should().BeFalse();
-        result.AiReviewReason.Should().Contain("still Processing");
+        result.AiReviewReason.Should().Contain("approved");
     }
 
     [Test]
@@ -323,7 +323,7 @@ public sealed class PublicHubServiceTests
                 false,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, string path, Stream _, string _, bool _, CancellationToken _) => path);
-        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, new FolderShareAiModerator());
+        var sut = BuildSut(db, storage.Object);
 
         var saved = await sut.CopySharedFolderAsync(viewer.SupabaseUserId, folder.Id);
 
@@ -403,7 +403,7 @@ public sealed class PublicHubServiceTests
                 sourceDocument.StoragePath,
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Storage unavailable."));
-        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, new FolderShareAiModerator());
+        var sut = BuildSut(db, storage.Object);
 
         var act = () => sut.CopySharedFolderAsync(viewer.SupabaseUserId, source.Id);
 
@@ -452,7 +452,7 @@ public sealed class PublicHubServiceTests
                 It.IsAny<string>(),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
-        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, new FolderShareAiModerator());
+        var sut = BuildSut(db, storage.Object);
 
         var act = () => sut.CopySharedFolderAsync(viewer.SupabaseUserId, source.Id);
 
@@ -468,11 +468,12 @@ public sealed class PublicHubServiceTests
         storage.VerifyAll();
     }
 
-    private static FolderService BuildSut(Data.AppDbContext db)
+    private static FolderService BuildSut(Data.AppDbContext db, ISupabaseStorageClient? storage = null)
         => new(
             db,
             NullLogger<FolderService>.Instance,
-            Mock.Of<ISupabaseStorageClient>(),
+            storage ?? Mock.Of<ISupabaseStorageClient>(),
+            Mock.Of<IStorageQuotaService>(),
             new FolderShareAiModerator());
 
     private static Data.AppDbContext CreateDbWithChunks()

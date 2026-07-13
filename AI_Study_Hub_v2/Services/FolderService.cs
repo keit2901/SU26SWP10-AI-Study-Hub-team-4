@@ -8,29 +8,23 @@ namespace AI_Study_Hub_v2.Services;
 
 public sealed class FolderService : IFolderService
 {
-    private static readonly HashSet<string> ModerationInspectableMimeTypes = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "application/pdf",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        "application/msword",
-        "application/vnd.ms-powerpoint",
-    };
-
     private readonly AppDbContext _db;
     private readonly ILogger<FolderService> _logger;
     private readonly ISupabaseStorageClient _storage;
+    private readonly IStorageQuotaService _quota;
     private readonly IFolderShareAiModerator _shareAiModerator;
 
     public FolderService(
         AppDbContext db,
         ILogger<FolderService> logger,
         ISupabaseStorageClient storage,
+        IStorageQuotaService quota,
         IFolderShareAiModerator shareAiModerator)
     {
         _db = db;
         _logger = logger;
         _storage = storage;
+        _quota = quota;
         _shareAiModerator = shareAiModerator;
     }
 
@@ -86,6 +80,9 @@ public sealed class FolderService : IFolderService
         var description = NormalizeDescription(request.Description);
 
         await EnsureUniqueNameAsync(profile.Id, name, excludeFolderId: null, cancellationToken);
+
+        // Enforce plan-level folder count limit.
+        await _quota.ValidateFolderCountAsync(supabaseUserId, cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         var folder = new Folder
@@ -258,7 +255,7 @@ public sealed class FolderService : IFolderService
 
         var rows = await _db.Folders
             .AsNoTracking()
-            .Where(f => f.UserId == profile.Id)
+            .Where(f => f.UserId == profile.Id && f.ShareStatus != FolderStatus.None)
             .OrderByDescending(f => f.SharedAt)
             .ThenBy(f => f.Name)
             .Select(f => new FolderDto
@@ -313,12 +310,7 @@ public sealed class FolderService : IFolderService
         }
 
         var documentIds = folder.Documents.Select(document => document.Id).ToList();
-        var inspectableDocuments = folder.Documents
-            .Where(document => ModerationInspectableMimeTypes.Contains(document.MimeType))
-            .ToList();
-
         IReadOnlyList<string> extractedTexts = Array.Empty<string>();
-        var chunkDocumentIds = new HashSet<Guid>();
         if (documentIds.Count > 0)
         {
             try
@@ -334,44 +326,14 @@ public sealed class FolderService : IFolderService
                     .Select(row => row.Content)
                     .Take(24)
                     .ToList();
-
-                chunkDocumentIds = chunkRows
-                    .Select(row => row.DocumentId)
-                    .ToHashSet();
             }
             catch (InvalidOperationException)
             {
                 extractedTexts = Array.Empty<string>();
-                chunkDocumentIds.Clear();
             }
         }
 
-        FolderShareModerationDecision decision;
-        var pendingInspectionDocument = inspectableDocuments
-            .FirstOrDefault(document => document.Status != DocumentStatus.Ready);
-        if (pendingInspectionDocument is not null)
-        {
-            decision = new FolderShareModerationDecision(
-                FolderShareModerationOutcome.NeedsHumanReview,
-                $"AI could not inspect '{pendingInspectionDocument.FileName}' yet because the document is still {pendingInspectionDocument.Status}. Try sharing again after processing finishes.",
-                0.42);
-        }
-        else
-        {
-            var missingChunkDocument = inspectableDocuments
-                .FirstOrDefault(document => document.Status == DocumentStatus.Ready && !chunkDocumentIds.Contains(document.Id));
-            if (missingChunkDocument is not null)
-            {
-                decision = new FolderShareModerationDecision(
-                    FolderShareModerationOutcome.NeedsHumanReview,
-                    $"AI could not inspect the extracted text for '{missingChunkDocument.FileName}', so the share request cannot be auto-approved safely.",
-                    0.41);
-            }
-            else
-            {
-                decision = _shareAiModerator.Evaluate(folder, folder.Documents.ToList(), extractedTexts);
-            }
-        }
+        var decision = _shareAiModerator.Evaluate(folder, folder.Documents.ToList(), extractedTexts);
 
         var now = DateTimeOffset.UtcNow;
 
@@ -457,14 +419,15 @@ public sealed class FolderService : IFolderService
                 "Only folders with status Pending Share can be approved.");
         }
 
+        var now = DateTimeOffset.UtcNow;
         folder.ShareStatus = FolderStatus.Approved;
-        folder.SharedAt = DateTimeOffset.UtcNow;
+        folder.SharedAt = now;
         folder.ShareReviewSource = "HUMAN";
         folder.HumanReviewReason = "Approved after moderator review.";
         folder.RequiresHumanReview = false;
         folder.AppealRequestedAt = null;
         folder.AppealMessage = null;
-        folder.UpdatedAt = DateTimeOffset.UtcNow;
+        folder.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -474,7 +437,6 @@ public sealed class FolderService : IFolderService
 
     public async Task<FolderDto> RejectFolderShareAsync(
         Guid folderId,
-        string? reason = null,
         CancellationToken cancellationToken = default)
     {
         var folder = await _db.Folders
@@ -488,14 +450,15 @@ public sealed class FolderService : IFolderService
                 "Only folders with status Pending Share can be rejected.");
         }
 
+        var now = DateTimeOffset.UtcNow;
         folder.ShareStatus = FolderStatus.Rejected;
         folder.SharedAt = null;
         folder.ShareReviewSource = "HUMAN";
-        folder.HumanReviewReason = NormalizeModerationNote(reason) ?? "Rejected after moderator review.";
+        folder.HumanReviewReason = "Rejected after moderator review.";
         folder.RequiresHumanReview = false;
         folder.AppealRequestedAt = null;
         folder.AppealMessage = null;
-        folder.UpdatedAt = DateTimeOffset.UtcNow;
+        folder.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -858,7 +821,9 @@ public sealed class FolderService : IFolderService
             return null;
         }
 
-        return normalized.Length <= 2000 ? normalized : normalized[..2000];
+        return normalized.Length <= 2000
+            ? normalized
+            : normalized[..2000];
     }
 
     private static FolderDto ToDto(Folder folder, int documentCount) => new()

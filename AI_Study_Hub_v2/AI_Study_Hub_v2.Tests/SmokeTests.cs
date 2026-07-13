@@ -34,3 +34,5 @@ public class SmokeTests
         type.Assembly.GetName().Name.Should().Be("AI_Study_Hub_v2");
     }
 }
+
+

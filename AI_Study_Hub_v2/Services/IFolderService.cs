@@ -54,7 +54,6 @@ public interface IFolderService
 
     Task<FolderDto> RejectFolderShareAsync(
         Guid folderId,
-        string? reason = null,
         CancellationToken cancellationToken = default);
 
     Task<FolderDto> VoteAsync(

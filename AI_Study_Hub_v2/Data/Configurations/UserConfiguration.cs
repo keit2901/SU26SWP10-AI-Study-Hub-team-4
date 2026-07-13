@@ -38,6 +38,10 @@ public sealed class UserConfiguration : IEntityTypeConfiguration<User>
             .HasColumnName("total_tokens_used")
             .HasDefaultValue(0L);
 
+        builder.Property(u => u.StorageUsedBytes)
+            .HasColumnName("storage_used_bytes")
+            .HasDefaultValue(0L);
+
         builder.Property(u => u.DailyTokenQuota)
             .HasColumnName("daily_token_quota")
             .HasDefaultValue(25_000L)

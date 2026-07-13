@@ -365,15 +365,15 @@ else
                                         {
                                             <div @onclick="@(() => _openMenuFolderId = null)" style="position:absolute;top:0;left:0;right:0;bottom:0;background:transparent;z-index:999;border-radius:12px;" />
                                             <div class="folder-card-dropdown" @onclick:stopPropagation>
-                                                <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowRenameFolderDialogAsync(folder); })">
+                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ShowRenameFolderDialogAsync(folder); })">
                                                     <MudIcon Icon="@Icons.Material.Filled.Edit" Size="Size.Small" />
                                                     <span>Rename</span>
                                                 </div>
-                                                <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowChangeFolderIconDialogAsync(folder); })">
+                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); ShowChangeFolderIconDialogAsync(folder); })">
                                                     <MudIcon Icon="@Icons.Material.Filled.EmojiSymbols" Size="Size.Small" />
                                                     <span>Change Icon</span>
                                                 </div>
-                                                <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await RequestShareAsync(folder); })" style="@(folder.ShareStatus == Data.Entities.FolderStatus.PendingShare || folder.ShareStatus == Data.Entities.FolderStatus.Approved ? "opacity:0.5;cursor:default;" : "")">
+                                                <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); RequestShareAsync(folder); })" style="@(folder.ShareStatus == Data.Entities.FolderStatus.PendingShare || folder.ShareStatus == Data.Entities.FolderStatus.Approved ? "opacity:0.5;cursor:default;" : "")">
                                                     <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" Color="@(folder.ShareStatus == Data.Entities.FolderStatus.Approved ? Color.Primary : folder.ShareStatus == Data.Entities.FolderStatus.PendingShare ? Color.Warning : Color.Default)" />
                                                     <span>@GetShareButtonText(folder)</span>
                                                 </div>

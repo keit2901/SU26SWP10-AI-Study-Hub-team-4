@@ -331,6 +331,25 @@
                         </MudSelect>
                     </section>
 
+                    <section class="workspace-model-selector">
+                        <div class="workspace-panel-heading">
+                            <span>Quiz Subject Filter</span>
+                            <small>Optionally filter quiz to a subject/semester</small>
+                        </div>
+                        <MudSelect T="string" Value="@_quizSubjectCode" ValueChanged="@(v => { _quizSubjectCode = v; StateHasChanged(); })" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@(_busy || _generatingQuiz)" Label="Subject" Clearable>
+                            @foreach (var sc in _availableSubjectCodes)
+                            {
+                                <MudSelectItem T="string" Value="@sc">@sc</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudSelect T="string" Value="@_quizSemester" ValueChanged="@(v => { _quizSemester = v; StateHasChanged(); })" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@(_busy || _generatingQuiz)" Label="Semester" Clearable>
+                            @foreach (var sem in _availableSemesters)
+                            {
+                                <MudSelectItem T="string" Value="@sem">@sem</MudSelectItem>
+                            }
+                        </MudSelect>
+                    </section>
+
                     <section class="workspace-active-context">
                         <div class="workspace-panel-heading">
                             <span>Active Context</span>
@@ -405,6 +424,28 @@
     private string _workspaceFolderIdStr = "";
     private int _topK = 5;
     private string _selectedModel = "llama-3.3-70b-versatile";
+
+    private string? _quizSubjectCode;
+    private string? _quizSemester;
+    private IReadOnlyList<string> _availableSubjectCodes = Array.Empty<string>();
+    private IReadOnlyList<string> _availableSemesters = Array.Empty<string>();
+
+    private void RefreshSubjectFilters()
+    {
+        var ready = ReadyDocuments;
+        _availableSubjectCodes = ready
+            .Select(d => d.SubjectCode)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+        _availableSemesters = ready
+            .Select(d => d.Semester)
+            .Where(s => !string.IsNullOrWhiteSpace(s))
+            .Distinct()
+            .OrderBy(s => s)
+            .ToList();
+    }
 
     private void OnModelChanged(string value)
     {
@@ -698,6 +739,34 @@
 
             _documents = documentsTask.Result.ToList();
             _folders = foldersTask.Result.OrderBy(f => f.Name).ToList();
+
+            if (QueryFolderId.HasValue)
+            {
+                var isPersonalFolder = _folders.Any(f => f.Id == QueryFolderId.Value);
+                if (!isPersonalFolder)
+                {
+                    try
+                    {
+                        var sharedFolders = await FoldersApi.ListSharedAsync(Session.AccessToken!);
+                        var sharedFolder = sharedFolders.FirstOrDefault(f => f.Id == QueryFolderId.Value);
+                        if (sharedFolder != null)
+                        {
+                            _folders.Add(sharedFolder);
+                            var sharedDocs = await DocumentsApi.ListAsync(Session.AccessToken!, new DocumentListQuery { FolderId = QueryFolderId.Value });
+                            if (sharedDocs != null && sharedDocs.Count > 0)
+                            {
+                                _documents = _documents.Concat(sharedDocs).DistinctBy(d => d.Id).ToList();
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _error = $"Could not load shared folder: {ex.Message}";
+                    }
+                }
+            }
+
+            RefreshSubjectFilters();
             ApplyQueryScope();
         }
         catch (DocumentApiException ex)
@@ -781,8 +850,8 @@
             question,
             DocumentId: null,
             FolderId: _folderId,
-            SubjectCode: null,
-            Semester: null,
+            SubjectCode: _quizSubjectCode,
+            Semester: _quizSemester,
             TopK: Math.Clamp(_topK, 1, 10),
             DocumentIds: SelectedDocumentIdsForRequest,
             Model: _selectedModel,
@@ -1066,7 +1135,9 @@
                 Count: 8,
                 Difficulty: "medium",
                 Model: _selectedModel,
-                ScopeLabel: BuildScopeLabel());
+                ScopeLabel: BuildScopeLabel(),
+                SubjectCode: _quizSubjectCode,
+                Semester: _quizSemester);
 
             var quiz = await _chatApi.GenerateQuizAsync(Session.AccessToken!, quizRequest, _quizCts.Token);
 

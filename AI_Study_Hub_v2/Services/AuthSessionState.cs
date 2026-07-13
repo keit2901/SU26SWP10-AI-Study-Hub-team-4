@@ -19,8 +19,6 @@ public sealed class AuthSessionState
 
     public string? AccessToken => Session?.AccessToken;
 
-    public string? CurrentPassword { get; set; }
-
     /// <summary>
     /// In-memory plan tier for demo purposes. Defaults to "Free".
     /// Valid values: "Free", "Pro", "Unlimited".
@@ -44,7 +42,6 @@ public sealed class AuthSessionState
     public void Clear()
     {
         Session = null;
-        CurrentPassword = null;
         CurrentPlan = "Free";
         NotifyChanged();
     }
