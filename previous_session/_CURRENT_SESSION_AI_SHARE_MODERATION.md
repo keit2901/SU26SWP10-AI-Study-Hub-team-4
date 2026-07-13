@@ -176,3 +176,11 @@
 - Verification:
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore -p:UseAppHost=false` -> passed
 - `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-build` -> passed (`290 passed`, `4 skipped`, `0 failed`)
+
+## 11. 2026-07-13 migration safety fix for shared DB
+- Investigated runtime failure from `dotnet run`: `Npgsql.PostgresException 42P07` because migration `20260705144249_AddPlanSystem` tried to create `benchmark_results` on a database where that table already existed.
+- Updated `AI_Study_Hub_v2/Migrations/20260705144249_AddPlanSystem.cs` so `benchmark_results` and its three indexes are created with `IF NOT EXISTS` SQL instead of unconditional EF `CreateTable` / `CreateIndex`.
+- This keeps clean databases working while allowing shared/dev databases that already have `benchmark_results` to pass migration without manual DB edits.
+- Verification:
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.sln" --nologo --no-restore -p:UseAppHost=false` -> passed
+- Direct DLL startup no longer failed on `benchmark_results`; subsequent startup checks stopped later on local environment config (`Recaptcha` / `Supabase:JwtSecret`) instead.

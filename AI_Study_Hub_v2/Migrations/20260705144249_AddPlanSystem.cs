@@ -26,34 +26,30 @@ namespace AI_Study_Hub_v2.Migrations
                 )
             ");
 
-            migrationBuilder.CreateTable(
-                name: "benchmark_results",
-                columns: table => new
-                {
-                    id = table.Column<Guid>(type: "uuid", nullable: false, defaultValueSql: "gen_random_uuid()"),
-                    model_name = table.Column<string>(type: "character varying(100)", maxLength: 100, nullable: false),
-                    provider = table.Column<string>(type: "character varying(50)", maxLength: 50, nullable: false),
-                    run_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    overall_score = table.Column<double>(type: "double precision", nullable: false),
-                    citation_accuracy = table.Column<double>(type: "double precision", nullable: false),
-                    hallucination_rate = table.Column<double>(type: "double precision", nullable: false),
-                    refusal_accuracy = table.Column<double>(type: "double precision", nullable: false),
-                    tutoring_quality = table.Column<double>(type: "double precision", nullable: false),
-                    diagram_accuracy = table.Column<double>(type: "double precision", nullable: false),
-                    p50_latency_ms = table.Column<long>(type: "bigint", nullable: false),
-                    p95_latency_ms = table.Column<long>(type: "bigint", nullable: false),
-                    total_questions = table.Column<int>(type: "integer", nullable: false),
-                    passed_questions = table.Column<int>(type: "integer", nullable: false),
-                    failed_questions = table.Column<int>(type: "integer", nullable: false),
-                    is_automated = table.Column<bool>(type: "boolean", nullable: false),
-                    alert_triggered = table.Column<bool>(type: "boolean", nullable: false),
-                    payload_json = table.Column<string>(type: "jsonb", nullable: false, defaultValueSql: "'{}'::jsonb"),
-                    created_at = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
-                },
-                constraints: table =>
-                {
-                    table.PrimaryKey("PK_benchmark_results", x => x.id);
-                });
+            migrationBuilder.Sql(@"
+                CREATE TABLE IF NOT EXISTS benchmark_results (
+                    id uuid NOT NULL DEFAULT (gen_random_uuid()),
+                    model_name character varying(100) NOT NULL,
+                    provider character varying(50) NOT NULL,
+                    run_at timestamp with time zone NOT NULL,
+                    overall_score double precision NOT NULL,
+                    citation_accuracy double precision NOT NULL,
+                    hallucination_rate double precision NOT NULL,
+                    refusal_accuracy double precision NOT NULL,
+                    tutoring_quality double precision NOT NULL,
+                    diagram_accuracy double precision NOT NULL,
+                    p50_latency_ms bigint NOT NULL,
+                    p95_latency_ms bigint NOT NULL,
+                    total_questions integer NOT NULL,
+                    passed_questions integer NOT NULL,
+                    failed_questions integer NOT NULL,
+                    is_automated boolean NOT NULL,
+                    alert_triggered boolean NOT NULL,
+                    payload_json jsonb NOT NULL DEFAULT ('{}'::jsonb),
+                    created_at timestamp with time zone NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+                    CONSTRAINT ""PK_benchmark_results"" PRIMARY KEY (id)
+                );
+            ");
 
             migrationBuilder.CreateTable(
                 name: "plans",
@@ -144,20 +140,20 @@ namespace AI_Study_Hub_v2.Migrations
                         onDelete: ReferentialAction.Cascade);
                 });
 
-            migrationBuilder.CreateIndex(
-                name: "ix_benchmark_results_is_automated",
-                table: "benchmark_results",
-                column: "is_automated");
+            migrationBuilder.Sql(@"
+                CREATE INDEX IF NOT EXISTS ix_benchmark_results_is_automated
+                ON benchmark_results (is_automated);
+            ");
 
-            migrationBuilder.CreateIndex(
-                name: "ix_benchmark_results_model_run_at",
-                table: "benchmark_results",
-                columns: new[] { "model_name", "run_at" });
+            migrationBuilder.Sql(@"
+                CREATE INDEX IF NOT EXISTS ix_benchmark_results_model_run_at
+                ON benchmark_results (model_name, run_at);
+            ");
 
-            migrationBuilder.CreateIndex(
-                name: "ix_benchmark_results_run_at",
-                table: "benchmark_results",
-                column: "run_at");
+            migrationBuilder.Sql(@"
+                CREATE INDEX IF NOT EXISTS ix_benchmark_results_run_at
+                ON benchmark_results (run_at);
+            ");
 
             migrationBuilder.CreateIndex(
                 name: "IX_payment_transactions_txn_ref",
