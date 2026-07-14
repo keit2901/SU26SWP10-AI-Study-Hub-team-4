@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text.Json;
 using AI_Study_Hub_v2.Dtos;
 
 namespace AI_Study_Hub_v2.Services;
@@ -58,7 +59,7 @@ public sealed class PlanApiClient
     }
 
     /// <summary>Purchases (or upgrades to) a plan for the calling user.</summary>
-    public async Task<UserPlanDto> PurchasePlanAsync(
+    public async Task<PaymentUrlResponse> PurchasePlanAsync(
         string accessToken,
         string planKey,
         string billingCycle = "monthly",
@@ -76,7 +77,72 @@ public sealed class PlanApiClient
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)
         {
+            return await resp.Content.ReadFromJsonAsync<PaymentUrlResponse>(cancellationToken: ct)
+                ?? throw new PlanApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    /// <summary>Activates a free plan immediately (no payment).</summary>
+    public async Task<UserPlanDto> PurchaseFreePlanAsync(
+        string accessToken,
+        string planKey,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, "api/plans/purchase");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        req.Content = JsonContent.Create(new { planKey, billingCycle = "monthly" });
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
             return await resp.Content.ReadFromJsonAsync<UserPlanDto>(cancellationToken: ct)
+                ?? throw new PlanApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    /// <summary>Retries payment for a pending transaction.</summary>
+    public async Task<PaymentUrlResponse> RetryPaymentAsync(
+        string accessToken,
+        string txnRef,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(txnRef);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/plans/purchase/retry/{txnRef}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            return await resp.Content.ReadFromJsonAsync<PaymentUrlResponse>(cancellationToken: ct)
+                ?? throw new PlanApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    /// <summary>Verifies VNPay return URL query parameters.</summary>
+    public async Task<ReturnUrlResult> VerifyReturnUrlAsync(
+        string accessToken,
+        string queryString,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/vnpay/return{queryString}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            return await resp.Content.ReadFromJsonAsync<ReturnUrlResult>(cancellationToken: ct)
                 ?? throw new PlanApiException(500, "empty_response", "Server returned empty response.");
         }
         await ThrowFromResponseAsync(resp, ct);
@@ -85,10 +151,12 @@ public sealed class PlanApiClient
 
     private static async Task ThrowFromResponseAsync(HttpResponseMessage resp, CancellationToken ct)
     {
+        var raw = await resp.Content.ReadAsStringAsync(ct);
         var status = (int)resp.StatusCode;
+
         try
         {
-            var err = await resp.Content.ReadFromJsonAsync<ApiErrorResponse>(cancellationToken: ct);
+            var err = JsonSerializer.Deserialize<ApiErrorResponse>(raw);
             if (err is not null && (!string.IsNullOrEmpty(err.Code) || !string.IsNullOrEmpty(err.Message)))
             {
                 var message = !string.IsNullOrWhiteSpace(err.Message)
@@ -102,8 +170,9 @@ public sealed class PlanApiClient
         {
             // fall through to generic
         }
-        var raw = await resp.Content.ReadAsStringAsync(ct);
-        throw new PlanApiException(status, "request_failed", string.IsNullOrWhiteSpace(raw) ? $"Request failed ({status})." : raw);
+
+        throw new PlanApiException(status, "request_failed",
+            string.IsNullOrWhiteSpace(raw) ? $"Request failed ({status})." : raw);
     }
 }
 

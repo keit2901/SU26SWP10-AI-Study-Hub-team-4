@@ -1,12 +1,13 @@
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Services.Payment;
 using Microsoft.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Services;
 
 /// <summary>
 /// Background service that periodically scans for expired UserPlans and moves them
-/// to the Free plan if no other active plan exists.
+/// to the Free plan if no other active plan exists. Also expires stale VNPay payments.
 /// </summary>
 public sealed class PlanExpiryHostedService : BackgroundService
 {
@@ -55,32 +56,42 @@ public sealed class PlanExpiryHostedService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var planService = scope.ServiceProvider.GetRequiredService<IPlanService>();
+        var vnPayService = scope.ServiceProvider.GetRequiredService<IVnPayService>();
 
         var now = DateTimeOffset.UtcNow;
 
-        var expiredPlans = await db.UserPlans
-            .Where(up => up.Status == "active" && up.ExpiresAt != null && up.ExpiresAt < now)
-            .ToListAsync(ct);
+        // Expire stale VNPay pending payments
+        var expiredPayments = await vnPayService.ExpireStalePaymentsAsync(ct);
+        if (expiredPayments > 0)
+        {
+            _logger.LogInformation("Expired {Count} stale VNPay pending payments.", expiredPayments);
+        }
 
-        if (expiredPlans.Count == 0)
+        // M4: Atomic bulk update to prevent overwriting admin "deactivated"
+        var expiredCount = await db.UserPlans
+            .Where(up => up.Status == "active" && up.ExpiresAt != null && up.ExpiresAt < now)
+            .ExecuteUpdateAsync(setters => setters
+                .SetProperty(up => up.Status, "expired"),
+                ct);
+
+        if (expiredCount == 0)
         {
             // B4: compensatory scan — catch users with status='expired' but no active plan
             await AssignFreeToExpiredOrphansAsync(db, planService, now, ct);
             return;
         }
 
-        _logger.LogInformation("Found {Count} expired UserPlans to process.", expiredPlans.Count);
+        _logger.LogInformation("Found {Count} expired UserPlans to process.", expiredCount);
 
-        var freePlan = planService.GetFreePlan();
-
-        // Mark expired plans
-        foreach (var expiredPlan in expiredPlans)
-        {
-            expiredPlan.Status = "expired";
-        }
+        // M4: Query affected user IDs after atomic update
+        var affectedUserIds = await db.UserPlans
+            .Where(up => up.Status == "expired" && up.ExpiresAt < now)
+            .Select(up => up.UserId)
+            .Distinct()
+            .ToListAsync(ct);
 
         // Assign Free plan to users who no longer have any active plan
-        var affectedUserIds = expiredPlans.Select(up => up.UserId).Distinct().ToList();
+        var freePlan = planService.GetFreePlan();
         foreach (var userId in affectedUserIds)
         {
             var hasActivePlan = await db.UserPlans
@@ -102,14 +113,14 @@ public sealed class PlanExpiryHostedService : BackgroundService
             }
         }
 
-        // B4: single SaveChanges — both expiry and Free assignment atomically
+        // B4: single SaveChanges — Free assignment atomically
         await db.SaveChangesAsync(ct);
 
         // B4: compensatory scan for previously broken state
         await AssignFreeToExpiredOrphansAsync(db, planService, now, ct);
 
         _logger.LogInformation("Plan expiry scan complete. Expired {Count} plans, assigned Free plan to affected users.",
-            expiredPlans.Count);
+            expiredCount);
     }
 
     /// <summary>
@@ -122,34 +133,39 @@ public sealed class PlanExpiryHostedService : BackgroundService
         DateTimeOffset now,
         CancellationToken ct)
     {
+        // Only scan plans expired in the last 90 days to prevent unbounded growth
+        var cutoff = now.AddDays(-90);
         var orphanUserIds = await db.UserPlans
-            .Where(up => up.Status == "expired")
+            .Where(up => up.Status == "expired" && up.ExpiresAt >= cutoff)
             .Select(up => up.UserId)
             .Distinct()
             .ToListAsync(ct);
 
-        var fixedCount = 0;
-        foreach (var userId in orphanUserIds)
-        {
-            var hasActivePlan = await db.UserPlans
-                .AnyAsync(up => up.UserId == userId && up.Status == "active", ct);
+        // Batch check: get all users with active plans in one query
+        var usersWithActivePlans = await db.UserPlans
+            .Where(up => orphanUserIds.Contains(up.UserId) && up.Status == "active")
+            .Select(up => up.UserId)
+            .Distinct()
+            .ToListAsync(ct);
 
-            if (!hasActivePlan)
+        var usersNeedingFreePlan = orphanUserIds.Except(usersWithActivePlans).ToList();
+
+        var freePlan = planService.GetFreePlan();
+        var fixedCount = 0;
+        foreach (var userId in usersNeedingFreePlan)
+        {
+            var freeUserPlan = new UserPlan
             {
-                var freePlan = planService.GetFreePlan();
-                var freeUserPlan = new UserPlan
-                {
-                    Id = Guid.NewGuid(),
-                    UserId = userId,
-                    PlanId = freePlan.Id,
-                    Status = "active",
-                    AssignedAt = now,
-                    ExpiresAt = null,
-                    PaidAt = null,
-                };
-                db.UserPlans.Add(freeUserPlan);
-                fixedCount++;
-            }
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                PlanId = freePlan.Id,
+                Status = "active",
+                AssignedAt = now,
+                ExpiresAt = null,
+                PaidAt = null,
+            };
+            db.UserPlans.Add(freeUserPlan);
+            fixedCount++;
         }
 
         if (fixedCount > 0)

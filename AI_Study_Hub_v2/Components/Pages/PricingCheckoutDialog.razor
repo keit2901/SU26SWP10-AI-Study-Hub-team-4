@@ -1,5 +1,7 @@
 @inject AuthSessionState Session
 @inject PlanApiClient PlanApi
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <MudDialog>
     <DialogContent>
@@ -14,7 +16,7 @@
 
                 <div class="checkout-amount-box">
                     <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.5rem;">
-                        <span class="checkout-label">Payment Amount (Demo)</span>
+                        <span class="checkout-label">Payment Amount</span>
                         <div class="billing-cycle-selector">
                             <MudButton Variant="@(_billingCycle == "monthly" ? Variant.Filled : Variant.Outlined)"
                                        Color="Color.Primary"
@@ -41,11 +43,6 @@
                     </div>
                 }
 
-                <div class="checkout-info">
-                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Style="color:#4F46E5;" />
-                    <span>This is a simulated transaction. No actual payments will be processed.</span>
-                </div>
-
                 <div class="checkout-actions">
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
                                OnClick="ConfirmPayment" Disabled="_isLoading"
@@ -57,7 +54,7 @@
                         }
                         else
                         {
-                            <span>Confirm Payment</span>
+                            <span>Proceed to Payment</span>
                         }
                     </MudButton>
                     <MudButton Variant="Variant.Text" Color="Color.Default" FullWidth="true"
@@ -216,18 +213,40 @@
                 return;
             }
 
-            await PlanApi.PurchasePlanAsync(
+            // Free plan: immediate activation
+            if (Plan.PlanKey == "free")
+            {
+                await PlanApi.PurchaseFreePlanAsync(accessToken, Plan.PlanKey);
+                _completed = true;
+                _isLoading = false;
+                return;
+            }
+
+            // Paid plan: get VNPay redirect URL
+            var result = await PlanApi.PurchasePlanAsync(
                 accessToken, Plan.PlanKey, _billingCycle,
                 idempotencyKey: Guid.NewGuid().ToString("N"));
-            _completed = true;
+
+            // Redirect to VNPay
+            await JS.InvokeVoidAsync("eval", $"window.location.href = '{result.PaymentUrl}'");
         }
         catch (PlanApiException ex)
         {
-            _error = ex.Message;
+            var statusCode = (System.Net.HttpStatusCode)ex.StatusCode;
+            var message = statusCode switch
+            {
+                System.Net.HttpStatusCode.Unauthorized => "Please log in again to continue.",
+                System.Net.HttpStatusCode.Conflict => ex.Message,
+                System.Net.HttpStatusCode.TooManyRequests => "Too many attempts. Please wait a moment and try again.",
+                System.Net.HttpStatusCode.ServiceUnavailable => "Service is temporarily unavailable. Please try again later.",
+                System.Net.HttpStatusCode.PaymentRequired => "Your current usage exceeds the target plan limits. Upgrade or free up space first.",
+                _ => $"Purchase failed: {ex.Message}"
+            };
+            _error = message;
         }
         catch (Exception)
         {
-            _error = "An unexpected error occurred. Please try again.";
+            _error = "A network error occurred. Please check your connection and try again.";
         }
         finally
         {

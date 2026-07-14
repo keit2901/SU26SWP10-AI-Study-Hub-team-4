@@ -16,7 +16,7 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
 
             // W1.2: CHECK constraints on status and billing_cycle
             t.HasCheckConstraint("ck_payment_transactions_status",
-                "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded')");
+                "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded', 'expired')");
             t.HasCheckConstraint("ck_payment_transactions_billing_cycle",
                 "billing_cycle IN ('monthly', 'yearly')");
         });
@@ -72,7 +72,14 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
         builder.Property(pt => pt.CompletedAt)
             .HasColumnName("completed_at");
 
-        builder.HasIndex(pt => pt.TxnRef);
+        builder.Property(pt => pt.ExpiresAt)
+            .HasColumnName("expires_at");
+
+        builder.HasIndex(pt => new { pt.TxnRef, pt.UserId }).IsUnique();
+
+        builder.HasIndex(pt => new { pt.Status, pt.CreatedAt })
+            .HasFilter("status = 'pending'")
+            .HasDatabaseName("ix_payment_transactions_status_created_at_pending");
 
         // W5.1: change User cascade delete → Restrict
         builder.HasOne(pt => pt.User)

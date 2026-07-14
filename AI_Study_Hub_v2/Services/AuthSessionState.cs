@@ -27,8 +27,14 @@ public sealed class AuthSessionState
 
     public event Action? OnChange;
 
+    private static readonly HashSet<string> ValidPlanKeys =
+        new(StringComparer.OrdinalIgnoreCase) { "free", "pro", "unlimited" };
+
     public void SetPlan(string plan)
     {
+        if (string.IsNullOrWhiteSpace(plan) || !ValidPlanKeys.Contains(plan))
+            return;
+
         CurrentPlan = plan;
         NotifyChanged();
     }
