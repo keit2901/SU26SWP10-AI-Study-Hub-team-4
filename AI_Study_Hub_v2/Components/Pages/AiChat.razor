@@ -767,6 +767,43 @@
 
             _documents = documentsTask.Result.ToList();
             _folders = foldersTask.Result.OrderBy(f => f.Name).ToList();
+
+            if (queryFolderId.HasValue)
+            {
+                var isPersonalFolder = _folders.Any(f => f.Id == queryFolderId.Value);
+                if (!isPersonalFolder)
+                {
+                    try
+                    {
+                        var sharedFolders = await FoldersApi.ListSharedAsync(Session.AccessToken!, scopeCts.Token);
+                        if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
+
+                        var sharedFolder = sharedFolders.FirstOrDefault(f => f.Id == queryFolderId.Value);
+                        if (sharedFolder != null)
+                        {
+                            var sharedDocs = await DocumentsApi.ListAsync(
+                                Session.AccessToken!,
+                                new DocumentListQuery { FolderId = queryFolderId.Value },
+                                scopeCts.Token);
+                            if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
+
+                            var updatedFolders = _folders.Append(sharedFolder).ToList();
+                            var updatedDocuments = sharedDocs.Count > 0
+                                ? _documents.Concat(sharedDocs).DistinctBy(d => d.Id).ToList()
+                                : _documents;
+
+                            _folders = updatedFolders;
+                            _documents = updatedDocuments;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
+                        _error = $"Could not load shared folder: {ex.Message}";
+                    }
+                }
+            }
+
             RefreshSubjectFilters();
             ApplyQueryScope(queryFolderId, queryDocumentId);
         }
