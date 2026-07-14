@@ -217,7 +217,7 @@ public class AdminPlansControllerTests
         var adminId = Guid.NewGuid();
         var sut = BuildSut(db, Principal(adminId));
 
-        var request = new AssignPlanRequest("pro");
+        var request = new AssignPlanRequest { PlanKey = "pro" };
         var result = await sut.AssignPlan(user.Id, request, CancellationToken.None);
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;

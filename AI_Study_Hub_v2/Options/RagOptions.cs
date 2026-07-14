@@ -45,4 +45,8 @@ public sealed class RagOptions
     public int BenchmarkAutomationIntervalHours { get; set; } = 168;
 
     public double BenchmarkAlertDropPercent { get; set; } = 10d;
+
+    public int MaxHistoryExchanges { get; set; } = 5;
+
+    public int MaxAssistantAnswerChars { get; set; } = 300;
 }

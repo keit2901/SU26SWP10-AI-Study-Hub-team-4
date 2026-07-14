@@ -21,4 +21,9 @@ public interface IPlanService
     /// Returns all currently active plans, ordered by SortOrder.
     /// </summary>
     IReadOnlyList<Plan> GetActivePlans();
+
+    /// <summary>
+    /// Clears the in-memory plan cache so the next read loads fresh data from the database.
+    /// </summary>
+    void InvalidateCache();
 }

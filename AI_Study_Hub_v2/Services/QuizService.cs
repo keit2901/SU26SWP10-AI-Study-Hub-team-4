@@ -66,6 +66,11 @@ public sealed class QuizService : IQuizService
             .FirstOrDefaultAsync(s => s.Id == request.SessionId && s.UserId == profile.Id, ct)
             ?? throw new QuizException(404, "session_not_found", "Chat session not found.");
 
+        if (session.FolderId != request.FolderId)
+        {
+            throw new QuizException(404, "session_not_found", "Chat session not found.");
+        }
+
         var hasScope = request.DocumentIds is { Count: > 0 } || request.FolderId is not null || request.DocumentId is not null;
         if (!hasScope)
         {
@@ -119,6 +124,8 @@ public sealed class QuizService : IQuizService
         var previousQuestions = await _db.Quizzes
             .AsNoTracking()
             .Where(q => q.UserId == profile.Id)
+            .OrderByDescending(q => q.CreatedAt)
+            .Take(20)
             .Select(q => q.QuestionsJson)
             .ToListAsync(ct);
 
@@ -266,6 +273,15 @@ public sealed class QuizService : IQuizService
             UpdatedAt = now,
         };
 
+        // Revalidate at the persistence boundary so a workspace/session change during generation cannot save a quiz into another scope.
+        var sessionStillInScope = await _db.ChatSessions
+            .AsNoTracking()
+            .AnyAsync(s => s.Id == request.SessionId && s.UserId == profile.Id && s.FolderId == request.FolderId, ct);
+        if (!sessionStillInScope)
+        {
+            throw new QuizException(404, "session_not_found", "Chat session not found.");
+        }
+
         _db.Quizzes.Add(quiz);
         try
         {
@@ -285,6 +301,7 @@ public sealed class QuizService : IQuizService
             await _chatPersistence.SaveQuizExchangeAsync(
                 supabaseUserId,
                 request.SessionId,
+                request.FolderId,
                 scopeLabel,
                 userContent,
                 quiz.Id,

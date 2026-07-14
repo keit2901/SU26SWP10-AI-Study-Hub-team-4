@@ -8,7 +8,12 @@ public sealed class UserPlanConfiguration : IEntityTypeConfiguration<UserPlan>
 {
     public void Configure(EntityTypeBuilder<UserPlan> builder)
     {
-        builder.ToTable("user_plans");
+        builder.ToTable("user_plans", t =>
+        {
+            // W1.3: CHECK constraint on status
+            t.HasCheckConstraint("ck_user_plans_status",
+                "status IN ('active', 'deactivated', 'expired')");
+        });
 
         builder.HasKey(up => up.Id);
 
@@ -40,6 +45,11 @@ public sealed class UserPlanConfiguration : IEntityTypeConfiguration<UserPlan>
             .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
         builder.HasIndex(up => new { up.UserId, up.Status });
+
+        // F1.1: unique filtered index — one active UserPlan per user
+        builder.HasIndex(up => up.UserId)
+            .HasFilter("status = 'active'")
+            .IsUnique();
 
         builder.HasOne(up => up.User)
             .WithMany()

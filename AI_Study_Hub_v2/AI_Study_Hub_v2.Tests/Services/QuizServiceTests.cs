@@ -147,6 +147,114 @@ public sealed class QuizServiceTests
         ex.Which.Code.Should().Be("quiz_not_found");
     }
 
+    [Test]
+    public async Task GenerateAsync_SessionFolderMismatch_Throws404BeforeRagProviderQuotaOrPersistence()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = SeedActiveStudent(db);
+        var session = new ChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            FolderId = Guid.NewGuid(),
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.ChatSessions.Add(session);
+        await db.SaveChangesAsync();
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        var sut = CreateSut(db, rag.Object);
+
+        var act = () => sut.GenerateAsync(user.SupabaseUserId, new GenerateQuizRequest(
+            session.Id,
+            FolderId: Guid.NewGuid()));
+
+        var ex = await act.Should().ThrowAsync<QuizException>();
+        ex.Which.StatusCode.Should().Be(404);
+        ex.Which.Code.Should().Be("session_not_found");
+        rag.VerifyNoOtherCalls();
+        db.Quizzes.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task GenerateAsync_SessionScopeChangesDuringProviderCall_Throws404WithoutPersistingQuizOrChatMessages()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = SeedActiveStudent(db);
+        var folderId = Guid.NewGuid();
+        var session = new ChatSession
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            FolderId = folderId,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.ChatSessions.Add(session);
+        await db.SaveChangesAsync();
+
+        var rag = new Mock<IRagSearchService>(MockBehavior.Strict);
+        rag.Setup(s => s.SearchAsync(user.SupabaseUserId, It.IsAny<RagSearchRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[]
+            {
+                new RagSearchResultDto("S1", Guid.NewGuid(), "source.pdf", 0, 1, "Grounded quiz source text.", 0.1),
+            });
+        var provider = new Mock<IAiChatCompletionClient>(MockBehavior.Strict);
+        provider.Setup(p => p.CompleteAsync(It.IsAny<AiChatCompletionRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<AiChatCompletionRequest, CancellationToken>((_, _) =>
+            {
+                session.FolderId = null;
+                db.SaveChanges();
+            })
+            .ReturnsAsync(ValidQuizJson());
+        var factory = new Mock<IAiChatCompletionClientFactory>(MockBehavior.Strict);
+        factory.Setup(f => f.GetClient("test-model")).Returns(provider.Object);
+        var quota = new Mock<IAiQuotaService>(MockBehavior.Strict);
+        var reservation = new AiQuotaReservation(user.SupabaseUserId, 1024, DateOnly.FromDateTime(DateTime.UtcNow));
+        quota.Setup(q => q.ReserveAsync(user.SupabaseUserId, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservation);
+        quota.Setup(q => q.CompleteAsync(reservation, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var persistence = new Mock<IChatPersistenceService>(MockBehavior.Strict);
+        var sut = new QuizService(
+            db,
+            rag.Object,
+            factory.Object,
+            Microsoft.Extensions.Options.Options.Create(new GroqOptions { ApiKey = "test-key", Model = "test-model" }),
+            persistence.Object,
+            quota.Object,
+            Mock.Of<ILogger<QuizService>>());
+
+        var act = () => sut.GenerateAsync(user.SupabaseUserId, new GenerateQuizRequest(
+            session.Id,
+            FolderId: folderId,
+            Count: 3,
+            Model: "test-model"));
+
+        var ex = await act.Should().ThrowAsync<QuizException>();
+        ex.Which.StatusCode.Should().Be(404);
+        ex.Which.Code.Should().Be("session_not_found");
+        db.Quizzes.Should().BeEmpty();
+        db.ChatMessages.Should().BeEmpty();
+        rag.VerifyAll();
+        provider.VerifyAll();
+        factory.VerifyAll();
+        quota.VerifyAll();
+        persistence.VerifyNoOtherCalls();
+    }
+
+    private static string ValidQuizJson() =>
+        """
+        {
+          "title": "Scoped quiz",
+          "questions": [
+            { "question": "Q1", "options": [{ "id": "A", "text": "A" }, { "id": "B", "text": "B" }, { "id": "C", "text": "C" }, { "id": "D", "text": "D" }], "correctOptionId": "A", "explanation": "E1" },
+            { "question": "Q2", "options": [{ "id": "A", "text": "A" }, { "id": "B", "text": "B" }, { "id": "C", "text": "C" }, { "id": "D", "text": "D" }], "correctOptionId": "B", "explanation": "E2" },
+            { "question": "Q3", "options": [{ "id": "A", "text": "A" }, { "id": "B", "text": "B" }, { "id": "C", "text": "C" }, { "id": "D", "text": "D" }], "correctOptionId": "C", "explanation": "E3" }
+          ]
+        }
+        """;
+
     private static QuizService CreateSut(AppDbContext db, IRagSearchService rag)
     {
         var groqOptions = Microsoft.Extensions.Options.Options.Create(new GroqOptions
