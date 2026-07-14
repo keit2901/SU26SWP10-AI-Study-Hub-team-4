@@ -24,7 +24,8 @@ public class DocumentServiceTests
     // -------------------------------------------------------------------------
 
     private static DocumentService BuildSut(AppDbContext db, ISupabaseStorageClient storage) =>
-        new(db, storage, Mock.Of<IStorageQuotaService>(), NullLogger<DocumentService>.Instance, null);
+        new(db, storage, Mock.Of<IStorageQuotaService>(), NullLogger<DocumentService>.Instance, null,
+            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance));
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, Guid? profileId = null, bool isActive = true)
     {
@@ -798,7 +799,7 @@ public class DocumentServiceTests
     }
 
     [Test]
-    public async Task DeleteAsync_StorageDeleteThrows_RowAlreadyRemoved()
+    public async Task DeleteAsync_StorageDeleteThrows_RowAndQuotaRemain()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
         var me = SeedActiveStudent(db);
@@ -813,7 +814,7 @@ public class DocumentServiceTests
         var act = () => sut.DeleteAsync(me.SupabaseUserId, doc.Id);
 
         await act.Should().ThrowAsync<HttpRequestException>();
-        (await db.Documents.CountAsync()).Should().Be(0, "row removed before storage delete (new order)");
+        (await db.Documents.CountAsync()).Should().Be(1, "storage failure must retain durable metadata for retry");
         storage.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Once);
     }
 

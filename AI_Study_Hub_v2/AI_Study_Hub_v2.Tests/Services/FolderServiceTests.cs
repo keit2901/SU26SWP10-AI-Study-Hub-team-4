@@ -13,8 +13,12 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture]
 public class FolderServiceTests
 {
-    private static FolderService BuildSut(AppDbContext db) =>
-        new(db, NullLogger<FolderService>.Instance, Mock.Of<ISupabaseStorageClient>(), Mock.Of<IStorageQuotaService>());
+    private static FolderService BuildSut(AppDbContext db)
+    {
+        var storage = Mock.Of<ISupabaseStorageClient>();
+        return new FolderService(db, NullLogger<FolderService>.Instance, storage, Mock.Of<IStorageQuotaService>(),
+            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance));
+    }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
     {

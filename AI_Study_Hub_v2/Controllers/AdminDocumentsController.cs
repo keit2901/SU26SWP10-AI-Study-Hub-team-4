@@ -1,6 +1,7 @@
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
+using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Rag;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -19,17 +20,20 @@ public sealed class AdminDocumentsController : ControllerBase
     private readonly IDocumentIngestionService _ingestionService;
     private readonly string _chunkingStrategy;
     private readonly ILogger<AdminDocumentsController> _logger;
+    private readonly IStorageDeletionCoordinator _deletionCoordinator;
 
     public AdminDocumentsController(
         AppDbContext db,
         IDocumentIngestionService ingestionService,
         Microsoft.Extensions.Options.IOptions<AI_Study_Hub_v2.Options.RagOptions> ragOptions,
-        ILogger<AdminDocumentsController> logger)
+        ILogger<AdminDocumentsController> logger,
+        IStorageDeletionCoordinator deletionCoordinator)
     {
         _db = db;
         _ingestionService = ingestionService;
         _chunkingStrategy = ragOptions.Value.ChunkingStrategy;
         _logger = logger;
+        _deletionCoordinator = deletionCoordinator;
     }
 
     [HttpPost("reingest-all")]
@@ -145,11 +149,7 @@ public sealed class AdminDocumentsController : ControllerBase
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {
-        var doc = await _db.Documents.FindAsync(new object[] { id }, ct);
-        if (doc is null) return NotFound();
-        _db.Documents.Remove(doc);
-        await _db.SaveChangesAsync(ct);
-        return NoContent();
+        return await _deletionCoordinator.DeletePrivilegedDocumentAsync(id, ct) ? NoContent() : NotFound();
     }
 
     [HttpGet("{id:guid}")]
