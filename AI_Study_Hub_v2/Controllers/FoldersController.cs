@@ -53,6 +53,10 @@ public sealed class FoldersController : ControllerBase
         {
             return ToErrorResult(ex);
         }
+        catch (PlanException ex)
+        {
+            return ToErrorResult(ex);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected folder create failure.");
@@ -164,6 +168,10 @@ public sealed class FoldersController : ControllerBase
         {
             return ToErrorResult(ex);
         }
+        catch (PlanException ex)
+        {
+            return ToErrorResult(ex);
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected folder operation failure.");
@@ -176,6 +184,13 @@ public sealed class FoldersController : ControllerBase
     }
 
     private ObjectResult ToErrorResult(DocumentException exception) =>
+        StatusCode(exception.StatusCode, new ApiErrorResponse
+        {
+            Code = exception.Code,
+            Message = exception.Message,
+        });
+
+    private ObjectResult ToErrorResult(PlanException exception) =>
         StatusCode(exception.StatusCode, new ApiErrorResponse
         {
             Code = exception.Code,

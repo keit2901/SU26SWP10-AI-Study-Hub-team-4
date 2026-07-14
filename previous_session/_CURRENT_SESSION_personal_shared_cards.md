@@ -109,6 +109,15 @@
 - Re-ran isolated compile:
   `dotnet build AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj --nologo --no-restore -p:UseAppHost=false -o .codex-build\\community-verify` -> success, 0 warnings, 0 errors.
 
+### 2026-07-14T20:00:00+07:00 - Fixed folder-create plan error mapping
+- Investigated `Create New Folder` flow across `DocumentLibrary`, `DocumentUpload`, `FolderApiClient`, `FolderService`, and `FoldersController`.
+- Found backend bug: `FolderService.CreateAsync` calls `ValidateFolderCountAsync`, which throws `PlanException`, but `FoldersController` only mapped `DocumentException`, causing create-folder failures to fall through as `500 unexpected_error`.
+- Edited `AI_Study_Hub_v2/Controllers/FoldersController.cs` to map both `DocumentException` and `PlanException` for create and shared controller execution paths.
+- Added controller regression test in `AI_Study_Hub_v2/AI_Study_Hub_v2.Tests/Controllers/FoldersControllerTests.cs` for `PlanException -> 402 folder_count_exceeded`.
+- Re-ran isolated app compile:
+  `dotnet build AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj --nologo --no-restore -p:UseAppHost=false -o .codex-build\\community-verify` -> success with existing repo warnings, 0 errors.
+- Attempted targeted controller tests, but test build was blocked by a live file lock on `AI_Study_Hub_v2\\obj\\Debug\\net8.0\\AI_Study_Hub_v2.dll` from `.NET Host (20308)`.
+
 ## 4. Files changed this session
 | Path | Change |
 |---|---|
