@@ -18,7 +18,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         "If source excerpts are provided, answer using ONLY those excerpts and cite every factual claim " +
         "with source markers like [S1]. Do not invent citations — only cite what's in the provided excerpts. " +
         "If the excerpts do not contain enough information, say the indexed documents do not contain enough information. " +
-        "If no source excerpts are provided, answer using your general knowledge (which covers up to December 2023). " +
+        "If no source excerpts are provided, do NOT use your general knowledge — say the indexed documents do not contain enough information. " +
         "Adopt a tutorial tone: explain concepts clearly, use examples when helpful, and guide the student toward understanding. " +
         "Format answers with bold key terms, bullet points for lists, and clear structure. " +
         "Keep the answer concise, accurate, and study-friendly.";
@@ -286,7 +286,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
             sb.AppendLine("## Source excerpts");
             if (hadDocumentSelection)
             {
-                sb.AppendLine("A document scope was specified but no relevant excerpts were found. Answer using your general knowledge without citations.");
+                sb.AppendLine("A document scope was specified but no relevant excerpts were found. Do NOT use your general knowledge. Say the indexed documents do not contain enough information.");
             }
             else
             {
