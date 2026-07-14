@@ -4,6 +4,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -13,9 +14,11 @@ using Pgvector;
 namespace AI_Study_Hub_v2.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260709165701_ReSyncPlanFkAndConstraints")]
+    partial class ReSyncPlanFkAndConstraints
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -815,10 +818,6 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("text")
                         .HasColumnName("error_message");
 
-                    b.Property<DateTimeOffset?>("ExpiresAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("expires_at");
-
                     b.Property<string>("PlanKey")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -853,16 +852,11 @@ namespace AI_Study_Hub_v2.Migrations
 
                     b.HasIndex("PlanKey");
 
+                    b.HasIndex("TxnRef");
+
                     b.HasIndex("UserId");
 
                     b.HasIndex("UserPlanId");
-
-                    b.HasIndex("Status", "CreatedAt")
-                        .HasDatabaseName("ix_payment_transactions_status_created_at_pending")
-                        .HasFilter("status = 'pending'");
-
-                    b.HasIndex("TxnRef", "UserId")
-                        .IsUnique();
 
                     b.ToTable("payment_transactions", null, t =>
                         {
@@ -870,7 +864,7 @@ namespace AI_Study_Hub_v2.Migrations
 
                             t.HasCheckConstraint("ck_payment_transactions_billing_cycle", "billing_cycle IN ('monthly', 'yearly')");
 
-                            t.HasCheckConstraint("ck_payment_transactions_status", "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded', 'expired')");
+                            t.HasCheckConstraint("ck_payment_transactions_status", "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded')");
                         });
                 });
 

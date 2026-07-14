@@ -44,26 +44,18 @@ public sealed class StorageReconciliationService : IStorageReconciliationService
                 row.ActualBytes,
                 delta);
 
-            if (delta > 0)
+            if (delta != 0)
             {
-                // Cached less than actual — auto-fix.
+                // Auto-fix in both directions.
                 await db.Users
                     .Where(u => u.Id == row.Id)
                     .ExecuteUpdateAsync(
                         s => s.SetProperty(u => u.StorageUsedBytes, row.ActualBytes),
                         ct);
                 _logger.LogInformation(
-                    "Storage reconciliation: auto-fixed user {UserId} ({Username}): " +
-                    "cached={Cached}, actual={Actual}, delta=+{Delta}",
-                    row.Id, row.Username, row.CachedBytes, row.ActualBytes, delta);
-            }
-            else
-            {
-                // Cached more than actual — log warning (may indicate orphaned records).
-                _logger.LogWarning(
-                    "Storage reconciliation: user {UserId} ({Username}) has cached > actual: " +
-                    "cached={Cached}, actual={Actual}, delta={Delta}. Manual review recommended.",
-                    row.Id, row.Username, row.CachedBytes, row.ActualBytes, delta);
+                    "Storage reconciliation: auto-fixed user {UserId}: " +
+                    "cached={Cached}, actual={Actual}, delta={Delta}",
+                    row.Id, row.CachedBytes, row.ActualBytes, delta);
             }
 
             results.Add(result);
@@ -97,7 +89,7 @@ public sealed class StorageReconciliationService : IStorageReconciliationService
 
         var delta = row.ActualBytes - row.CachedBytes;
 
-        if (delta > 0)
+        if (delta != 0)
         {
             await db.Users
                 .Where(u => u.Id == row.Id)
@@ -105,16 +97,9 @@ public sealed class StorageReconciliationService : IStorageReconciliationService
                     s => s.SetProperty(u => u.StorageUsedBytes, row.ActualBytes),
                     ct);
             _logger.LogInformation(
-                "Storage reconciliation: auto-fixed user {UserId} ({Username}): " +
-                "cached={Cached}, actual={Actual}, delta=+{Delta}",
-                row.Id, row.Username, row.CachedBytes, row.ActualBytes, delta);
-        }
-        else
-        {
-            _logger.LogWarning(
-                "Storage reconciliation: user {UserId} ({Username}) has cached > actual: " +
-                "cached={Cached}, actual={Actual}, delta={Delta}. Manual review recommended.",
-                row.Id, row.Username, row.CachedBytes, row.ActualBytes, delta);
+                "Storage reconciliation: auto-fixed user {UserId}: " +
+                "cached={Cached}, actual={Actual}, delta={Delta}",
+                row.Id, row.CachedBytes, row.ActualBytes, delta);
         }
     }
 

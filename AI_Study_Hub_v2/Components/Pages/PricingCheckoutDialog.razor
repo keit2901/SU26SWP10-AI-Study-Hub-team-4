@@ -1,4 +1,7 @@
 @inject AuthSessionState Session
+@inject PlanApiClient PlanApi
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
 
 <MudDialog>
     <DialogContent>
@@ -8,26 +11,55 @@
                 <div class="checkout-icon">
                     <MudIcon Icon="@Icons.Material.Filled.ShoppingCart" Size="Size.Large" />
                 </div>
-                <h3 class="checkout-title">Upgrade to @PlanName Plan</h3>
-                <p class="checkout-subtitle">Demo version — simulated checkout</p>
+                <h3 class="checkout-title">Upgrade to @Plan.DisplayName</h3>
+                <p class="checkout-subtitle">Confirm your plan upgrade</p>
 
                 <div class="checkout-amount-box">
-                    <span class="checkout-label">Payment Amount (Demo)</span>
-                    <span class="checkout-amount">@DemoPrice</span>
+                    <div style="display:flex; flex-direction:column; align-items:flex-start; gap:0.5rem;">
+                        <span class="checkout-label">Payment Amount</span>
+                        <div class="billing-cycle-selector">
+                            <MudButton Variant="@(_billingCycle == "monthly" ? Variant.Filled : Variant.Outlined)"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => _billingCycle = "monthly")"
+                                       Style="text-transform:none; font-weight:600; flex:1; min-width:0;">
+                                Monthly
+                            </MudButton>
+                            <MudButton Variant="@(_billingCycle == "yearly" ? Variant.Filled : Variant.Outlined)"
+                                       Color="Color.Primary"
+                                       OnClick="@(() => _billingCycle = "yearly")"
+                                       Style="text-transform:none; font-weight:600; flex:1; min-width:0;">
+                                Yearly
+                            </MudButton>
+                        </div>
+                    </div>
+                    <span class="checkout-amount">@FormatPrice(SelectedPrice)</span>
                 </div>
 
-                <div class="checkout-info">
-                    <MudIcon Icon="@Icons.Material.Filled.Info" Size="Size.Small" Style="color:#4F46E5;" />
-                    <span>This is a simulated transaction. No actual payments will be processed.</span>
-                </div>
+                @if (!string.IsNullOrEmpty(_error))
+                {
+                    <div class="checkout-error">
+                        <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Small" />
+                        <span>@_error</span>
+                    </div>
+                }
 
                 <div class="checkout-actions">
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
-                               OnClick="ConfirmPayment" Style="text-transform:none; font-weight:700; border-radius:12px; height:48px; font-size:1rem;">
-                        Confirm Payment
+                               OnClick="ConfirmPayment" Disabled="_isLoading"
+                               Style="text-transform:none; font-weight:700; border-radius:12px; height:48px; font-size:1rem;">
+                        @if (_isLoading)
+                        {
+                            <MudProgressCircular Size="Size.Small" Indeterminate="true" Color="Color.Inherit" />
+                            <span style="margin-left:0.5rem;">Processing...</span>
+                        }
+                        else
+                        {
+                            <span>Proceed to Payment</span>
+                        }
                     </MudButton>
                     <MudButton Variant="Variant.Text" Color="Color.Default" FullWidth="true"
-                               OnClick="Cancel" Style="text-transform:none; margin-top:0.5rem;">
+                               OnClick="Cancel" Disabled="_isLoading"
+                               Style="text-transform:none; margin-top:0.5rem;">
                         Cancel
                     </MudButton>
                 </div>
@@ -39,7 +71,7 @@
                         <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Style="color:#10B981; font-size:3.5rem;" />
                     </div>
                     <h3 class="checkout-title" style="color:#10B981;">Upgrade Successful!</h3>
-                    <p class="checkout-subtitle">The <strong>@PlanName</strong> plan is now active on your account.</p>
+                    <p class="checkout-subtitle">The <strong>@Plan.DisplayName</strong> plan is now active on your account.</p>
 
                     <MudButton Variant="Variant.Filled" Color="Color.Success" FullWidth="true"
                                OnClick="Close" Style="text-transform:none; font-weight:700; border-radius:12px; height:48px; margin-top:1.5rem; font-size:1rem;">
@@ -97,6 +129,18 @@
         font-weight: 800;
         color: #4F46E5;
     }
+    .checkout-error {
+        display: flex;
+        align-items: flex-start;
+        gap: 0.5rem;
+        background: #FEF2F2;
+        border-radius: 10px;
+        padding: 0.75rem 1rem;
+        margin-bottom: 1rem;
+        text-align: left;
+        font-size: 0.8rem;
+        color: #DC2626;
+    }
     .checkout-info {
         display: flex;
         align-items: flex-start;
@@ -111,6 +155,11 @@
     }
     .checkout-actions {
         margin-top: 0.5rem;
+    }
+    .billing-cycle-selector {
+        display: flex;
+        gap: 0.5rem;
+        width: 100%;
     }
     .checkout-success {
         padding: 1rem 0;
@@ -137,18 +186,78 @@
     private IMudDialogInstance MudDialog { get; set; } = null!;
 
     [Parameter]
-    public string PlanName { get; set; } = "Pro";
-
-    [Parameter]
-    public string DemoPrice { get; set; } = "5,000₫";
+    public PlanDto Plan { get; set; } = null!;
 
     private bool _completed;
+    private bool _isLoading;
+    private string? _error;
+    private string _billingCycle = "monthly";
+
+    private long? SelectedPrice => _billingCycle == "yearly"
+        ? Plan.YearlyPriceVnd
+        : Plan.MonthlyPriceVnd;
 
     private async Task ConfirmPayment()
     {
-        _completed = true;
+        _isLoading = true;
+        _error = null;
         StateHasChanged();
-        await Task.Delay(100);
+
+        try
+        {
+            var accessToken = Session.AccessToken;
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                _error = "You must be logged in to upgrade your plan.";
+                _isLoading = false;
+                return;
+            }
+
+            // Free plan: immediate activation
+            if (Plan.PlanKey == "free")
+            {
+                await PlanApi.PurchaseFreePlanAsync(accessToken, Plan.PlanKey);
+                _completed = true;
+                _isLoading = false;
+                return;
+            }
+
+            // Paid plan: get VNPay redirect URL
+            var result = await PlanApi.PurchasePlanAsync(
+                accessToken, Plan.PlanKey, _billingCycle,
+                idempotencyKey: Guid.NewGuid().ToString("N"));
+
+            // Redirect to VNPay
+            await JS.InvokeVoidAsync("eval", $"window.location.href = '{result.PaymentUrl}'");
+        }
+        catch (PlanApiException ex)
+        {
+            var statusCode = (System.Net.HttpStatusCode)ex.StatusCode;
+            var message = statusCode switch
+            {
+                System.Net.HttpStatusCode.Unauthorized => "Please log in again to continue.",
+                System.Net.HttpStatusCode.Conflict => ex.Message,
+                System.Net.HttpStatusCode.TooManyRequests => "Too many attempts. Please wait a moment and try again.",
+                System.Net.HttpStatusCode.ServiceUnavailable => "Service is temporarily unavailable. Please try again later.",
+                System.Net.HttpStatusCode.PaymentRequired => "Your current usage exceeds the target plan limits. Upgrade or free up space first.",
+                _ => $"Purchase failed: {ex.Message}"
+            };
+            _error = message;
+        }
+        catch (Exception)
+        {
+            _error = "A network error occurred. Please check your connection and try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private static string FormatPrice(long? priceVnd)
+    {
+        if (priceVnd is null or 0) return "Free";
+        return $"{priceVnd.Value:N0}₫";
     }
 
     private void Close() => MudDialog.Close(DialogResult.Ok(true));

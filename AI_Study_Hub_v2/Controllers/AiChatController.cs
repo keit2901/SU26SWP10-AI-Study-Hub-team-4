@@ -62,14 +62,14 @@ public sealed class AiChatController : ControllerBase
             }
 
             // Load recent chat history so the AI has conversation context
-            var chatHistory = await _persistence.GetMessagesAsync(supabaseUserId, sessionId.Value, cancellationToken);
+            var chatHistory = await _persistence.GetMessagesScopedAsync(supabaseUserId, sessionId.Value, request.FolderId, cancellationToken);
             request = request with { ChatHistory = chatHistory };
 
             var response = await _service.AskAsync(supabaseUserId, request, cancellationToken);
 
             // Persist the exchange
             var scopeLabel = BuildScopeLabel(request);
-            await _persistence.SaveExchangeAsync(supabaseUserId, sessionId.Value, request.Question, scopeLabel, response, cancellationToken);
+            await _persistence.SaveExchangeAsync(supabaseUserId, sessionId.Value, request.FolderId, request.Question, scopeLabel, response, cancellationToken);
 
             return Ok(response with { SessionId = sessionId.Value });
         }
@@ -102,13 +102,21 @@ public sealed class AiChatController : ControllerBase
     [HttpPost("sessions")]
     [ProducesResponseType(typeof(ChatSessionDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<ChatSessionDto>> CreateSession(
         [FromBody] CreateChatSessionRequest request,
         CancellationToken cancellationToken)
     {
-        var supabaseUserId = GetSupabaseUserIdFromClaims();
-        var session = await _persistence.CreateSessionAsync(supabaseUserId, request, cancellationToken);
-        return Ok(session);
+        try
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var session = await _persistence.CreateSessionAsync(supabaseUserId, request, cancellationToken);
+            return Ok(session);
+        }
+        catch (AiChatException ex)
+        {
+            return ToErrorResult(ex);
+        }
     }
 
     [HttpGet("sessions/{sessionId:guid}")]
@@ -116,20 +124,36 @@ public sealed class AiChatController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<IReadOnlyList<ChatMessageDto>>> GetSessionMessages(
         Guid sessionId,
+        [FromQuery] Guid? folderId,
         CancellationToken cancellationToken)
     {
-        var supabaseUserId = GetSupabaseUserIdFromClaims();
-        var messages = await _persistence.GetMessagesAsync(supabaseUserId, sessionId, cancellationToken);
-        return Ok(messages);
+        try
+        {
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var messages = await _persistence.GetMessagesScopedAsync(supabaseUserId, sessionId, folderId, cancellationToken);
+            return Ok(messages);
+        }
+        catch (AiChatException ex)
+        {
+            return ToErrorResult(ex);
+        }
     }
 
     [HttpDelete("sessions/{sessionId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
-    public async Task<IActionResult> DeleteSession(Guid sessionId, CancellationToken cancellationToken)
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> DeleteSession(Guid sessionId, [FromQuery] Guid? folderId, CancellationToken cancellationToken)
     {
         var supabaseUserId = GetSupabaseUserIdFromClaims();
-        await _persistence.DeleteSessionAsync(supabaseUserId, sessionId, cancellationToken);
-        return NoContent();
+        try
+        {
+            await _persistence.DeleteSessionAsync(supabaseUserId, sessionId, folderId, cancellationToken);
+            return NoContent();
+        }
+        catch (AiChatException ex)
+        {
+            return ToErrorResult(ex);
+        }
     }
 
     private static string BuildScopeLabel(AiChatAskRequest request)

@@ -1,15 +1,20 @@
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 using AI_Study_Hub_v2.Components;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Payment;
 using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -46,6 +51,7 @@ builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Olla
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
+builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
 builder.Services.AddMemoryCache(options =>
 {
     var ragCacheOptions = builder.Configuration.GetSection(RagOptions.SectionName).Get<RagOptions>() ?? new RagOptions();
@@ -133,6 +139,7 @@ builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<IStorageQuotaService, StorageQuotaService>();
 builder.Services.AddScoped<IStorageReconciliationService, StorageReconciliationService>();
+builder.Services.AddScoped<IVnPayService, VnPayService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -265,8 +272,69 @@ builder.Services.AddScoped<AuthSessionState>();
 builder.Services.AddScoped<AuthPersistenceService>();
 builder.Services.AddScoped<AiChatSessionState>();
 builder.Services.AddScoped<IChatPersistenceService, ChatPersistenceService>();
-builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+
+// F2.1: background service to handle plan expiry
+builder.Services.AddHostedService<PlanExpiryHostedService>();
+
+// F3.1: Rate limiting on purchase endpoint (per-user)
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("purchase", context =>
+    {
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetSlidingWindowLimiter(userId, _ => new SlidingWindowRateLimiterOptions
+        {
+            PermitLimit = 2,
+            Window = TimeSpan.FromMinutes(1),
+            SegmentsPerWindow = 2,   // was 6 — tighter window, less burst
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0
+        });
+    });
+    options.AddPolicy("admin", context =>
+        RateLimitPartition.GetFixedWindowLimiter("admin_global", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    options.AddFixedWindowLimiter("ipn", config =>
+    {
+        config.PermitLimit = 30;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = 429;
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            System.Text.Json.JsonSerializer.Serialize(new { code = "rate_limited", message = "Too many requests." }), ct);
+    };
+});
+
+// H5: Unified 400 validation error format
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(kv => kv.Value?.Errors.Count > 0)
+            .ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray());
+
+        return new BadRequestObjectResult(new ApiErrorResponse
+        {
+            Code = "validation_error",
+            Message = "One or more validation errors occurred.",
+            Errors = errors,
+        });
+    };
+});
 
 // Authentication / Authorization ---------------------------------------------
 builder.Services
@@ -389,6 +457,8 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
 
+app.UseRateLimiter();
+
 app.MapControllers();
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
@@ -434,7 +504,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
     if (existing is not null && existing.Id != Guid.Empty)
     {
         supabaseUserId = existing.Id;
-        logger.LogInformation("Default admin already exists in GoTrue: {Email}. Will reuse identity.", emailLower);
+        logger.LogInformation("Default admin already exists in GoTrue. Reusing identity {SupabaseUserId}.", supabaseUserId);
     }
     else
     {
@@ -451,7 +521,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
                 ["role"] = Role.AdminRoleName,
             });
         supabaseUserId = created.Id;
-        logger.LogInformation("Default admin created in GoTrue: {Email}", emailLower);
+        logger.LogInformation("Default admin created in GoTrue with identity {SupabaseUserId}", supabaseUserId);
     }
 
     var profileExists = await db.Users.AnyAsync(u => u.SupabaseUserId == supabaseUserId);
@@ -484,7 +554,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
 
     db.Users.Add(admin);
     await db.SaveChangesAsync();
-    logger.LogInformation("Default admin profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
+    logger.LogInformation("Default admin profile inserted for identity {SupabaseUserId}", supabaseUserId);
 }
 
 static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
@@ -581,7 +651,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
     if (existing is not null && existing.Id != Guid.Empty)
     {
         supabaseUserId = existing.Id;
-        logger.LogInformation("Default moderator already exists in GoTrue: {Email}. Will reuse identity.", emailLower);
+        logger.LogInformation("Default moderator already exists in GoTrue. Reusing identity {SupabaseUserId}.", supabaseUserId);
     }
     else
     {
@@ -598,7 +668,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
                 ["role"] = Role.ModeratorRoleName,
             });
         supabaseUserId = created.Id;
-        logger.LogInformation("Default moderator created in GoTrue: {Email}", emailLower);
+        logger.LogInformation("Default moderator created in GoTrue with identity {SupabaseUserId}", supabaseUserId);
     }
 
     var profileExists = await db.Users.AnyAsync(u => u.SupabaseUserId == supabaseUserId);
@@ -631,7 +701,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
 
     db.Users.Add(moderator);
     await db.SaveChangesAsync();
-    logger.LogInformation("Default moderator profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
+    logger.LogInformation("Default moderator profile inserted for identity {SupabaseUserId}", supabaseUserId);
 }
 
 static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
@@ -723,7 +793,7 @@ static async Task SeedDefaultPlansAsync(AppDbContext db, ILogger logger)
                 MaxFileSizeBytes = null,
                 MaxDocsPerFolder = null,
                 MonthlyPriceVnd = 100_000,
-                YearlyPriceVnd = null,
+                YearlyPriceVnd = 1_000_000,
                 SortOrder = 3,
                 IsActive = true,
                 CreatedAt = now,

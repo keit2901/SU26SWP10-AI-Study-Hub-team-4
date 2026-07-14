@@ -409,6 +409,7 @@
     };
 
     private AiChatApiClient? _chatApi;
+    private CancellationTokenSource? _scopeCts;
     private CancellationTokenSource? _askCts;
     private CancellationTokenSource? _quizCts;
     private bool _busy;
@@ -462,8 +463,13 @@
     private List<ChatSessionDto> _sessions = new();
     private int _sessionLoadVersion;
     private Guid? _expectedFolderId;
+    private int _workspaceVersion;
+    private bool _disposed;
+    private bool _hasAppliedQueryScope;
+    private Guid? _appliedQueryFolderId;
+    private Guid? _appliedQueryDocumentId;
 
-    private async Task LoadSessionsAsync()
+    private async Task LoadSessionsAsync(int workspaceVersion)
     {
         var version = ++_sessionLoadVersion;
         var folderId = _folderId;
@@ -471,56 +477,57 @@
         try
         {
             var sessions = await _chatApi!.ListSessionsAsync(Session.AccessToken!, folderId);
-            if (version != _sessionLoadVersion) return;
+            if (!IsCurrentWorkspace(workspaceVersion) || version != _sessionLoadVersion) return;
 
             _sessions = sessions
-                .Where(s => !folderId.HasValue || s.FolderId == folderId.Value)
+                .Where(s => s.FolderId == folderId)
                 .ToList();
 
             if (_sessions.Count > 0)
             {
                 var latest = _sessions[0];
                 _currentSessionId = latest.Id;
-                await LoadSessionMessagesAsync(latest.Id);
+                await LoadSessionMessagesAsync(latest.Id, workspaceVersion);
             }
             else
             {
-                _sessions.Clear();
-                _currentSessionId = null;
+                ClearSessionBoundVisibleState();
                 StateHasChanged();
             }
         }
         catch
         {
-            if (version != _sessionLoadVersion) return;
-            _currentSessionId = null;
+            if (!IsCurrentWorkspace(workspaceVersion) || version != _sessionLoadVersion) return;
+            ClearSessionBoundVisibleState();
             StateHasChanged();
         }
     }
 
-    private async Task LoadSessionMessagesAsync(Guid sessionId)
+    private async Task LoadSessionMessagesAsync(Guid sessionId, int workspaceVersion)
     {
         var version = _sessionLoadVersion;
         try
         {
-            var messages = await _chatApi!.GetSessionMessagesAsync(Session.AccessToken!, sessionId);
-            if (version != _sessionLoadVersion) return;
+            var messages = await _chatApi!.GetSessionMessagesAsync(Session.AccessToken!, sessionId, _expectedFolderId);
+            if (!IsCurrentWorkspace(workspaceVersion) || version != _sessionLoadVersion) return;
             // Only render if the folder is still the one that triggered this load
             if (_expectedFolderId != _folderId) return;
             var exchanges = ConvertMessagesToExchanges(messages);
 
             // Refresh quiz statuses from the DB (metadata may be stale)
-            await RefreshQuizStatusesAsync(exchanges);
+            await RefreshQuizStatusesAsync(exchanges, workspaceVersion);
+            if (!IsCurrentWorkspace(workspaceVersion) || version != _sessionLoadVersion) return;
 
             ChatSession.Replace(exchanges);
         }
         catch
         {
-            if (version != _sessionLoadVersion) return;
+            if (!IsCurrentWorkspace(workspaceVersion) || version != _sessionLoadVersion) return;
             ChatSession.Clear();
         }
+        if (!IsCurrentWorkspace(workspaceVersion) || version != _sessionLoadVersion) return;
         StateHasChanged();
-        _ = CheckResumeQuizAsync();
+        _ = CheckResumeQuizAsync(workspaceVersion);
     }
 
     private static List<AiChatHistoryExchange> ConvertMessagesToExchanges(IReadOnlyList<ChatMessageDto> messages)
@@ -581,7 +588,7 @@
         return exchanges;
     }
 
-    private async Task RefreshQuizStatusesAsync(List<AiChatHistoryExchange> exchanges)
+    private async Task RefreshQuizStatusesAsync(List<AiChatHistoryExchange> exchanges, int workspaceVersion)
     {
         for (var i = 0; i < exchanges.Count; i++)
         {
@@ -601,6 +608,7 @@
             try
             {
                 var fresh = await _chatApi!.GetQuizAsync(Session.AccessToken!, quiz.Id);
+                if (!IsCurrentWorkspace(workspaceVersion)) return;
                 if (fresh is not null && fresh.Status != quiz.Status)
                 {
                     _quizCache[fresh.Id] = fresh;
@@ -695,17 +703,31 @@
         }
     }
 
-    protected override async Task OnInitializedAsync()
+    protected override Task OnInitializedAsync()
     {
         _chatApi = ResolveChatApiClient();
 
         if (!Session.IsAuthenticated)
         {
             Nav.NavigateTo("/login", replace: true);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (!Session.IsAuthenticated || (_hasAppliedQueryScope && _appliedQueryFolderId == QueryFolderId && _appliedQueryDocumentId == QueryDocumentId))
+        {
             return;
         }
 
-        await LoadScopeAsync();
+        InvalidateWorkspace();
+        _hasAppliedQueryScope = true;
+        _appliedQueryFolderId = QueryFolderId;
+        _appliedQueryDocumentId = QueryDocumentId;
+        var workspaceVersion = _workspaceVersion;
+        await LoadScopeAsync(QueryFolderId, QueryDocumentId, workspaceVersion);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -722,55 +744,72 @@
         catch { /* JS not ready or disposed */ }
     }
 
-    private async Task LoadScopeAsync()
+    private Task LoadScopeAsync() => LoadScopeAsync(_appliedQueryFolderId, _appliedQueryDocumentId, _workspaceVersion);
+
+    private async Task LoadScopeAsync(Guid? queryFolderId, Guid? queryDocumentId, int workspaceVersion)
     {
         if (string.IsNullOrEmpty(Session.AccessToken))
         {
             return;
         }
 
+        _scopeCts?.Cancel();
+        _scopeCts?.Dispose();
+        var scopeCts = _scopeCts = new CancellationTokenSource();
         _loadingScope = true;
         _error = null;
         try
         {
-            var documentsTask = DocumentsApi.ListAsync(Session.AccessToken!);
-            var foldersTask = FoldersApi.ListAsync(Session.AccessToken!);
+            var documentsTask = DocumentsApi.ListAsync(Session.AccessToken!, ct: scopeCts.Token);
+            var foldersTask = FoldersApi.ListAsync(Session.AccessToken!, scopeCts.Token);
             await Task.WhenAll(documentsTask, foldersTask);
+            if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
 
             _documents = documentsTask.Result.ToList();
             _folders = foldersTask.Result.OrderBy(f => f.Name).ToList();
 
-            if (QueryFolderId.HasValue)
+            if (queryFolderId.HasValue)
             {
-                var isPersonalFolder = _folders.Any(f => f.Id == QueryFolderId.Value);
+                var isPersonalFolder = _folders.Any(f => f.Id == queryFolderId.Value);
                 if (!isPersonalFolder)
                 {
                     try
                     {
-                        var sharedFolders = await FoldersApi.ListSharedAsync(Session.AccessToken!);
-                        var sharedFolder = sharedFolders.FirstOrDefault(f => f.Id == QueryFolderId.Value);
+                        var sharedFolders = await FoldersApi.ListSharedAsync(Session.AccessToken!, scopeCts.Token);
+                        if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
+
+                        var sharedFolder = sharedFolders.FirstOrDefault(f => f.Id == queryFolderId.Value);
                         if (sharedFolder != null)
                         {
-                            _folders.Add(sharedFolder);
-                            var sharedDocs = await DocumentsApi.ListAsync(Session.AccessToken!, new DocumentListQuery { FolderId = QueryFolderId.Value });
-                            if (sharedDocs != null && sharedDocs.Count > 0)
-                            {
-                                _documents = _documents.Concat(sharedDocs).DistinctBy(d => d.Id).ToList();
-                            }
+                            var sharedDocs = await DocumentsApi.ListAsync(
+                                Session.AccessToken!,
+                                new DocumentListQuery { FolderId = queryFolderId.Value },
+                                scopeCts.Token);
+                            if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
+
+                            var updatedFolders = _folders.Append(sharedFolder).ToList();
+                            var updatedDocuments = sharedDocs.Count > 0
+                                ? _documents.Concat(sharedDocs).DistinctBy(d => d.Id).ToList()
+                                : _documents;
+
+                            _folders = updatedFolders;
+                            _documents = updatedDocuments;
                         }
                     }
                     catch (Exception ex)
                     {
+                        if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
                         _error = $"Could not load shared folder: {ex.Message}";
                     }
                 }
             }
 
             RefreshSubjectFilters();
-            ApplyQueryScope();
+            ApplyQueryScope(queryFolderId, queryDocumentId);
         }
         catch (DocumentApiException ex)
         {
+            if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
             var message = MapDocumentError(ex);
             _error = message;
             Snackbar.Add(message, Severity.Warning);
@@ -782,15 +821,22 @@
         }
         catch (Exception ex)
         {
+            if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
             _error = $"Could not load chat scope: {ex.Message}";
         }
         finally
         {
-            _loadingScope = false;
-            StateHasChanged();
+            if (IsCurrentWorkspace(workspaceVersion) && !scopeCts.IsCancellationRequested)
+            {
+                _loadingScope = false;
+                StateHasChanged();
+            }
         }
 
-        _ = LoadSessionsAsync();
+        if (IsCurrentWorkspace(workspaceVersion) && !scopeCts.IsCancellationRequested)
+        {
+            _ = LoadSessionsAsync(workspaceVersion);
+        }
     }
 
     private async Task HandleKeyDown(KeyboardEventArgs e)
@@ -803,6 +849,12 @@
 
     private async Task AskAsync()
     {
+        if (_disposed || _busy)
+        {
+            return;
+        }
+
+        var workspaceVersion = _workspaceVersion;
         _composerError = null;
         _error = null;
 
@@ -833,49 +885,54 @@
             return;
         }
 
-        // Ensure a session exists for this folder
-        if (_currentSessionId is null)
-        {
-            var session = await _chatApi.CreateSessionAsync(Session.AccessToken!, new CreateChatSessionRequest
-            {
-                FolderId = _folderId,
-                Model = _selectedModel,
-                TopK = Math.Clamp(_topK, 1, 10),
-            });
-            _currentSessionId = session.Id;
-            _sessions.Insert(0, session);
-        }
-
-        var request = new AiChatAskRequest(
-            question,
-            DocumentId: null,
-            FolderId: _folderId,
-            SubjectCode: _quizSubjectCode,
-            Semester: _quizSemester,
-            TopK: Math.Clamp(_topK, 1, 10),
-            DocumentIds: SelectedDocumentIdsForRequest,
-            Model: _selectedModel,
-            SessionId: _currentSessionId);
-
+        var folderId = _folderId;
+        var documentIds = SelectedDocumentIdsForRequest;
+        var scopeLabel = BuildScopeLabel();
         _askCts?.Cancel();
         _askCts?.Dispose();
-        _askCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
-
+        var askCts = _askCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         _busy = true;
         var askedAt = DateTimeOffset.Now;
         try
         {
-            var response = await _chatApi.AskAsync(Session.AccessToken!, request, _askCts.Token);
-            ChatSession.Add(new AiChatHistoryExchange(question, BuildScopeLabel(), response, askedAt));
+            // A duplicate send is blocked before this cancellable creation await.
+            if (_currentSessionId is null)
+            {
+                var session = await _chatApi.CreateSessionAsync(Session.AccessToken!, new CreateChatSessionRequest
+                {
+                    FolderId = folderId,
+                    Model = _selectedModel,
+                    TopK = Math.Clamp(_topK, 1, 10),
+                }, askCts.Token);
+                if (!IsCurrentWorkspace(workspaceVersion)) return;
+                _currentSessionId = session.Id;
+                _sessions.Insert(0, session);
+            }
+
+            var request = new AiChatAskRequest(
+                question,
+                DocumentId: null,
+                FolderId: folderId,
+                SubjectCode: _quizSubjectCode,
+                Semester: _quizSemester,
+                TopK: Math.Clamp(_topK, 1, 10),
+                DocumentIds: documentIds,
+                Model: _selectedModel,
+                SessionId: _currentSessionId);
+            var response = await _chatApi.AskAsync(Session.AccessToken!, request, askCts.Token);
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
+            ChatSession.Add(new AiChatHistoryExchange(question, scopeLabel, response, askedAt));
             _question = string.Empty;
             Snackbar.Add("AI answer ready.", Severity.Success);
         }
         catch (OperationCanceledException)
         {
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
             _error = "The AI request timed out. Try again with a narrower scope.";
         }
         catch (AiChatApiException ex)
         {
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
             _error = MapChatError(ex);
             if (ex.StatusCode == 401)
             {
@@ -885,12 +942,18 @@
         }
         catch (Exception ex)
         {
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
             _error = $"Network error while asking AI: {ex.Message}";
         }
         finally
         {
-            _busy = false;
-            StateHasChanged();
+            if (IsCurrentWorkspace(workspaceVersion) && ReferenceEquals(_askCts, askCts))
+            {
+                _busy = false;
+                _askCts.Dispose();
+                _askCts = null;
+                StateHasChanged();
+            }
         }
     }
 
@@ -1042,9 +1105,11 @@
         }
     }
 
-    private void ApplyQueryScope()
+    private void ApplyQueryScope(Guid? queryFolderId, Guid? queryDocumentId)
     {
-        if (QueryDocumentId is { } documentId)
+        _folderId = null;
+        _workspaceFolderIdStr = string.Empty;
+        if (queryDocumentId is { } documentId)
         {
             var document = ReadyDocuments.FirstOrDefault(d => d.Id == documentId);
             if (document is not null)
@@ -1057,7 +1122,7 @@
             }
         }
 
-        if (QueryFolderId is { } folderId && _folders.Any(f => f.Id == folderId))
+        if (queryFolderId is { } folderId && _folders.Any(f => f.Id == folderId))
         {
             _folderId = folderId;
             _workspaceFolderIdStr = folderId.ToString();
@@ -1077,15 +1142,48 @@
             _folderId = parsed;
         }
 
-        _currentSessionId = null;
+        InvalidateWorkspace();
         _expectedFolderId = _folderId;
-        _sessions.Clear();
-        ChatSession.Clear();
-        _resumeQuiz = null;
         StateHasChanged();
 
         SelectAllScopeDocuments();
-        _ = LoadSessionsAsync();
+        _ = LoadSessionsAsync(_workspaceVersion);
+    }
+
+    private void InvalidateWorkspace()
+    {
+        _workspaceVersion++;
+        _sessionLoadVersion++;
+        _scopeCts?.Cancel();
+        _askCts?.Cancel();
+        _quizCts?.Cancel();
+        _loadingScope = false;
+        _busy = false;
+        _generatingQuiz = false;
+        _currentSessionId = null;
+        _expectedFolderId = null;
+        _sessions.Clear();
+        _selectedDocumentIds.Clear();
+        _copiedIndexes.Clear();
+        _quizCache.Clear();
+        _resumeQuiz = null;
+        _question = null;
+        _error = null;
+        _composerError = null;
+        ChatSession.Clear();
+    }
+
+    private bool IsCurrentWorkspace(int workspaceVersion)
+        => !_disposed && workspaceVersion == _workspaceVersion;
+
+    private void ClearSessionBoundVisibleState()
+    {
+        _sessions.Clear();
+        _currentSessionId = null;
+        _resumeQuiz = null;
+        _quizCache.Clear();
+        _copiedIndexes.Clear();
+        ChatSession.Clear();
     }
 
     private void UsePrompt(string prompt)
@@ -1096,19 +1194,23 @@
 
     private async Task GenerateQuizAsync()
     {
-        if (string.IsNullOrWhiteSpace(Session.AccessToken) || _chatApi is null)
+        if (_disposed || _generatingQuiz || string.IsNullOrWhiteSpace(Session.AccessToken) || _chatApi is null)
         {
             return;
         }
 
+        var workspaceVersion = _workspaceVersion;
+        var folderId = _folderId;
+        var documentIds = SelectedDocumentIdsForRequest;
+        var scopeLabel = BuildScopeLabel();
+        _quizCts?.Cancel();
+        _quizCts?.Dispose();
+        var quizCts = _quizCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         _generatingQuiz = true;
         _error = null;
-        _quizCts?.Dispose();
-        _quizCts = new CancellationTokenSource(TimeSpan.FromMinutes(2));
         try
         {
-            var documentIds = SelectedDocumentIdsForRequest;
-            if ((documentIds is null || documentIds.Count == 0) && !_folderId.HasValue)
+            if ((documentIds is null || documentIds.Count == 0) && !folderId.HasValue)
             {
                 Snackbar.Add("Select at least one document or folder to generate a quiz.", Severity.Warning);
                 return;
@@ -1118,11 +1220,12 @@
             {
                 var createRequest = new CreateChatSessionRequest
                 {
-                    FolderId = _folderId,
+                    FolderId = folderId,
                     Model = _selectedModel,
                     TopK = _topK,
                 };
-                var session = await _chatApi.CreateSessionAsync(Session.AccessToken!, createRequest);
+                var session = await _chatApi.CreateSessionAsync(Session.AccessToken!, createRequest, quizCts.Token);
+                if (!IsCurrentWorkspace(workspaceVersion)) return;
                 _currentSessionId = session.Id;
                 _sessions.Insert(0, session);
             }
@@ -1130,35 +1233,39 @@
             var quizRequest = new GenerateQuizRequest(
                 SessionId: _currentSessionId!.Value,
                 DocumentIds: documentIds,
-                FolderId: _folderId,
+                FolderId: folderId,
                 Title: $"Quiz: {FolderTitle}",
                 Count: 8,
                 Difficulty: "medium",
                 Model: _selectedModel,
-                ScopeLabel: BuildScopeLabel(),
+                ScopeLabel: scopeLabel,
                 SubjectCode: _quizSubjectCode,
                 Semester: _quizSemester);
 
-            var quiz = await _chatApi.GenerateQuizAsync(Session.AccessToken!, quizRequest, _quizCts.Token);
+            var quiz = await _chatApi.GenerateQuizAsync(Session.AccessToken!, quizRequest, quizCts.Token);
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
 
             var exchange = new AiChatHistoryExchange(
                 $"Generate quiz: {quiz.Title}",
-                BuildScopeLabel(),
+                scopeLabel,
                 new AiChatAnswerResponse(string.Empty, Array.Empty<AiChatSourceDto>()),
                 DateTimeOffset.Now,
                 Quiz: quiz);
 
             ChatSession.Add(exchange);
 
-            await OpenQuizDialogAsync(quiz);
+            await OpenQuizDialogAsync(quiz, workspaceVersion);
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
             Snackbar.Add($"Quiz \"{quiz.Title}\" generated with {quiz.TotalQuestions} questions.", Severity.Success);
         }
         catch (OperationCanceledException)
         {
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
             Snackbar.Add("Quiz generation cancelled.", Severity.Info);
         }
         catch (AiChatApiException ex)
         {
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
             var errorQuiz = new QuizDto(
                 Guid.NewGuid(),
                 $"Quiz: {FolderTitle}",
@@ -1173,7 +1280,7 @@
 
             var exchange = new AiChatHistoryExchange(
                 "Generate quiz",
-                BuildScopeLabel(),
+                scopeLabel,
                 new AiChatAnswerResponse(string.Empty, Array.Empty<AiChatSourceDto>()),
                 DateTimeOffset.Now,
                 Quiz: errorQuiz);
@@ -1183,6 +1290,7 @@
         }
         catch (Exception ex)
         {
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
             var errorQuiz = new QuizDto(
                 Guid.NewGuid(),
                 $"Quiz: {FolderTitle}",
@@ -1197,7 +1305,7 @@
 
             var exchange = new AiChatHistoryExchange(
                 "Generate quiz",
-                BuildScopeLabel(),
+                scopeLabel,
                 new AiChatAnswerResponse(string.Empty, Array.Empty<AiChatSourceDto>()),
                 DateTimeOffset.Now,
                 Quiz: errorQuiz);
@@ -1207,14 +1315,17 @@
         }
         finally
         {
-            _generatingQuiz = false;
-            _quizCts?.Dispose();
-            _quizCts = null;
-            StateHasChanged();
+            if (IsCurrentWorkspace(workspaceVersion) && ReferenceEquals(_quizCts, quizCts))
+            {
+                _generatingQuiz = false;
+                _quizCts.Dispose();
+                _quizCts = null;
+                StateHasChanged();
+            }
         }
     }
 
-    private async Task OpenQuizDialogAsync(QuizDto quiz)
+    private async Task OpenQuizDialogAsync(QuizDto quiz, int? workspaceVersion = null)
     {
         if (_quizCache.TryGetValue(quiz.Id, out var cached))
         {
@@ -1227,12 +1338,13 @@
             try
             {
                 var full = await _chatApi.GetQuizAsync(Session.AccessToken, quiz.Id);
+                if (_disposed || (workspaceVersion.HasValue && workspaceVersion.Value != _workspaceVersion)) return;
                 if (full is not null)
                 {
                     quiz = full;
                     _quizCache[quiz.Id] = full;
                     ChatSession.UpdateExchangeQuiz(quiz.Id, full);
-                    StateHasChanged();
+                    if (!_disposed) StateHasChanged();
                 }
             }
             catch
@@ -1240,6 +1352,8 @@
                 // Best-effort — fall back to cached QuizDto
             }
         }
+
+        if (_disposed || (workspaceVersion.HasValue && workspaceVersion.Value != _workspaceVersion)) return;
 
         var parameters = new DialogParameters<QuizDialog>
         {
@@ -1254,6 +1368,7 @@
 
     private async Task OnQuizUpdatedAsync(QuizDto updated)
     {
+        if (_disposed) return;
         _quizCache[updated.Id] = updated;
         ChatSession.UpdateExchangeQuiz(updated.Id, updated);
         StateHasChanged();
@@ -1261,6 +1376,7 @@
 
     private async Task OnQuizCompletedAsync(QuizDto completed)
     {
+        if (_disposed) return;
         _quizCache[completed.Id] = completed;
         ChatSession.UpdateExchangeQuiz(completed.Id, completed);
         _resumeQuiz = null;
@@ -1269,6 +1385,7 @@
 
     private async Task CancelQuizAsync()
     {
+        if (_disposed) return;
         _quizCts?.Cancel();
         _generatingQuiz = false;
         StateHasChanged();
@@ -1293,9 +1410,9 @@
         StateHasChanged();
     }
 
-    private async Task CheckResumeQuizAsync()
+    private async Task CheckResumeQuizAsync(int workspaceVersion)
     {
-        if (_currentSessionId is null || _chatApi is null || string.IsNullOrWhiteSpace(Session.AccessToken))
+        if (!IsCurrentWorkspace(workspaceVersion) || _currentSessionId is null || _chatApi is null || string.IsNullOrWhiteSpace(Session.AccessToken))
         {
             return;
         }
@@ -1303,6 +1420,7 @@
         try
         {
             var quiz = await _chatApi.ResumeQuizAsync(Session.AccessToken!, _currentSessionId.Value);
+            if (!IsCurrentWorkspace(workspaceVersion)) return;
             if (quiz is not null && quiz.Status == QuizStatus.InProgress)
             {
                 _resumeQuiz = quiz;
@@ -1471,6 +1589,11 @@
 
     public void Dispose()
     {
+        _disposed = true;
+        _workspaceVersion++;
+        _sessionLoadVersion++;
+        _scopeCts?.Cancel();
+        _scopeCts?.Dispose();
         _askCts?.Cancel();
         _askCts?.Dispose();
         _quizCts?.Cancel();

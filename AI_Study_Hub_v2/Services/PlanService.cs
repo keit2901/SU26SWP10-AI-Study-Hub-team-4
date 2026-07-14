@@ -41,14 +41,19 @@ public sealed class PlanService : IPlanService
         return _activePlans ?? Array.Empty<Plan>();
     }
 
+    public void InvalidateCache()
+    {
+        lock (PlanByKeyCache)
+        {
+            _cache.Remove(CacheKey);
+            PlanByKeyCache.Clear();
+            _freePlan = null;
+            _activePlans = null;
+        }
+    }
+
     private void EnsureLoaded()
     {
-        // Fast path: already cached in the static dictionary.
-        if (_freePlan is not null)
-        {
-            return;
-        }
-
         // Use IMemoryCache as the synchronisation point for refreshing.
         if (_cache.TryGetValue(CacheKey, out _))
         {
@@ -86,6 +91,7 @@ public sealed class PlanService : IPlanService
             _cache.Set(CacheKey, true, new MemoryCacheEntryOptions
             {
                 AbsoluteExpirationRelativeToNow = CacheTtl,
+                Size = 1,
             });
         }
     }
