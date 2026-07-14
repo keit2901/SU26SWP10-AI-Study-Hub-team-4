@@ -12,17 +12,20 @@ public sealed class FolderService : IFolderService
     private readonly ILogger<FolderService> _logger;
     private readonly ISupabaseStorageClient _storage;
     private readonly IStorageQuotaService _quota;
+    private readonly IFolderShareAiModerator _shareAiModerator;
 
     public FolderService(
         AppDbContext db,
         ILogger<FolderService> logger,
         ISupabaseStorageClient storage,
-        IStorageQuotaService quota)
+        IStorageQuotaService quota,
+        IFolderShareAiModerator shareAiModerator)
     {
         _db = db;
         _logger = logger;
         _storage = storage;
         _quota = quota;
+        _shareAiModerator = shareAiModerator;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -45,6 +48,14 @@ public sealed class FolderService : IFolderService
                 IsFavorite = f.IsFavorite,
                 ShareStatus = f.ShareStatus,
                 SharedAt = f.SharedAt,
+                ShareReviewSource = f.ShareReviewSource,
+                AiReviewReason = f.AiReviewReason,
+                AiReviewConfidence = f.AiReviewConfidence,
+                AiReviewFailureCount = f.AiReviewFailureCount,
+                HumanReviewReason = f.HumanReviewReason,
+                RequiresHumanReview = f.RequiresHumanReview,
+                AppealRequestedAt = f.AppealRequestedAt,
+                AppealMessage = f.AppealMessage,
                 Icon = f.Icon,
                 CreatedAt = f.CreatedAt,
                 UpdatedAt = f.UpdatedAt,
@@ -206,6 +217,14 @@ public sealed class FolderService : IFolderService
                 IsFavorite = f.IsFavorite,
                 ShareStatus = f.ShareStatus,
                 SharedAt = f.SharedAt,
+                ShareReviewSource = f.ShareReviewSource,
+                AiReviewReason = f.AiReviewReason,
+                AiReviewConfidence = f.AiReviewConfidence,
+                AiReviewFailureCount = f.AiReviewFailureCount,
+                HumanReviewReason = f.HumanReviewReason,
+                RequiresHumanReview = f.RequiresHumanReview,
+                AppealRequestedAt = f.AppealRequestedAt,
+                AppealMessage = f.AppealMessage,
                 Icon = f.Icon,
                 OwnerName = f.User.FullName ?? f.User.Username,
                 CreatedAt = f.CreatedAt,
@@ -248,6 +267,14 @@ public sealed class FolderService : IFolderService
                 IsFavorite = f.IsFavorite,
                 ShareStatus = f.ShareStatus,
                 SharedAt = f.SharedAt,
+                ShareReviewSource = f.ShareReviewSource,
+                AiReviewReason = f.AiReviewReason,
+                AiReviewConfidence = f.AiReviewConfidence,
+                AiReviewFailureCount = f.AiReviewFailureCount,
+                HumanReviewReason = f.HumanReviewReason,
+                RequiresHumanReview = f.RequiresHumanReview,
+                AppealRequestedAt = f.AppealRequestedAt,
+                AppealMessage = f.AppealMessage,
                 Icon = f.Icon,
                 OwnerName = f.User.FullName ?? f.User.Username,
                 CreatedAt = f.CreatedAt,
@@ -282,7 +309,93 @@ public sealed class FolderService : IFolderService
                 "Only folders with status None or Rejected can be requested for sharing.");
         }
 
+        var documentIds = folder.Documents.Select(document => document.Id).ToList();
+        IReadOnlyList<string> extractedTexts = Array.Empty<string>();
+        if (documentIds.Count > 0)
+        {
+            try
+            {
+                var chunkRows = await _db.DocumentChunks
+                    .Where(chunk => documentIds.Contains(chunk.DocumentId))
+                    .OrderBy(chunk => chunk.DocumentId)
+                    .ThenBy(chunk => chunk.ChunkIndex)
+                    .Select(chunk => new { chunk.DocumentId, chunk.Content })
+                    .ToListAsync(cancellationToken);
+
+                extractedTexts = chunkRows
+                    .Select(row => row.Content)
+                    .Take(24)
+                    .ToList();
+            }
+            catch (InvalidOperationException)
+            {
+                extractedTexts = Array.Empty<string>();
+            }
+        }
+
+        var decision = _shareAiModerator.Evaluate(folder, folder.Documents.ToList(), extractedTexts);
+
+        var now = DateTimeOffset.UtcNow;
+
+        folder.ShareReviewSource = "AI";
+        folder.AiReviewReason = decision.Reason;
+        folder.AiReviewConfidence = decision.Confidence;
+        folder.HumanReviewReason = null;
+        folder.AppealRequestedAt = null;
+        folder.AppealMessage = null;
+
+        switch (decision.Outcome)
+        {
+            case FolderShareModerationOutcome.AutoApproved:
+                folder.ShareStatus = FolderStatus.Approved;
+                folder.SharedAt = now;
+                folder.AiReviewFailureCount = 0;
+                folder.RequiresHumanReview = false;
+                break;
+            default:
+                folder.ShareStatus = FolderStatus.Rejected;
+                folder.SharedAt = null;
+                folder.AiReviewFailureCount += 1;
+                folder.RequiresHumanReview = folder.AiReviewFailureCount >= 2;
+                break;
+        }
+
+        folder.UpdatedAt = now;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
+        return ToDto(folder, count);
+    }
+
+    public async Task<FolderDto> AppealShareReviewAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        AppealFolderShareRequest request,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(request);
+
+        var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var folder = await _db.Folders
+            .Include(f => f.Documents)
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
+            ?? throw new DocumentException(404, "folder_not_found",
+                "Folder does not exist or does not belong to the caller.");
+
+        if (folder.ShareStatus != FolderStatus.Rejected || folder.AiReviewFailureCount < 2)
+        {
+            throw new DocumentException(400, "appeal_not_allowed",
+                "Human review is available only after two unsuccessful AI reviews.");
+        }
+
         folder.ShareStatus = FolderStatus.PendingShare;
+        folder.RequiresHumanReview = true;
+        folder.AppealRequestedAt = DateTimeOffset.UtcNow;
+        folder.AppealMessage = NormalizeModerationNote(request.Message);
+        folder.ShareReviewSource = "HUMAN_REQUEST";
+        folder.HumanReviewReason = null;
+        folder.SharedAt = null;
         folder.UpdatedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(cancellationToken);
@@ -306,9 +419,15 @@ public sealed class FolderService : IFolderService
                 "Only folders with status Pending Share can be approved.");
         }
 
+        var now = DateTimeOffset.UtcNow;
         folder.ShareStatus = FolderStatus.Approved;
-        folder.SharedAt = DateTimeOffset.UtcNow;
-        folder.UpdatedAt = DateTimeOffset.UtcNow;
+        folder.SharedAt = now;
+        folder.ShareReviewSource = "HUMAN";
+        folder.HumanReviewReason = "Approved after moderator review.";
+        folder.RequiresHumanReview = false;
+        folder.AppealRequestedAt = null;
+        folder.AppealMessage = null;
+        folder.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -331,9 +450,15 @@ public sealed class FolderService : IFolderService
                 "Only folders with status Pending Share can be rejected.");
         }
 
+        var now = DateTimeOffset.UtcNow;
         folder.ShareStatus = FolderStatus.Rejected;
         folder.SharedAt = null;
-        folder.UpdatedAt = DateTimeOffset.UtcNow;
+        folder.ShareReviewSource = "HUMAN";
+        folder.HumanReviewReason = "Rejected after moderator review.";
+        folder.RequiresHumanReview = false;
+        folder.AppealRequestedAt = null;
+        folder.AppealMessage = null;
+        folder.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -398,6 +523,14 @@ public sealed class FolderService : IFolderService
             IsFavorite = folder.IsFavorite,
             ShareStatus = folder.ShareStatus,
             SharedAt = folder.SharedAt,
+            ShareReviewSource = folder.ShareReviewSource,
+            AiReviewReason = folder.AiReviewReason,
+            AiReviewConfidence = folder.AiReviewConfidence,
+            AiReviewFailureCount = folder.AiReviewFailureCount,
+            HumanReviewReason = folder.HumanReviewReason,
+            RequiresHumanReview = folder.RequiresHumanReview,
+            AppealRequestedAt = folder.AppealRequestedAt,
+            AppealMessage = folder.AppealMessage,
             Icon = folder.Icon,
             OwnerName = folder.User.FullName ?? folder.User.Username,
             CreatedAt = folder.CreatedAt,
@@ -680,6 +813,19 @@ public sealed class FolderService : IFolderService
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized;
     }
 
+    private static string? NormalizeModerationNote(string? note)
+    {
+        var normalized = note?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            return null;
+        }
+
+        return normalized.Length <= 2000
+            ? normalized
+            : normalized[..2000];
+    }
+
     private static FolderDto ToDto(Folder folder, int documentCount) => new()
     {
         Id = folder.Id,
@@ -689,6 +835,14 @@ public sealed class FolderService : IFolderService
         IsFavorite = folder.IsFavorite,
         ShareStatus = folder.ShareStatus,
         SharedAt = folder.SharedAt,
+        ShareReviewSource = folder.ShareReviewSource,
+        AiReviewReason = folder.AiReviewReason,
+        AiReviewConfidence = folder.AiReviewConfidence,
+        AiReviewFailureCount = folder.AiReviewFailureCount,
+        HumanReviewReason = folder.HumanReviewReason,
+        RequiresHumanReview = folder.RequiresHumanReview,
+        AppealRequestedAt = folder.AppealRequestedAt,
+        AppealMessage = folder.AppealMessage,
         Icon = folder.Icon,
         CreatedAt = folder.CreatedAt,
         UpdatedAt = folder.UpdatedAt,
