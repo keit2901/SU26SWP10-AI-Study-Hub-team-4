@@ -141,36 +141,94 @@
 
                 @if (_activeTab == "personal" && _personalFolders.Count > 0)
                 {
-                    <div class="personal-summary">
-                        <div class="summary-card summary-likes">
-                            <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.ThumbUp" /></div>
-                            <div class="summary-info">
-                                <span class="summary-value">@FormatCount(_totalLikes)</span>
-                                <span class="summary-label">Total Likes</span>
+                    <div class="personal-status-grid">
+                        <div class="personal-status-card shared">
+                            <div class="personal-status-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" />
+                            </div>
+                            <div class="personal-status-content">
+                                <div class="personal-status-label">Shared</div>
+                                <div class="personal-status-value">@_personalApprovedFolders.Count</div>
+                                <p class="personal-status-note">Folders shared successfully.</p>
                             </div>
                         </div>
-                        <div class="summary-card summary-dislikes">
-                            <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.ThumbDown" /></div>
-                            <div class="summary-info">
-                                <span class="summary-value">@FormatCount(_totalDislikes)</span>
-                                <span class="summary-label">Total Dislikes</span>
+
+                        <div class="personal-status-card pending">
+                            <div class="personal-status-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Size="Size.Small" />
+                            </div>
+                            <div class="personal-status-content">
+                                <div class="personal-status-label">Pending Share</div>
+                                <div class="personal-status-value">@_pendingPersonalShareCount</div>
+                                <p class="personal-status-note">Folders waiting for moderator review.</p>
                             </div>
                         </div>
-                        <div class="summary-card summary-approval">
-                            <div class="summary-icon"><MudIcon Icon="@Icons.Material.Filled.TrendingUp" /></div>
-                            <div class="summary-info">
-                                <span class="summary-value">@(_overallApproval)%</span>
-                                <span class="summary-label">Overall Approval</span>
+
+                        <div class="personal-status-card rejected">
+                            <div class="personal-status-icon">
+                                <MudIcon Icon="@Icons.Material.Filled.ReportProblem" Size="Size.Small" />
+                            </div>
+                            <div class="personal-status-content">
+                                <div class="personal-status-label">Reject</div>
+                                <div class="personal-status-value">@_personalFailedFolders.Count</div>
+                                <p class="personal-status-note">Folders need updates before sharing again.</p>
                             </div>
                         </div>
-                        @if (_bestFolder is not null)
-                        {
-                            <div class="summary-banner">
-                                <MudIcon Icon="@Icons.Material.Filled.BarChart" Size="Size.Small" />
-                                <span>Top performing folder: <strong>@_bestFolder.Name</strong> with <strong class="highlight">@FormatCount(_bestFolder.LikeCount) likes</strong></span>
-                            </div>
-                        }
                     </div>
+
+                    @if (_personalFailedFolders.Count > 0)
+                    {
+                        <div class="review-board-panel failed personal-failed-panel">
+                            <div class="review-board-header">
+                                <div>
+                                    <div class="review-board-eyebrow">Personal Shared</div>
+                                    <h3>Share Failed</h3>
+                                </div>
+                                <span class="review-board-count failed">@_personalFailedFolders.Count</span>
+                            </div>
+
+                            <div class="review-board-table-wrap">
+                                <table class="review-board-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Folder</th>
+                                            <th>AI reason</th>
+                                            <th class="review-board-action-header">Action</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        @foreach (var folder in _personalFailedFolders.Take(5))
+                                        {
+                                            <tr>
+                                                <td>
+                                                    <div class="review-board-cell-title">@folder.Name</div>
+                                                </td>
+                                                <td>
+                                                    <div class="review-board-reason-cell">@GetShareFailureReason(folder)</div>
+                                                    <div class="review-board-subtext">
+                                                        AI failed @folder.AiReviewFailureCount time@(folder.AiReviewFailureCount == 1 ? string.Empty : "s")
+                                                    </div>
+                                                </td>
+                                                <td class="review-board-action-cell">
+                                                    <div class="review-board-actions" @onclick:stopPropagation>
+                                                        @if (CanRequestHumanReview(folder))
+                                                        {
+                                                            <button type="button" class="review-board-action-btn info" @onclick="() => ShowHumanReviewDialogAsync(folder)">
+                                                                Review by human
+                                                            </button>
+                                                        }
+                                                        <button type="button" class="review-board-action-btn primary" @onclick="() => RequestShareAsync(folder)">
+                                                            Share Again
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        }
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    }
                 }
 
                 <div class="community-search">
@@ -190,9 +248,8 @@
                                     <option value="">All Status</option>
                                     <option value="Shared">Shared</option>
                                     <option value="Pending Share">Pending Share</option>
-                                    <option value="Processing">Processing</option>
-                                    <option value="Rejected">Rejected</option>
-                                    <option value="Empty">Empty</option>
+                                    <option value="Review by human">Review by human</option>
+                                    <option value="Reject">Reject</option>
                                 </select>
                             </div>
                         }
@@ -266,7 +323,6 @@
                                 var cidx = _personalFolders.IndexOf(folder);
                                 var colors = new[] { "#7c6fcd", "#c0392b", "#2980b9", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#d35400" };
                                 var color = colors[Math.Abs(cidx % colors.Length)];
-                                var rate = ApprovalPercent(folder);
 
                                 <div class="personal-card" @onclick="() => GoToFolder(folder.Id)">
                                     <div class="personal-card-strip" style="background:@color"></div>
@@ -280,42 +336,36 @@
                                                 <div style="display: flex; align-items: center; gap: 0.375rem; flex-wrap: wrap;">
                                                     <span class="personal-card-sources">@folder.DocumentCount sources</span>
                                                     @{
-                                                        var badgeStyles = GetStatusBadgeStyles(folder.Status);
+                                                        var badgeStyles = GetPersonalShareStatusBadgeStyles(folder);
                                                         var badgeStyleAttr = $"display: inline-flex; align-items: center; padding: 0.125rem 0.375rem; border-radius: 9999px; font-size: 0.65rem; font-weight: 600; background: {badgeStyles.Bg}; color: {badgeStyles.Color}; line-height: 1;";
                                                         var dotStyleAttr = $"display: inline-block; width: 0.3125rem; height: 0.3125rem; border-radius: 9999px; margin-right: 0.1875rem; background: {badgeStyles.DotColor};";
                                                     }
                                                     <span style="@badgeStyleAttr">
                                                         <span style="@dotStyleAttr"></span>
-                                                        @GetStatusText(folder.Status)
+                                                        @GetPersonalShareStatusText(folder)
                                                     </span>
                                                 </div>
                                             </div>
-                                            <span class="personal-card-badge" style="background:@(color + "18"); color:@color">@rate%</span>
-                                        </div>
-                                        <div class="personal-card-approval">
-                                            <div class="approval-header">
-                                                <span>Approval rate</span>
-                                                <span>@(folder.LikeCount + folder.DislikeCount) votes</span>
-                                            </div>
-                                            <div class="approval-bar-split">
-                                                <div class="approval-fill-color" style="width:@rate%; background:@color"></div>
-                                                <div class="approval-empty"></div>
-                                            </div>
-                                        </div>
-                                        <div class="personal-card-stats">
-                                            <div class="stat-pill stat-likes">
-                                                <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small" />
-                                                <div>
-                                                    <strong>@FormatCount(folder.LikeCount)</strong>
-                                                    <span>Likes</span>
-                                                </div>
-                                            </div>
-                                            <div class="stat-pill stat-dislikes">
-                                                <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Size="Size.Small" />
-                                                <div>
-                                                    <strong>@FormatCount(folder.DislikeCount)</strong>
-                                                    <span>Dislikes</span>
-                                                </div>
+                                            <div class="personal-card-metrics">
+                                                @if (folder.ShareStatus == Data.Entities.FolderStatus.Approved)
+                                                {
+                                                    <div class="personal-card-stats personal-card-stats-inline">
+                                                        <div class="stat-pill stat-likes compact">
+                                                            <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Size="Size.Small" />
+                                                            <div>
+                                                                <strong>@FormatCount(folder.LikeCount)</strong>
+                                                                <span>Likes</span>
+                                                            </div>
+                                                        </div>
+                                                        <div class="stat-pill stat-dislikes compact">
+                                                            <MudIcon Icon="@Icons.Material.Filled.ThumbDown" Size="Size.Small" />
+                                                            <div>
+                                                                <strong>@FormatCount(folder.DislikeCount)</strong>
+                                                                <span>Dislikes</span>
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                }
                                             </div>
                                         </div>
                                     </div>
@@ -354,7 +404,19 @@
     private Guid? _selectedFolderId = null;
 
     private List<FolderDto> _currentFolders =>
-        _activeTab == "community" ? _allCommunityFolders : _personalFolders;
+        _activeTab == "community" ? _allCommunityFolders : _personalApprovedFolders;
+
+    private List<FolderDto> _personalApprovedFolders => _personalFolders
+        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Approved)
+        .OrderByDescending(folder => folder.SharedAt ?? folder.UpdatedAt)
+        .ToList();
+
+    private List<FolderDto> _personalFailedFolders => _personalFolders
+        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Rejected)
+        .OrderByDescending(folder => folder.UpdatedAt)
+        .ToList();
+
+    private int _pendingPersonalShareCount => _personalFolders.Count(folder => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare);
 
     private List<FolderDto> _filteredFolders
     {
@@ -372,7 +434,14 @@
 
             if (!string.IsNullOrWhiteSpace(_statusFilter) && _activeTab == "personal")
             {
-                source = source.Where(f => f.Status == _statusFilter).ToList();
+                source = source.Where(f => MatchesPersonalStatusFilter(f, _statusFilter)).ToList();
+            }
+
+            if (_activeTab == "personal")
+            {
+                source = source
+                    .OrderByDescending(GetPersonalActivityTimestamp)
+                    .ToList();
             }
 
             return source;
@@ -386,18 +455,6 @@
             .ToList();
 
     private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredFolders.Count / PageSize));
-
-    private int _totalLikes => _personalFolders.Sum(f => f.LikeCount);
-    private int _totalDislikes => _personalFolders.Sum(f => f.DislikeCount);
-    private int _overallApproval
-    {
-        get
-        {
-            var total = _totalLikes + _totalDislikes;
-            return total == 0 ? 0 : (int)Math.Round((double)_totalLikes / total * 100);
-        }
-    }
-    private FolderDto? _bestFolder => _personalFolders.OrderByDescending(f => f.LikeCount).FirstOrDefault();
 
     protected override async Task OnInitializedAsync()
     {
@@ -477,6 +534,62 @@
         Nav.NavigateTo("/ai/chat?folderId=" + folderId);
     }
 
+    private async Task RequestShareAsync(FolderDto folder)
+    {
+        if (folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
+            || folder.ShareStatus == Data.Entities.FolderStatus.Approved) return;
+
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+
+        try
+        {
+            var updated = await FoldersApi.RequestShareAsync(Session.AccessToken!, folder.Id);
+            ReplacePersonalFolder(updated);
+            Snackbar.Add(GetShareDecisionMessage(updated), GetShareDecisionSeverity(updated));
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ShowHumanReviewDialogAsync(FolderDto folder)
+    {
+        if (!CanRequestHumanReview(folder)) return;
+
+        var parameters = new DialogParameters
+        {
+            ["FolderName"] = folder.Name,
+            ["AiReason"] = folder.AiReviewReason,
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialogRef = await DialogService.ShowAsync<AppealFolderShareDialog>("Review by human", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+
+        var message = result.Data as string;
+        await RequestHumanReviewAsync(folder, message);
+    }
+
+    private async Task RequestHumanReviewAsync(FolderDto folder, string? message)
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+
+        try
+        {
+            var updated = await FoldersApi.AppealShareReviewAsync(
+                Session.AccessToken!,
+                folder.Id,
+                new AppealFolderShareRequest { Message = message });
+            ReplacePersonalFolder(updated);
+            Snackbar.Add("Human review requested. Your folder is now waiting for moderator review.", Severity.Info);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+    }
+
     private void HandleSearchInput(ChangeEventArgs e)
     {
         _searchQuery = e.Value?.ToString() ?? "";
@@ -526,6 +639,17 @@
     private void ToggleMenu(Guid folderId)
     {
         _openMenuFolderId = _openMenuFolderId == folderId ? null : folderId;
+    }
+
+    private void ReplacePersonalFolder(FolderDto updated)
+    {
+        var index = _personalFolders.FindIndex(folder => folder.Id == updated.Id);
+        if (index >= 0)
+        {
+            _personalFolders[index] = updated;
+        }
+
+        StateHasChanged();
     }
 
     private void ShowComingSoon()
@@ -703,6 +827,109 @@
             _ => "Private"
         };
     }
+
+    private static string GetPersonalShareStatusText(FolderDto folder)
+    {
+        if (IsHumanReviewPending(folder))
+        {
+            return "Review by human";
+        }
+
+        return folder.ShareStatus switch
+        {
+            Data.Entities.FolderStatus.Approved => "Shared",
+            Data.Entities.FolderStatus.PendingShare => "Pending Share",
+            Data.Entities.FolderStatus.Rejected => "Reject",
+            _ => "Private"
+        };
+    }
+
+    private static (string Bg, string Color, string DotColor) GetPersonalShareStatusBadgeStyles(FolderDto folder)
+    {
+        if (IsHumanReviewPending(folder))
+        {
+            return ("#eff6ff", "#1d4ed8", "#3b82f6");
+        }
+
+        return folder.ShareStatus switch
+        {
+            Data.Entities.FolderStatus.Approved => ("#eef2ff", "#4338ca", "#4f46e5"),
+            Data.Entities.FolderStatus.PendingShare => ("#fefce8", "#a16207", "#ca8a04"),
+            Data.Entities.FolderStatus.Rejected => ("#fef2f2", "#b91c1c", "#ef4444"),
+            _ => ("#f9fafb", "#6b7280", "#9ca3af")
+        };
+    }
+
+    private static bool CanRequestHumanReview(FolderDto folder) =>
+        folder.ShareStatus == Data.Entities.FolderStatus.Rejected
+        && folder.AiReviewFailureCount >= 2
+        && !string.Equals(folder.ShareReviewSource, "HUMAN", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsHumanReviewPending(FolderDto folder) =>
+        folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
+        && folder.AppealRequestedAt.HasValue;
+
+    private static bool MatchesPersonalStatusFilter(FolderDto folder, string statusFilter)
+    {
+        return statusFilter switch
+        {
+            "Pending Share" => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare && !folder.AppealRequestedAt.HasValue,
+            "Review by human" => IsHumanReviewPending(folder),
+            _ => GetPersonalShareStatusText(folder) == statusFilter
+        };
+    }
+
+    private static DateTimeOffset GetPersonalActivityTimestamp(FolderDto folder) =>
+        folder.AppealRequestedAt
+        ?? folder.SharedAt
+        ?? folder.UpdatedAt;
+
+    private static string GetShareFailureReason(FolderDto folder) =>
+        string.IsNullOrWhiteSpace(folder.AiReviewReason)
+            ? "AI did not approve this folder."
+            : folder.AiReviewReason;
+
+    private static string GetPersonalShareSupportMessage(FolderDto folder)
+    {
+        var reason = GetShareFailureReason(folder);
+
+        return folder.ShareStatus switch
+        {
+            Data.Entities.FolderStatus.Rejected when folder.AiReviewFailureCount >= 2
+                => $"AI rejected this folder after {folder.AiReviewFailureCount} attempts. Reason: {reason}",
+            Data.Entities.FolderStatus.Rejected
+                => $"AI rejected this folder. Reason: {reason}",
+            Data.Entities.FolderStatus.PendingShare when folder.AppealRequestedAt.HasValue
+                => string.IsNullOrWhiteSpace(folder.AppealMessage)
+                    ? $"Your review request has been sent to the moderator. AI reason: {reason}"
+                    : $"Moderator will review this folder. Your note: {folder.AppealMessage}",
+            _ => reason
+        };
+    }
+
+    private static string GetShareDecisionMessage(FolderDto folder)
+    {
+        var reason = string.IsNullOrWhiteSpace(folder.AiReviewReason)
+            ? string.Empty
+            : $" Reason: {folder.AiReviewReason}";
+
+        return folder.ShareStatus switch
+        {
+            Data.Entities.FolderStatus.Approved => $"AI approved this folder for community sharing.{reason}",
+            Data.Entities.FolderStatus.Rejected when folder.AiReviewFailureCount >= 2 => $"AI did not approve this folder after {folder.AiReviewFailureCount} review attempts. Human review is now available.{reason}",
+            Data.Entities.FolderStatus.Rejected => $"AI did not approve this folder. You can try sharing again.{reason}",
+            Data.Entities.FolderStatus.PendingShare => $"Human review requested. Your folder is waiting in the moderator queue.{reason}",
+            _ => $"Share request submitted.{reason}"
+        };
+    }
+
+    private static Severity GetShareDecisionSeverity(FolderDto folder) => folder.ShareStatus switch
+    {
+        Data.Entities.FolderStatus.Approved => Severity.Success,
+        Data.Entities.FolderStatus.Rejected => Severity.Warning,
+        Data.Entities.FolderStatus.PendingShare when folder.RequiresHumanReview || folder.AppealRequestedAt.HasValue => Severity.Info,
+        _ => Severity.Success
+    };
 
     private (string Bg, string Color, string DotColor) GetStatusBadgeStyles(string? status)
     {

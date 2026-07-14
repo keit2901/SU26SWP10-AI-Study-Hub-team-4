@@ -12,6 +12,8 @@ namespace AI_Study_Hub_v2.Services;
 /// </summary>
 public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
 {
+    private const int ContextWindowRadius = 96;
+
     private static readonly string[] HarmfulOrIllegalSignals =
     [
         "exam leak", "answer key", "cheat sheet", "hack tool", "ddos tool",
@@ -35,6 +37,22 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
     [
         "download crack", "download payload", "download malware", "activation bypass",
         "disable antivirus", "run this script", "execute this file"
+    ];
+
+    private static readonly string[] BenignEducationalContextSignals =
+    [
+        "tac hai", "tac dong", "nguy co", "phong tranh", "phong ngua", "canh bao",
+        "dao duc", "ethic", "ethics", "harm", "harmful", "risk", "risks", "warning",
+        "awareness", "prevent", "prevention", "mitigation", "defense", "defence",
+        "detection", "analysis", "research", "case study", "education", "educational",
+        "do not", "don't", "avoid", "forbidden", "khong nen", "khong duoc"
+    ];
+
+    private static readonly string[] ExplicitAbuseContextSignals =
+    [
+        "download", "download here", "sell", "buy", "steal", "bypass", "crack",
+        "use this", "run this", "execute", "tutorial", "step by step", "how to",
+        "dump", "leaked exam", "answer key", "full textbook pdf", "torrent", "keygen"
     ];
 
     private static readonly HashSet<string> DangerousFileExtensions = new(StringComparer.OrdinalIgnoreCase)
@@ -95,7 +113,7 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
         var normalized = combinedText.ToLowerInvariant();
         var searchableText = ModerationTokenRegex().Replace(normalized, " ");
 
-        var harmfulHit = FindSignal(searchableText, HarmfulOrIllegalSignals);
+        var harmfulHit = FindRejectableSignal(searchableText, HarmfulOrIllegalSignals);
         if (harmfulHit is not null)
         {
             return new FolderShareModerationDecision(
@@ -104,7 +122,7 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
                 0.98);
         }
 
-        var copyrightHit = FindSignal(searchableText, CopyrightRiskSignals);
+        var copyrightHit = FindRejectableSignal(searchableText, CopyrightRiskSignals);
         if (copyrightHit is not null)
         {
             return new FolderShareModerationDecision(
@@ -130,6 +148,42 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
 
     private static string? FindSignal(string normalizedText, IEnumerable<string> signals)
         => signals.FirstOrDefault(signal => normalizedText.Contains(signal, StringComparison.Ordinal));
+
+    private static string? FindRejectableSignal(string normalizedText, IEnumerable<string> signals)
+    {
+        foreach (var signal in signals)
+        {
+            var searchIndex = 0;
+            while (searchIndex < normalizedText.Length)
+            {
+                var matchIndex = normalizedText.IndexOf(signal, searchIndex, StringComparison.Ordinal);
+                if (matchIndex < 0)
+                {
+                    break;
+                }
+
+                var context = ExtractContext(normalizedText, matchIndex, signal.Length);
+                var hasBenignContext = BenignEducationalContextSignals.Any(context.Contains);
+                var hasAbuseContext = ExplicitAbuseContextSignals.Any(context.Contains);
+
+                if (!hasBenignContext || hasAbuseContext)
+                {
+                    return signal;
+                }
+
+                searchIndex = matchIndex + signal.Length;
+            }
+        }
+
+        return null;
+    }
+
+    private static string ExtractContext(string normalizedText, int startIndex, int signalLength)
+    {
+        var contextStart = Math.Max(0, startIndex - ContextWindowRadius);
+        var contextEnd = Math.Min(normalizedText.Length, startIndex + signalLength + ContextWindowRadius);
+        return normalizedText[contextStart..contextEnd];
+    }
 
     private static string? FindDangerousUrlSignal(string combinedText, string normalizedText)
     {

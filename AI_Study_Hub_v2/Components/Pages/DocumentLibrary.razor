@@ -398,88 +398,6 @@ else
                 }
             </section>
 
-            <section class="folders-section" aria-label="Share review overview" style="margin-top: 1.25rem;">
-                <div class="folders-header">
-                    <div class="folders-header-left">
-                        <MudIcon Icon="@Icons.Material.Filled.FactCheck" Size="Size.Small" Color="Color.Primary" />
-                        <MudText Class="folders-header-title">Share Review Overview</MudText>
-                    </div>
-                </div>
-
-                <MudGrid>
-                    <MudItem xs="12" md="6">
-                        <MudPaper Class="glass-card" Elevation="0" Outlined="false" Style="padding: 1rem; height: 100%;">
-                            <MudStack Spacing="1">
-                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                    <MudText Typo="Typo.h6">Shared Successfully</MudText>
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Outlined">@_approvedSharedFolders.Count</MudChip>
-                                </MudStack>
-                                @if (_approvedSharedFolders.Count == 0)
-                                {
-                                    <MudText Typo="Typo.body2" Color="Color.Secondary">No folders have been shared successfully yet.</MudText>
-                                }
-                                else
-                                {
-                                    @foreach (var folder in _approvedSharedFolders.Take(4))
-                                    {
-                                        <MudPaper Elevation="0" Outlined="true" Style="padding: 0.85rem; border-radius: 14px;">
-                                            <MudText Typo="Typo.subtitle2">@folder.Name</MudText>
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                                @(folder.SharedAt.HasValue ? $"Shared {folder.SharedAt.Value.LocalDateTime:g}" : "Approved for community sharing")
-                                            </MudText>
-                                        </MudPaper>
-                                    }
-                                }
-                            </MudStack>
-                        </MudPaper>
-                    </MudItem>
-
-                    <MudItem xs="12" md="6">
-                        <MudPaper Class="glass-card" Elevation="0" Outlined="false" Style="padding: 1rem; height: 100%;">
-                            <MudStack Spacing="1">
-                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                    <MudText Typo="Typo.h6">Share Failed</MudText>
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">@_failedSharedFolders.Count</MudChip>
-                                </MudStack>
-                                @if (_failedSharedFolders.Count == 0)
-                                {
-                                    <MudText Typo="Typo.body2" Color="Color.Secondary">No failed share folders right now.</MudText>
-                                }
-                                else
-                                {
-                                    @foreach (var folder in _failedSharedFolders.Take(4))
-                                    {
-                                        <MudPaper Elevation="0" Outlined="true" Style="padding: 0.85rem; border-radius: 14px;">
-                                            <MudStack Spacing="1">
-                                                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                                                    <MudText Typo="Typo.subtitle2">@folder.Name</MudText>
-                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Text">AI fail @folder.AiReviewFailureCount/2</MudChip>
-                                                </MudStack>
-                                                @if (!string.IsNullOrWhiteSpace(folder.AiReviewReason))
-                                                {
-                                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@folder.AiReviewReason</MudText>
-                                                }
-                                                <MudStack Row="true" Spacing="1">
-                                                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="@(() => RequestShareAsync(folder))">
-                                                        Share Again
-                                                    </MudButton>
-                                                    @if (CanRequestHumanReview(folder))
-                                                    {
-                                                        <MudButton Size="Size.Small" Variant="Variant.Text" Color="Color.Info" StartIcon="@Icons.Material.Filled.Gavel" OnClick="@(() => ShowHumanReviewDialogAsync(folder))">
-                                                            Review by human
-                                                        </MudButton>
-                                                    }
-                                                </MudStack>
-                                            </MudStack>
-                                        </MudPaper>
-                                    }
-                                }
-                            </MudStack>
-                        </MudPaper>
-                    </MudItem>
-                </MudGrid>
-            </section>
-
             @if (!string.IsNullOrEmpty(_error))
             {
                 <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Dense="true" Class="my-3">
@@ -1014,16 +932,6 @@ else
         .Where(value => !string.IsNullOrWhiteSpace(value))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-        .ToList();
-
-    private List<FolderDto> _approvedSharedFolders => _folders
-        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Approved)
-        .OrderByDescending(folder => folder.SharedAt ?? folder.UpdatedAt)
-        .ToList();
-
-    private List<FolderDto> _failedSharedFolders => _folders
-        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Rejected)
-        .OrderByDescending(folder => folder.UpdatedAt)
         .ToList();
 
     private List<DocumentDto> _filteredDocuments
