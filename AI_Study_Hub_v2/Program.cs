@@ -131,6 +131,7 @@ builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IDocumentModerationService, DocumentModerationService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
+builder.Services.AddScoped<IFolderShareAiModerator, FolderShareAiModerator>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
@@ -608,6 +609,46 @@ static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
     await db.Database.ExecuteSqlRawAsync("""
         CREATE INDEX IF NOT EXISTS ix_document_chunks_search_vector
         ON document_chunks USING GIN (search_vector);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_review_source character varying(32);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_reason character varying(2000);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_confidence double precision;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_failure_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS human_review_reason character varying(2000);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS requires_human_review boolean NOT NULL DEFAULT false;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS appeal_requested_at timestamp with time zone;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS appeal_message character varying(2000);
         """);
 
     logger.LogInformation("Phase 3 schema bootstrap completed.");
