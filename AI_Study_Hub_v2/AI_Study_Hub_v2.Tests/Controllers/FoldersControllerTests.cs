@@ -139,6 +139,22 @@ public class FoldersControllerTests
     }
 
     [Test]
+    public async Task Create_WhenServiceThrowsPlanException_MapsStatusAndCode()
+    {
+        var svc = new Mock<IFolderService>();
+        svc.Setup(s => s.CreateAsync(It.IsAny<Guid>(), It.IsAny<CreateFolderRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new PlanException(402, "folder_count_exceeded", "Folder limit reached."));
+
+        var sut = BuildSut(svc.Object, Principal(Guid.NewGuid()));
+
+        var result = await sut.Create(new CreateFolderRequest { Name = "Sprint demo" }, CancellationToken.None);
+
+        var obj = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        obj.StatusCode.Should().Be(402);
+        obj.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("folder_count_exceeded");
+    }
+
+    [Test]
     public async Task Update_HappyPath_Returns200_WithDto()
     {
         var dto = SampleFolder(name: "Renamed");
