@@ -236,7 +236,7 @@ public sealed class FolderService : IFolderService
 
         var rows = await _db.Folders
             .AsNoTracking()
-            .Where(f => f.UserId == profile.Id)
+            .Where(f => f.UserId == profile.Id && f.ShareStatus != FolderStatus.None)
             .OrderByDescending(f => f.SharedAt)
             .ThenBy(f => f.Name)
             .Select(f => new FolderDto
