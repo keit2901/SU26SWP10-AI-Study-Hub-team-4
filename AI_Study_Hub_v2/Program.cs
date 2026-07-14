@@ -139,6 +139,7 @@ builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
 builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<IStorageQuotaService, StorageQuotaService>();
+builder.Services.AddScoped<IStorageDeletionCoordinator, StorageDeletionCoordinator>();
 builder.Services.AddScoped<IStorageReconciliationService, StorageReconciliationService>();
 builder.Services.AddScoped<IVnPayService, VnPayService>();
 
