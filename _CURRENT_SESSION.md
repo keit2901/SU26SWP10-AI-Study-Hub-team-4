@@ -1,31 +1,41 @@
-## [2026-07-10] Dashboard — Fix first-load Npgsql + clean dead code
+## [2026-07-10] Dashboard fixes — committed + pushed `feature/admin-upgrade`
 
-### Root Cause Fixed
-- **AdminLayout** `LoadNotificationsAsync()` từng gọi `ModerationService.GetQueueAsync()` (direct DB) cùng lúc Dashboard `LoadDashboardAsync()` (HTTP → DB), chia sẻ NpgsqlDataSource Singleton → NpgsqlOperationInProgressException
-- **Fix:** AdminLayout chuyển sang dùng `DashboardApi.GetAdminStatsAsync()` (HTTP) thay vì direct DB call. Bỏ `@inject IDocumentModerationService`. Exception không còn bị nuốt lặng (`catch { }`) → giờ log warning qua `ILogger<AdminLayout>`.
-- **Dashboard:** Xóa `@inject IDocumentModerationService`, xóa `ModerationService.GetQueueAsync()` + `ApplyModerationQueue()` trong `LoadDashboardAsync()`.
+### Commit: `a96b491` — `fix(dashboard): Npgsql first-load + clean dead code + refine attention card UI`
 
-### Frontend Fixes (Dashboard.razor)
-- Donut center: hardcode "155" → `@_metrics.TotalDocuments`
-- `_statusLabels` order: `{Pending,Processing,Indexed,Failed}` → `{Indexed,Processing,Pending,Failed}` (khớp ApplyStats)
-- Xóa dead code: `StatusSeries` property, `GetStatusClass`, `GetSeverityClass`, `GetDocumentStatusColor`, `GetSeverityColor`, `GetTokenProgressColor`
-- "Documents needing attention": thay MudTable cũ (dùng `_attentionDocuments`) bằng summary card (Pending/Failed/Processing counts từ `_metrics`)
-- Recommended Actions: `_attentionDocuments.Count` → `_metrics.PendingDocuments`
-- DashboardMetrics: thêm `PendingDocuments` field, ApplyStats set `ProcessingDocuments` + `PendingDocuments` từ real data
-- Ẩn: `NewUsersThisWeek` "+0 this week", `High-usage users` count cứng
-- Xóa `AttentionDocument` record
+### Files changed (3)
 
-### Files Changed
-- `Components/Admin/Shared/AdminLayout.razor`
-- `Components/Admin/Dashboard.razor`
+| File | Changes |
+|------|---------|
+| `Dashboard.razor` | 234 lines — bỏ dead code, fix UI binding, attention card UX |
+| `AdminLayout.razor` | 19 lines — replace direct DB with HTTP stats API |
+| `_CURRENT_SESSION.md` | Session log |
 
-### Build
-- `dotnet build` — 0 errors, 0 warnings mới
+### Fixed
 
-### Verify
-- App chạy localhost:5240, Dashboard first-load không còn "Hệ thống đang bận", không Npgsql exception
-- Notification badges load từ stats API (HTTP)
+**P1 — Npgsql first-load:**
+- AdminLayout: `ModerationService.GetQueueAsync()` → `DashboardApi.GetAdminStatsAsync()` (HTTP)
+- Dashboard: removed `@inject IDocumentModerationService`, removed `GetQueueAsync()` + `ApplyModerationQueue()`
+
+**P2 — Dead code cleanup:**
+- Removed `GetStatusClass`, `GetSeverityClass`, `GetDocumentStatusColor`, `GetSeverityColor`, `GetTokenProgressColor`
+- Removed `StatusSeries` property, `AttentionDocument` record, `_attentionDocuments` field
+- Removed `ApplyModerationQueue` method
+
+**P3 — Data binding fixes:**
+- Donut center: `155` → `@_metrics.TotalDocuments`
+- `_statusLabels`: `{Pending,...}` → `{Indexed,Processing,Pending,Failed}` (matches ApplyStats)
+- `DashboardMetrics`: added `PendingDocuments` field
+- `ApplyStats`: set `ProcessingDocuments` + `PendingDocuments` from real data
+- Activity Trends: removed hardcoded fallback data → empty/error states
+
+**P4 — Attention card UX:**
+- Context-aware CTA: Failed > Pending > Processing > View queue
+- All-clear state: check icon + "All documents are clear."
+- `_lastDashboardLoadedAt` timestamp (set after successful load, not in markup)
+- Removed `+0 this week`, `High-usage users` hardcode
+- Renamed "Active Sessions" → "Active Jobs"
+
+### Build: 0 errors
 
 ### Remaining
-- Push PR (commit + push feature/admin-upgrade)
-- ADM-06: Escalations (đã phân tích: thiếu GetAllAsync, GetMyAsync, controller UserId lookup)
+- **ADM-06: Escalations** — backend missing GetAllAsync/GetMyAsync, controller FK bug
