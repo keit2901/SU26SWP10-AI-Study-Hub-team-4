@@ -1,0 +1,245 @@
+@page "/payment/result"
+@rendermode InteractiveServer
+@inject NavigationManager Navigation
+@inject PlanApiClient PlanApi
+@inject AuthSessionState Session
+
+<PageTitle>Payment Result — AI Study Hub</PageTitle>
+
+<div class="payment-result-page">
+    @if (_loading)
+    {
+        <div class="result-card">
+            <div class="result-spinner">
+                <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+            </div>
+            <h2 class="result-title">Verifying Payment</h2>
+            <p class="result-subtitle">Please wait while we confirm your payment...</p>
+        </div>
+    }
+    else if (!_result.IsValid)
+    {
+        <div class="result-card">
+            <div class="result-icon error-bg">
+                <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Large" />
+            </div>
+            <h2 class="result-title error-text">Verification Failed</h2>
+            <p class="result-subtitle">The payment confirmation could not be verified. If you were charged, please contact support.</p>
+            <div class="result-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                    Back to Pricing
+                </MudButton>
+            </div>
+        </div>
+    }
+    else if (_result.Status == "completed")
+    {
+        <div class="result-card">
+            <div class="result-icon success-bg">
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Style="color:#10B981; font-size:4rem;" />
+            </div>
+            <h2 class="result-title success-text">Payment Successful!</h2>
+            <p class="result-subtitle">
+                @if (!string.IsNullOrEmpty(_result.PlanDisplayName))
+                {
+                    <span>The <strong>@_result.PlanDisplayName</strong> plan is now active on your account.</span>
+                }
+                else
+                {
+                    <span>Your plan has been activated.</span>
+                }
+            </p>
+            @if (_result.AmountVnd > 0)
+            {
+                <div class="result-amount">@_result.AmountVnd.ToString("N0")₫</div>
+            }
+            <div class="result-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Success"
+                           OnClick="GoToDashboard" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                    Go to Dashboard
+                </MudButton>
+            </div>
+        </div>
+    }
+    else if (_result.Status == "pending")
+    {
+        <div class="result-card">
+            <div class="result-icon pending-bg">
+                <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Large" Style="color:#F59E0B; font-size:3.5rem;" />
+            </div>
+            <h2 class="result-title pending-text">Payment Processing</h2>
+            <p class="result-subtitle">Your payment is being processed. This may take a few moments.</p>
+            <div class="result-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="CheckAgain" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
+                    Check Again
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                           OnClick="GoToDashboard" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                    Dashboard
+                </MudButton>
+            </div>
+        </div>
+    }
+    else
+    {
+        <div class="result-card">
+            <div class="result-icon error-bg">
+                <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Large" />
+            </div>
+            <h2 class="result-title error-text">Payment Not Successful</h2>
+            <p class="result-subtitle">
+                @if (!string.IsNullOrEmpty(_result.ErrorMessage))
+                {
+                    <span>@_result.ErrorMessage</span>
+                }
+                else
+                {
+                    <span>The payment was not completed. No charges were made.</span>
+                }
+            </p>
+            <div class="result-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
+                    Try Again
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Default"
+                           OnClick="GoToDashboard" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                    Dashboard
+                </MudButton>
+            </div>
+        </div>
+    }
+</div>
+
+<style>
+    .payment-result-page {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 80vh;
+        padding: 2rem;
+    }
+
+    .result-card {
+        max-width: 440px;
+        width: 100%;
+        text-align: center;
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+        padding: 2.5rem 2rem;
+        backdrop-filter: blur(12px);
+    }
+
+    .result-spinner {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 80px;
+        margin-bottom: 1.25rem;
+    }
+
+    .result-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 80px;
+        height: 80px;
+        border-radius: 50%;
+        margin: 0 auto 1.25rem;
+    }
+
+    .success-bg {
+        background: rgba(16, 185, 129, 0.12);
+    }
+
+    .error-bg {
+        background: rgba(220, 38, 38, 0.12);
+        color: #DC2626;
+    }
+
+    .pending-bg {
+        background: rgba(245, 158, 11, 0.12);
+    }
+
+    .result-title {
+        font-size: 1.5rem;
+        font-weight: 800;
+        margin: 0 0 0.5rem;
+        color: #E2E8F0;
+    }
+
+    .success-text { color: #10B981; }
+
+    .error-text { color: #DC2626; }
+
+    .pending-text { color: #F59E0B; }
+
+    .result-subtitle {
+        font-size: 0.95rem;
+        color: #94A3B8;
+        margin: 0 0 1.5rem;
+        line-height: 1.5;
+    }
+
+    .result-amount {
+        font-size: 2rem;
+        font-weight: 800;
+        color: #10B981;
+        margin-bottom: 1.5rem;
+    }
+
+    .result-actions {
+        display: flex;
+        justify-content: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+</style>
+
+@code {
+    private bool _loading = true;
+    private ReturnUrlResult _result = new(false, "pending", null, 0, null);
+
+    protected override async Task OnInitializedAsync()
+    {
+        await VerifyPayment();
+    }
+
+    private async Task VerifyPayment()
+    {
+        _loading = true;
+        StateHasChanged();
+
+        try
+        {
+            var accessToken = Session.AccessToken;
+            if (string.IsNullOrWhiteSpace(accessToken))
+            {
+                _result = new ReturnUrlResult(false, "error", null, 0, "Not authenticated.");
+                return;
+            }
+
+            var uri = new Uri(Navigation.Uri);
+            _result = await PlanApi.VerifyReturnUrlAsync(accessToken, uri.Query);
+        }
+        catch
+        {
+            _result = new ReturnUrlResult(false, "error", null, 0, "Verification failed due to a network error.");
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private async Task CheckAgain()
+    {
+        await VerifyPayment();
+    }
+
+    private void GoToPricing() => Navigation.NavigateTo("/pricing", forceLoad: true);
+    private void GoToDashboard() => Navigation.NavigateTo("/", forceLoad: true);
+}

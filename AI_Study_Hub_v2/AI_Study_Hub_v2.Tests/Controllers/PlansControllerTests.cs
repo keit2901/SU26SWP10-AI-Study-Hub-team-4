@@ -5,6 +5,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Payment;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -20,6 +21,7 @@ public class PlansControllerTests
 {
     private Mock<IPlanService> _planServiceMock = null!;
     private Mock<IStorageQuotaService> _quotaServiceMock = null!;
+    private Mock<IVnPayService> _vnPayServiceMock = null!;
     private Mock<IAuditLogService> _auditServiceMock = null!;
     private AppDbContext _db = null!;
 
@@ -28,6 +30,7 @@ public class PlansControllerTests
     {
         _planServiceMock = new Mock<IPlanService>();
         _quotaServiceMock = new Mock<IStorageQuotaService>();
+        _vnPayServiceMock = new Mock<IVnPayService>();
         _auditServiceMock = new Mock<IAuditLogService>();
         _db = TestDb.CreateInMemory();
     }
@@ -43,6 +46,7 @@ public class PlansControllerTests
         var ctrl = new PlansController(
             _planServiceMock.Object,
             _quotaServiceMock.Object,
+            _vnPayServiceMock.Object,
             _db,
             _auditServiceMock.Object,
             NullLogger<PlansController>.Instance);
@@ -175,7 +179,7 @@ public class PlansControllerTests
     }
 
     [Test]
-    public async Task PurchasePlan_ValidRequest_ReturnsUserPlanDto()
+    public async Task PurchasePlan_PaidPlan_ReturnsPaymentUrlResponse()
     {
         var supabaseUserId = Guid.NewGuid();
         SeedUser(supabaseUserId);
@@ -194,9 +198,19 @@ public class PlansControllerTests
         await _db.SaveChangesAsync();
 
         _planServiceMock.Setup(s => s.GetPlanByKey("pro")).Returns(dbPlan);
-        _quotaServiceMock
-            .Setup(s => s.GetSnapshotAsync(supabaseUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new StorageQuotaSnapshotDto(0, 10L * 1024 * 1024 * 1024, "pro", "Pro Plan"));
+
+        var expectedResponse = new PaymentUrlResponse(
+            "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?test=1",
+            "VP_test_txn_ref",
+            "pro",
+            "monthly",
+            49_000,
+            DateTimeOffset.UtcNow.AddMinutes(15));
+
+        _vnPayServiceMock
+            .Setup(s => s.CreatePaymentAsync(
+                It.IsAny<Guid>(), "pro", "monthly", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(expectedResponse);
 
         var sut = BuildSut(Principal(supabaseUserId));
 
@@ -204,34 +218,80 @@ public class PlansControllerTests
         var result = await sut.PurchasePlan(request, CancellationToken.None);
 
         var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
-        var dto = okResult.Value.Should().BeOfType<UserPlanDto>().Subject;
+        var dto = okResult.Value.Should().BeOfType<PaymentUrlResponse>().Subject;
         dto.PlanKey.Should().Be("pro");
-        dto.Status.Should().Be("active");
-        dto.AssignedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
+        dto.AmountVnd.Should().Be(49_000);
+        dto.PaymentUrl.Should().NotBeNullOrEmpty();
+        dto.TxnRef.Should().Be("VP_test_txn_ref");
 
-        // Verify UserPlan was created
-        var userPlan = await _db.UserPlans.FirstOrDefaultAsync();
-        userPlan.Should().NotBeNull();
-        userPlan!.Status.Should().Be("active");
+        // Verify VnPayService was called (DB writes happen inside VnPayService)
+        _vnPayServiceMock.Verify(
+            s => s.CreatePaymentAsync(It.IsAny<Guid>(), "pro", "monthly", It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once);
 
-        // Verify PaymentTransaction was created
-        var txn = await _db.PaymentTransactions.FirstOrDefaultAsync();
-        txn.Should().NotBeNull();
-        txn!.Status.Should().Be("demo_completed");
-        txn.AmountVnd.Should().Be(49_000);
-
-        // Verify audit was logged
+        // Verify audit was logged for payment initiation
         _auditServiceMock.Verify(a => a.Add(
             supabaseUserId,
-            "SelfServicePlanPurchase",
-            "UserPlan",
-            userPlan.Id.ToString(),
-            "Medium",
+            "PlanPaymentInitiated",
+            "PaymentTransaction",
+            dbPlan.Id.ToString(),
+            "Low",
             null,
             null,
             It.Is<string?>(s => s != null && s.Contains("planKey")),
             It.IsAny<string?>(),
             It.IsAny<string?>()), Times.Once);
+    }
+
+    [Test]
+    public async Task PurchasePlan_FreePlan_ReturnsUserPlanDto()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        SeedUser(supabaseUserId);
+
+        var dbPlan = new Plan
+        {
+            Id = Guid.NewGuid(),
+            PlanKey = "free",
+            DisplayName = "Free Plan",
+            MonthlyPriceVnd = 0,
+            IsActive = true,
+            SortOrder = 1,
+            CreatedAt = DateTimeOffset.UtcNow,
+        };
+        _db.Plans.Add(dbPlan);
+        await _db.SaveChangesAsync();
+
+        _planServiceMock.Setup(s => s.GetPlanByKey("free")).Returns(dbPlan);
+        _quotaServiceMock
+            .Setup(s => s.GetSnapshotAsync(supabaseUserId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StorageQuotaSnapshotDto(0, 10L * 1024 * 1024 * 1024, "free", "Free Plan"));
+
+        var sut = BuildSut(Principal(supabaseUserId));
+
+        var request = new PurchasePlanRequest("free");
+        var result = await sut.PurchasePlan(request, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var dto = okResult.Value.Should().BeOfType<UserPlanDto>().Subject;
+        dto.PlanKey.Should().Be("free");
+        dto.Status.Should().Be("active");
+
+        // Verify UserPlan was created immediately for free plan
+        var userPlan = await _db.UserPlans.FirstOrDefaultAsync();
+        userPlan.Should().NotBeNull();
+        userPlan!.Status.Should().Be("active");
+
+        // Verify PaymentTransaction with completed status (not demo_completed)
+        var txn = await _db.PaymentTransactions.FirstOrDefaultAsync();
+        txn.Should().NotBeNull();
+        txn!.Status.Should().Be("completed");
+        txn.AmountVnd.Should().Be(0);
+
+        // Verify VNPay was NOT called for free plan
+        _vnPayServiceMock.Verify(
+            s => s.CreatePaymentAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never);
     }
 
     // ── Helpers ──

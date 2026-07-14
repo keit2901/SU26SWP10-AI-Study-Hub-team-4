@@ -3,6 +3,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -27,56 +28,68 @@ public sealed class StorageQuotaService : IStorageQuotaService
             throw new ArgumentOutOfRangeException(nameof(fileSizeBytes));
         }
 
-        // Load user to resolve internal ID (immutable mapping — safe to cache for this request).
-        var user = await _db.Users
-            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct)
-            ?? throw new PlanException(404, "user_not_found", "User profile not found.");
-
-        var userId = user.Id;
-
-        // Atomic UPDATE...WHERE...RETURNING — races are resolved by the database.
-        var sql = """
-            UPDATE users u
-            SET storage_used_bytes = storage_used_bytes + {0}
-            FROM user_plans up
-            JOIN plans p ON p.id = up.plan_id
-            WHERE u.id = {1}
-              AND up.user_id = u.id
-              AND up.status = 'active'
-              AND (up.expires_at IS NULL OR up.expires_at > NOW())
-              AND (p.storage_quota_bytes IS NULL OR u.storage_used_bytes + {0} <= p.storage_quota_bytes)
-              AND (p.max_document_count IS NULL OR
-                   (SELECT COUNT(*) FROM documents d WHERE d.user_id = u.id) < p.max_document_count)
-            RETURNING u.id
-            """;
-
-        var result = await _db.Database
-            .SqlQueryRaw<Guid>(sql, fileSizeBytes, userId)
-            .ToListAsync(ct);
-
-        if (result.Count == 0)
+        await using var tx = await _db.Database
+            .BeginTransactionAsync(IsolationLevel.Serializable, ct);
+        try
         {
-            // Determine which limit was exceeded for a better error message.
-            var plan = await GetEffectivePlanAsync(userId, ct);
-            var currentCount = await _db.Documents.CountAsync(d => d.UserId == userId, ct);
+            // Load user with tracking — row is locked within SERIALIZABLE transaction.
+            var user = await _db.Users
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct)
+                ?? throw new PlanException(404, "user_not_found", "User profile not found.");
 
-            if (plan.MaxDocumentCount.HasValue && currentCount >= plan.MaxDocumentCount.Value)
+            var userId = user.Id;
+
+            var plan = await GetEffectivePlanAsync(userId, ct);
+
+            // Check storage quota.
+            if (plan.StorageQuotaBytes.HasValue
+                && user.StorageUsedBytes + fileSizeBytes > plan.StorageQuotaBytes.Value)
             {
                 throw new PlanException(
                     StatusCodes.Status402PaymentRequired,
-                    "document_count_exceeded",
-                    $"Document count exceeded. You have {currentCount} of {plan.MaxDocumentCount.Value} documents.");
+                    "storage_quota_exceeded",
+                    $"Storage quota exceeded. Used: {user.StorageUsedBytes:N0} bytes, " +
+                    $"Quota: {plan.StorageQuotaBytes:N0} bytes, " +
+                    $"Attempted: {fileSizeBytes:N0} bytes.");
             }
 
-            throw new PlanException(
-                StatusCodes.Status402PaymentRequired,
-                "storage_quota_exceeded",
-                $"Storage quota exceeded. Used: {user.StorageUsedBytes:N0} bytes, " +
-                $"Quota: {plan.StorageQuotaBytes:N0} bytes, " +
-                $"Attempted: {fileSizeBytes:N0} bytes.");
-        }
+            // Check document count (atomic within SERIALIZABLE tx).
+            if (plan.MaxDocumentCount.HasValue)
+            {
+                var currentCount = await _db.Documents.CountAsync(d => d.UserId == userId, ct);
+                if (currentCount >= plan.MaxDocumentCount.Value)
+                {
+                    throw new PlanException(
+                        StatusCodes.Status402PaymentRequired,
+                        "document_count_exceeded",
+                        $"Document count exceeded. You have {currentCount} of {plan.MaxDocumentCount.Value} documents.");
+                }
+            }
 
-        return new StorageReservation(userId, fileSizeBytes, DateTimeOffset.UtcNow);
+            // Check folder count.
+            if (plan.MaxFolderCount.HasValue)
+            {
+                var folderCount = await _db.Folders.CountAsync(f => f.UserId == userId, ct);
+                if (folderCount >= plan.MaxFolderCount.Value)
+                {
+                    throw new PlanException(
+                        StatusCodes.Status402PaymentRequired,
+                        "folder_count_exceeded",
+                        $"Folder limit ({plan.MaxFolderCount.Value}) reached. " +
+                        $"You have {folderCount} folder(s).");
+                }
+            }
+
+            user.StorageUsedBytes += fileSizeBytes;
+            await _db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
+            return new StorageReservation(userId, fileSizeBytes, DateTimeOffset.UtcNow);
+        }
+        catch
+        {
+            await tx.RollbackAsync(ct);
+            throw;
+        }
     }
 
     public Task ConfirmReservationAsync(StorageReservation reservation, CancellationToken ct)
@@ -87,15 +100,9 @@ public sealed class StorageQuotaService : IStorageQuotaService
 
     public async Task ReleaseReservationAsync(StorageReservation reservation, CancellationToken ct)
     {
-        var user = await _db.Users
-            .FirstOrDefaultAsync(u => u.Id == reservation.UserId, ct);
-        if (user is null)
-        {
-            return;
-        }
-
-        user.StorageUsedBytes = Math.Max(0, user.StorageUsedBytes - reservation.ReservedBytes);
-        await _db.SaveChangesAsync(ct);
+        await _db.Database.ExecuteSqlRawAsync(
+            "UPDATE users SET storage_used_bytes = GREATEST(0, storage_used_bytes - {0}) WHERE id = {1}",
+            reservation.ReservedBytes, reservation.UserId);
     }
 
     public async Task RecordDeleteAsync(

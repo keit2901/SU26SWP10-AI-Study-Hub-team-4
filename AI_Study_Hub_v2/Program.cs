@@ -8,6 +8,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Payment;
 using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
@@ -50,6 +51,7 @@ builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Olla
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
+builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
 builder.Services.AddMemoryCache(options =>
 {
     var ragCacheOptions = builder.Configuration.GetSection(RagOptions.SectionName).Get<RagOptions>() ?? new RagOptions();
@@ -137,6 +139,7 @@ builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<IStorageQuotaService, StorageQuotaService>();
 builder.Services.AddScoped<IStorageReconciliationService, StorageReconciliationService>();
+builder.Services.AddScoped<IVnPayService, VnPayService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -285,10 +288,24 @@ builder.Services.AddRateLimiter(options =>
         {
             PermitLimit = 2,
             Window = TimeSpan.FromMinutes(1),
-            SegmentsPerWindow = 6,
+            SegmentsPerWindow = 2,   // was 6 — tighter window, less burst
             QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             QueueLimit = 0
         });
+    });
+    options.AddPolicy("admin", context =>
+        RateLimitPartition.GetFixedWindowLimiter("admin_global", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    options.AddFixedWindowLimiter("ipn", config =>
+    {
+        config.PermitLimit = 30;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
     });
     options.RejectionStatusCode = 429;
     options.OnRejected = async (context, ct) =>
@@ -487,7 +504,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
     if (existing is not null && existing.Id != Guid.Empty)
     {
         supabaseUserId = existing.Id;
-        logger.LogInformation("Default admin already exists in GoTrue: {Email}. Will reuse identity.", emailLower);
+        logger.LogInformation("Default admin already exists in GoTrue. Reusing identity {SupabaseUserId}.", supabaseUserId);
     }
     else
     {
@@ -504,7 +521,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
                 ["role"] = Role.AdminRoleName,
             });
         supabaseUserId = created.Id;
-        logger.LogInformation("Default admin created in GoTrue: {Email}", emailLower);
+        logger.LogInformation("Default admin created in GoTrue with identity {SupabaseUserId}", supabaseUserId);
     }
 
     var profileExists = await db.Users.AnyAsync(u => u.SupabaseUserId == supabaseUserId);
@@ -537,7 +554,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
 
     db.Users.Add(admin);
     await db.SaveChangesAsync();
-    logger.LogInformation("Default admin profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
+    logger.LogInformation("Default admin profile inserted for identity {SupabaseUserId}", supabaseUserId);
 }
 
 static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
@@ -634,7 +651,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
     if (existing is not null && existing.Id != Guid.Empty)
     {
         supabaseUserId = existing.Id;
-        logger.LogInformation("Default moderator already exists in GoTrue: {Email}. Will reuse identity.", emailLower);
+        logger.LogInformation("Default moderator already exists in GoTrue. Reusing identity {SupabaseUserId}.", supabaseUserId);
     }
     else
     {
@@ -651,7 +668,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
                 ["role"] = Role.ModeratorRoleName,
             });
         supabaseUserId = created.Id;
-        logger.LogInformation("Default moderator created in GoTrue: {Email}", emailLower);
+        logger.LogInformation("Default moderator created in GoTrue with identity {SupabaseUserId}", supabaseUserId);
     }
 
     var profileExists = await db.Users.AnyAsync(u => u.SupabaseUserId == supabaseUserId);
@@ -684,7 +701,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
 
     db.Users.Add(moderator);
     await db.SaveChangesAsync();
-    logger.LogInformation("Default moderator profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
+    logger.LogInformation("Default moderator profile inserted for identity {SupabaseUserId}", supabaseUserId);
 }
 
 static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
@@ -776,7 +793,7 @@ static async Task SeedDefaultPlansAsync(AppDbContext db, ILogger logger)
                 MaxFileSizeBytes = null,
                 MaxDocsPerFolder = null,
                 MonthlyPriceVnd = 100_000,
-                YearlyPriceVnd = null,
+                YearlyPriceVnd = 1_000_000,
                 SortOrder = 3,
                 IsActive = true,
                 CreatedAt = now,

@@ -26,6 +26,8 @@ public sealed class PaymentTransaction
 
     public DateTimeOffset? CompletedAt { get; set; }
 
+    public DateTimeOffset? ExpiresAt { get; set; }
+
     // Navigation
     public User User { get; set; } = null!;
 

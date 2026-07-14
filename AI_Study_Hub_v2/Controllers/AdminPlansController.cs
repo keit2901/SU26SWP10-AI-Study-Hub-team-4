@@ -7,6 +7,7 @@ using AI_Study_Hub_v2.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Controllers;
@@ -17,6 +18,7 @@ namespace AI_Study_Hub_v2.Controllers;
 [ApiController]
 [Route("api/admin/plans")]
 [Produces("application/json")]
+[EnableRateLimiting("admin")]
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme, Roles = "Admin")]
 public sealed class AdminPlansController : ControllerBase
 {
@@ -75,6 +77,69 @@ public sealed class AdminPlansController : ControllerBase
     {
         var plan = await _db.Plans.FindAsync([id], ct);
         if (plan is null) return NotFound(new ApiErrorResponse { Code = "plan_not_found", Message = "Plan not found." });
+
+        // H2: Prevent reducing quota below active users' usage
+        if (request.StorageQuotaBytes.HasValue && plan.StorageQuotaBytes > request.StorageQuotaBytes.Value)
+        {
+            var overQuotaUsers = await _db.UserPlans
+                .Where(up => up.PlanId == id && up.Status == "active")
+                .Join(_db.Users, up => up.UserId, u => u.Id, (up, u) => u)
+                .Where(u => u.StorageUsedBytes > request.StorageQuotaBytes.Value)
+                .CountAsync(ct);
+
+            if (overQuotaUsers > 0)
+            {
+                return BadRequest(new ApiErrorResponse
+                {
+                    Code = "quota_conflict",
+                    Message = $"Cannot reduce storage quota: {overQuotaUsers} active users exceed the new limit."
+                });
+            }
+        }
+
+        if (request.MaxDocumentCount.HasValue && plan.MaxDocumentCount > request.MaxDocumentCount.Value)
+        {
+            var overQuotaUsers = await _db.UserPlans
+                .Where(up => up.PlanId == id && up.Status == "active")
+                .Select(up => new
+                {
+                    up.UserId,
+                    DocumentCount = _db.Documents.Count(d => d.UserId == up.UserId)
+                })
+                .Where(x => x.DocumentCount > request.MaxDocumentCount.Value)
+                .CountAsync(ct);
+
+            if (overQuotaUsers > 0)
+            {
+                return BadRequest(new ApiErrorResponse
+                {
+                    Code = "quota_conflict",
+                    Message = $"Cannot reduce document count limit: {overQuotaUsers} active users exceed the new limit."
+                });
+            }
+        }
+
+        if (request.MaxFolderCount.HasValue && plan.MaxFolderCount > request.MaxFolderCount.Value)
+        {
+            var overQuotaUsers = await _db.UserPlans
+                .Where(up => up.PlanId == id && up.Status == "active")
+                .Select(up => new
+                {
+                    up.UserId,
+                    FolderCount = _db.Folders.Count(f => f.UserId == up.UserId)
+                })
+                .Where(x => x.FolderCount > request.MaxFolderCount.Value)
+                .CountAsync(ct);
+
+            if (overQuotaUsers > 0)
+            {
+                return BadRequest(new ApiErrorResponse
+                {
+                    Code = "quota_conflict",
+                    Message = $"Cannot reduce folder count limit: {overQuotaUsers} active users exceed the new limit."
+                });
+            }
+        }
 
         var beforeJson = JsonSerializer.Serialize(new
         {
@@ -179,7 +244,7 @@ public sealed class AdminPlansController : ControllerBase
         var plan = _planService.GetPlanByKey(request.PlanKey);
         if (plan is null)
         {
-            return NotFound(new ApiErrorResponse { Code = "plan_not_found", Message = $"Plan '{request.PlanKey}' not found." });
+            return NotFound(new ApiErrorResponse { Code = "plan_not_found", Message = "The requested plan was not found." });
         }
 
         // Verify the user exists
@@ -212,7 +277,18 @@ public sealed class AdminPlansController : ControllerBase
         };
         _db.UserPlans.Add(newUserPlan);
 
-        await _db.SaveChangesAsync(ct);
+        try
+        {
+            await _db.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            return BadRequest(new ApiErrorResponse
+            {
+                Code = "plan_assignment_failed",
+                Message = "Could not assign the plan. The plan may have been deleted or the user already has an active plan."
+            });
+        }
 
         _audit.Add(
             GetSupabaseUserId(),
@@ -269,12 +345,22 @@ public sealed class AdminPlansController : ControllerBase
     /// <summary>Returns recent payment transactions for admin review.</summary>
     [HttpGet("payments")]
     [ProducesResponseType(typeof(IReadOnlyList<PaymentTransactionDto>), StatusCodes.Status200OK)]
-    public async Task<IActionResult> GetPaymentTransactions(CancellationToken ct)
+    public async Task<IActionResult> GetPaymentTransactions(
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 50,
+        CancellationToken ct = default)
     {
+        if (page < 1) page = 1;
+        if (pageSize < 1) pageSize = 50;
+        if (pageSize > 100) pageSize = 100;
+
+        var totalCount = await _db.PaymentTransactions.CountAsync(ct);
+
         var payments = await _db.PaymentTransactions
             .Include(pt => pt.User)
             .OrderByDescending(pt => pt.CreatedAt)
-            .Take(100)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(pt => new PaymentTransactionDto(
                 pt.Id,
                 pt.UserId,
@@ -287,7 +373,13 @@ public sealed class AdminPlansController : ControllerBase
                 pt.CompletedAt))
             .ToListAsync(ct);
 
-        return Ok(payments);
+        return Ok(new
+        {
+            data = payments,
+            page,
+            pageSize,
+            totalCount
+        });
     }
 
     private Guid GetSupabaseUserId()

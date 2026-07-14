@@ -4,6 +4,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Payment;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -24,6 +25,7 @@ public sealed class PlansController : ControllerBase
 {
     private readonly IPlanService _planService;
     private readonly IStorageQuotaService _quotaService;
+    private readonly IVnPayService _vnPayService;
     private readonly AppDbContext _db;
     private readonly IAuditLogService _audit;
     private readonly ILogger<PlansController> _logger;
@@ -31,12 +33,14 @@ public sealed class PlansController : ControllerBase
     public PlansController(
         IPlanService planService,
         IStorageQuotaService quotaService,
+        IVnPayService vnPayService,
         AppDbContext db,
         IAuditLogService audit,
         ILogger<PlansController> logger)
     {
         _planService = planService;
         _quotaService = quotaService;
+        _vnPayService = vnPayService;
         _db = db;
         _audit = audit;
         _logger = logger;
@@ -48,21 +52,33 @@ public sealed class PlansController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     public IActionResult GetPlans()
     {
-        var plans = _planService.GetActivePlans()
-            .Select(p => new PlanDto(
-                p.PlanKey,
-                p.DisplayName,
-                p.Description,
-                p.StorageQuotaBytes,
-                p.MaxDocumentCount,
-                p.MaxFolderCount,
-                p.DailyTokenQuota,
-                p.MaxFileSizeBytes,
-                p.MaxDocsPerFolder,
-                p.MonthlyPriceVnd,
-                p.YearlyPriceVnd))
-            .ToList();
-        return Ok(plans);
+        try
+        {
+            var plans = _planService.GetActivePlans()
+                .Select(p => new PlanDto(
+                    p.PlanKey,
+                    p.DisplayName,
+                    p.Description,
+                    p.StorageQuotaBytes,
+                    p.MaxDocumentCount,
+                    p.MaxFolderCount,
+                    p.DailyTokenQuota,
+                    p.MaxFileSizeBytes,
+                    p.MaxDocsPerFolder,
+                    p.MonthlyPriceVnd,
+                    p.YearlyPriceVnd))
+                .ToList();
+            return Ok(plans);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch plans.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while fetching plans."
+            });
+        }
     }
 
     /// <summary>Returns the calling user's plan and current storage usage vs quota.</summary>
@@ -93,10 +109,12 @@ public sealed class PlansController : ControllerBase
     [HttpPost("purchase")]
     [EnableRateLimiting("purchase")]
     [ProducesResponseType(typeof(UserPlanDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(PaymentUrlResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status429TooManyRequests)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> PurchasePlan(
         [FromBody] PurchasePlanRequest request,
@@ -164,6 +182,34 @@ public sealed class PlansController : ControllerBase
                 });
             }
 
+            // H4: defense-in-depth — plan should already be active per service cache
+            if (!plan.IsActive)
+            {
+                return NotFound(new ApiErrorResponse
+                {
+                    Code = "plan_not_found",
+                    Message = "The requested plan was not found."
+                });
+            }
+
+            // Validate billing cycle has a corresponding price
+            if (request.BillingCycle == "yearly" && plan.YearlyPriceVnd is null)
+            {
+                return BadRequest(new ApiErrorResponse
+                {
+                    Code = "invalid_billing_cycle",
+                    Message = "Yearly billing is not available for this plan."
+                });
+            }
+            if (request.BillingCycle == "monthly" && plan.MonthlyPriceVnd is null)
+            {
+                return BadRequest(new ApiErrorResponse
+                {
+                    Code = "invalid_billing_cycle",
+                    Message = "Monthly billing is not available for this plan."
+                });
+            }
+
             var now = DateTimeOffset.UtcNow;
 
             // F2.1: calculate ExpiresAt based on billing cycle
@@ -179,84 +225,176 @@ public sealed class PlansController : ControllerBase
                 expiresAt = null;
             }
 
-            // Deactivate all existing active plan assignments for this user
-            var existingActivePlans = await _db.UserPlans
+            // BR-03 + FC-03 (Long review): block re-purchase of same plan + block downgrade
+            var activePlanEntity = await _db.UserPlans
                 .Where(up => up.UserId == user.Id && up.Status == "active")
-                .ToListAsync(ct);
+                .Include(up => up.Plan)
+                .FirstOrDefaultAsync(ct);
 
-            foreach (var existingPlan in existingActivePlans)
+            if (activePlanEntity?.Plan is not null)
             {
-                existingPlan.Status = "deactivated";
+                // BR-03: cannot re-purchase the same plan
+                if (activePlanEntity.Plan.PlanKey == plan.PlanKey)
+                {
+                    return Conflict(new ApiErrorResponse
+                    {
+                        Code = "already_on_plan",
+                        Message = "You are already on this plan."
+                    });
+                }
+
+                // FC-03: upgrade only — block downgrade
+                if (plan.SortOrder <= activePlanEntity.Plan.SortOrder)
+                {
+                    return BadRequest(new ApiErrorResponse
+                    {
+                        Code = "downgrade_not_allowed",
+                        Message = "Downgrading is not supported. You can only upgrade to a higher plan."
+                    });
+                }
             }
 
-            var newUserPlan = new UserPlan
+            // Free plan: immediate activation (no VNPay)
+            if (plan.PlanKey == "free")
             {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                PlanId = plan.Id,
-                Status = "active",
-                AssignedAt = now,
-                ExpiresAt = expiresAt,
-                PaidAt = now,
-            };
-            _db.UserPlans.Add(newUserPlan);
+                // Deactivate all existing active plan assignments for this user
+                var existingActivePlans = await _db.UserPlans
+                    .Where(up => up.UserId == user.Id && up.Status == "active")
+                    .ToListAsync(ct);
 
+                foreach (var existingPlan in existingActivePlans)
+                {
+                    existingPlan.Status = "deactivated";
+                }
+
+                var newUserPlan = new UserPlan
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = user.Id,
+                    PlanId = plan.Id,
+                    Status = "active",
+                    AssignedAt = now,
+                    ExpiresAt = null, // Free plan never expires
+                    PaidAt = now,
+                };
+                _db.UserPlans.Add(newUserPlan);
+
+                // M5.2: use idempotency key as txnRef if provided
+                var txnRef = request.IdempotencyKey ?? $"free_{Guid.NewGuid():N}"[..20];
+
+                var paymentTransaction = new PaymentTransaction
+                {
+                    Id = Guid.NewGuid(),
+                    UserId = user.Id,
+                    UserPlanId = newUserPlan.Id,
+                    TxnRef = txnRef,
+                    PlanKey = request.PlanKey,
+                    BillingCycle = request.BillingCycle,
+                    AmountVnd = 0,
+                    Status = "completed",
+                    CreatedAt = now,
+                    CompletedAt = now,
+                };
+                _db.PaymentTransactions.Add(paymentTransaction);
+
+                await _db.SaveChangesAsync(ct);
+
+                // F5.1: audit logging on self-service purchases
+                try
+                {
+                    _audit.Add(
+                        supabaseUserId,
+                        "SelfServicePlanPurchase",
+                        "UserPlan",
+                        newUserPlan.Id.ToString(),
+                        severity: "Medium",
+                        contextJson: JsonSerializer.Serialize(new
+                        {
+                            planKey = plan.PlanKey,
+                            billingCycle = request.BillingCycle,
+                            amountVnd = 0,
+                        }),
+                        ipAddress: HttpContext.Connection.RemoteIpAddress?.ToString(),
+                        requestId: HttpContext.TraceIdentifier);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to log audit event for plan purchase by user {UserId}", user.Id);
+                }
+
+                var snapshot = await _quotaService.GetSnapshotAsync(supabaseUserId, ct);
+
+                _logger.LogInformation(
+                    "User {UserId} purchased free plan — UserPlan {UserPlanId}",
+                    user.Id, newUserPlan.Id);
+
+                return Ok(new UserPlanDto(
+                    newUserPlan.Id,
+                    plan.Id,
+                    plan.PlanKey,
+                    plan.DisplayName,
+                    "active",
+                    newUserPlan.AssignedAt,
+                    newUserPlan.ExpiresAt,
+                    newUserPlan.PaidAt,
+                    snapshot));
+            }
+
+            // Paid plan: create pending transaction + return VNPay URL
             var amountVnd = request.BillingCycle == "yearly"
                 ? (plan.YearlyPriceVnd ?? 0)
                 : (plan.MonthlyPriceVnd ?? 0);
 
-            // M5.2: use idempotency key as txnRef if provided
-            var txnRef = request.IdempotencyKey ?? $"demo_{Guid.NewGuid():N}"[..20];
-
-            var paymentTransaction = new PaymentTransaction
+            if (amountVnd <= 0)
             {
-                Id = Guid.NewGuid(),
-                UserId = user.Id,
-                UserPlanId = newUserPlan.Id,
-                TxnRef = txnRef,
-                PlanKey = request.PlanKey,
-                BillingCycle = request.BillingCycle,
-                AmountVnd = amountVnd,
-                Status = "demo_completed",
-                CreatedAt = now,
-                CompletedAt = now,
-            };
-            _db.PaymentTransactions.Add(paymentTransaction);
-
-            await _db.SaveChangesAsync(ct);
-
-            // F5.1: audit logging on self-service purchases
-            _audit.Add(
-                supabaseUserId,
-                "SelfServicePlanPurchase",
-                "UserPlan",
-                newUserPlan.Id.ToString(),
-                severity: "Medium",
-                contextJson: JsonSerializer.Serialize(new
+                return BadRequest(new ApiErrorResponse
                 {
-                    planKey = plan.PlanKey,
-                    billingCycle = request.BillingCycle,
-                    amountVnd = amountVnd,
-                }),
-                ipAddress: HttpContext.Connection.RemoteIpAddress?.ToString(),
-                requestId: HttpContext.TraceIdentifier);
+                    Code = "invalid_price",
+                    Message = "This plan has no price configured."
+                });
+            }
 
-            var snapshot = await _quotaService.GetSnapshotAsync(supabaseUserId, ct);
+            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
 
-            _logger.LogInformation(
-                "User {UserId} purchased plan {PlanKey} ({BillingCycle}) — UserPlan {UserPlanId}",
-                user.Id, plan.PlanKey, request.BillingCycle, newUserPlan.Id);
+            try
+            {
+                var vnPayResult = await _vnPayService.CreatePaymentAsync(
+                    user.Id, request.PlanKey, request.BillingCycle, ipAddress, ct);
 
-            return Ok(new UserPlanDto(
-                newUserPlan.Id,
-                plan.Id,
-                plan.PlanKey,
-                plan.DisplayName,
-                "active",
-                newUserPlan.AssignedAt,
-                newUserPlan.ExpiresAt,
-                newUserPlan.PaidAt,
-                snapshot));
+                // Audit log for payment initiation
+                try
+                {
+                    _audit.Add(
+                        supabaseUserId,
+                        "PlanPaymentInitiated",
+                        "PaymentTransaction",
+                        plan.Id.ToString(),
+                        severity: "Low",
+                        contextJson: JsonSerializer.Serialize(new
+                        {
+                            planKey = request.PlanKey,
+                            billingCycle = request.BillingCycle,
+                            amountVnd = vnPayResult.AmountVnd,
+                        }),
+                        ipAddress: ipAddress,
+                        requestId: HttpContext.TraceIdentifier);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Failed to log audit for payment initiation");
+                }
+
+                return Ok(vnPayResult);
+            }
+            catch (InvalidOperationException ex)
+            {
+                // FC-04: existing pending payment still valid
+                return Conflict(new ApiErrorResponse
+                {
+                    Code = "payment_pending",
+                    Message = ex.Message
+                });
+            }
         }
         // F2.2: handle concurrent purchase race condition
         catch (DbUpdateException)
@@ -276,6 +414,30 @@ public sealed class PlansController : ControllerBase
                 Message = "An unexpected error occurred while processing the purchase."
             });
         }
+    }
+
+    /// <summary>Retry a failed or expired payment transaction.</summary>
+    [HttpPost("purchase/retry/{txnRef}")]
+    [EnableRateLimiting("purchase")]
+    [ProducesResponseType(typeof(PaymentUrlResponse), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> PurchaseRetry(string txnRef, CancellationToken ct)
+    {
+        var supabaseUserId = GetSupabaseUserIdFromClaims();
+        var user = await _db.Users.FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct);
+        if (user is null) return NotFound(new ApiErrorResponse { Code = "user_not_found", Message = "User not found." });
+
+        var oldTxn = await _db.PaymentTransactions
+            .FirstOrDefaultAsync(pt => pt.TxnRef == txnRef && pt.UserId == user.Id, ct);
+        if (oldTxn is null) return NotFound(new ApiErrorResponse { Code = "transaction_not_found", Message = "Transaction not found." });
+        if (oldTxn.Status != "expired" && oldTxn.Status != "failed")
+            return BadRequest(new ApiErrorResponse { Code = "transaction_not_retryable", Message = "Only expired or failed transactions can be retried." });
+
+        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
+        var result = await _vnPayService.CreatePaymentAsync(
+            user.Id, oldTxn.PlanKey, oldTxn.BillingCycle, ipAddress, ct);
+        return Ok(result);
     }
 
     private Guid GetSupabaseUserIdFromClaims()
