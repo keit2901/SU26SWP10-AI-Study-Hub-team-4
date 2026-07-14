@@ -3,6 +3,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 
 namespace AI_Study_Hub_v2.Tests.Services;
@@ -29,7 +30,7 @@ public sealed class PlanCapacityGuardTests
     }
 
     private static Plan SeedActivePlan(AppDbContext db, User user, int? maxDocuments = null,
-        int? maxFolders = null, int? maxDocumentsPerFolder = null)
+        int? maxFolders = null, int? maxDocumentsPerFolder = null, long? storageQuotaBytes = null)
     {
         var plan = new Plan
         {
@@ -39,6 +40,7 @@ public sealed class PlanCapacityGuardTests
             MaxDocumentCount = maxDocuments,
             MaxFolderCount = maxFolders,
             MaxDocsPerFolder = maxDocumentsPerFolder,
+            StorageQuotaBytes = storageQuotaBytes,
             IsActive = true,
             CreatedAt = DateTimeOffset.UtcNow,
         };
@@ -152,5 +154,108 @@ public sealed class PlanCapacityGuardTests
         var exception = await act.Should().ThrowAsync<PlanException>();
         exception.Which.StatusCode.Should().Be(StatusCodes.Status404NotFound);
         exception.Which.Code.Should().Be("user_not_found");
+    }
+
+    [Test]
+    public async Task LockAndValidateAsync_NewFolderDocumentCountOverLimit_ThrowsFolderFull()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db);
+        SeedActivePlan(db, user, maxDocumentsPerFolder: 1);
+        var sut = new PlanCapacityGuard(Mock.Of<IPlanService>());
+
+        var act = () => sut.LockAndValidateAsync(db, user.Id, new PlanCapacityRequest(0, 0, null, 0, NewFolderDocumentCount: 2), CancellationToken.None);
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+        exception.Which.Code.Should().Be("folder_full");
+    }
+
+    [Test]
+    public async Task LockValidateAndReserveStorageAsync_WithinQuota_TracksUsageUntilCallerSaves()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db);
+        user.StorageUsedBytes = 10;
+        db.SaveChanges();
+        SeedActivePlan(db, user, storageQuotaBytes: 100);
+        var sut = new PlanCapacityGuard(Mock.Of<IPlanService>());
+
+        await sut.LockValidateAndReserveStorageAsync(db, user.Id, new PlanCapacityRequest(0, 0, null, 0), 50, CancellationToken.None);
+
+        user.StorageUsedBytes.Should().Be(60);
+        (await db.Users.AsNoTracking().SingleAsync(existing => existing.Id == user.Id)).StorageUsedBytes.Should().Be(10);
+        await db.SaveChangesAsync();
+        (await db.Users.AsNoTracking().SingleAsync(existing => existing.Id == user.Id)).StorageUsedBytes.Should().Be(60);
+    }
+
+    [Test]
+    public async Task LockValidateAndReserveStorageAsync_OverQuota_ThrowsAndDoesNotChangeTrackedUsage()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db);
+        user.StorageUsedBytes = 75;
+        db.SaveChanges();
+        SeedActivePlan(db, user, storageQuotaBytes: 100);
+        var sut = new PlanCapacityGuard(Mock.Of<IPlanService>());
+
+        var act = () => sut.LockValidateAndReserveStorageAsync(db, user.Id, new PlanCapacityRequest(0, 0, null, 0), 26, CancellationToken.None);
+
+        var exception = await act.Should().ThrowAsync<PlanException>();
+        exception.Which.StatusCode.Should().Be(StatusCodes.Status402PaymentRequired);
+        exception.Which.Code.Should().Be("storage_quota_exceeded");
+        user.StorageUsedBytes.Should().Be(75);
+    }
+
+    [Test]
+    public async Task LockAndReleaseReservedStorageAsync_DecrementsTrackedUsageWithoutGoingNegative()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db);
+        user.StorageUsedBytes = 10;
+        db.SaveChanges();
+        SeedActivePlan(db, user);
+        var sut = new PlanCapacityGuard(Mock.Of<IPlanService>());
+
+        await sut.LockAndReleaseReservedStorageAsync(db, user.Id, 20, CancellationToken.None);
+
+        user.StorageUsedBytes.Should().Be(0);
+        (await db.Users.AsNoTracking().SingleAsync(existing => existing.Id == user.Id)).StorageUsedBytes.Should().Be(10);
+        await db.SaveChangesAsync();
+        (await db.Users.AsNoTracking().SingleAsync(existing => existing.Id == user.Id)).StorageUsedBytes.Should().Be(0);
+    }
+
+    [Test]
+    public async Task LockAndReleaseReservedStorageAsync_InactiveExistingUser_ReleasesWithoutResolvingPlan()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db);
+        user.IsActive = false;
+        user.StorageUsedBytes = 50;
+        db.SaveChanges();
+        var plans = new Mock<IPlanService>(MockBehavior.Strict);
+        var sut = new PlanCapacityGuard(plans.Object);
+
+        await sut.LockAndReleaseReservedStorageAsync(db, user.Id, 20, CancellationToken.None);
+
+        user.StorageUsedBytes.Should().Be(30);
+        plans.VerifyNoOtherCalls();
+    }
+
+    [Test]
+    public async Task LockCapacityStorageMethods_NegativeArguments_ThrowArgumentOutOfRange()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db);
+        SeedActivePlan(db, user);
+        var sut = new PlanCapacityGuard(Mock.Of<IPlanService>());
+
+        Func<Task> negativeDelta = () => sut.LockAndValidateAsync(db, user.Id, new PlanCapacityRequest(-1, 0, null, 0), CancellationToken.None);
+        Func<Task> negativeReserve = () => sut.LockValidateAndReserveStorageAsync(db, user.Id, new PlanCapacityRequest(0, 0, null, 0), -1, CancellationToken.None);
+        Func<Task> negativeRelease = () => sut.LockAndReleaseReservedStorageAsync(db, user.Id, -1, CancellationToken.None);
+
+        await negativeDelta.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await negativeReserve.Should().ThrowAsync<ArgumentOutOfRangeException>();
+        await negativeRelease.Should().ThrowAsync<ArgumentOutOfRangeException>();
     }
 }

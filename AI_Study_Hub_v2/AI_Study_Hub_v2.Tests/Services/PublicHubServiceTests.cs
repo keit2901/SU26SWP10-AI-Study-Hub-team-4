@@ -4,6 +4,7 @@ using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Supabase;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -437,6 +438,12 @@ public sealed class PublicHubServiceTests
                 sourceDocument.StoragePath,
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Storage unavailable."));
+        storage
+            .Setup(client => client.DeleteAsync(
+                DocumentService.BucketName,
+                It.IsAny<string>(),
+                CancellationToken.None))
+            .Returns(Task.CompletedTask);
         var sut = BuildSut(db, storage.Object);
 
         var act = () => sut.CopySharedFolderAsync(viewer.SupabaseUserId, source.Id);
@@ -494,7 +501,7 @@ public sealed class PublicHubServiceTests
         storage.Verify(client => client.DeleteAsync(
             DocumentService.BucketName,
             It.IsAny<string>(),
-            CancellationToken.None), Times.Once);
+            CancellationToken.None), Times.Exactly(2));
 
         db.ChangeTracker.Clear();
         db.Folders.Should().NotContain(folder => folder.UserId == viewer.Id);
@@ -503,14 +510,29 @@ public sealed class PublicHubServiceTests
     }
 
     private static FolderService BuildSut(Data.AppDbContext db, ISupabaseStorageClient? storage = null)
-        => new(
-            db,
-            NullLogger<FolderService>.Instance,
+    {
+        var services = new ServiceCollection();
+        services.AddSingleton(db);
+        var provider = services.BuildServiceProvider();
+        var guard = new Mock<IPlanCapacityGuard>();
+        guard.Setup(item => item.LockValidateAndReserveStorageAsync(
+                It.IsAny<Data.AppDbContext>(), It.IsAny<Guid>(), It.IsAny<PlanCapacityRequest>(), It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        guard.Setup(item => item.LockAndValidateAsync(
+                It.IsAny<Data.AppDbContext>(), It.IsAny<Guid>(), It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        guard.Setup(item => item.LockAndReleaseReservedStorageAsync(
+                It.IsAny<Data.AppDbContext>(), It.IsAny<Guid>(), It.IsAny<long>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var coordinator = new SharedFolderCopyCoordinator(
+            provider.GetRequiredService<IServiceScopeFactory>(),
             storage ?? Mock.Of<ISupabaseStorageClient>(),
-            Mock.Of<IStorageQuotaService>(),
-            Mock.Of<IStorageDeletionCoordinator>(),
-            new FolderShareAiModerator(),
-            Mock.Of<IPlanCapacityGuard>());
+            guard.Object,
+            NullLogger<SharedFolderCopyCoordinator>.Instance);
+        return new FolderService(db, NullLogger<FolderService>.Instance,
+            Mock.Of<IStorageDeletionCoordinator>(), new FolderShareAiModerator(),
+            guard.Object, coordinator);
+    }
 
     private static Data.AppDbContext CreateDbWithChunks()
     {
