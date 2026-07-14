@@ -13,12 +13,12 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture]
 public class FolderServiceTests
 {
-    private static FolderService BuildSut(AppDbContext db)
+    private static FolderService BuildSut(AppDbContext db, IPlanCapacityGuard? capacityGuard = null)
     {
         var storage = Mock.Of<ISupabaseStorageClient>();
         return new FolderService(db, NullLogger<FolderService>.Instance, storage, Mock.Of<IStorageQuotaService>(),
             new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance),
-            new FolderShareAiModerator());
+            new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>());
     }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
@@ -127,6 +127,67 @@ public class FolderServiceTests
         var ex = await act.Should().ThrowAsync<DocumentException>();
         ex.Which.StatusCode.Should().Be(409);
         ex.Which.Code.Should().Be("folder_name_taken");
+    }
+
+    [Test]
+    public async Task CreateAsync_FolderLimitFailure_DoesNotPersistFolder()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(
+                db,
+                me.Id,
+                It.Is<PlanCapacityRequest>(request => request.AdditionalFolderCount == 1),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new PlanException(402, "folder_count_exceeded", "limit"));
+        var sut = BuildSut(db, guard.Object);
+
+        var act = () => sut.CreateAsync(me.SupabaseUserId, new CreateFolderRequest { Name = "Blocked" });
+
+        var exception = await act.Should().ThrowAsync<PlanException>();
+        exception.Which.Code.Should().Be("folder_count_exceeded");
+        (await db.Folders.CountAsync()).Should().Be(0);
+    }
+
+    [Test]
+    public async Task CreateAsync_DuplicateNameAfterGuard_DoesNotPersistPartialFolder()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var existing = SeedFolder(db, me.Id, "Existing");
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(db, me.Id, It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut(db, guard.Object);
+
+        var act = () => sut.CreateAsync(me.SupabaseUserId, new CreateFolderRequest { Name = " existing " });
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.Code.Should().Be("folder_name_taken");
+        (await db.Folders.CountAsync()).Should().Be(1);
+        (await db.Folders.SingleAsync()).Id.Should().Be(existing.Id);
+    }
+
+    [Test]
+    public async Task CreateAsync_Success_UsesCapacityGuardAndCommitsFolder()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(
+                db,
+                me.Id,
+                It.Is<PlanCapacityRequest>(request => request == new PlanCapacityRequest(0, 1, null, 0)),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut(db, guard.Object);
+
+        var result = await sut.CreateAsync(me.SupabaseUserId, new CreateFolderRequest { Name = "Committed" });
+
+        result.Name.Should().Be("Committed");
+        (await db.Folders.SingleAsync()).Id.Should().Be(result.Id);
+        guard.VerifyAll();
     }
 
     [Test]
