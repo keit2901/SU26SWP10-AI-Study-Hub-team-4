@@ -18,6 +18,9 @@ Library_UI_UX_v2/
 **/Release/
 *.csproj.user
 
+# Build artifacts (CI/temp)
+.codex-build/
+
 # System files
 Thumbs.db
 .DS_Store
