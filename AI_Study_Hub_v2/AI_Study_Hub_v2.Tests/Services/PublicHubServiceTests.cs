@@ -138,7 +138,7 @@ public sealed class PublicHubServiceTests
                 false,
                 It.IsAny<CancellationToken>()))
             .ReturnsAsync((string _, string path, Stream _, string _, bool _, CancellationToken _) => path);
-        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, Mock.Of<IStorageQuotaService>());
+        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, Mock.Of<IStorageQuotaService>(), Mock.Of<IStorageDeletionCoordinator>());
 
         var saved = await sut.CopySharedFolderAsync(viewer.SupabaseUserId, folder.Id);
 
@@ -218,7 +218,7 @@ public sealed class PublicHubServiceTests
                 sourceDocument.StoragePath,
                 It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("Storage unavailable."));
-        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, Mock.Of<IStorageQuotaService>());
+        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, Mock.Of<IStorageQuotaService>(), Mock.Of<IStorageDeletionCoordinator>());
 
         var act = () => sut.CopySharedFolderAsync(viewer.SupabaseUserId, source.Id);
 
@@ -267,7 +267,7 @@ public sealed class PublicHubServiceTests
                 It.IsAny<string>(),
                 CancellationToken.None))
             .Returns(Task.CompletedTask);
-        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, Mock.Of<IStorageQuotaService>());
+        var sut = new FolderService(db, NullLogger<FolderService>.Instance, storage.Object, Mock.Of<IStorageQuotaService>(), Mock.Of<IStorageDeletionCoordinator>());
 
         var act = () => sut.CopySharedFolderAsync(viewer.SupabaseUserId, source.Id);
 
@@ -288,7 +288,8 @@ public sealed class PublicHubServiceTests
             db,
             NullLogger<FolderService>.Instance,
             Mock.Of<ISupabaseStorageClient>(),
-            Mock.Of<IStorageQuotaService>());
+            Mock.Of<IStorageQuotaService>(),
+            Mock.Of<IStorageDeletionCoordinator>());
 
     private static Data.AppDbContext CreateDbWithChunks()
     {

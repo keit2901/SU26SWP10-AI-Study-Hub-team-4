@@ -12,17 +12,20 @@ public sealed class FolderService : IFolderService
     private readonly ILogger<FolderService> _logger;
     private readonly ISupabaseStorageClient _storage;
     private readonly IStorageQuotaService _quota;
+    private readonly IStorageDeletionCoordinator _deletionCoordinator;
 
     public FolderService(
         AppDbContext db,
         ILogger<FolderService> logger,
         ISupabaseStorageClient storage,
-        IStorageQuotaService quota)
+        IStorageQuotaService quota,
+        IStorageDeletionCoordinator deletionCoordinator)
     {
         _db = db;
         _logger = logger;
         _storage = storage;
         _quota = quota;
+        _deletionCoordinator = deletionCoordinator;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -135,31 +138,10 @@ public sealed class FolderService : IFolderService
         CancellationToken cancellationToken = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
-        var folder = await _db.Folders
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
-            ?? throw new DocumentException(404, "folder_not_found",
-                "Folder does not exist or does not belong to the caller.");
-
-        var docIds = await _db.Documents
-            .Where(d => d.FolderId == folder.Id)
-            .Select(d => d.Id)
-            .ToListAsync(cancellationToken);
-
-        if (docIds.Count > 0)
+        if (!await _deletionCoordinator.DeleteOwnedFolderAsync(folderId, profile.Id, cancellationToken))
         {
-            var chunks = await _db.DocumentChunks
-                .Where(c => docIds.Contains(c.DocumentId))
-                .ExecuteDeleteAsync(cancellationToken);
-
-            await _db.Documents
-                .Where(d => d.FolderId == folder.Id)
-                .ExecuteDeleteAsync(cancellationToken);
+            throw new DocumentException(404, "folder_not_found", "Folder does not exist or does not belong to the caller.");
         }
-
-        _db.Folders.Remove(folder);
-        await _db.SaveChangesAsync(cancellationToken);
-        _logger.LogInformation("Folder deleted: id={Id} user={UserId} documents={DocCount}",
-            folder.Id, profile.Id, docIds.Count);
     }
 
     public async Task<FolderDto> ToggleFavoriteAsync(
