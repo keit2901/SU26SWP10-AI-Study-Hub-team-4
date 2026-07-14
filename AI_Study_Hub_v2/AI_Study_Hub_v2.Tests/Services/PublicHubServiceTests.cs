@@ -509,7 +509,8 @@ public sealed class PublicHubServiceTests
             storage ?? Mock.Of<ISupabaseStorageClient>(),
             Mock.Of<IStorageQuotaService>(),
             Mock.Of<IStorageDeletionCoordinator>(),
-            new FolderShareAiModerator());
+            new FolderShareAiModerator(),
+            Mock.Of<IPlanCapacityGuard>());
 
     private static Data.AppDbContext CreateDbWithChunks()
     {

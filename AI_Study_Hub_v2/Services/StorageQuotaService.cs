@@ -53,33 +53,6 @@ public sealed class StorageQuotaService : IStorageQuotaService
                     $"Attempted: {fileSizeBytes:N0} bytes.");
             }
 
-            // Check document count (atomic within SERIALIZABLE tx).
-            if (plan.MaxDocumentCount.HasValue)
-            {
-                var currentCount = await _db.Documents.CountAsync(d => d.UserId == userId, ct);
-                if (currentCount >= plan.MaxDocumentCount.Value)
-                {
-                    throw new PlanException(
-                        StatusCodes.Status402PaymentRequired,
-                        "document_count_exceeded",
-                        $"Document count exceeded. You have {currentCount} of {plan.MaxDocumentCount.Value} documents.");
-                }
-            }
-
-            // Check folder count.
-            if (plan.MaxFolderCount.HasValue)
-            {
-                var folderCount = await _db.Folders.CountAsync(f => f.UserId == userId, ct);
-                if (folderCount >= plan.MaxFolderCount.Value)
-                {
-                    throw new PlanException(
-                        StatusCodes.Status402PaymentRequired,
-                        "folder_count_exceeded",
-                        $"Folder limit ({plan.MaxFolderCount.Value}) reached. " +
-                        $"You have {folderCount} folder(s).");
-                }
-            }
-
             user.StorageUsedBytes += fileSizeBytes;
             await _db.SaveChangesAsync(ct);
             await tx.CommitAsync(ct);
@@ -87,7 +60,14 @@ public sealed class StorageQuotaService : IStorageQuotaService
         }
         catch
         {
-            await tx.RollbackAsync(ct);
+            try
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+            }
+            catch
+            {
+                // Preserve the original reservation failure; the transaction dispose path still runs.
+            }
             throw;
         }
     }

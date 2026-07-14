@@ -206,6 +206,32 @@ public class StorageQuotaServiceTests
     }
 
     [Test]
+    public async Task ReserveUploadAsync_AllowsLooseUploadWhenFolderLimitIsReached()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var supabaseUserId = Guid.NewGuid();
+        var user = SeedUser(db, supabaseUserId);
+        var plan = SeedPlan(db, "free", maxDocs: 2, maxFolders: 1, storageQuota: 1_000);
+        SeedUserPlan(db, user.Id, plan.Id);
+        db.Folders.Add(new Folder
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Name = "At limit",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        db.SaveChanges();
+        var sut = new StorageQuotaService(db, _planServiceMock.Object);
+
+        var reservation = await sut.ReserveUploadAsync(supabaseUserId, 100, CancellationToken.None);
+
+        reservation.UserId.Should().Be(user.Id);
+        reservation.ReservedBytes.Should().Be(100);
+        (await db.Users.FindAsync(user.Id))!.StorageUsedBytes.Should().Be(100);
+    }
+
+    [Test]
     public async Task ValidateFolderCountAsync_ExceedsLimit_ThrowsPlanException()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
