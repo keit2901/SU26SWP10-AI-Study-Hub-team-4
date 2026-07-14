@@ -3,6 +3,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -14,6 +15,7 @@ public sealed class FolderService : IFolderService
     private readonly IStorageQuotaService _quota;
     private readonly IStorageDeletionCoordinator _deletionCoordinator;
     private readonly IFolderShareAiModerator _shareAiModerator;
+    private readonly IPlanCapacityGuard _capacityGuard;
 
     public FolderService(
         AppDbContext db,
@@ -21,7 +23,8 @@ public sealed class FolderService : IFolderService
         ISupabaseStorageClient storage,
         IStorageQuotaService quota,
         IStorageDeletionCoordinator deletionCoordinator,
-        IFolderShareAiModerator shareAiModerator)
+        IFolderShareAiModerator shareAiModerator,
+        IPlanCapacityGuard capacityGuard)
     {
         _db = db;
         _logger = logger;
@@ -29,6 +32,7 @@ public sealed class FolderService : IFolderService
         _quota = quota;
         _deletionCoordinator = deletionCoordinator;
         _shareAiModerator = shareAiModerator;
+        _capacityGuard = capacityGuard;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -82,11 +86,6 @@ public sealed class FolderService : IFolderService
         var name = NormalizeName(request.Name);
         var description = NormalizeDescription(request.Description);
 
-        await EnsureUniqueNameAsync(profile.Id, name, excludeFolderId: null, cancellationToken);
-
-        // Enforce plan-level folder count limit.
-        await _quota.ValidateFolderCountAsync(supabaseUserId, cancellationToken);
-
         var now = DateTimeOffset.UtcNow;
         var folder = new Folder
         {
@@ -98,8 +97,27 @@ public sealed class FolderService : IFolderService
             UpdatedAt = now,
         };
 
-        _db.Folders.Add(folder);
-        await _db.SaveChangesAsync(cancellationToken);
+        await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+        try
+        {
+            await _capacityGuard.LockAndValidateAsync(_db, profile.Id, new PlanCapacityRequest(0, 1, null, 0), cancellationToken);
+            await EnsureUniqueNameAsync(profile.Id, name, excludeFolderId: null, cancellationToken);
+            _db.Folders.Add(folder);
+            await _db.SaveChangesAsync(cancellationToken);
+            await tx.CommitAsync(cancellationToken);
+        }
+        catch
+        {
+            try
+            {
+                await tx.RollbackAsync(CancellationToken.None);
+            }
+            catch (Exception rollbackException)
+            {
+                _logger.LogError(rollbackException, "Folder creation rollback failed.");
+            }
+            throw;
+        }
 
         _logger.LogInformation("Folder created: id={Id} user={UserId} name={Name}", folder.Id, profile.Id, folder.Name);
         return ToDto(folder, documentCount: 0);
