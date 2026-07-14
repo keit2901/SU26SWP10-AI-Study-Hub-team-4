@@ -16,9 +16,9 @@ public class FolderServiceTests
     private static FolderService BuildSut(AppDbContext db, IPlanCapacityGuard? capacityGuard = null)
     {
         var storage = Mock.Of<ISupabaseStorageClient>();
-        return new FolderService(db, NullLogger<FolderService>.Instance, storage, Mock.Of<IStorageQuotaService>(),
+        return new FolderService(db, NullLogger<FolderService>.Instance,
             new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance),
-            new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>());
+            new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<ISharedFolderCopyCoordinator>());
     }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
@@ -178,7 +178,7 @@ public class FolderServiceTests
         guard.Setup(g => g.LockAndValidateAsync(
                 db,
                 me.Id,
-                It.Is<PlanCapacityRequest>(request => request == new PlanCapacityRequest(0, 1, null, 0)),
+                It.Is<PlanCapacityRequest>(request => request == new PlanCapacityRequest(0, 1, null, 0, 0)),
                 It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
         var sut = BuildSut(db, guard.Object);
