@@ -1,7 +1,6 @@
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
-using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
 
@@ -11,28 +10,25 @@ public sealed class FolderService : IFolderService
 {
     private readonly AppDbContext _db;
     private readonly ILogger<FolderService> _logger;
-    private readonly ISupabaseStorageClient _storage;
-    private readonly IStorageQuotaService _quota;
     private readonly IStorageDeletionCoordinator _deletionCoordinator;
     private readonly IFolderShareAiModerator _shareAiModerator;
     private readonly IPlanCapacityGuard _capacityGuard;
+    private readonly ISharedFolderCopyCoordinator _copyCoordinator;
 
     public FolderService(
         AppDbContext db,
         ILogger<FolderService> logger,
-        ISupabaseStorageClient storage,
-        IStorageQuotaService quota,
         IStorageDeletionCoordinator deletionCoordinator,
         IFolderShareAiModerator shareAiModerator,
-        IPlanCapacityGuard capacityGuard)
+        IPlanCapacityGuard capacityGuard,
+        ISharedFolderCopyCoordinator copyCoordinator)
     {
         _db = db;
         _logger = logger;
-        _storage = storage;
-        _quota = quota;
         _deletionCoordinator = deletionCoordinator;
         _shareAiModerator = shareAiModerator;
         _capacityGuard = capacityGuard;
+        _copyCoordinator = copyCoordinator;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -545,216 +541,8 @@ public sealed class FolderService : IFolderService
         };
     }
 
-    public async Task<FolderDto> CopySharedFolderAsync(
-        Guid supabaseUserId,
-        Guid sharedFolderId,
-        CancellationToken cancellationToken = default)
-    {
-        var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
-
-        var source = await _db.Folders
-            .AsNoTracking()
-            .Include(f => f.Documents)
-            .FirstOrDefaultAsync(f => f.Id == sharedFolderId && f.ShareStatus == FolderStatus.Approved, cancellationToken)
-            ?? throw new DocumentException(404, "folder_not_found",
-                "Shared folder not found.");
-
-        var chunksByDocumentId = new Dictionary<Guid, List<DocumentChunk>>();
-        if (source.Documents.Count > 0
-            && _db.Model.FindEntityType(typeof(DocumentChunk)) is not null)
-        {
-            var documentIds = source.Documents.Select(document => document.Id).ToList();
-            var chunks = await _db.DocumentChunks
-                .AsNoTracking()
-                .Where(chunk => documentIds.Contains(chunk.DocumentId))
-                .OrderBy(chunk => chunk.DocumentId)
-                .ThenBy(chunk => chunk.ChunkIndex)
-                .ToListAsync(cancellationToken);
-            chunksByDocumentId = chunks
-                .GroupBy(chunk => chunk.DocumentId)
-                .ToDictionary(group => group.Key, group => group.ToList());
-        }
-
-        var now = DateTimeOffset.UtcNow;
-        var name = await BuildUniqueCopyNameAsync(
-            profile.Id,
-            source.Name,
-            cancellationToken);
-
-        var newFolder = new Folder
-        {
-            Id = Guid.NewGuid(),
-            UserId = profile.Id,
-            Name = name,
-            Description = source.Description,
-            Icon = source.Icon,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
-        _db.Folders.Add(newFolder);
-
-        var uploadedPaths = new List<string>();
-        try
-        {
-            foreach (var doc in source.Documents)
-            {
-                var documentId = Guid.NewGuid();
-                var slug = SanitizeFileName(doc.FileName);
-                var newStoragePath = $"users/{profile.Id:N}/{now.Year}/{documentId:N}-{slug}";
-
-                await CopyStorageFileAsync(doc.StoragePath, newStoragePath, cancellationToken);
-                uploadedPaths.Add(newStoragePath);
-
-                var newDoc = new Document
-                {
-                    Id = documentId,
-                    UserId = profile.Id,
-                    FolderId = newFolder.Id,
-                    FileName = doc.FileName,
-                    StoragePath = newStoragePath,
-                    FileSizeBytes = doc.FileSizeBytes,
-                    MimeType = doc.MimeType,
-                    SubjectCode = doc.SubjectCode,
-                    Semester = doc.Semester,
-                    PageCount = doc.PageCount,
-                    Status = doc.Status,
-                    ErrorMessage = doc.ErrorMessage,
-                    CreatedAt = now,
-                    UpdatedAt = now,
-                };
-                _db.Documents.Add(newDoc);
-
-                foreach (var chunk in chunksByDocumentId.GetValueOrDefault(doc.Id) ?? [])
-                {
-                    _db.DocumentChunks.Add(new DocumentChunk
-                    {
-                        Id = Guid.NewGuid(),
-                        DocumentId = documentId,
-                        ChunkIndex = chunk.ChunkIndex,
-                        PageNumber = chunk.PageNumber,
-                        Content = chunk.Content,
-                        TokenCount = chunk.TokenCount,
-                        Embedding = chunk.Embedding,
-                        CreatedAt = now,
-                    });
-                }
-            }
-
-            await _db.SaveChangesAsync(cancellationToken);
-        }
-        catch (Exception ex)
-        {
-            foreach (var path in uploadedPaths)
-            {
-                try
-                {
-                    await _storage.DeleteAsync(DocumentService.BucketName, path, CancellationToken.None);
-                }
-                catch (Exception cleanupException)
-                {
-                    _logger.LogWarning(
-                        cleanupException,
-                        "Failed to clean copied storage object {StoragePath}.",
-                        path);
-                }
-            }
-
-            if (ex is OperationCanceledException && cancellationToken.IsCancellationRequested)
-            {
-                throw;
-            }
-
-            _logger.LogError(ex, "Failed to save shared folder {FolderId} for user {UserId}.", source.Id, profile.Id);
-            if (ex is DocumentException)
-            {
-                throw;
-            }
-            throw new DocumentException(502, "folder_copy_failed",
-                "The shared folder could not be copied safely. No library record was created.");
-        }
-
-        _logger.LogInformation("Folder copied: sharedFolderId={SourceId} newFolderId={NewId} user={UserId} name={Name} documents={DocCount}",
-            sharedFolderId, newFolder.Id, profile.Id, newFolder.Name, source.Documents.Count);
-
-        return new FolderDto
-        {
-            Id = newFolder.Id,
-            Name = newFolder.Name,
-            Description = newFolder.Description,
-            DocumentCount = source.Documents.Count,
-            IsFavorite = false,
-            ShareStatus = FolderStatus.None,
-            Icon = source.Icon,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
-    }
-
-    private async Task CopyStorageFileAsync(string sourcePath, string destPath, CancellationToken ct)
-    {
-        var (stream, contentType) = await _storage.DownloadFileAsync(
-            DocumentService.BucketName,
-            sourcePath,
-            ct);
-        await using (stream)
-        {
-            if (stream.CanSeek)
-            {
-                stream.Position = 0;
-            }
-            await _storage.UploadAsync(
-                DocumentService.BucketName,
-                destPath,
-                stream,
-                contentType,
-                upsert: false,
-                ct);
-        }
-    }
-
-    private async Task<string> BuildUniqueCopyNameAsync(
-        Guid userId,
-        string sourceName,
-        CancellationToken cancellationToken)
-    {
-        var existingNames = await _db.Folders
-            .AsNoTracking()
-            .Where(folder => folder.UserId == userId)
-            .Select(folder => folder.Name)
-            .ToListAsync(cancellationToken);
-        var used = existingNames.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        if (!used.Contains(sourceName))
-        {
-            return sourceName;
-        }
-
-        for (var suffix = 1; suffix < 10_000; suffix++)
-        {
-            var suffixText = $" ({suffix})";
-            var maxBaseLength = Math.Max(1, 100 - suffixText.Length);
-            var baseName = sourceName.Length > maxBaseLength
-                ? sourceName[..maxBaseLength]
-                : sourceName;
-            var candidate = baseName + suffixText;
-            if (!used.Contains(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        throw new DocumentException(409, "folder_name_conflict",
-            "Could not create a unique name for the saved folder.");
-    }
-
-    private static string SanitizeFileName(string fileName)
-    {
-        var trimmed = Path.GetFileName(fileName).Trim();
-        if (string.IsNullOrEmpty(trimmed))
-            return "upload.bin";
-        var safe = new string(trimmed.Select(c =>
-            char.IsLetterOrDigit(c) || c is '.' or '_' or '-' ? c : '_').ToArray());
-        return safe.Length > 80 ? safe[..80] : safe;
-    }
+    public Task<FolderDto> CopySharedFolderAsync(Guid supabaseUserId, Guid sharedFolderId, CancellationToken cancellationToken = default)
+        => _copyCoordinator.CopyAsync(supabaseUserId, sharedFolderId, cancellationToken);
 
     private async Task<User> ResolveProfileAsync(Guid supabaseUserId, CancellationToken cancellationToken)
     {
