@@ -10,9 +10,9 @@ namespace AI_Study_Hub_v2.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropIndex(
-                name: "IX_payment_transactions_txn_ref",
-                table: "payment_transactions");
+            // Actual index name in local DB follows PG lowercase convention.
+            migrationBuilder.Sql(
+                "DROP INDEX IF EXISTS \"ix_payment_transactions_txn_ref\"");
 
             migrationBuilder.CreateIndex(
                 name: "IX_payment_transactions_txn_ref_user_id",
