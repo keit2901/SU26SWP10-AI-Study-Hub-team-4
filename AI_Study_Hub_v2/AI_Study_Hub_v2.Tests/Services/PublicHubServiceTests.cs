@@ -195,6 +195,40 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
+    public async Task RequestShareAsync_HarmAwarenessContent_IsAutoApproved()
+    {
+        await using var db = CreateDbWithChunks();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        folder.Description = "Cybersecurity awareness notes for students.";
+        var document = CreateDocument(owner.Id, folder.Id, "malware-awareness.docx");
+        document.SubjectCode = string.Empty;
+        document.Semester = string.Empty;
+        document.MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+        db.Documents.Add(document);
+        db.DocumentChunks.Add(new DocumentChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = document.Id,
+            ChunkIndex = 0,
+            PageNumber = 1,
+            Content = "This report explains the harmful impact of malware, phishing, and exam leaks, plus prevention steps for students.",
+            TokenCount = 18,
+            Embedding = new Vector(Enumerable.Repeat(0.1f, DocumentChunk.EmbeddingDimension).ToArray()),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        result.ShareStatus.Should().Be(FolderStatus.Approved);
+        result.AiReviewFailureCount.Should().Be(0);
+        result.RequiresHumanReview.Should().BeFalse();
+        result.AiReviewReason.Should().Contain("approved");
+    }
+
+    [Test]
     public async Task RequestShareAsync_SecondAiFailure_UnlocksHumanReview()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
