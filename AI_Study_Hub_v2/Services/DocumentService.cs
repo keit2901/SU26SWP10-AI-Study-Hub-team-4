@@ -52,19 +52,22 @@ public sealed class DocumentService : IDocumentService
     private readonly IDocumentIngestionService? _ingestion;
     private readonly IStorageQuotaService _quota;
     private readonly ILogger<DocumentService> _logger;
+    private readonly IStorageDeletionCoordinator _deletionCoordinator;
 
     public DocumentService(
         AppDbContext db,
         ISupabaseStorageClient storage,
         IStorageQuotaService quota,
         ILogger<DocumentService> logger,
-        IDocumentIngestionService? ingestion = null)
+        IDocumentIngestionService? ingestion,
+        IStorageDeletionCoordinator deletionCoordinator)
     {
         _db = db;
         _storage = storage;
         _quota = quota;
         _ingestion = ingestion;
         _logger = logger;
+        _deletionCoordinator = deletionCoordinator;
     }
 
     public async Task<DocumentDto> UploadAsync(
@@ -420,24 +423,10 @@ public sealed class DocumentService : IDocumentService
             ?? throw new DocumentException(404, "user_not_found",
                 "Authenticated user has no profile in public.users.");
 
-        var doc = await _db.Documents
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
-            ?? throw new DocumentException(404, "document_not_found",
-                "Document does not exist or does not belong to the caller.");
-
-        var pathToDelete = doc.StoragePath;
-        var fileSizeBytes = doc.FileSizeBytes;
-
-        // Remove the DB row first. If this fails, nothing else has changed.
-        _db.Documents.Remove(doc);
-        await _db.SaveChangesAsync(cancellationToken);
-
-        // Delete from storage. If this fails, the DB row is already gone (safe re-upload).
-        await _storage.DeleteAsync(BucketName, pathToDelete, cancellationToken);
-
-        // Record the storage decrease against the user's quota.
-        // Must come after DB remove to avoid double-decrement on retry.
-        await _quota.RecordDeleteAsync(supabaseUserId, fileSizeBytes, cancellationToken);
+        if (!await _deletionCoordinator.DeleteOwnedDocumentAsync(documentId, profile.Id, cancellationToken))
+        {
+            throw new DocumentException(404, "document_not_found", "Document does not exist or does not belong to the caller.");
+        }
     }
 
     public async Task<DocumentContentDto> GetContentAsync(

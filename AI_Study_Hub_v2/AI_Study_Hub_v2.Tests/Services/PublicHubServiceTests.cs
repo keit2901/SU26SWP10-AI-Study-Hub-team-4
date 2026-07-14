@@ -508,6 +508,7 @@ public sealed class PublicHubServiceTests
             NullLogger<FolderService>.Instance,
             storage ?? Mock.Of<ISupabaseStorageClient>(),
             Mock.Of<IStorageQuotaService>(),
+            Mock.Of<IStorageDeletionCoordinator>(),
             new FolderShareAiModerator());
 
     private static Data.AppDbContext CreateDbWithChunks()
