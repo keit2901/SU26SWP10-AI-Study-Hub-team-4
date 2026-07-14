@@ -5,6 +5,7 @@ using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 using Microsoft.Extensions.Options;
 
 namespace AI_Study_Hub_v2.Services;
@@ -53,6 +54,7 @@ public sealed class DocumentService : IDocumentService
     private readonly IStorageQuotaService _quota;
     private readonly ILogger<DocumentService> _logger;
     private readonly IStorageDeletionCoordinator _deletionCoordinator;
+    private readonly IPlanCapacityGuard _capacityGuard;
 
     public DocumentService(
         AppDbContext db,
@@ -60,7 +62,8 @@ public sealed class DocumentService : IDocumentService
         IStorageQuotaService quota,
         ILogger<DocumentService> logger,
         IDocumentIngestionService? ingestion,
-        IStorageDeletionCoordinator deletionCoordinator)
+        IStorageDeletionCoordinator deletionCoordinator,
+        IPlanCapacityGuard capacityGuard)
     {
         _db = db;
         _storage = storage;
@@ -68,6 +71,7 @@ public sealed class DocumentService : IDocumentService
         _ingestion = ingestion;
         _logger = logger;
         _deletionCoordinator = deletionCoordinator;
+        _capacityGuard = capacityGuard;
     }
 
     public async Task<DocumentDto> UploadAsync(
@@ -96,10 +100,7 @@ public sealed class DocumentService : IDocumentService
                 "User account is inactive and cannot upload documents.");
         }
 
-        // 2. Enforce plan-level document count limit.
-        await _quota.ValidateDocumentCountAsync(supabaseUserId, cancellationToken);
-
-        // 3. Validate file size + MIME against the bucket policy.
+        // 2. Validate file size + MIME against the bucket policy.
         if (fileSizeBytes <= 0)
         {
             throw new DocumentException(400, "empty_file",
@@ -118,7 +119,9 @@ public sealed class DocumentService : IDocumentService
                 $"Content type '{contentType}' is not allowed. Accepted: PDF, DOC, DOCX, PPT, PPTX.");
         }
 
-        // 4. If folder specified, verify it belongs to the caller, check capacity and duplicates.
+        // 3. Fast-fail known plan/folder violations before reserving bytes or uploading.
+        // These checks are advisory: the serializable finalization below repeats them.
+        await _quota.ValidateDocumentCountAsync(supabaseUserId, cancellationToken);
         if (request.FolderId.HasValue)
         {
             var folderOwned = await _db.Folders
@@ -130,27 +133,29 @@ public sealed class DocumentService : IDocumentService
                     "Folder does not exist or does not belong to the caller.");
             }
 
-            var docCount = await _db.Documents
-                .CountAsync(d => d.FolderId == request.FolderId.Value, cancellationToken);
-            if (docCount >= MaxDocumentsPerFolder)
+            var normalizedFileName = fileName.Trim();
+            var currentFolderDocumentCount = await _db.Documents
+                .CountAsync(document => document.FolderId == request.FolderId.Value, cancellationToken);
+            if (currentFolderDocumentCount >= MaxDocumentsPerFolder)
             {
                 throw new DocumentException(409, "folder_full",
-                    $"This folder already has {docCount} document(s), which is the maximum ({MaxDocumentsPerFolder}).");
+                    $"This folder already has {currentFolderDocumentCount} document(s), which is the maximum ({MaxDocumentsPerFolder}).");
             }
 
-            var fileNameNormalized = fileName.Trim();
-            var duplicate = await _db.Documents
-                .AnyAsync(d => d.FolderId == request.FolderId.Value
-                    && d.FileName.ToLower() == fileNameNormalized.ToLower(), cancellationToken);
-            if (duplicate)
+            var duplicateFileName = await _db.Documents.AnyAsync(document =>
+                document.FolderId == request.FolderId.Value
+                && document.FileName.ToLower() == normalizedFileName.ToLower(), cancellationToken);
+            if (duplicateFileName)
             {
                 throw new DocumentException(409, "duplicate_file",
-                    $"A file named \"{fileNameNormalized}\" already exists in this folder.");
+                    $"A file named \"{normalizedFileName}\" already exists in this folder.");
             }
         }
 
         // 5. Reserve quota before uploading to storage.
         StorageReservation? reservation = null;
+        var storageUploadAttempted = false;
+        var metadataCommitted = false;
         try
         {
             reservation = await _quota.ReserveUploadAsync(supabaseUserId, fileSizeBytes, cancellationToken);
@@ -173,6 +178,7 @@ public sealed class DocumentService : IDocumentService
             // a best-effort cleanup so we don't leak orphan objects.
             try
             {
+                storageUploadAttempted = true;
                 await _storage.UploadAsync(BucketName, storagePath, content, canonicalContentType,
                     upsert: false, cancellationToken: cancellationToken);
             }
@@ -185,7 +191,7 @@ public sealed class DocumentService : IDocumentService
                     "Document storage is unavailable. Start Supabase Storage and retry the upload.");
             }
 
-            // 8. Insert metadata row. Status = Ready (file stored OK; chunking happens in D6).
+            // 8. Atomically validate capacity and insert metadata after storage upload.
             var now = DateTimeOffset.UtcNow;
             var doc = new Document
             {
@@ -205,36 +211,43 @@ public sealed class DocumentService : IDocumentService
                 UpdatedAt = now,
             };
 
-            if (request.FolderId.HasValue)
-            {
-                var folder = await _db.Folders.FindAsync(new object[] { request.FolderId.Value }, cancellationToken);
-                if (folder is not null)
-                {
-                    folder.UpdatedAt = now;
-                }
-            }
-
             try
             {
-                _db.Documents.Add(doc);
-                await _db.SaveChangesAsync(cancellationToken);
+                await using var tx = await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken);
+                try
+                {
+                    await _capacityGuard.LockAndValidateAsync(_db, profile.Id,
+                        new PlanCapacityRequest(1, 0, request.FolderId, request.FolderId.HasValue ? 1 : 0), cancellationToken);
+                    if (request.FolderId.HasValue)
+                    {
+                        var folder = await _db.Folders.SingleOrDefaultAsync(f => f.Id == request.FolderId.Value && f.UserId == profile.Id, cancellationToken)
+                            ?? throw new DocumentException(404, "folder_not_found", "Folder does not exist or does not belong to the caller.");
+                        var folderDocumentCount = await _db.Documents
+                            .CountAsync(document => document.FolderId == folder.Id, cancellationToken);
+                        if (folderDocumentCount >= MaxDocumentsPerFolder)
+                        {
+                            throw new DocumentException(409, "folder_full",
+                                $"This folder already has {folderDocumentCount} document(s), which is the maximum ({MaxDocumentsPerFolder}).");
+                        }
+                        if (await _db.Documents.AnyAsync(d => d.FolderId == folder.Id && d.FileName.ToLower() == doc.FileName.ToLower(), cancellationToken))
+                            throw new DocumentException(409, "duplicate_file", $"A file named \"{doc.FileName}\" already exists in this folder.");
+                        folder.UpdatedAt = now;
+                    }
+                    _db.Documents.Add(doc);
+                    await _db.SaveChangesAsync(cancellationToken);
+                    await tx.CommitAsync(cancellationToken);
+                    metadataCommitted = true;
+                }
+                catch
+                {
+                    try { await tx.RollbackAsync(CancellationToken.None); } catch (Exception rollbackException) { _logger.LogError(rollbackException, "Upload metadata rollback failed."); }
+                    throw;
+                }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex,
-                    "Document row insert failed after storage upload succeeded. Cleaning up object {Path}.",
-                    storagePath);
-                try
-                {
-                    await _storage.DeleteAsync(BucketName, storagePath, CancellationToken.None);
-                }
-                catch (Exception cleanupEx)
-                {
-                    _logger.LogError(cleanupEx,
-                        "Storage cleanup also failed for {Path}. Manual cleanup required.", storagePath);
-                }
-                throw new DocumentException(500, "upload_persist_failed",
-                    "Failed to persist document metadata after storage upload.");
+                if (ex is PlanException or DocumentException) throw;
+                throw new DocumentException(500, "upload_persist_failed", "Failed to persist document metadata after storage upload.");
             }
 
             // Storage upload + metadata insert both succeeded — confirm the quota reservation.
@@ -267,8 +280,48 @@ public sealed class DocumentService : IDocumentService
         }
         catch
         {
-            await _quota.ReleaseReservationAsync(reservation, cancellationToken);
+            if (!metadataCommitted)
+            {
+                await CompensateFailedUploadAsync(reservation, storageUploadAttempted, storagePath);
+            }
             throw;
+        }
+    }
+
+    private async Task CompensateFailedUploadAsync(
+        StorageReservation? reservation,
+        bool storageUploadAttempted,
+        string storagePath)
+    {
+        if (reservation is null)
+        {
+            return;
+        }
+
+        if (storageUploadAttempted)
+        {
+            try
+            {
+                // Delete is intentionally attempted even when UploadAsync threw: a timeout
+                // may occur after Supabase has accepted the object. Storage treats 404 as success.
+                await _storage.DeleteAsync(BucketName, storagePath, CancellationToken.None);
+            }
+            catch (Exception cleanupException)
+            {
+                _logger.LogError(cleanupException,
+                    "Storage cleanup failed after an attempted upload; reservation retained for manual reconciliation.");
+                return;
+            }
+        }
+
+        try
+        {
+            await _quota.ReleaseReservationAsync(reservation, CancellationToken.None);
+        }
+        catch (Exception releaseException)
+        {
+            _logger.LogError(releaseException,
+                "Storage reservation release failed after upload failure; reservation retained for manual reconciliation.");
         }
     }
 

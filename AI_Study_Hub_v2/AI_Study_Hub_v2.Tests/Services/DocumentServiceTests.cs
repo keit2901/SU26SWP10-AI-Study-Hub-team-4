@@ -2,6 +2,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Supabase;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
@@ -23,9 +24,26 @@ public class DocumentServiceTests
     // helpers
     // -------------------------------------------------------------------------
 
-    private static DocumentService BuildSut(AppDbContext db, ISupabaseStorageClient storage) =>
-        new(db, storage, Mock.Of<IStorageQuotaService>(), NullLogger<DocumentService>.Instance, null,
-            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance));
+    private static DocumentService BuildSut(
+        AppDbContext db,
+        ISupabaseStorageClient storage,
+        IPlanCapacityGuard? capacityGuard = null,
+        IStorageQuotaService? quota = null,
+        IDocumentIngestionService? ingestion = null) =>
+        new(db, storage, quota ?? Mock.Of<IStorageQuotaService>(), NullLogger<DocumentService>.Instance, ingestion,
+            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance), capacityGuard ?? Mock.Of<IPlanCapacityGuard>());
+
+    private static Mock<IStorageQuotaService> CreateQuota(StorageReservation reservation)
+    {
+        var quota = new Mock<IStorageQuotaService>(MockBehavior.Strict);
+        quota.Setup(q => q.ReserveUploadAsync(It.IsAny<Guid>(), reservation.ReservedBytes, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(reservation);
+        quota.Setup(q => q.ValidateDocumentCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        quota.Setup(q => q.ConfirmReservationAsync(reservation, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        return quota;
+    }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, Guid? profileId = null, bool isActive = true)
     {
@@ -215,7 +233,12 @@ public class DocumentServiceTests
         using var db = TestDb.CreateInMemoryWithDocuments();
         var profile = SeedActiveStudent(db, isActive: false);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
-        var sut = BuildSut(db, storage.Object);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>())).ReturnsAsync("ok");
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None)).Returns(Task.CompletedTask);
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(db, profile.Id, It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DocumentException(409, "folder_full", "full"));
+        var sut = BuildSut(db, storage.Object, guard.Object);
 
         var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
             fileName: "x.pdf", contentType: "application/pdf",
@@ -232,6 +255,8 @@ public class DocumentServiceTests
         using var db = TestDb.CreateInMemoryWithDocuments();
         var profile = SeedActiveStudent(db);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>())).ReturnsAsync("ok");
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None)).Returns(Task.CompletedTask);
         var sut = BuildSut(db, storage.Object);
 
         var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
@@ -249,7 +274,12 @@ public class DocumentServiceTests
         using var db = TestDb.CreateInMemoryWithDocuments();
         var profile = SeedActiveStudent(db);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
-        var sut = BuildSut(db, storage.Object);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>())).ReturnsAsync("ok");
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None)).Returns(Task.CompletedTask);
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(db, profile.Id, It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new DocumentException(409, "folder_full", "full"));
+        var sut = BuildSut(db, storage.Object, guard.Object);
 
         var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
             fileName: "big.pdf", contentType: "application/pdf",
@@ -270,6 +300,8 @@ public class DocumentServiceTests
         using var db = TestDb.CreateInMemoryWithDocuments();
         var profile = SeedActiveStudent(db);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>())).ReturnsAsync("ok");
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None)).Returns(Task.CompletedTask);
         var sut = BuildSut(db, storage.Object);
 
         var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(),
@@ -428,13 +460,13 @@ public class DocumentServiceTests
         var sut = BuildSut(db, storage.Object);
 
         var act = () => sut.UploadAsync(profile.SupabaseUserId,
-            UploadReq(folderId: folder.Id),
-            fileName: "overflow.pdf", contentType: "application/pdf",
+            UploadReq(folderId: folder.Id), fileName: "overflow.pdf", contentType: "application/pdf",
             fileSizeBytes: 100, content: Stream(100));
 
         var ex = await act.Should().ThrowAsync<DocumentException>();
         ex.Which.StatusCode.Should().Be(409);
         ex.Which.Code.Should().Be("folder_full");
+        storage.VerifyNoOtherCalls();
     }
 
     [Test]
@@ -456,6 +488,7 @@ public class DocumentServiceTests
         var ex = await act.Should().ThrowAsync<DocumentException>();
         ex.Which.StatusCode.Should().Be(409);
         ex.Which.Code.Should().Be("duplicate_file");
+        storage.VerifyNoOtherCalls();
     }
 
     [Test]
@@ -498,6 +531,247 @@ public class DocumentServiceTests
 
         await act.Should().ThrowAsync<InvalidOperationException>();
         (await db.Documents.CountAsync()).Should().Be(0);
+    }
+
+    [Test]
+    public async Task UploadAsync_TotalDocumentLimitAfterStorageUpload_CompensatesAndPreservesPlanException()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        var storageUploaded = false;
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .Callback(() => storageUploaded = true)
+            .ReturnsAsync("uploaded");
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        var expected = new PlanException(402, "document_count_exceeded", "limit");
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(db, profile.Id, It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .Callback(() => storageUploaded.Should().BeTrue("capacity is finalized only after the object is uploaded"))
+            .ThrowsAsync(expected);
+        quota.Setup(q => q.ReleaseReservationAsync(reservation, CancellationToken.None)).Returns(Task.CompletedTask);
+        var sut = BuildSut(db, storage.Object, guard.Object, quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "limit.pdf", "application/pdf", 100, Stream(100));
+
+        var exception = await act.Should().ThrowAsync<PlanException>();
+        exception.Which.Should().BeSameAs(expected);
+        (await db.Documents.CountAsync()).Should().Be(0);
+        storage.Verify(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None), Times.Once);
+        quota.Verify(q => q.ReleaseReservationAsync(reservation, CancellationToken.None), Times.Once);
+    }
+
+    [Test]
+    public async Task UploadAsync_DuplicateAfterStorageUpload_CompensatesReservation()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var folder = SeedFolder(db, profile.Id);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        quota.Setup(q => q.ReleaseReservationAsync(reservation, CancellationToken.None)).Returns(Task.CompletedTask);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("uploaded");
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(db, profile.Id, It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .Callback(() => SeedDocument(db, profile.Id, "report.pdf", folderId: folder.Id))
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut(db, storage.Object, guard.Object, quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(folderId: folder.Id), "REPORT.pdf", "application/pdf", 100, Stream(100));
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.Code.Should().Be("duplicate_file");
+        storage.Verify(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None), Times.Once);
+        quota.Verify(q => q.ReleaseReservationAsync(reservation, CancellationToken.None), Times.Once);
+    }
+
+    [Test]
+    public async Task UploadAsync_KnownDocumentLimit_FailsBeforeStorageUpload()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var expected = new PlanException(402, "document_count_exceeded", "limit");
+        var quota = new Mock<IStorageQuotaService>(MockBehavior.Strict);
+        quota.Setup(q => q.ValidateDocumentCountAsync(profile.SupabaseUserId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(expected);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        var sut = BuildSut(db, storage.Object, quota: quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "limited.pdf", "application/pdf", 100, Stream(100));
+
+        var exception = await act.Should().ThrowAsync<PlanException>();
+        exception.Which.Should().BeSameAs(expected);
+        storage.VerifyNoOtherCalls();
+        quota.Verify(q => q.ReserveUploadAsync(It.IsAny<Guid>(), It.IsAny<long>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task UploadAsync_CleanupFailureAfterFinalizationFailure_RetainsReservation()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("uploaded");
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None))
+            .ThrowsAsync(new HttpRequestException("cleanup unavailable"));
+        var expected = new DocumentException(409, "folder_full", "full");
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(db, profile.Id, It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(expected);
+        var sut = BuildSut(db, storage.Object, guard.Object, quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "cleanup.pdf", "application/pdf", 100, Stream(100));
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.Should().BeSameAs(expected);
+        quota.Verify(q => q.ReleaseReservationAsync(It.IsAny<StorageReservation>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task UploadAsync_UnexpectedFinalizationFailure_MapsToUploadPersistFailedAndCompensates()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        quota.Setup(q => q.ReleaseReservationAsync(reservation, CancellationToken.None)).Returns(Task.CompletedTask);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("uploaded");
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(db, profile.Id, It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("persistence failed"));
+        var sut = BuildSut(db, storage.Object, guard.Object, quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "persist.pdf", "application/pdf", 100, Stream(100));
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(500);
+        exception.Which.Code.Should().Be("upload_persist_failed");
+        quota.Verify(q => q.ReleaseReservationAsync(reservation, CancellationToken.None), Times.Once);
+    }
+
+    [Test]
+    public async Task UploadAsync_StorageUploadFailure_AttemptsDeleteThenReleasesReservation()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        quota.Setup(q => q.ReleaseReservationAsync(reservation, CancellationToken.None)).Returns(Task.CompletedTask);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("storage down"));
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut(db, storage.Object, quota: quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "failed.pdf", "application/pdf", 100, Stream(100));
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        quota.Verify(q => q.ReleaseReservationAsync(reservation, CancellationToken.None), Times.Once);
+        storage.Verify(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None), Times.Once);
+        (await db.Documents.CountAsync()).Should().Be(0);
+    }
+
+    [Test]
+    public async Task UploadAsync_StorageUploadFailureAndDeleteFailure_RetainsReservation()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("upload response lost"));
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None))
+            .ThrowsAsync(new HttpRequestException("cleanup unavailable"));
+        var sut = BuildSut(db, storage.Object, quota: quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "uncertain.pdf", "application/pdf", 100, Stream(100));
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        storage.Verify(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None), Times.Once);
+        quota.Verify(q => q.ReleaseReservationAsync(It.IsAny<StorageReservation>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task UploadAsync_CancelledAfterUploadAttempt_UsesNonCancelledDeleteToken()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        quota.Setup(q => q.ReleaseReservationAsync(reservation, CancellationToken.None)).Returns(Task.CompletedTask);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException("upload cancelled"));
+        storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None))
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut(db, storage.Object, quota: quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "cancelled.pdf", "application/pdf", 100, Stream(100));
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        storage.Verify(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), CancellationToken.None), Times.Once);
+        quota.Verify(q => q.ReleaseReservationAsync(reservation, CancellationToken.None), Times.Once);
+    }
+
+    [Test]
+    public async Task UploadAsync_ConfirmationFailureAfterMetadataCommit_DoesNotCompensate()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        quota.Setup(q => q.ConfirmReservationAsync(reservation, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("confirmation unavailable"));
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("uploaded");
+        var sut = BuildSut(db, storage.Object, quota: quota.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "confirmed.pdf", "application/pdf", 100, Stream(100));
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        (await db.Documents.CountAsync()).Should().Be(1);
+        quota.Verify(q => q.ReleaseReservationAsync(It.IsAny<StorageReservation>(), It.IsAny<CancellationToken>()), Times.Never);
+        storage.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task UploadAsync_IngestionFailureAfterMetadataCommit_DoesNotCompensate()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var profile = SeedActiveStudent(db);
+        var reservation = new StorageReservation(profile.Id, 100, DateTimeOffset.UtcNow);
+        var quota = CreateQuota(reservation);
+        var ingestion = new Mock<IDocumentIngestionService>(MockBehavior.Strict);
+        ingestion.Setup(i => i.IngestAsync(It.IsAny<Guid>(), profile.SupabaseUserId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("ingestion unavailable"));
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(s => s.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("uploaded");
+        var sut = BuildSut(db, storage.Object, quota: quota.Object, ingestion: ingestion.Object);
+
+        var act = () => sut.UploadAsync(profile.SupabaseUserId, UploadReq(), "ingest.pdf", "application/pdf", 100, Stream(100));
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        (await db.Documents.CountAsync()).Should().Be(1);
+        quota.Verify(q => q.ReleaseReservationAsync(It.IsAny<StorageReservation>(), It.IsAny<CancellationToken>()), Times.Never);
+        storage.Verify(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()), Times.Never);
     }
 
     // -------------------------------------------------------------------------
