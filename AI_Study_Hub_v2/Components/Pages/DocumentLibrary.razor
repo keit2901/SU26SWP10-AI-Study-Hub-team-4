@@ -45,13 +45,31 @@
     .stat-value { font-size: 28px !important; font-weight: 800 !important; color: #1e293b; line-height: 1.1; margin: 0; }
     .stat-label { font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; color: #94a3b8; margin: 0; }
     .folders-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin: 24px 32px; }
-    .folders-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .folders-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
     .folders-header-left { display: flex; align-items: center; gap: 8px; }
     .folders-header-title { font-size: 14px !important; font-weight: 700 !important; color: #1e293b; }
-    .folders-header-right { display: flex; align-items: center; gap: 12px; }
-    .folder-dots { display: flex; align-items: center; gap: 6px; }
-    .folder-dot { width: 6px; height: 6px; border-radius: 3px; background: #e2e8f0; cursor: pointer; transition: all 0.2s; border: none; padding: 0; }
-    .folder-dot-active { width: 20px; height: 6px; border-radius: 3px; background: #6366f1; cursor: pointer; transition: all 0.2s; border: none; padding: 0; }
+    .folders-header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .folder-search-wrapper { display: flex; align-items: center; gap: 8px; min-width: 220px; max-width: 280px; padding: 0 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+    .folder-search-icon { color: #94a3b8; flex-shrink: 0; }
+    .folder-search-input { flex: 1; border: none; outline: none; background: transparent; padding: 10px 0; font-size: 12px; color: #1e293b; }
+    .folder-search-input::placeholder { color: #94a3b8; }
+    .folder-pagination-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; flex-wrap: wrap; }
+    .folder-pagination-info { font-size: 12px; color: #64748b; }
+    .folder-pagination-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    .folder-pagination-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .folder-pagination-jump { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .folder-page-jump-input { width: 86px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; padding: 7px 10px; font-size: 12px; outline: none; }
+    .folder-page-jump-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+    .folder-page-jump-btn { border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #475569; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .folder-page-jump-btn:hover:not(:disabled) { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .folder-page-jump-btn:disabled { opacity: 0.45; cursor: default; }
+    .folder-page-nav-btn { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #475569; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .folder-page-nav-btn:disabled { opacity: 0.4; cursor: default; }
+    .folder-page-nav-btn:hover:not(:disabled) { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .folder-page-number-btn { min-width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #475569; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .folder-page-number-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .folder-page-number-btn.active { border-color: #6366f1; background: #6366f1; color: #fff; }
+    .folder-page-ellipsis { color: #94a3b8; font-size: 12px; font-weight: 700; padding: 0 2px; }
     .folder-card { transition: all 0.15s; cursor: pointer; position: relative; border-radius: 12px !important; background: #fff !important; border: 1px solid #e2e8f0 !important; padding: 16px; }
     .folder-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
     .folder-card-more { position: absolute; top: 8px; right: 8px; color: #94a3b8; cursor: pointer; }
@@ -199,20 +217,20 @@ else
                         </MudListItem>
                     }
                 </MudList>
-                @if (_folders.Count > SidebarFolderPageSize)
+                @if (_filteredLibraryFolders.Count > SidebarFolderPageSize)
                 {
                     <div class="sidebar-folder-pagination">
                         <button type="button"
                                 class="sidebar-page-btn"
-                                disabled="@(_sidebarFolderPage <= 1)"
-                                @onclick="@(() => _sidebarFolderPage = Math.Max(1, _sidebarFolderPage - 1))">
+                                disabled="@(_displaySidebarFolderPage <= 1)"
+                                @onclick="@(() => _sidebarFolderPage = Math.Max(1, _displaySidebarFolderPage - 1))">
                             <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" />
                         </button>
-                        <span class="sidebar-page-info">@_sidebarFolderPage / @_totalSidebarFolderPages</span>
+                        <span class="sidebar-page-info">@_displaySidebarFolderPage / @_totalSidebarFolderPages</span>
                         <button type="button"
                                 class="sidebar-page-btn"
-                                disabled="@(_sidebarFolderPage >= _totalSidebarFolderPages)"
-                                @onclick="@(() => _sidebarFolderPage = Math.Min(_totalSidebarFolderPages, _sidebarFolderPage + 1))">
+                                disabled="@(_displaySidebarFolderPage >= _totalSidebarFolderPages)"
+                                @onclick="@(() => _sidebarFolderPage = Math.Min(_totalSidebarFolderPages, _displaySidebarFolderPage + 1))">
                             <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
                         </button>
                     </div>
@@ -295,15 +313,13 @@ else
                         <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@_folders.Count</MudChip>
                     </div>
                     <div class="folders-header-right">
-                        <div class="folder-dots">
-                            @for (int i = 1; i <= _totalFolderPages; i++)
-                            {
-                                var page = i;
-                                <button class="@(page == _folderPage ? "folder-dot-active" : "folder-dot")"
-                                        @onclick="() => _folderPage = page"
-                                        aria-label="@("Page " + page)">
-                                </button>
-                            }
+                        <div class="folder-search-wrapper">
+                            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="folder-search-icon" />
+                            <input type="text"
+                                   class="folder-search-input"
+                                   placeholder="Search folders, subject, semester..."
+                                   value="@_folderSearchQuery"
+                                   @oninput="HandleFolderSearchInput" />
                         </div>
                         <MudButton Variant="Variant.Filled"
                                    Color="Color.Primary"
@@ -321,6 +337,15 @@ else
                         <MudStack AlignItems="AlignItems.Center" Spacing="2">
                             <MudIcon Icon="@Icons.Material.Filled.FolderOff" Size="Size.Large" Color="Color.Secondary" />
                             <MudText Typo="Typo.body1" Color="Color.Secondary">No folders yet. Create your first folder!</MudText>
+                        </MudStack>
+                    </MudPaper>
+                }
+                else if (_filteredLibraryFolders.Count == 0)
+                {
+                    <MudPaper Class="empty-folders-card glass-card" Elevation="0" Outlined="false">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.ManageSearch" Size="Size.Large" Color="Color.Secondary" />
+                            <MudText Typo="Typo.body1" Color="Color.Secondary">No folders match your search.</MudText>
                         </MudStack>
                     </MudPaper>
                 }
@@ -395,6 +420,55 @@ else
                             </MudItem>
                         }
                     </MudGrid>
+
+                    @if (_totalFolderPages > 1)
+                    {
+                        <div class="folder-pagination-bar">
+                            <div class="folder-pagination-info">
+                                Showing @(((_displayFolderPage - 1) * FolderPageSize) + 1)-@Math.Min(_displayFolderPage * FolderPageSize, _filteredLibraryFolders.Count) of @_filteredLibraryFolders.Count folders
+                            </div>
+                            <div class="folder-pagination-actions">
+                                <div class="folder-pagination-controls">
+                                    <button type="button"
+                                            class="folder-page-nav-btn"
+                                            disabled="@(_displayFolderPage <= 1)"
+                                            @onclick="@(() => _folderPage = Math.Max(1, _displayFolderPage - 1))">
+                                        Prev
+                                    </button>
+                                    @foreach (var page in GetFolderPageNumbers())
+                                    {
+                                        if (page == -1)
+                                        {
+                                            <span class="folder-page-ellipsis">...</span>
+                                        }
+                                        else
+                                        {
+                                            var current = page;
+                                            <button type="button"
+                                                    class="folder-page-number-btn @(current == _displayFolderPage ? "active" : "")"
+                                                    @onclick="@(() => _folderPage = current)">
+                                                @current
+                                            </button>
+                                        }
+                                    }
+                                    <button type="button"
+                                            class="folder-page-nav-btn"
+                                            disabled="@(_displayFolderPage >= _totalFolderPages)"
+                                            @onclick="@(() => _folderPage = Math.Min(_totalFolderPages, _displayFolderPage + 1))">
+                                        Next
+                                    </button>
+                                </div>
+                                <div class="folder-pagination-jump">
+                                    <input type="text"
+                                           class="folder-page-jump-input"
+                                           placeholder="Page..."
+                                           value="@_folderGoToPage"
+                                           @oninput="HandleFolderPageInput"
+                                           @onkeydown="HandleFolderPageKeyDown" />
+                                </div>
+                            </div>
+                        </div>
+                    }
                 }
             </section>
 
@@ -867,6 +941,8 @@ else
     private string _filterCreatedFrom = "";
     private string _filterCreatedTo = "";
     private string _searchQuery = "";
+    private string _folderSearchQuery = "";
+    private string _folderGoToPage = "";
     private string? _openDocumentMenuColumn;
     private string _documentSortBy = "created-desc";
     private ElementReference _nameHeaderButton;
@@ -1016,17 +1092,28 @@ else
 
     private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredDocuments.Count / _pageSize));
 
-    private List<FolderDto> _pagedFolders => _folders
-        .Skip((_folderPage - 1) * FolderPageSize)
+    private List<FolderDto> _filteredLibraryFolders => _folders
+        .Where(folder =>
+            string.IsNullOrWhiteSpace(_folderSearchQuery)
+            || folder.Name.Contains(_folderSearchQuery, StringComparison.OrdinalIgnoreCase)
+            || (!string.IsNullOrWhiteSpace(folder.Subject) && folder.Subject.Contains(_folderSearchQuery, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrWhiteSpace(folder.Semester) && folder.Semester.Contains(_folderSearchQuery, StringComparison.OrdinalIgnoreCase)))
+        .ToList();
+
+    private int _displayFolderPage => Math.Clamp(_folderPage, 1, _totalFolderPages);
+    private int _displaySidebarFolderPage => Math.Clamp(_sidebarFolderPage, 1, _totalSidebarFolderPages);
+
+    private List<FolderDto> _pagedFolders => _filteredLibraryFolders
+        .Skip((_displayFolderPage - 1) * FolderPageSize)
         .Take(FolderPageSize)
         .ToList();
 
-    private int _totalFolderPages => Math.Max(1, (int)Math.Ceiling((double)_folders.Count / FolderPageSize));
-    private List<FolderDto> _pagedSidebarFolders => _folders
-        .Skip((_sidebarFolderPage - 1) * SidebarFolderPageSize)
+    private int _totalFolderPages => Math.Max(1, (int)Math.Ceiling((double)_filteredLibraryFolders.Count / FolderPageSize));
+    private List<FolderDto> _pagedSidebarFolders => _filteredLibraryFolders
+        .Skip((_displaySidebarFolderPage - 1) * SidebarFolderPageSize)
         .Take(SidebarFolderPageSize)
         .ToList();
-    private int _totalSidebarFolderPages => Math.Max(1, (int)Math.Ceiling((double)_folders.Count / SidebarFolderPageSize));
+    private int _totalSidebarFolderPages => Math.Max(1, (int)Math.Ceiling((double)_filteredLibraryFolders.Count / SidebarFolderPageSize));
 
     private int _totalDocuments => _documents.Count;
     private int _readyDocuments => _documents.Count(d => d.Status == DocumentStatus.Ready);
@@ -1111,6 +1198,13 @@ else
         _documentSortBy = "created-desc";
         _openDocumentMenuColumn = null;
         _currentPage = 1;
+    }
+
+    private void HandleFolderSearchInput(ChangeEventArgs e)
+    {
+        _folderSearchQuery = e.Value?.ToString()?.Trim() ?? string.Empty;
+        _folderPage = 1;
+        _sidebarFolderPage = 1;
     }
 
     private bool HasActiveDocumentFilters() =>
@@ -1419,6 +1513,85 @@ else
     {
         _filterFolderId = folderId;
         _currentPage = 1;
+    }
+
+    private IReadOnlyList<int> GetFolderPageNumbers()
+    {
+        var total = _totalFolderPages;
+        var current = _displayFolderPage;
+        return BuildSlidingPageNumbers(total, current);
+    }
+
+    private static IReadOnlyList<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var index = 1; index <= total; index++)
+            {
+                pages.Add(index);
+            }
+
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var index = 1; index <= 3; index++)
+            {
+                pages.Add(index);
+            }
+
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+
+            for (var index = total - 2; index <= total; index++)
+            {
+                pages.Add(index);
+            }
+
+            return pages;
+        }
+
+        for (var index = current - 1; index <= current + 1; index++)
+        {
+            pages.Add(index);
+        }
+
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void HandleFolderPageInput(ChangeEventArgs e)
+    {
+        _folderGoToPage = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandleFolderPageKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToFolderPageInput();
+        }
+    }
+
+    private void GoToFolderPageInput()
+    {
+        if (int.TryParse(_folderGoToPage, out var page))
+        {
+            _folderPage = Math.Clamp(page, 1, _totalFolderPages);
+        }
+
+        _folderGoToPage = string.Empty;
     }
 
     private void GoToPage(int page)

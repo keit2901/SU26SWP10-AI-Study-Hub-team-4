@@ -217,6 +217,27 @@ public class DocumentsControllerTests
     }
 
     [Test]
+    public async Task Upload_WhenServiceThrowsPlanException_MapsStatusAndCode()
+    {
+        var svc = new Mock<IDocumentService>();
+        svc.Setup(s => s.UploadAsync(It.IsAny<Guid>(), It.IsAny<UploadDocumentRequest>(),
+                It.IsAny<string>(), It.IsAny<string>(), It.IsAny<long>(),
+                It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new PlanException(402, "folder_count_exceeded", "Folder count limit reached."));
+
+        var sut = BuildSut(svc.Object, Principal(Guid.NewGuid()));
+
+        var result = await sut.Upload(
+            new UploadDocumentRequest { SubjectCode = "SWP391", Semester = "SU26" },
+            FormFile(),
+            CancellationToken.None);
+
+        var obj = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        obj.StatusCode.Should().Be(402);
+        obj.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("folder_count_exceeded");
+    }
+
+    [Test]
     public async Task Upload_WhenServiceThrowsUnexpected_Returns500_UnexpectedError()
     {
         var svc = new Mock<IDocumentService>();

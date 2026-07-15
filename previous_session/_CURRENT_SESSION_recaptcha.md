@@ -88,3 +88,10 @@ Migrations:    N/A
 Tests:         146/146 passed
 Git:           sprint2/integration, ~16 uncommitted changes
 ```
+
+## 10. 2026-07-15 follow-up
+- Development reCAPTCHA was forced back to widget-only mode.
+- `AI_Study_Hub_v2/appsettings.Development.json` now keeps `Recaptcha:Enabled=true` and `AllowDevelopmentFallback=false`.
+- `AI_Study_Hub_v2/Components/Shared/HumanCheck.razor` no longer contains the arithmetic fallback path.
+- `AI_Study_Hub_v2/wwwroot/recaptcha.js` now receives the site key from Razor/config instead of using a hardcoded value.
+- Verification: `dotnet build D:\projectCode\SWP\SU26SWP10-AI-Study-Hub-team-4\AI_Study_Hub_v2\AI_Study_Hub_v2.csproj --nologo -o D:\projectCode\SWP\SU26SWP10-AI-Study-Hub-team-4\_tmp_recaptcha_status_build` -> PASS.

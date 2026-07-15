@@ -217,7 +217,7 @@ public sealed class DocumentService : IDocumentService
                 try
                 {
                     await _capacityGuard.LockAndValidateAsync(_db, profile.Id,
-                        new PlanCapacityRequest(1, 0, request.FolderId, request.FolderId.HasValue ? 1 : 0), cancellationToken);
+                        new PlanCapacityRequest(1, 0, request.FolderId, request.FolderId.HasValue ? 1 : 0, 0), cancellationToken);
                     if (request.FolderId.HasValue)
                     {
                         var folder = await _db.Folders.SingleOrDefaultAsync(f => f.Id == request.FolderId.Value && f.UserId == profile.Id, cancellationToken)
