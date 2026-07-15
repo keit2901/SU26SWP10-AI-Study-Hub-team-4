@@ -113,3 +113,31 @@
 
 ## 8. Next step
 **Resume from:** open `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor` and `AI_Study_Hub_v2/Components/Pages/Community.razor`, then visually verify folder search and 9-card pagination in the running app.
+
+### 2026-07-15T20:41+07:00 - Welcome banner pinned to the top of Document Library
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Kept the `welcome-banner` as the first block inside `library-center-stage`.
+- Updated the banner style to sit on the very top edge and stay visible while scrolling:
+  - `position: sticky`
+  - `top: 0`
+  - rectangular edges, no card shadow
+  - vertically centered content with greeting on the left and action buttons on the right
+- Re-ran isolated build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\document-banner-top`
+  -> PASS, 0 errors.
+
+### 2026-07-15T20:48+07:00 - Community sidebar footer items aligned left
+- Edited `AI_Study_Hub_v2/Components/Pages/Community.razor.css`.
+- Updated the lower-left sidebar footer so `Starred`, `Recent`, and `All Folders` all hug the left edge consistently.
+- Added left alignment to both the footer container and each footer button.
+- Re-ran isolated build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\community-sidebar-footer-left`
+  -> PASS, 0 errors.
+
+### 2026-07-15T20:53+07:00 - Community sidebar footer pushed fully to the left edge
+- Edited `AI_Study_Hub_v2/Components/Pages/Community.razor.css` again after visual intent clarification.
+- Removed the footer's left padding and the buttons' left padding so `Starred`, `Recent`, and `All Folders` start from the far-left edge of the sidebar.
+- Adjusted button radius to keep the hover shape clean while staying flush on the left.
+- Re-ran isolated build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\community-sidebar-footer-hard-left`
+  -> PASS, 0 errors.
