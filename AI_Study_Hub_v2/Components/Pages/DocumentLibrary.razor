@@ -17,20 +17,22 @@
     .library-center-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
     .library-right-rail { width: 300px; flex-shrink: 0; padding: 16px; background: #fff; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
     .glass-card { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; padding: 16px; }
-    .welcome-banner { background: linear-gradient(135deg, #eef2ff 0%, #f8f9fc 60%, #f0fdf4 100%); padding: 24px 32px; border-bottom: 1px solid #e2e8f0; position: relative; overflow: hidden; }
+    .welcome-banner { background: linear-gradient(135deg, #eef2ff 0%, #f8f9fc 56%, #f0fdf4 100%); padding: 38px 32px; margin: 0; border-bottom: 1px solid #dbe4f0; border-top: 1px solid #dbe4f0; border-radius: 0; box-shadow: none; position: sticky; top: 0; z-index: 5; overflow: hidden; isolation: isolate; flex-shrink: 0; }
+    .welcome-banner::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255,255,255,0.84) 0%, rgba(255,255,255,0.68) 40%, rgba(255,255,255,0.28) 100%); z-index: 0; }
     .banner-orb { position: absolute; border-radius: 50%; pointer-events: none; }
-    .banner-orb-one { top: -40px; right: 200px; width: 200px; height: 200px; background: rgba(99,102,241,0.05); }
-    .banner-orb-two { bottom: -60px; right: 80px; width: 280px; height: 280px; background: rgba(16,185,129,0.04); }
-    .banner-content { position: relative; z-index: 1; }
+    .banner-orb-one { top: -36px; right: 200px; width: 200px; height: 200px; background: rgba(99,102,241,0.08); filter: blur(2px); }
+    .banner-orb-two { bottom: -70px; right: 56px; width: 300px; height: 300px; background: rgba(16,185,129,0.07); filter: blur(2px); }
+    .banner-content { position: relative; z-index: 1; min-height: 108px; display: flex; align-items: center; }
     .banner-breadcrumb { font-size: 10px; color: #6366f1; font-weight: 700; letter-spacing: 1px; display: block; margin-bottom: 12px; }
-    .banner-greeting { font-size: 28px !important; font-weight: 800 !important; color: #1e293b; }
-    .banner-date-text { color: #94a3b8; font-size: 13px; margin-top: 4px; }
-    .banner-actions { display: flex; gap: 12px; align-items: center; }
+    .banner-copy { max-width: 620px; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+    .banner-greeting { font-size: 30px !important; font-weight: 800 !important; color: #0f172a; line-height: 1.15; text-shadow: 0 1px 0 rgba(255,255,255,0.35); text-align: left; }
+    .banner-date-text { color: #64748b; font-size: 13px; margin-top: 8px; max-width: 540px; text-align: left; }
+    .banner-actions { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
     .banner-action-button { border-radius: 0.85rem !important; text-transform: none !important; font-weight: 700 !important; font-size: 0.75rem !important; padding: 4px 14px !important; min-height: 0 !important; letter-spacing: 0.02em; white-space: nowrap; }
     .banner-action-primary { box-shadow: 0 4px 16px rgba(16,185,129,0.25) !important; }
     .banner-action-secondary { border-radius: 0.85rem !important; }
-    .banner-flex-row { display: flex; justify-content: space-between; align-items: flex-start; }
-    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px 32px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+    .banner-flex-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 20px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px 32px; background: #fff; }
     .stat-card { display: flex; align-items: center; gap: 16px; padding: 16px !important; border-radius: 12px !important; }
     .stat-card-violet { background: #f5f3ff; border: 1px solid #ddd6fe; }
     .stat-card-green { background: #f0fdf4; border: 1px solid #bbf7d0; }
@@ -114,7 +116,6 @@
     .doc-name { font-weight: 600; color: #1e293b; font-size: 13px; }
     .table-actions { display: inline-flex; align-items: center; justify-content: center; gap: 2px; width: 100%; min-width: 58px; }
     .table-actions .mud-icon-button { width: 28px; height: 28px; padding: 4px; }
-    .table-page-size-select { min-width: 120px; }
     .recent-folders-list { display: flex; flex-direction: column; gap: 8px; }
     .recent-folder-card { display: flex; align-items: center; gap: 12px; padding: 12px !important; border-radius: 10px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s; background: #fff; }
     .recent-folder-card:hover { transform: translateX(4px); }
@@ -231,9 +232,9 @@ else
                 <div class="banner-orb banner-orb-one" aria-hidden="true"></div>
                 <div class="banner-orb banner-orb-two" aria-hidden="true"></div>
                 <div class="banner-content">
-                    <span class="banner-breadcrumb">STUDY HUB &gt; DASHBOARD</span>
+                    @*<span class="banner-breadcrumb">STUDY HUB &gt; DASHBOARD</span>*@
                     <div class="banner-flex-row">
-                        <div>
+                        <div class="banner-copy">
                             <MudText id="welcome-title" Typo="Typo.h3" Class="banner-greeting">@GetGreetingHtml()</MudText>
                             <MudText Typo="Typo.body1" Class="banner-date-text">@GetCurrentDateString() — what knowledge will you conquer today?</MudText>
                         </div>
@@ -794,17 +795,6 @@ else
                             Showing @(((_displayDocumentPage - 1) * _pageSize) + 1)-@Math.Min(_displayDocumentPage * _pageSize, _filteredDocuments.Count) of @_filteredDocuments.Count documents
                         </div>
                         <div class="folder-pagination-actions">
-                            <MudSelect T="int"
-                                       Value="_pageSize"
-                                       ValueChanged="HandleDocumentPageSizeChanged"
-                                       Variant="Variant.Outlined"
-                                       Margin="Margin.Dense"
-                                       Class="table-page-size-select">
-                                @foreach (var size in PageSizeOptions)
-                                {
-                                    <MudSelectItem T="int" Value="@size">@size / page</MudSelectItem>
-                                }
-                            </MudSelect>
                             <div class="folder-pagination-controls">
                                 <button type="button"
                                         class="folder-page-nav-btn"
@@ -942,8 +932,6 @@ else
     private int _currentPage = 1;
     private int _pageSize = 10;
     private string _goToPage = "";
-    private static readonly int[] PageSizeOptions = [10, 25, 50, 100];
-
     private int _folderPage = 1;
     private const int FolderPageSize = 4;
     private int _sidebarFolderPage = 1;
@@ -1605,12 +1593,6 @@ else
         {
             GoToPageInput();
         }
-    }
-
-    private void HandleDocumentPageSizeChanged(int size)
-    {
-        _pageSize = size;
-        _currentPage = Math.Clamp(_currentPage, 1, _totalPages);
     }
 
     private async Task ShowCreateFolderDialogAsync()
