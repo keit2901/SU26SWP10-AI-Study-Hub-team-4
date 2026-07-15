@@ -114,19 +114,7 @@
     .doc-name { font-weight: 600; color: #1e293b; font-size: 13px; }
     .table-actions { display: inline-flex; align-items: center; justify-content: center; gap: 2px; width: 100%; min-width: 58px; }
     .table-actions .mud-icon-button { width: 28px; height: 28px; padding: 4px; }
-    .pagination-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; gap: 16px; flex-wrap: wrap; }
-    .pagination-left { flex: 1; }
-    .pagination-center { display: flex; align-items: center; gap: 4px; }
-    .pagination-right { display: flex; align-items: center; gap: 8px; }
-    .page-size-select { min-width: 120px; }
-    .go-to-page { display: flex; align-items: center; gap: 4px; }
-    .go-to-input { max-width: 80px; }
-    .pagination-nav-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #e2e8f0; background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
-    .pagination-nav-btn:hover { border-color: #6366f1; background: #f5f3ff; }
-    .pagination-nav-btn:disabled { opacity: 0.4; cursor: default; }
-    .page-number-btn { min-width: 32px; height: 32px; border-radius: 6px !important; font-size: 13px !important; font-weight: 600 !important; padding: 0 8px !important; }
-    .page-number-btn-active { background: #6366f1 !important; color: #fff !important; border-color: #6366f1 !important; }
-    .page-number-btn-inactive { background: #fff !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; }
+    .table-page-size-select { min-width: 120px; }
     .recent-folders-list { display: flex; flex-direction: column; gap: 8px; }
     .recent-folder-card { display: flex; align-items: center; gap: 12px; padding: 12px !important; border-radius: 10px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s; background: #fff; }
     .recent-folder-card:hover { transform: translateX(4px); }
@@ -801,64 +789,59 @@ else
                         </RowTemplate>
                     </MudTable>
 
-                    <div class="pagination-bar">
-                        <div class="pagination-left">
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                Showing @((_currentPage - 1) * _pageSize + 1)-@Math.Min(_currentPage * _pageSize, _filteredDocuments.Count) of @_filteredDocuments.Count documents
-                            </MudText>
+                    <div class="folder-pagination-bar">
+                        <div class="folder-pagination-info">
+                            Showing @(((_displayDocumentPage - 1) * _pageSize) + 1)-@Math.Min(_displayDocumentPage * _pageSize, _filteredDocuments.Count) of @_filteredDocuments.Count documents
                         </div>
-                        <div class="pagination-center">
-                            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
-                                           Size="Size.Small"
-                                           Class="pagination-nav-btn"
-                                           Disabled="@(_currentPage <= 1)"
-                                           OnClick="@(() => GoToPage(_currentPage - 1))" />
-                            @foreach (var pageNum in GetPageNumbers())
-                            {
-                                if (pageNum == -1)
-                                {
-                                    <MudText Typo="Typo.body2" Color="Color.Secondary">...</MudText>
-                                }
-                                else
-                                {
-                                    <MudButton Variant="Variant.Filled"
-                                               Size="Size.Small"
-                                               Class="@(pageNum == _currentPage ? "page-number-btn page-number-btn-active" : "page-number-btn page-number-btn-inactive")"
-                                               OnClick="@(() => GoToPage(pageNum))">
-                                        @pageNum
-                                    </MudButton>
-                                }
-                            }
-                            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
-                                           Size="Size.Small"
-                                           Class="pagination-nav-btn"
-                                           Disabled="@(_currentPage >= _totalPages)"
-                                           OnClick="@(() => GoToPage(_currentPage + 1))" />
-                        </div>
-                        <div class="pagination-right">
+                        <div class="folder-pagination-actions">
                             <MudSelect T="int"
-                                       @bind-Value="_pageSize"
+                                       Value="_pageSize"
+                                       ValueChanged="HandleDocumentPageSizeChanged"
                                        Variant="Variant.Outlined"
                                        Margin="Margin.Dense"
-                                       Class="page-size-select">
+                                       Class="table-page-size-select">
                                 @foreach (var size in PageSizeOptions)
                                 {
                                     <MudSelectItem T="int" Value="@size">@size / page</MudSelectItem>
                                 }
                             </MudSelect>
-                            <div class="go-to-page">
-                                <MudTextField T="string"
-                                              @bind-Value="_goToPage"
-                                              Placeholder="Page..."
-                                              Variant="Variant.Outlined"
-                                              Margin="Margin.Dense"
-                                              Class="go-to-input" />
-                                <MudButton Variant="Variant.Outlined"
-                                           Size="Size.Small"
-                                           OnClick="GoToPageInput"
-                                           Disabled="@(string.IsNullOrWhiteSpace(_goToPage))">
-                                    Go
-                                </MudButton>
+                            <div class="folder-pagination-controls">
+                                <button type="button"
+                                        class="folder-page-nav-btn"
+                                        disabled="@(_displayDocumentPage <= 1)"
+                                        @onclick="@(() => GoToPage(_displayDocumentPage - 1))">
+                                    Prev
+                                </button>
+                                @foreach (var pageNum in GetPageNumbers())
+                                {
+                                    if (pageNum == -1)
+                                    {
+                                        <span class="folder-page-ellipsis">...</span>
+                                    }
+                                    else
+                                    {
+                                        var current = pageNum;
+                                        <button type="button"
+                                                class="folder-page-number-btn @(current == _displayDocumentPage ? "active" : "")"
+                                                @onclick="@(() => GoToPage(current))">
+                                            @current
+                                        </button>
+                                    }
+                                }
+                                <button type="button"
+                                        class="folder-page-nav-btn"
+                                        disabled="@(_displayDocumentPage >= _totalPages)"
+                                        @onclick="@(() => GoToPage(_displayDocumentPage + 1))">
+                                    Next
+                                </button>
+                            </div>
+                            <div class="folder-pagination-jump">
+                                <input type="text"
+                                       class="folder-page-jump-input"
+                                       placeholder="Page..."
+                                       value="@_goToPage"
+                                       @oninput="HandleDocumentPageInput"
+                                       @onkeydown="HandleDocumentPageKeyDown" />
                             </div>
                         </div>
                     </div>
@@ -1085,8 +1068,10 @@ else
         }
     }
 
+    private int _displayDocumentPage => Math.Clamp(_currentPage, 1, _totalPages);
+
     private List<DocumentDto> _pagedDocuments => _filteredDocuments
-        .Skip((_currentPage - 1) * _pageSize)
+        .Skip((_displayDocumentPage - 1) * _pageSize)
         .Take(_pageSize)
         .ToList();
 
@@ -1604,8 +1589,28 @@ else
         if (int.TryParse(_goToPage, out var page))
         {
             GoToPage(page);
-            _goToPage = "";
         }
+
+        _goToPage = "";
+    }
+
+    private void HandleDocumentPageInput(ChangeEventArgs e)
+    {
+        _goToPage = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandleDocumentPageKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageInput();
+        }
+    }
+
+    private void HandleDocumentPageSizeChanged(int size)
+    {
+        _pageSize = size;
+        _currentPage = Math.Clamp(_currentPage, 1, _totalPages);
     }
 
     private async Task ShowCreateFolderDialogAsync()
@@ -1821,21 +1826,7 @@ else
 
     private int[] GetPageNumbers()
     {
-        if (_totalPages <= 7)
-        {
-            return Enumerable.Range(1, _totalPages).ToArray();
-        }
-        var pages = new List<int> { 1 };
-        var start = Math.Max(2, _currentPage - 1);
-        var end = Math.Min(_totalPages - 1, _currentPage + 1);
-        if (start > 2) pages.Add(-1);
-        for (var i = start; i <= end; i++)
-        {
-            pages.Add(i);
-        }
-        if (end < _totalPages - 1) pages.Add(-1);
-        pages.Add(_totalPages);
-        return pages.ToArray();
+        return BuildSlidingPageNumbers(_totalPages, _displayDocumentPage).ToArray();
     }
 
     private static string MapError(DocumentApiException ex) => ex.StatusCode switch

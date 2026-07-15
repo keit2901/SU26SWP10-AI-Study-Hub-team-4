@@ -83,6 +83,18 @@
 - Confirmed setup restored required local secrets and migrations.
 - Remaining environment issue in this Codex session: background process launch through PowerShell is unreliable on this machine (`Start-Process` PATH dictionary bug / sandboxed docker config access), so visual confirmation of the running page was not completed inside the session.
 
+### 2026-07-15T18:35+07:00 - Documents Table pagination aligned to My Folders
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Replaced the old document-table pager UI with the same numbered button style used by `My Folders`.
+- `Documents Table` now uses:
+  - same active/inactive page button visuals
+  - same sliding page-number logic
+  - `Page...` jump input with `Enter`
+- Kept the table page-size selector and wired it to clamp the current page safely after size changes.
+- Re-ran isolated build:
+  `dotnet build AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj --nologo --no-restore -p:UseAppHost=false -o .codex-build\\document-table-folder-style-pagination`
+  -> PASS, 0 errors.
+
 ## 4. Files changed this session
 | Path | Change |
 |---|---|
