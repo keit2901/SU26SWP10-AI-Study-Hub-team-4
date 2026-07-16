@@ -224,3 +224,108 @@
 - Re-ran full project build:
   `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-folder-dashboard-footer-inline`
   -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T07:50:12.5303847+07:00 - Moderator folder table header and column alignment refined
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Aligned `FOLDER NAME` to the left edge with `24px` left padding in both the header and cell content.
+- Center-aligned the `Owner`, `Subject Code`, and `Semester` headers and their column values underneath so the table columns line up visually.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-folder-dashboard-column-alignment`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T08:00:00+07:00 - Content Moderation summary and statuses renamed to match AI/human review workflow
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderDashboard.razor`.
+- Reworked moderator summary cards under `Content Moderation` to reflect the current workflow instead of the old share labels:
+  - `Ready for Review`
+  - `Human Review`
+  - `AI Processing`
+  - `Rejected`
+- Updated moderator counting logic so the second card tracks folders escalated to human review after repeated AI rejection, while `PendingShare` rows split into `Ready for Review` vs `Human Review` based on appeal/human-review flags.
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Renamed the table/badge status styles to match the same workflow labels (`Ready for Review`, `Human Review`, `AI Processing`).
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-content-moderation-status-refresh`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T08:52:52.5075944+07:00 - Pending review queue renamed to AI Processing and table gained AI Processing status
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderDashboard.razor`.
+- Renamed the old `Ready for Review` moderator card to `AI Processing` because it represents folders waiting for AI review in the share workflow.
+- Renamed the previous folder-ingestion card to `Document Processing` so it no longer clashes with the share-review queue wording.
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Updated `Folder Management` statuses so the review queue now shows `AI Processing`, while document-ingestion rows show `Document Processing`.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-content-moderation-status-adjusted`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T09:06:21.6983287+07:00 - Moderator dashboard simplified to Human Review only for non-approved review queues
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderDashboard.razor`.
+- Removed the moderator-facing `AI Processing` and `Document Processing` labels.
+- Combined folders from those two moderator buckets into a single `Human Review` card and switched the moderator summary to three cards:
+  - `Human Review`
+  - `Shared`
+  - `Rejected`
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Removed `AI Processing` and `Document Processing` badge/status handling so moderator table rows now surface `Human Review` instead.
+- Kept a generic `Processing` style only for student-side document processing rows.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-human-review-unified`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T09:19:51.4218939+07:00 - Moderator folder table filters changed to explicit search with recent history
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Changed header filter menus from live filtering to explicit search:
+  - each header menu now has an input plus a `Search` button
+  - pressing `Enter` also runs the search
+  - clicking a suggestion now fills the input instead of immediately applying the filter
+- When the user closes and reopens a filter menu, the input is cleared.
+- Added up to 3 recent search items for these headers:
+  - `Folder Name`
+  - `Owner`
+  - `Subject Code`
+  - `Semester`
+- Skipped recent search history for `Status` as requested.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-filter-search-history`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T09:32:12.1058147+07:00 - Removed recent search from moderator folder table filters
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Removed the `Recent Search` UI and deleted its supporting state/helper logic from all header filter menus.
+- Kept the explicit search behavior:
+  - input field
+  - `Search` button
+  - `Enter` to search
+  - input clears when closing/reopening the filter popup
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-filter-search-no-history`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T09:34:58.1978699+07:00 - Moderator folder filters switched to Enter-only apply
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Removed the `Search` button from every header filter popup.
+- Kept the filter input fields and `Enter` key submission, so filtering now applies only when the user presses `Enter`.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-filter-enter-only`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T10:06:00+07:00 - Document dashboard moderation table aligned with folder filter UX
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`.
+- Removed the document count chip in the table header and removed the bottom `Total ... document(s)` summary text from the pagination row.
+- Added a `Pending Documents` summary card above the table to show how many documents are still waiting for moderator review.
+- Updated all text/status header filters to match `Folder Management` behavior:
+  - typing only updates the draft input
+  - filter is applied only when the user presses `Enter`
+  - clicking a suggestion fills the input only
+  - closing and reopening the filter popup clears the draft input
+- Updated the action column so documents already in `Approved` or `Rejected` state now show only a status badge and no longer show `Approve`/`Reject` buttons.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\document-dashboard-filter-status-cleanup`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T10:14:00+07:00 - Center-aligned selected document dashboard body columns
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`.
+- Center-aligned the table body content under the `Semester`, `Status`, and `Upload Date` headers.
+- Updated the `Actions` column so only the resolved `Approved`/`Rejected` badge is centered; the pending `Approve`/`Reject` buttons remain right-aligned.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\document-dashboard-body-alignment`
+  -> PASS, 0 errors. Existing repo warnings remain.

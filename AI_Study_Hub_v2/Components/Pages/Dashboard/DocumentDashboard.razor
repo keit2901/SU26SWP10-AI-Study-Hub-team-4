@@ -50,7 +50,7 @@
         else
         {
             var visibleDocuments = GetVisibleDocuments();
-            var totalDocuments = pendingDocuments.Count;
+            var pendingStatusCount = pendingDocuments.Count(item => GetReviewStatusKey(item) == "pending");
             var totalPages = GetTotalPages(visibleDocuments.Count);
             EnsureCurrentPage(totalPages);
             var pagedDocuments = visibleDocuments
@@ -58,12 +58,24 @@
                 .Take(PageSize)
                 .ToList();
 
+            <div style="display: grid; grid-template-columns: minmax(0, 1fr); gap: 1rem; margin-bottom: 1rem;">
+                <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-radius: 0.75rem; border: 1px solid rgba(199,196,215,0.3); background: #fff; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); padding: 1.2rem 1.5rem;">
+                    <div style="display: flex; align-items: center; gap: 0.85rem;">
+                        <div style="display: flex; height: 2.75rem; width: 2.75rem; align-items: center; justify-content: center; border-radius: 0.75rem; background: rgba(245,158,11,0.12);">
+                            <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Style="font-size: 1.2rem; color: #b7791f;" />
+                        </div>
+                        <div style="display: flex; flex-direction: column; gap: 0.2rem;">
+                            <span style="font-size: 0.8125rem; font-weight: 700; color: #1a1b1f; text-transform: uppercase; letter-spacing: 0.06em;">Pending Documents</span>
+                            <span style="font-size: 0.875rem; color: #6b7280;">Documents still waiting for moderator review.</span>
+                        </div>
+                    </div>
+                    <span style="font-size: 2rem; font-weight: 700; line-height: 1; color: #1a1b1f;">@pendingStatusCount</span>
+                </div>
+            </div>
+
             <div style="border-radius: 0.75rem; background: #fff; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); width: 100%; overflow: hidden;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-bottom: 1px solid rgba(199,196,215,0.3); padding: 1rem 1.5rem;">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                        <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin: 0;">Documents</h2>
-                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@visibleDocuments.Count</MudChip>
-                    </div>
+                    <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin: 0;">Documents</h2>
                     <button @onclick="ResetTable"
                             style="display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; border-radius: 9999px; border: 1px solid rgba(94,92,230,0.22); background: rgba(94,92,230,0.08); color: #4441CC; padding: 0.55rem 0.95rem; font-size: 0.8125rem; font-weight: 700; cursor: pointer;">
                         <MudIcon Icon="@Icons.Material.Filled.RestartAlt" Style="font-size: 1rem;" />
@@ -107,6 +119,7 @@
                                                 <input type="text"
                                                        value="@NameSearchTerm"
                                                        @oninput='e => UpdateTextSearch("name", e.Value?.ToString())'
+                                                       @onkeydown='e => HandleSearchKeyDown("name", e)'
                                                        placeholder="Search document name"
                                                        style='@GetFilterInputStyle()' />
                                                 <div style='@GetFilterOptionsListStyle()'>
@@ -114,7 +127,7 @@
                                                     {
                                                         @foreach (var option in nameSuggestions)
                                                         {
-                                                            <button @onclick='() => ApplyTextSuggestion("name", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterNameQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                            <button type="button" @onclick='() => ApplyTextSuggestion("name", option)' style='@GetFilterMenuItemStyle(string.Equals(NameSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
                                                         }
                                                     }
                                                     else
@@ -144,6 +157,7 @@
                                                     <input type="text"
                                                            value="@FolderSearchTerm"
                                                            @oninput='e => UpdateTextSearch("folder", e.Value?.ToString())'
+                                                           @onkeydown='e => HandleSearchKeyDown("folder", e)'
                                                            placeholder="Search folder"
                                                            style='@GetFilterInputStyle()' />
                                                     <div style='@GetFilterOptionsListStyle()'>
@@ -151,7 +165,7 @@
                                                         {
                                                             @foreach (var option in folderSuggestions)
                                                             {
-                                                                <button @onclick='() => ApplyTextSuggestion("folder", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterFolderQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                                <button type="button" @onclick='() => ApplyTextSuggestion("folder", option)' style='@GetFilterMenuItemStyle(string.Equals(FolderSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
                                                             }
                                                         }
                                                         else
@@ -180,6 +194,7 @@
                                                 <input type="text"
                                                        value="@SubjectSearchTerm"
                                                        @oninput='e => UpdateTextSearch("subject", e.Value?.ToString())'
+                                                       @onkeydown='e => HandleSearchKeyDown("subject", e)'
                                                        placeholder="Search subject code"
                                                        style='@GetFilterInputStyle()' />
                                                 <div style='@GetFilterOptionsListStyle()'>
@@ -187,7 +202,7 @@
                                                     {
                                                         @foreach (var option in subjectSuggestions)
                                                         {
-                                                            <button @onclick='() => ApplyTextSuggestion("subject", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterSubjectQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                            <button type="button" @onclick='() => ApplyTextSuggestion("subject", option)' style='@GetFilterMenuItemStyle(string.Equals(SubjectSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
                                                         }
                                                     }
                                                     else
@@ -215,6 +230,7 @@
                                                 <input type="text"
                                                        value="@SemesterSearchTerm"
                                                        @oninput='e => UpdateTextSearch("semester", e.Value?.ToString())'
+                                                       @onkeydown='e => HandleSearchKeyDown("semester", e)'
                                                        placeholder="Search semester"
                                                        style='@GetFilterInputStyle()' />
                                                 <div style='@GetFilterOptionsListStyle()'>
@@ -222,7 +238,7 @@
                                                     {
                                                         @foreach (var option in semesterSuggestions)
                                                         {
-                                                            <button @onclick='() => ApplyTextSuggestion("semester", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterSemesterQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                            <button type="button" @onclick='() => ApplyTextSuggestion("semester", option)' style='@GetFilterMenuItemStyle(string.Equals(SemesterSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
                                                         }
                                                     }
                                                     else
@@ -250,6 +266,7 @@
                                                 <input type="text"
                                                        value="@StatusSearchTerm"
                                                        @oninput='e => UpdateTextSearch("status", e.Value?.ToString())'
+                                                       @onkeydown='e => HandleSearchKeyDown("status", e)'
                                                        placeholder="Search status"
                                                        style='@GetFilterInputStyle()' />
                                                 <div style='@GetFilterOptionsListStyle()'>
@@ -257,7 +274,7 @@
                                                     {
                                                         @foreach (var option in statusSuggestions)
                                                         {
-                                                            <button @onclick='() => ApplyTextSuggestion("status", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterReviewStatus, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                            <button type="button" @onclick='() => ApplyTextSuggestion("status", option)' style='@GetFilterMenuItemStyle(string.Equals(StatusSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
                                                         }
                                                     }
                                                     else
@@ -350,49 +367,36 @@
                                                     <span style="font-size: 0.75rem; font-weight: 500; color: #616267;">@item.SubjectCode</span>
                                                 </div>
                                             </td>
-                                            <td style="padding: 0.9rem 1rem; vertical-align: top;">
+                                            <td style="padding: 0.9rem 1rem; vertical-align: top; text-align: center;">
                                                 <div style="font-size: 0.875rem; font-weight: 400; color: #464554; white-space: nowrap;">
                                                     @item.Semester
                                                 </div>
                                             </td>
-                                            <td style="padding: 0.9rem 1rem; vertical-align: top;">
-                                                <div style="display: flex; flex-direction: column; gap: 0.4rem;">
+                                            <td style="padding: 0.9rem 1rem; vertical-align: top; text-align: center;">
+                                                <div style="display: flex; flex-direction: column; align-items: center; gap: 0.4rem;">
                                                     <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.35rem 0.8rem; background: @reviewStatusBackground; color: @reviewStatusColor; font-size: 0.75rem; font-weight: 700; width: fit-content;">
                                                         <span style="width: 0.45rem; height: 0.45rem; border-radius: 9999px; background: @reviewStatusColor; flex-shrink: 0;"></span>
                                                         @reviewStatusLabel
                                                     </div>
                                                 </div>
                                             </td>
-                                            <td style="padding: 0.9rem 1rem; vertical-align: top;">
+                                            <td style="padding: 0.9rem 1rem; vertical-align: top; text-align: center;">
                                                 <div style="font-size: 0.8125rem; font-weight: 400; color: #464554; white-space: nowrap;">
                                                     @item.CreatedAt.ToLocalTime().ToString("MMM dd, yyyy HH:mm")
                                                 </div>
                                             </td>
                                             <td style="padding: 0.9rem 1rem 0.9rem 0.75rem; vertical-align: top;">
                                                 @{
-                                                    var isLocallyResolved = _resolvedStatuses.TryGetValue(item.Id, out var localStatus);
-                                                    var isLocallyRejected = isLocallyResolved && string.Equals(localStatus, "Rejected", StringComparison.OrdinalIgnoreCase);
-                                                    var isLocallyApproved = isLocallyResolved && string.Equals(localStatus, "Approved", StringComparison.OrdinalIgnoreCase);
+                                                    var actionStatusKey = GetReviewStatusKey(item);
                                                 }
 
-                                                @if (isLocallyApproved)
+                                                @if (actionStatusKey != "pending")
                                                 {
-                                                    <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: rgba(52,199,89,0.12); color: #1a8c4a; font-size: 0.8125rem; font-weight: 600; float: right;">
-                                                        <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #1a8c4a; flex-shrink: 0;"></span>
-                                                        Approved
-                                                    </div>
-                                                }
-                                                else if (isLocallyRejected)
-                                                {
-                                                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; flex-wrap: wrap;">
-                                                        <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: rgba(255,59,48,0.1); color: #c23c21; font-size: 0.8125rem; font-weight: 600;">
-                                                            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #c23c21; flex-shrink: 0;"></span>
-                                                            Rejected
+                                                    <div style="display: flex; justify-content: center;">
+                                                        <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: @reviewStatusBackground; color: @reviewStatusColor; font-size: 0.8125rem; font-weight: 600;">
+                                                            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: @reviewStatusColor; flex-shrink: 0;"></span>
+                                                            @reviewStatusLabel
                                                         </div>
-                                                        <button @onclick="() => OpenEscalationDialogForDocument(item)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(217,119,6,0.2); background: rgba(217,119,6,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
-                                                            <MudIcon Icon="@Icons.Material.Filled.Flag" Style="font-size: 0.75rem; color: #d97706;" />
-                                                            <span style="font-size: 0.75rem; font-weight: 500; color: #d97706;">Escalate</span>
-                                                        </button>
                                                     </div>
                                                 }
                                                 else
@@ -435,8 +439,6 @@
                     </div>
 
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-top: 1px solid rgba(199,196,215,0.2); padding: 1rem 1.25rem;">
-                        <div style="font-size: 0.8125rem; color: #6b7280;">Total @visibleDocuments.Count document@(visibleDocuments.Count == 1 ? string.Empty : "s")</div>
-
                         @if (totalPages > 1)
                         {
                             <div class="folder-pagination-actions">
@@ -751,23 +753,18 @@
         {
             case "name":
                 NameSearchTerm = normalizedValue;
-                SetFilterValue(ref FilterNameQuery, normalizedValue);
                 break;
             case "folder":
                 FolderSearchTerm = normalizedValue;
-                SetFilterValue(ref FilterFolderQuery, normalizedValue);
                 break;
             case "subject":
                 SubjectSearchTerm = normalizedValue;
-                SetFilterValue(ref FilterSubjectQuery, normalizedValue);
                 break;
             case "semester":
                 SemesterSearchTerm = normalizedValue;
-                SetFilterValue(ref FilterSemesterQuery, normalizedValue);
                 break;
             case "status":
                 StatusSearchTerm = normalizedValue;
-                SetFilterValue(ref FilterReviewStatus, normalizedValue);
                 break;
         }
     }
@@ -777,28 +774,21 @@
         switch (columnKey)
         {
             case "name":
-                SetFilterValue(ref FilterNameQuery, value);
                 NameSearchTerm = value;
                 break;
             case "folder":
-                SetFilterValue(ref FilterFolderQuery, value);
                 FolderSearchTerm = value;
                 break;
             case "subject":
-                SetFilterValue(ref FilterSubjectQuery, value);
                 SubjectSearchTerm = value;
                 break;
             case "semester":
-                SetFilterValue(ref FilterSemesterQuery, value);
                 SemesterSearchTerm = value;
                 break;
             case "status":
-                SetFilterValue(ref FilterReviewStatus, value);
                 StatusSearchTerm = value;
                 break;
         }
-
-        CloseOpenMenu();
     }
 
     private void ClearTextFilter(string columnKey)
@@ -856,8 +846,15 @@
         SetFilterValue(ref FilterDateTo, string.Empty);
     }
 
-    private void CloseOpenMenu() =>
+    private void CloseOpenMenu()
+    {
+        if (!string.IsNullOrWhiteSpace(OpenSortMenuColumn))
+        {
+            ClearDraftSearch(OpenSortMenuColumn);
+        }
+
         OpenSortMenuColumn = null;
+    }
 
     private DateTime? ParseLocalDateTimeFilter(string value)
     {
@@ -994,7 +991,7 @@
             return;
         }
 
-        SyncSearchTermToFilter(columnKey);
+        ClearDraftSearch(columnKey);
         OpenSortMenuColumn = columnKey;
         await PositionMenuAsync(columnKey);
     }
@@ -1005,24 +1002,24 @@
         CloseOpenMenu();
     }
 
-    private void SyncSearchTermToFilter(string columnKey)
+    private void ClearDraftSearch(string columnKey)
     {
         switch (columnKey)
         {
             case "name":
-                NameSearchTerm = FilterNameQuery;
+                NameSearchTerm = string.Empty;
                 break;
             case "folder":
-                FolderSearchTerm = FilterFolderQuery;
+                FolderSearchTerm = string.Empty;
                 break;
             case "subject":
-                SubjectSearchTerm = FilterSubjectQuery;
+                SubjectSearchTerm = string.Empty;
                 break;
             case "semester":
-                SemesterSearchTerm = FilterSemesterQuery;
+                SemesterSearchTerm = string.Empty;
                 break;
             case "status":
-                StatusSearchTerm = FilterReviewStatus;
+                StatusSearchTerm = string.Empty;
                 break;
         }
     }
@@ -1165,6 +1162,38 @@
             "date" => !string.IsNullOrWhiteSpace(FilterDateFrom) || !string.IsNullOrWhiteSpace(FilterDateTo),
             _ => false
         };
+
+    private void ApplySearch(string columnKey)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                SetFilterValue(ref FilterNameQuery, NameSearchTerm);
+                break;
+            case "folder":
+                SetFilterValue(ref FilterFolderQuery, FolderSearchTerm);
+                break;
+            case "subject":
+                SetFilterValue(ref FilterSubjectQuery, SubjectSearchTerm);
+                break;
+            case "semester":
+                SetFilterValue(ref FilterSemesterQuery, SemesterSearchTerm);
+                break;
+            case "status":
+                SetFilterValue(ref FilterReviewStatus, StatusSearchTerm);
+                break;
+        }
+
+        CloseOpenMenu();
+    }
+
+    private void HandleSearchKeyDown(string columnKey, KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplySearch(columnKey);
+        }
+    }
 
     private void SetFilterValue(ref string field, string value)
     {
