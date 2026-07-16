@@ -93,8 +93,8 @@
     .document-table .mud-table-container { overflow: visible; }
     .document-table table { width: 100%; table-layout: fixed; }
     .document-table-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .document-table-title-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .document-table-title { font-size: 14px; font-weight: 800; color: #1e293b; margin: 0; }
-    .document-table-count { font-size: 12px; color: #64748b; }
     .document-reset-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #cbd5e1; background: #fff; color: #475569; border-radius: 8px; padding: 7px 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
     .document-reset-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
     .document-filter-overlay { position: fixed; inset: 0; z-index: 20; border: none; background: transparent; padding: 0; margin: 0; }
@@ -413,9 +413,6 @@ else
                     @if (_totalFolderPages > 1)
                     {
                         <div class="folder-pagination-bar">
-                            <div class="folder-pagination-info">
-                                Showing @(((_displayFolderPage - 1) * FolderPageSize) + 1)-@Math.Min(_displayFolderPage * FolderPageSize, _filteredLibraryFolders.Count) of @_filteredLibraryFolders.Count folders
-                            </div>
                             <div class="folder-pagination-actions">
                                 <div class="folder-pagination-controls">
                                     <button type="button"
@@ -470,9 +467,9 @@ else
 
             <section class="document-table-section" aria-label="Document list">
                 <div class="document-table-toolbar">
-                    <div>
+                    <div class="document-table-title-wrap">
                         <h2 class="document-table-title">Documents Table</h2>
-                        <span class="document-table-count">Showing @_filteredDocuments.Count of @_documents.Count document@(_documents.Count == 1 ? string.Empty : "s")</span>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@_documents.Count</MudChip>
                     </div>
                     <button type="button" class="document-reset-btn" @onclick="ResetDocumentTable">
                         <MudIcon Icon="@Icons.Material.Filled.RestartAlt" Size="Size.Small" />
@@ -791,9 +788,6 @@ else
                     </MudTable>
 
                     <div class="folder-pagination-bar">
-                        <div class="folder-pagination-info">
-                            Showing @(((_displayDocumentPage - 1) * _pageSize) + 1)-@Math.Min(_displayDocumentPage * _pageSize, _filteredDocuments.Count) of @_filteredDocuments.Count documents
-                        </div>
                         <div class="folder-pagination-actions">
                             <div class="folder-pagination-controls">
                                 <button type="button"

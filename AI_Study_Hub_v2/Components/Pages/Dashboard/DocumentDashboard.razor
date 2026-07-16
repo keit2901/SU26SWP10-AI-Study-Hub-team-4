@@ -60,13 +60,9 @@
 
             <div style="border-radius: 0.75rem; background: #fff; box-shadow: 0 1px 2px 0 rgba(0,0,0,0.05); width: 100%; overflow: hidden;">
                 <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-bottom: 1px solid rgba(199,196,215,0.3); padding: 1rem 1.5rem;">
-                    <div style="display: flex; flex-direction: column; gap: 0.25rem;">
-                        <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin: 0;">
-                            Documents (@visibleDocuments.Count)
-                        </h2>
-                        <span style="font-size: 0.875rem; color: #6b7280;">
-                            Showing @visibleDocuments.Count of @totalDocuments document@(totalDocuments == 1 ? string.Empty : "s")
-                        </span>
+                    <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                        <h2 style="font-size: 1.25rem; font-weight: 600; color: #1a1b1f; margin: 0;">Documents</h2>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@visibleDocuments.Count</MudChip>
                     </div>
                     <button @onclick="ResetTable"
                             style="display: inline-flex; align-items: center; justify-content: center; gap: 0.4rem; border-radius: 9999px; border: 1px solid rgba(94,92,230,0.22); background: rgba(94,92,230,0.08); color: #4441CC; padding: 0.55rem 0.95rem; font-size: 0.8125rem; font-weight: 700; cursor: pointer;">
@@ -439,18 +435,15 @@
                     </div>
 
                     <div style="display: flex; align-items: center; justify-content: space-between; gap: 1rem; flex-wrap: wrap; border-top: 1px solid rgba(199,196,215,0.2); padding: 1rem 1.25rem;">
-                        <div style="font-size: 0.8125rem; color: #6b7280;">
-                            Page @CurrentPage of @totalPages
-                            <span style="margin-left: 0.5rem;">Total @visibleDocuments.Count document@(visibleDocuments.Count == 1 ? string.Empty : "s")</span>
-                            <span style="margin-left: 0.5rem;">10 / page</span>
-                        </div>
+                        <div style="font-size: 0.8125rem; color: #6b7280;">Total @visibleDocuments.Count document@(visibleDocuments.Count == 1 ? string.Empty : "s")</div>
 
                         @if (totalPages > 1)
                         {
-                            <div style="display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; justify-content: flex-end;">
-                                <button @onclick="() => GoToPage(CurrentPage - 1)"
+                            <div class="folder-pagination-actions">
+                                <div class="folder-pagination-controls">
+                                <button class="folder-page-nav-btn" @onclick="() => GoToPage(CurrentPage - 1)"
                                         disabled="@(CurrentPage == 1)"
-                                        style="display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; height: 2.25rem; border-radius: 9999px; border: 1px solid rgba(199,196,215,0.45); background: #fff; color: #464554; cursor: pointer;">
+                                        >
                                     <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Style="font-size: 1rem;" />
                                 </button>
 
@@ -458,23 +451,31 @@
                                 {
                                     if (pageNumber == -1)
                                     {
-                                        <span style="padding: 0 0.2rem; color: #6b7280; font-size: 0.875rem;">...</span>
+                                        <span class="folder-page-ellipsis">...</span>
                                     }
                                     else
                                     {
                                         var isActivePage = pageNumber == CurrentPage;
-                                        <button @onclick="() => GoToPage(pageNumber)"
-                                                style="display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; height: 2.25rem; border-radius: 9999px; border: 1px solid @(isActivePage ? "#5e5ce6" : "rgba(199,196,215,0.45)"); background: @(isActivePage ? "#5e5ce6" : "#fff"); color: @(isActivePage ? "#fff" : "#464554"); font-size: 0.8125rem; font-weight: 700; cursor: pointer;">
+                                        <button class="folder-page-number-btn @(isActivePage ? "active" : "")" @onclick="() => GoToPage(pageNumber)">
                                             @pageNumber
                                         </button>
                                     }
                                 }
 
-                                <button @onclick="() => GoToPage(CurrentPage + 1)"
+                                <button class="folder-page-nav-btn" @onclick="() => GoToPage(CurrentPage + 1)"
                                         disabled="@(CurrentPage == totalPages)"
-                                        style="display: inline-flex; align-items: center; justify-content: center; min-width: 2.25rem; height: 2.25rem; border-radius: 9999px; border: 1px solid rgba(199,196,215,0.45); background: #fff; color: #464554; cursor: pointer;">
+                                        >
                                     <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Style="font-size: 1rem;" />
                                 </button>
+                                </div>
+                                <div class="folder-pagination-jump">
+                                <input type="text"
+                                       class="folder-page-jump-input"
+                                       placeholder="Page..."
+                                       value="@_pageJumpInput"
+                                       @oninput="HandlePageJumpInput"
+                                       @onkeydown="HandlePageJumpKeyDown" />
+                                </div>
                             </div>
                         }
                     </div>
@@ -488,6 +489,7 @@
     private List<DocumentDto>? pendingDocuments;
     private readonly Dictionary<Guid, string> _resolvedStatuses = new();
     private int CurrentPage = 1;
+    private string _pageJumpInput = string.Empty;
     private string? OpenSortMenuColumn;
     private ElementReference _nameHeaderButton;
     private ElementReference _folderHeaderButton;
@@ -891,31 +893,38 @@
 
     private IReadOnlyList<int> GetPageWindow(int totalPages)
     {
-        if (totalPages <= 7)
+        return BuildSlidingPageNumbers(totalPages, CurrentPage);
+    }
+
+    private static IReadOnlyList<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
         {
-            return Enumerable.Range(1, totalPages).ToList();
+            for (var i = 1; i <= total; i++) pages.Add(i);
+            return pages;
         }
 
-        var pages = new List<int> { 1 };
-        var start = Math.Max(2, CurrentPage - 1);
-        var end = Math.Min(totalPages - 1, CurrentPage + 1);
-
-        if (start > 2)
+        if (current <= 2)
         {
+            for (var i = 1; i <= 3; i++) pages.Add(i);
             pages.Add(-1);
+            pages.Add(total);
+            return pages;
         }
 
-        for (var i = start; i <= end; i++)
+        if (current >= total - 1)
         {
-            pages.Add(i);
-        }
-
-        if (end < totalPages - 1)
-        {
+            pages.Add(1);
             pages.Add(-1);
+            for (var i = total - 2; i <= total; i++) pages.Add(i);
+            return pages;
         }
 
-        pages.Add(totalPages);
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i);
+        pages.Add(-1);
+        pages.Add(total);
         return pages;
     }
 
@@ -923,6 +932,29 @@
     {
         var totalPages = GetTotalPages(GetVisibleDocuments().Count);
         CurrentPage = Math.Clamp(pageNumber, 1, totalPages);
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(_pageJumpInput, out var page))
+        {
+            GoToPage(page);
+        }
+
+        _pageJumpInput = string.Empty;
     }
 
     private void ResetTable()
@@ -942,6 +974,7 @@
         SortBy = "date-desc";
         OpenSortMenuColumn = null;
         CurrentPage = 1;
+        _pageJumpInput = string.Empty;
     }
 
     private bool HasActiveFilters() =>
@@ -1323,3 +1356,18 @@
         };
 
 }
+
+<style>
+    .folder-pagination-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    .folder-pagination-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .folder-pagination-jump { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .folder-page-jump-input { width: 86px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; padding: 7px 10px; font-size: 12px; outline: none; }
+    .folder-page-jump-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+    .folder-page-nav-btn { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #475569; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; min-width: 34px; height: 34px; }
+    .folder-page-nav-btn:disabled { opacity: 0.4; cursor: default; }
+    .folder-page-nav-btn:hover:not(:disabled) { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .folder-page-number-btn { min-width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #475569; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .folder-page-number-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .folder-page-number-btn.active { border-color: #6366f1; background: #6366f1; color: #fff; }
+    .folder-page-ellipsis { color: #94a3b8; font-size: 12px; font-weight: 700; padding: 0 2px; }
+</style>

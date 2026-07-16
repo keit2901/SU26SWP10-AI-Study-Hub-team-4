@@ -184,7 +184,7 @@
 
 .sidebar-footer {
     border-top: 1px solid #e2e8f0;
-    padding: 12px 0;
+    padding: 12px 0 12px 10px;
     display: flex;
     flex-direction: column;
     gap: 2px;
