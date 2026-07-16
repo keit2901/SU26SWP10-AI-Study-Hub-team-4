@@ -219,7 +219,7 @@ public sealed class AiChatApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
-    public async Task SaveQuizAsync(string accessToken, Guid quizId, SaveQuizRequest request, CancellationToken ct = default)
+    public async Task<QuizDto> SaveQuizAsync(string accessToken, Guid quizId, SaveQuizRequest request, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
         ArgumentNullException.ThrowIfNull(request);
@@ -231,10 +231,14 @@ public sealed class AiChatApiClient
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         using var resp = await _http.SendAsync(req, ct);
-        if (!resp.IsSuccessStatusCode)
+        if (resp.IsSuccessStatusCode)
         {
-            await ThrowFromResponseAsync(resp, ct);
+            var quiz = await resp.Content.ReadFromJsonAsync<QuizDto>(cancellationToken: ct);
+            return quiz ?? throw new AiChatApiException(500, "empty_response", "Server returned empty quiz.");
         }
+
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
     }
 
     private static async Task ThrowFromResponseAsync(HttpResponseMessage resp, CancellationToken cancellationToken)
