@@ -48,6 +48,22 @@
                     top: top,
                     width: width
                 };
+            },
+            focusElement: function (element, selectText) {
+                if (!element) {
+                    return;
+                }
+
+                requestAnimationFrame(function () {
+                    try {
+                        element.focus({ preventScroll: true });
+
+                        if (selectText && typeof element.select === "function") {
+                            element.select();
+                        }
+                    } catch (error) {
+                    }
+                });
             }
         };
     </script>
