@@ -50,7 +50,7 @@ public sealed class EscalationControllerTests
             .Setup(s => s.CreateAsync(localUserId, request, It.IsAny<CancellationToken>()))
             .ReturnsAsync(new DocumentEscalationDto(
                 Guid.NewGuid(), request.FolderId, "Moderator", request.Reason,
-                "Pending", null, DateTimeOffset.UtcNow, null,
+                "Pending", null, null, DateTimeOffset.UtcNow, null,
                 new List<DocumentEscalationItemDto>()));
 
         var result = await controller.Create(request, CancellationToken.None);
@@ -78,8 +78,8 @@ public sealed class EscalationControllerTests
 
         var escalations = new List<DocumentEscalationDto>
         {
-            new(Guid.NewGuid(), Guid.NewGuid(), "Mod", "R", "Pending", null, DateTimeOffset.UtcNow, null, new List<DocumentEscalationItemDto>()),
-            new(Guid.NewGuid(), Guid.NewGuid(), "Mod", "R2", "Resolved", "OK", DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, new List<DocumentEscalationItemDto>())
+            new(Guid.NewGuid(), Guid.NewGuid(), "Mod", "R", "Pending", null, null, DateTimeOffset.UtcNow, null, new List<DocumentEscalationItemDto>()),
+            new(Guid.NewGuid(), Guid.NewGuid(), "Mod", "R2", "Resolved", "OK", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, new List<DocumentEscalationItemDto>())
         };
 
         escalationService.Setup(s => s.GetAllAsync(It.IsAny<CancellationToken>()))
@@ -113,7 +113,7 @@ public sealed class EscalationControllerTests
 
         var myEscalations = new List<DocumentEscalationDto>
         {
-            new(Guid.NewGuid(), Guid.NewGuid(), "Me", "My escalation", "Pending", null, DateTimeOffset.UtcNow, null, new List<DocumentEscalationItemDto>())
+            new(Guid.NewGuid(), Guid.NewGuid(), "Me", "My escalation", "Pending", null, null, DateTimeOffset.UtcNow, null, new List<DocumentEscalationItemDto>())
         };
 
         escalationService.Setup(s => s.GetMyAsync(localUserId, It.IsAny<CancellationToken>()))
@@ -138,7 +138,7 @@ public sealed class EscalationControllerTests
         var escalationId = Guid.NewGuid();
         var resolveReq = new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid escalation." };
         var resolved = new DocumentEscalationDto(
-            escalationId, Guid.NewGuid(), "Mod", "R", "Approved", "Valid escalation.",
+            escalationId, Guid.NewGuid(), "Mod", "R", "Approved", "Valid escalation.", null,
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
             new List<DocumentEscalationItemDto>());
 
