@@ -7,6 +7,23 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture]
 public sealed class EmbeddingServiceTests
 {
+    [TestCase("Ollama")]
+    [TestCase("ollama")]
+    [TestCase("Fake")]
+    [TestCase("fake")]
+    public void EmbeddingOptions_SupportedProvider_IsValid(string provider)
+    {
+        EmbeddingOptions.IsSupported(new EmbeddingOptions { Provider = provider }).Should().BeTrue();
+    }
+
+    [TestCase("")]
+    [TestCase("Gemini")]
+    [TestCase("Unknown")]
+    public void EmbeddingOptions_UnsupportedProvider_IsInvalid(string provider)
+    {
+        EmbeddingOptions.IsSupported(new EmbeddingOptions { Provider = provider }).Should().BeFalse();
+    }
+
     [Test]
     public async Task GenerateEmbeddingAsync_Returns384Dimensions()
     {

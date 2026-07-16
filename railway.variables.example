@@ -1,0 +1,43 @@
+# Required runtime
+ASPNETCORE_ENVIRONMENT=Production
+ConnectionStrings__Postgres=Host=YOUR_SUPABASE_SESSION_POOLER;Port=5432;Database=postgres;Username=YOUR_USER;Password=YOUR_PASSWORD;SSL Mode=Require;Trust Server Certificate=true
+
+# Supabase Auth and Storage
+Supabase__Url=https://YOUR_PROJECT.supabase.co
+Supabase__JwtIssuer=https://YOUR_PROJECT.supabase.co/auth/v1
+Supabase__JwtAudience=authenticated
+Supabase__JwtSecret=YOUR_SUPABASE_JWT_SECRET
+Supabase__AnonKey=YOUR_SUPABASE_ANON_KEY
+Supabase__ServiceRoleKey=YOUR_SUPABASE_SERVICE_ROLE_KEY
+
+# Production bot protection
+Recaptcha__Enabled=true
+Recaptcha__AllowDevelopmentFallback=false
+Recaptcha__SiteKey=YOUR_RECAPTCHA_SITE_KEY
+Recaptcha__SecretKey=YOUR_RECAPTCHA_SECRET_KEY
+
+# Free Student MVP deployment: deterministic local embeddings, no Ollama service
+Embedding__Provider=Fake
+
+# AI chat/quiz provider
+Groq__ApiKey=YOUR_GROQ_API_KEY
+Groq__Model=llama-3.1-8b-instant
+
+# Optional. RAILWAY_PUBLIC_DOMAIN is injected automatically and is used when
+# DemoUi__BackendBaseUrl is absent. Set this only for a custom domain.
+# DemoUi__BackendBaseUrl=https://YOUR_CUSTOM_DOMAIN/
+
+# Optional Gemini provider
+# Gemini__ApiKey=YOUR_GEMINI_API_KEY
+# Gemini__Model=gemini-2.5-flash
+
+# Optional first-run accounts. Do not commit real passwords.
+# Seed__DefaultAdmin__Email=admin@example.com
+# Seed__DefaultAdmin__Username=admin
+# Seed__DefaultAdmin__FullName=System Administrator
+# Seed__DefaultAdmin__Password=YOUR_STRONG_PASSWORD
+
+# Optional VNPay sandbox
+# VnPay__TmnCode=YOUR_VNPAY_TMN_CODE
+# VnPay__HashSecret=YOUR_VNPAY_HASH_SECRET
+# VnPay__ReturnUrl=https://YOUR_DOMAIN/payment-result

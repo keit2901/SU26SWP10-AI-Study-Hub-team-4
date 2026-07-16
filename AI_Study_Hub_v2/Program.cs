@@ -13,6 +13,7 @@ using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -52,11 +53,23 @@ builder.Services
         "Rag chat limits must use exchanges 0-10, history chars 0 or 500-10000, assistant chars 100-2000, and context chars 1000-20000.")
     .ValidateOnStart();
 builder.Services.ConfigureOptions<ConfigureRagOptions>();
+builder.Services
+    .AddOptions<EmbeddingOptions>()
+    .Bind(builder.Configuration.GetSection(EmbeddingOptions.SectionName))
+    .Validate(EmbeddingOptions.IsSupported, "Embedding:Provider must be Ollama or Fake.")
+    .ValidateOnStart();
 builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
 builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    // Railway is the only ingress to the container. Proxy addresses are dynamic.
+    options.KnownNetworks.Clear();
+    options.KnownProxies.Clear();
+});
 builder.Services.AddMemoryCache(options =>
 {
     var ragCacheOptions = builder.Configuration.GetSection(RagOptions.SectionName).Get<RagOptions>() ?? new RagOptions();
@@ -64,6 +77,7 @@ builder.Services.AddMemoryCache(options =>
 });
 
 var recaptchaBootstrap = builder.Configuration.GetSection(RecaptchaOptions.SectionName).Get<RecaptchaOptions>() ?? new();
+var embeddingBootstrap = builder.Configuration.GetSection(EmbeddingOptions.SectionName).Get<EmbeddingOptions>() ?? new();
 if (!builder.Environment.IsDevelopment() && (!recaptchaBootstrap.Enabled || !recaptchaBootstrap.IsConfigured))
 {
     throw new InvalidOperationException(
@@ -179,18 +193,26 @@ builder.Services.AddHttpClient<OllamaEmbeddingService>(client =>
 {
     client.Timeout = TimeSpan.FromSeconds(30);
 });
+builder.Services.AddScoped<FakeEmbeddingService>();
 builder.Services.AddScoped<IEmbeddingService>(sp =>
 {
     var ragOptions = sp.GetRequiredService<IOptions<RagOptions>>().Value;
-    var ollama = sp.GetRequiredService<OllamaEmbeddingService>();
+    var embeddingOptions = sp.GetRequiredService<IOptions<EmbeddingOptions>>().Value;
+    IEmbeddingService inner = embeddingOptions.UsesFake
+        ? sp.GetRequiredService<FakeEmbeddingService>()
+        : sp.GetRequiredService<OllamaEmbeddingService>();
+
     if (!ragOptions.EmbeddingCacheEnabled)
     {
-        return ollama;
+        return inner;
     }
 
-    return ActivatorUtilities.CreateInstance<CachingEmbeddingService>(sp, ollama);
+    return ActivatorUtilities.CreateInstance<CachingEmbeddingService>(sp, inner);
 });
-builder.Services.AddHostedService<OllamaHealthCheck>();
+if (embeddingBootstrap.UsesOllama)
+{
+    builder.Services.AddHostedService<OllamaHealthCheck>();
+}
 // Sprint 3 services ----------------------------------------------------------
 builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
@@ -206,11 +228,24 @@ builder.Services.AddHostedService<StorageReconciliationHostedService>();
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
 {
     var cfg = sp.GetRequiredService<IConfiguration>();
+    var environment = sp.GetRequiredService<IWebHostEnvironment>();
     var baseUrl = cfg["DemoUi:BackendBaseUrl"];
     if (string.IsNullOrWhiteSpace(baseUrl))
     {
-        // Fallback to the first HTTP endpoint declared in launch settings.
-        baseUrl = "http://localhost:5240/";
+        var railwayDomain = cfg["RAILWAY_PUBLIC_DOMAIN"];
+        if (!string.IsNullOrWhiteSpace(railwayDomain))
+        {
+            baseUrl = $"https://{railwayDomain.Trim().TrimEnd('/')}";
+        }
+        else if (environment.IsDevelopment())
+        {
+            baseUrl = "http://localhost:5240/";
+        }
+        else
+        {
+            throw new InvalidOperationException(
+                "DemoUi:BackendBaseUrl or RAILWAY_PUBLIC_DOMAIN must be configured outside Development.");
+        }
     }
     if (!baseUrl.EndsWith('/'))
     {
@@ -413,6 +448,12 @@ builder.Services.AddMudServices();
 
 var app = builder.Build();
 
+if (embeddingBootstrap.UsesFake)
+{
+    app.Logger.LogWarning(
+        "Fake embedding provider is enabled. It is suitable for a free demo but not equivalent to a trained semantic embedding model.");
+}
+
 // Migrate + seed default admin (idempotent) -----------------------------------
 using (var scope = app.Services.CreateScope())
 {
@@ -438,6 +479,17 @@ using (var scope = app.Services.CreateScope())
         throw;
     }
 }
+
+app.UseForwardedHeaders();
+
+// Railway requires a dependency-free HTTP 200 readiness response. This branch
+// intentionally runs before HTTPS redirection because Railway probes internally.
+app.Map("/health", healthApp => healthApp.Run(async context =>
+{
+    context.Response.StatusCode = StatusCodes.Status200OK;
+    context.Response.ContentType = "application/json";
+    await context.Response.WriteAsync("{\"status\":\"ok\"}");
+}));
 
 if (!app.Environment.IsDevelopment())
 {

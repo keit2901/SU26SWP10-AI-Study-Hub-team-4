@@ -18,6 +18,11 @@ Local Supabase Auth + DB for `AI_Study_Hub_v2`. **Dev only.** Do not deploy this
 
 ## Quick start
 
+Copy `.env.example` to `.env`, then replace every value prefixed with
+`CHANGE_ME`, `REPLACE_WITH`, or `GENERATE_FROM`. The example file intentionally
+contains no working credentials. Generate new `ANON_KEY` and `SERVICE_ROLE_KEY`
+tokens after choosing `JWT_SECRET`; never recover or reuse values from Git history.
+
 ```powershell
 cd D:\FPT\summer2026\SWP391\infra\supabase
 docker compose pull

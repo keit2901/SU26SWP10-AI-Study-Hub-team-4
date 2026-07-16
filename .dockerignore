@@ -25,6 +25,7 @@ appsettings.Development.json
 # Docker
 Dockerfile
 .dockerignore
+railway.variables.example
 
 # Infra (Supabase is external in production)
 infra/
