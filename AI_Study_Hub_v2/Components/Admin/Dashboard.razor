@@ -133,11 +133,11 @@
                         if (_metrics.FailedJobs > 0)
                         { ctaText = $"View {_metrics.FailedJobs} failed"; ctaVariant = Variant.Outlined; ctaRoute = "/admin/documents"; }
                         else if (_metrics.PendingDocuments > 0)
-                        { ctaText = $"Review {_metrics.PendingDocuments} pending"; ctaVariant = Variant.Filled; ctaRoute = "/admin/documents/moderation"; }
+                        { ctaText = $"Review {_metrics.PendingDocuments} pending"; ctaVariant = Variant.Filled; ctaRoute = "/admin/escalations"; }
                         else if (_metrics.ProcessingDocuments > 0)
                         { ctaText = $"View {_metrics.ProcessingDocuments} processing"; ctaVariant = Variant.Outlined; ctaRoute = "/admin/documents"; }
                         else
-                        { ctaText = "View queue"; ctaVariant = Variant.Text; ctaRoute = "/admin/documents/moderation"; }
+                        { ctaText = "View queue"; ctaVariant = Variant.Text; ctaRoute = "/admin/escalations"; }
                     }
 
                     <div class="p-4 d-flex justify-space-between align-center border-b" style="border-bottom: 1px solid #e0e3e5; gap: 1rem; flex-wrap: wrap;">
@@ -289,7 +289,7 @@
                                 <span class="moderation-badge @(pendingCount > 0 ? "pending" : "approved")" style="font-size:10px;background-color:@(pendingCount > 0 ? "#fef3c7" : "#dcfce7");color:@(pendingCount > 0 ? "#d97706" : "#16a34a");padding:2px 8px;border-radius:4px;font-weight:600;">
                                     @(pendingCount > 0 ? "Needs review" : "All clear")
                                 </span>
-                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo("/admin/documents/moderation"))" Style="text-transform:none;font-size:11px;">
+                                <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="@(() => Navigation.NavigateTo("/admin/escalations"))" Style="text-transform:none;font-size:11px;">
                                     Review documents
                                 </MudButton>
                             </div>
@@ -512,7 +512,7 @@
         }
     }
 
-    private void OpenModerationQueue() => Navigation.NavigateTo("/admin/documents/moderation");
+    private void OpenModerationQueue() => Navigation.NavigateTo("/admin/escalations");
 
     private void OpenAuditLogs() => Navigation.NavigateTo("/admin/audit-logs");
 

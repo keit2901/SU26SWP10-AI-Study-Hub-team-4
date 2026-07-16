@@ -9,6 +9,8 @@ public interface IEscalationService
 {
     Task<DocumentEscalationDto> CreateAsync(Guid escalatedByUserId, CreateEscalationRequest request, CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetPendingAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default);
+    Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(Guid userId, CancellationToken ct = default);
     Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, ResolveEscalationRequest request, CancellationToken ct = default);
 }
 
@@ -50,6 +52,37 @@ public sealed class EscalationService : IEscalationService
     {
         var escalationIds = await _db.DocumentEscalations
             .Where(e => e.EscalationStatus == "Pending")
+            .OrderByDescending(e => e.CreatedAt)
+            .Select(e => e.Id)
+            .ToListAsync(ct);
+
+        var result = new List<DocumentEscalationDto>();
+        foreach (var id in escalationIds)
+        {
+            result.Add(await GetByIdAsync(id, ct));
+        }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default)
+    {
+        var escalationIds = await _db.DocumentEscalations
+            .OrderByDescending(e => e.CreatedAt)
+            .Select(e => e.Id)
+            .ToListAsync(ct);
+
+        var result = new List<DocumentEscalationDto>();
+        foreach (var id in escalationIds)
+        {
+            result.Add(await GetByIdAsync(id, ct));
+        }
+        return result;
+    }
+
+    public async Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(Guid userId, CancellationToken ct = default)
+    {
+        var escalationIds = await _db.DocumentEscalations
+            .Where(e => e.EscalatedByUserId == userId)
             .OrderByDescending(e => e.CreatedAt)
             .Select(e => e.Id)
             .ToListAsync(ct);
