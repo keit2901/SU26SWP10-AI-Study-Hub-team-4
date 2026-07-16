@@ -19,9 +19,6 @@
 
 <body>
     <div id="blazor-app-root">
-        <MudPopoverProvider @rendermode="new InteractiveServerRenderMode(prerender: false)" />
-        <MudDialogProvider @rendermode="new InteractiveServerRenderMode(prerender: false)" />
-        <MudSnackbarProvider @rendermode="new InteractiveServerRenderMode(prerender: false)" />
         <Routes @rendermode="new InteractiveServerRenderMode(prerender: false)" />
     </div>
     <script src="_content/MudBlazor/MudBlazor.min.js"></script>

@@ -42,7 +42,7 @@ public sealed class ChatPersistenceService : IChatPersistenceService
         var profile = await ResolveProfileAsync(supabaseUserId, ct);
         var sessions = await _db.ChatSessions
             .Where(s => s.UserId == profile.Id)
-            .Where(s => !folderId.HasValue || s.FolderId == folderId.Value)
+            .Where(s => s.FolderId == folderId)
             .OrderByDescending(s => s.UpdatedAt)
             .Select(s => new ChatSessionDto
             {
@@ -63,6 +63,11 @@ public sealed class ChatPersistenceService : IChatPersistenceService
     public async Task<ChatSessionDto> CreateSessionAsync(Guid supabaseUserId, CreateChatSessionRequest request, CancellationToken ct = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, ct);
+        if (request.FolderId.HasValue && !await _db.Folders.AnyAsync(f => f.Id == request.FolderId.Value && f.UserId == profile.Id, ct))
+        {
+            throw new AiChatException(404, "folder_not_found", "Folder not found.");
+        }
+
         var now = DateTimeOffset.UtcNow;
         var session = new ChatSession
         {
@@ -92,19 +97,19 @@ public sealed class ChatPersistenceService : IChatPersistenceService
         };
     }
 
-    public async Task<IReadOnlyList<ChatMessageDto>> GetMessagesAsync(Guid supabaseUserId, Guid sessionId, CancellationToken ct = default)
+    public async Task<IReadOnlyList<ChatMessageDto>> GetMessagesScopedAsync(Guid supabaseUserId, Guid sessionId, Guid? expectedFolderId, CancellationToken ct = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, ct);
         var session = await _db.ChatSessions
             .AsNoTracking()
-            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == profile.Id, ct);
+            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == profile.Id && s.FolderId == expectedFolderId, ct);
 
         if (session is null)
         {
-            return Array.Empty<ChatMessageDto>();
+            throw new AiChatException(404, "session_not_found", "Chat session not found.");
         }
 
-        var messages = await _db.ChatMessages
+        return await _db.ChatMessages
             .AsNoTracking()
             .Where(m => m.ChatSessionId == sessionId)
             .OrderBy(m => m.SequenceNumber)
@@ -118,30 +123,28 @@ public sealed class ChatPersistenceService : IChatPersistenceService
                 CreatedAt = m.CreatedAt,
             })
             .ToListAsync(ct);
-
-        return messages;
     }
 
-    public async Task DeleteSessionAsync(Guid supabaseUserId, Guid sessionId, CancellationToken ct = default)
+    public async Task DeleteSessionAsync(Guid supabaseUserId, Guid sessionId, Guid? expectedFolderId, CancellationToken ct = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, ct);
         var session = await _db.ChatSessions
-            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == profile.Id, ct);
+            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == profile.Id && s.FolderId == expectedFolderId, ct);
 
         if (session is null)
         {
-            return;
+            throw new AiChatException(404, "session_not_found", "Chat session not found.");
         }
 
         _db.ChatSessions.Remove(session);
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task SaveExchangeAsync(Guid supabaseUserId, Guid sessionId, string question, string scopeLabel, AiChatAnswerResponse response, CancellationToken ct = default)
+    public async Task SaveExchangeAsync(Guid supabaseUserId, Guid sessionId, Guid? expectedFolderId, string question, string scopeLabel, AiChatAnswerResponse response, CancellationToken ct = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, ct);
         var session = await _db.ChatSessions
-            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == profile.Id, ct);
+            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == profile.Id && s.FolderId == expectedFolderId, ct);
 
         if (session is null)
         {
@@ -188,11 +191,11 @@ public sealed class ChatPersistenceService : IChatPersistenceService
         await _db.SaveChangesAsync(ct);
     }
 
-    public async Task SaveQuizExchangeAsync(Guid supabaseUserId, Guid sessionId, string scopeLabel, string userContent, Guid quizId, string quizTitle, string quizStatus, int? totalQuestions = null, int? score = null, CancellationToken ct = default)
+    public async Task SaveQuizExchangeAsync(Guid supabaseUserId, Guid sessionId, Guid? expectedFolderId, string scopeLabel, string userContent, Guid quizId, string quizTitle, string quizStatus, int? totalQuestions = null, int? score = null, CancellationToken ct = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, ct);
         var session = await _db.ChatSessions
-            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == profile.Id, ct);
+            .FirstOrDefaultAsync(s => s.Id == sessionId && s.UserId == profile.Id && s.FolderId == expectedFolderId, ct);
 
         if (session is null)
         {

@@ -8,6 +8,8 @@
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject IDialogService DialogService
+@inject EscalationApiClient EscalationClient
 
 <PageTitle>Review Pending Documents - AI Study Hub</PageTitle>
 
@@ -371,14 +373,30 @@
                                                 </div>
                                             </td>
                                             <td style="padding: 0.9rem 1rem 0.9rem 0.75rem; vertical-align: top;">
-                                                @if (_resolvedStatuses.TryGetValue(item.Id, out var resolvedStatus))
+                                                @{
+                                                    var isLocallyResolved = _resolvedStatuses.TryGetValue(item.Id, out var localStatus);
+                                                    var isLocallyRejected = isLocallyResolved && string.Equals(localStatus, "Rejected", StringComparison.OrdinalIgnoreCase);
+                                                    var isLocallyApproved = isLocallyResolved && string.Equals(localStatus, "Approved", StringComparison.OrdinalIgnoreCase);
+                                                }
+
+                                                @if (isLocallyApproved)
                                                 {
-                                                    var isApproved = string.Equals(resolvedStatus, "Approved", StringComparison.OrdinalIgnoreCase);
-                                                    var bg = isApproved ? "rgba(52,199,89,0.12)" : "rgba(255,59,48,0.1)";
-                                                    var color = isApproved ? "#1a8c4a" : "#c23c21";
-                                                    <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: @bg; color: @color; font-size: 0.8125rem; font-weight: 600; float: right;">
-                                                        <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: @color; flex-shrink: 0;"></span>
-                                                        @resolvedStatus
+                                                    <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: rgba(52,199,89,0.12); color: #1a8c4a; font-size: 0.8125rem; font-weight: 600; float: right;">
+                                                        <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #1a8c4a; flex-shrink: 0;"></span>
+                                                        Approved
+                                                    </div>
+                                                }
+                                                else if (isLocallyRejected)
+                                                {
+                                                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; flex-wrap: wrap;">
+                                                        <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: rgba(255,59,48,0.1); color: #c23c21; font-size: 0.8125rem; font-weight: 600;">
+                                                            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: #c23c21; flex-shrink: 0;"></span>
+                                                            Rejected
+                                                        </div>
+                                                        <button @onclick="() => OpenEscalationDialogForDocument(item)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(217,119,6,0.2); background: rgba(217,119,6,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Flag" Style="font-size: 0.75rem; color: #d97706;" />
+                                                            <span style="font-size: 0.75rem; font-weight: 500; color: #d97706;">Escalate</span>
+                                                        </button>
                                                     </div>
                                                 }
                                                 else
@@ -1163,6 +1181,75 @@
         catch (Exception ex)
         {
             Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task OpenEscalationDialogForDocument(DocumentDto document)
+    {
+        if (document is null) return;
+
+        var folderId = document.FolderId ?? Guid.Empty;
+        if (folderId == Guid.Empty)
+        {
+            Snackbar.Add("Document has no folder assigned.", Severity.Warning);
+            return;
+        }
+
+        var folderRejectedDocs = (pendingDocuments ?? [])
+            .Where(d => d.FolderId == folderId
+                && _resolvedStatuses.TryGetValue(d.Id, out var rs)
+                && string.Equals(rs, "Rejected", StringComparison.OrdinalIgnoreCase))
+            .Select(d => new AI_Study_Hub_v2.Components.Pages.Dashboard.EscalationDialog.RejectedDocItem
+            {
+                DocumentId = d.Id,
+                FileName = d.FileName,
+                RejectReason = "Rejected by moderator."
+            })
+            .ToList();
+
+        if (folderRejectedDocs.Count == 0)
+        {
+            Snackbar.Add("No rejected documents to escalate.", Severity.Warning);
+            return;
+        }
+
+        var parameters = new DialogParameters
+        {
+            ["FolderName"] = "Current Moderation Queue",
+            ["FolderId"] = folderId,
+            ["RejectedDocuments"] = folderRejectedDocs
+        };
+
+        var dialog = await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Pages.Dashboard.EscalationDialog>("Escalate to Admin", parameters);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false })
+            return;
+
+        var data = result.Data as AI_Study_Hub_v2.Components.Pages.Dashboard.EscalationDialog.EscalationDialogResult;
+        if (data is null) return;
+
+        try
+        {
+            var token = Session.AccessToken;
+            if (string.IsNullOrEmpty(token))
+            {
+                Snackbar.Add("Authentication required.", Severity.Error);
+                return;
+            }
+
+            var request = new CreateEscalationRequest
+            {
+                FolderId = folderId,
+                Reason = data.Reason,
+                Items = data.Items
+            };
+
+            await EscalationClient.CreateAsync(token, request);
+            Snackbar.Add($"Escalation created with {data.Items.Count} document(s).", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to create escalation: {ex.Message}", Severity.Error);
         }
     }
 

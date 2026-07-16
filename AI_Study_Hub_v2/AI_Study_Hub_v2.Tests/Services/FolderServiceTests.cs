@@ -13,8 +13,13 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture]
 public class FolderServiceTests
 {
-    private static FolderService BuildSut(AppDbContext db) =>
-        new(db, NullLogger<FolderService>.Instance, Mock.Of<ISupabaseStorageClient>());
+    private static FolderService BuildSut(AppDbContext db, IPlanCapacityGuard? capacityGuard = null)
+    {
+        var storage = Mock.Of<ISupabaseStorageClient>();
+        return new FolderService(db, NullLogger<FolderService>.Instance,
+            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance),
+            new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<ISharedFolderCopyCoordinator>());
+    }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
     {
@@ -125,6 +130,67 @@ public class FolderServiceTests
     }
 
     [Test]
+    public async Task CreateAsync_FolderLimitFailure_DoesNotPersistFolder()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(
+                db,
+                me.Id,
+                It.Is<PlanCapacityRequest>(request => request.AdditionalFolderCount == 1),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new PlanException(402, "folder_count_exceeded", "limit"));
+        var sut = BuildSut(db, guard.Object);
+
+        var act = () => sut.CreateAsync(me.SupabaseUserId, new CreateFolderRequest { Name = "Blocked" });
+
+        var exception = await act.Should().ThrowAsync<PlanException>();
+        exception.Which.Code.Should().Be("folder_count_exceeded");
+        (await db.Folders.CountAsync()).Should().Be(0);
+    }
+
+    [Test]
+    public async Task CreateAsync_DuplicateNameAfterGuard_DoesNotPersistPartialFolder()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var existing = SeedFolder(db, me.Id, "Existing");
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(db, me.Id, It.IsAny<PlanCapacityRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut(db, guard.Object);
+
+        var act = () => sut.CreateAsync(me.SupabaseUserId, new CreateFolderRequest { Name = " existing " });
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.Code.Should().Be("folder_name_taken");
+        (await db.Folders.CountAsync()).Should().Be(1);
+        (await db.Folders.SingleAsync()).Id.Should().Be(existing.Id);
+    }
+
+    [Test]
+    public async Task CreateAsync_Success_UsesCapacityGuardAndCommitsFolder()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var guard = new Mock<IPlanCapacityGuard>(MockBehavior.Strict);
+        guard.Setup(g => g.LockAndValidateAsync(
+                db,
+                me.Id,
+                It.Is<PlanCapacityRequest>(request => request == new PlanCapacityRequest(0, 1, null, 0, 0)),
+                It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut(db, guard.Object);
+
+        var result = await sut.CreateAsync(me.SupabaseUserId, new CreateFolderRequest { Name = "Committed" });
+
+        result.Name.Should().Be("Committed");
+        (await db.Folders.SingleAsync()).Id.Should().Be(result.Id);
+        guard.VerifyAll();
+    }
+
+    [Test]
     public async Task CreateAsync_InactiveUser_Throws403()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();
@@ -215,18 +281,25 @@ public class FolderServiceTests
 
         // 1. Empty folder
         var folderEmpty = SeedFolder(db, me.Id, "Empty Folder");
+        folderEmpty.ShareStatus = FolderStatus.PendingShare;
 
         // 2. Processing folder (contains a processing document)
         var folderProc = SeedFolder(db, me.Id, "Processing Folder");
+        folderProc.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
         SeedDocumentWithStatus(db, me.Id, folderProc.Id, DocumentStatus.Processing);
 
         // 3. Rejected folder (contains a failed document)
         var folderRej = SeedFolder(db, me.Id, "Rejected Folder");
+        folderRej.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
         SeedDocumentWithStatus(db, me.Id, folderRej.Id, DocumentStatus.Failed);
         SeedDocumentWithStatus(db, me.Id, folderRej.Id, DocumentStatus.Ready);
 
         // 4. Pending Share folder (contains ready documents, but folder is not shared)
         var folderPending = SeedFolder(db, me.Id, "Pending Folder");
+        folderPending.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
         SeedDocumentWithStatus(db, me.Id, folderPending.Id, DocumentStatus.Ready);
 
         // 5. Shared folder (contains ready documents, and folder is shared)
@@ -242,5 +315,20 @@ public class FolderServiceTests
         list.Single(f => f.Id == folderRej.Id).Status.Should().Be("Rejected");
         list.Single(f => f.Id == folderPending.Id).Status.Should().Be("Pending Share");
         list.Single(f => f.Id == folderShared.Id).Status.Should().Be("Shared");
+    }
+
+    [Test]
+    public async Task ListPersonalSharedAsync_ExcludesNoneShareStatusFolders()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var me = SeedActiveStudent(db);
+        var sut = BuildSut(db);
+
+        var folderNone = SeedFolder(db, me.Id, "None Folder");
+        folderNone.ShareStatus = FolderStatus.None;
+        db.SaveChanges();
+
+        var list = await sut.ListPersonalSharedAsync(me.SupabaseUserId);
+        list.Should().BeEmpty();
     }
 }

@@ -359,6 +359,288 @@
 
 /* ── Search & Filter ──────────────────────── */
 
+.personal-status-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+    margin-bottom: 18px;
+}
+
+.personal-status-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05);
+}
+
+.personal-status-card.shared {
+    border-color: #c7d2fe;
+    background: linear-gradient(135deg, #eef2ff 0%, #ffffff 100%);
+}
+
+.personal-status-card.pending {
+    border-color: #fde68a;
+    background: linear-gradient(135deg, #fffbeb 0%, #ffffff 100%);
+}
+
+.personal-status-card.rejected {
+    border-color: #fecaca;
+    background: linear-gradient(135deg, #fef2f2 0%, #ffffff 100%);
+}
+
+.personal-status-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 14px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    flex-shrink: 0;
+}
+
+.personal-status-card.shared .personal-status-icon {
+    color: #4338ca;
+}
+
+.personal-status-card.pending .personal-status-icon {
+    color: #a16207;
+}
+
+.personal-status-card.rejected .personal-status-icon {
+    color: #b91c1c;
+}
+
+.personal-status-content {
+    min-width: 0;
+}
+
+.personal-status-label {
+    font-size: 0.78rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
+.personal-status-value {
+    margin-top: 4px;
+    font-size: 2rem;
+    font-weight: 800;
+    line-height: 1;
+    color: #0f172a;
+}
+
+.personal-status-note {
+    margin: 8px 0 0;
+    font-size: 0.85rem;
+    color: #475569;
+    line-height: 1.45;
+}
+
+.personal-failed-panel {
+    margin-bottom: 28px;
+}
+
+.review-board-panel {
+    border: 1px solid #e2e8f0;
+    border-radius: 18px;
+    background: #ffffff;
+    box-shadow: 0 16px 40px rgba(15, 23, 42, 0.05);
+    overflow: hidden;
+}
+
+.review-board-panel.success {
+    border-color: #c7d2fe;
+}
+
+.review-board-panel.failed {
+    border-color: #fecaca;
+}
+
+.review-board-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 18px 20px 12px;
+}
+
+.review-board-header h3 {
+    margin: 4px 0 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.review-board-eyebrow {
+    font-size: 0.7rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #94a3b8;
+}
+
+.review-board-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 42px;
+    height: 42px;
+    padding: 0 12px;
+    border-radius: 999px;
+    font-size: 1rem;
+    font-weight: 800;
+}
+
+.review-board-count.success {
+    background: #eef2ff;
+    color: #4338ca;
+}
+
+.review-board-count.failed {
+    background: #fef2f2;
+    color: #b91c1c;
+}
+
+.review-board-empty {
+    margin: 0;
+    padding: 0 20px 20px;
+    color: #64748b;
+    font-size: 0.875rem;
+}
+
+.review-board-table-wrap {
+    padding: 0 12px 12px;
+    overflow-x: auto;
+}
+
+.review-board-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.82rem;
+    color: #334155;
+}
+
+.review-board-table th {
+    padding: 10px 12px;
+    border-top: 1px solid #e2e8f0;
+    border-bottom: 1px solid #e2e8f0;
+    background: #f8fafc;
+    color: #64748b;
+    font-size: 0.68rem;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    text-align: left;
+    white-space: nowrap;
+}
+
+.review-board-action-header {
+    width: 1%;
+    text-align: right !important;
+}
+
+.review-board-table td {
+    padding: 12px;
+    border-bottom: 1px solid #e2e8f0;
+    vertical-align: top;
+}
+
+.review-board-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.review-board-cell-title {
+    font-weight: 700;
+    color: #0f172a;
+}
+
+.review-board-reason-cell {
+    color: #475569;
+    line-height: 1.45;
+}
+
+.review-board-subtext {
+    margin-top: 6px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #b91c1c;
+}
+
+.review-board-action-cell {
+    width: 1%;
+    text-align: right;
+    white-space: nowrap;
+}
+
+.review-board-actions {
+    display: inline-flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-left: auto;
+    width: max-content;
+}
+
+.review-board-actions.centered {
+    display: flex;
+    justify-content: center;
+    margin-top: 12px;
+}
+
+.review-board-action-btn {
+    border: 1px solid #cbd5e1;
+    background: #ffffff;
+    color: #334155;
+    border-radius: 999px;
+    padding: 0.4rem 0.8rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.18s ease;
+}
+
+.review-board-action-btn:hover {
+    border-color: #6366f1;
+    color: #4338ca;
+    background: #eef2ff;
+}
+
+.review-board-action-btn.primary {
+    border-color: #c7d2fe;
+    color: #4338ca;
+    background: #eef2ff;
+}
+
+.review-board-action-btn.info {
+    border-color: #bfdbfe;
+    color: #1d4ed8;
+    background: #eff6ff;
+}
+
+.review-board-mini-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #fecaca;
+    background: #fff1f2;
+    color: #be123c;
+    border-radius: 999px;
+    padding: 0.38rem 0.7rem;
+    font-size: 0.72rem;
+    font-weight: 800;
+    cursor: pointer;
+}
+
 .community-search {
     margin-bottom: 24px;
 }
@@ -774,7 +1056,7 @@
 
 .personal-card-header {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
 }
 
@@ -816,6 +1098,14 @@
     flex-shrink: 0;
 }
 
+.personal-card-metrics {
+    margin-left: auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    flex-shrink: 0;
+}
+
 .personal-card-approval {
     display: flex;
     flex-direction: column;
@@ -851,6 +1141,12 @@
 .personal-card-stats {
     display: grid;
     grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.personal-card-stats-inline {
+    display: inline-flex;
+    align-items: center;
     gap: 8px;
 }
 
@@ -899,6 +1195,20 @@
 .stat-likes span { color: #818cf8; }
 .stat-dislikes span { color: #fb7185; }
 
+.stat-pill.compact {
+    padding: 7px 10px;
+    min-width: 102px;
+    justify-content: flex-start;
+}
+
+.stat-pill.compact strong {
+    font-size: 0.92rem;
+}
+
+.stat-pill.compact span {
+    font-size: 0.6rem;
+}
+
 /* ── Empty state ──────────────────────────── */
 
 .community-empty {
@@ -927,13 +1237,18 @@
 
 @media (max-width: 1024px) {
     .community-grid { grid-template-columns: repeat(2, 1fr); }
+    .personal-status-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 768px) {
     .community-sidebar { display: none; }
     .community-main { padding: 20px 16px; }
     .community-grid { grid-template-columns: 1fr; }
-    .personal-summary { grid-template-columns: 1fr; }
+    .personal-status-grid { grid-template-columns: 1fr; }
+    .personal-status-card { padding: 18px; }
+    .personal-card-header { flex-wrap: wrap; }
+    .personal-card-metrics { margin-left: 0; width: 100%; justify-content: space-between; }
+    .personal-card-stats-inline { flex-wrap: wrap; justify-content: flex-end; }
     .search-filter-row { flex-direction: column; align-items: stretch; }
     .search-wrapper { max-width: none; }
     .filter-wrapper { width: 100%; }
@@ -944,4 +1259,7 @@
 @media (max-width: 480px) {
     .community-card { padding: 16px; }
     .personal-card-body { padding: 16px; }
+    .review-board-table th,
+    .review-board-table td { padding: 10px 8px; }
+    .review-board-header { padding: 16px 16px 12px; }
 }
