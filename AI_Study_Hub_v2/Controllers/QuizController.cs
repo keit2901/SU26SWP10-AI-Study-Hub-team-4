@@ -117,10 +117,11 @@ public sealed class QuizController : ControllerBase
     }
 
     [HttpPatch("{quizId:guid}/save")]
-    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(QuizDto), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> Save(
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
+    public async Task<ActionResult<QuizDto>> Save(
         Guid quizId,
         [FromBody] SaveQuizRequest request,
         CancellationToken cancellationToken)
@@ -133,8 +134,8 @@ public sealed class QuizController : ControllerBase
         try
         {
             var supabaseUserId = GetSupabaseUserIdFromClaims();
-            await _quizService.SaveAsync(supabaseUserId, quizId, request, cancellationToken);
-            return Ok();
+            var quiz = await _quizService.SaveAsync(supabaseUserId, quizId, request, cancellationToken);
+            return Ok(quiz);
         }
         catch (QuizException ex)
         {

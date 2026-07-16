@@ -1,7 +1,9 @@
 using System.Security.Claims;
 using AI_Study_Hub_v2.Controllers;
+using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -19,6 +21,8 @@ public class AiChatControllerTests
             var mock = new Mock<IChatPersistenceService>(MockBehavior.Loose);
             mock.Setup(p => p.CreateSessionAsync(It.IsAny<Guid>(), It.IsAny<CreateChatSessionRequest>(), It.IsAny<CancellationToken>()))
                 .ReturnsAsync(new ChatSessionDto { Id = Guid.NewGuid() });
+            mock.Setup(p => p.GetMessagesScopedAsync(It.IsAny<Guid>(), It.IsAny<Guid>(), It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(Array.Empty<ChatMessageDto>());
             persistence = mock.Object;
         }
         var ctrl = new AiChatController(service, persistence, NullLogger<AiChatController>.Instance);
@@ -132,6 +136,25 @@ public class AiChatControllerTests
     }
 
     [Test]
+    public async Task Ask_UnsupportedModel_MapsTo400()
+    {
+        var service = new Mock<IAiChatService>(MockBehavior.Strict);
+        service.Setup(s => s.AskAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<AiChatAskRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiChatException(400, "unsupported_model", "The requested AI model is not supported."));
+        var sut = BuildSut(service.Object, Principal(Guid.NewGuid()));
+
+        var result = await sut.Ask(new AiChatAskRequest("Question", null, null, null, null, Model: "unknown"), CancellationToken.None);
+
+        var error = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        error.StatusCode.Should().Be(400);
+        error.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("unsupported_model");
+        service.VerifyAll();
+    }
+
+    [Test]
     public async Task Ask_ProviderUnavailable_MapsTo503()
     {
         var service = new Mock<IAiChatService>(MockBehavior.Strict);
@@ -149,5 +172,137 @@ public class AiChatControllerTests
         obj.StatusCode.Should().Be(503);
         obj.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("ai_provider_unavailable");
         service.VerifyAll();
+    }
+
+    [Test]
+    public async Task Ask_SessionScopeMismatch_SkipsAiAndPersistence()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var persistence = new Mock<IChatPersistenceService>(MockBehavior.Strict);
+        persistence.Setup(p => p.GetMessagesScopedAsync(userId, sessionId, It.IsAny<Guid?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiChatException(404, "session_not_found", "Chat session not found."));
+        var service = new Mock<IAiChatService>(MockBehavior.Strict);
+        var sut = BuildSut(service.Object, Principal(userId), persistence.Object);
+
+        var result = await sut.Ask(new AiChatAskRequest("Question", null, Guid.NewGuid(), null, null, SessionId: sessionId), CancellationToken.None);
+
+        var error = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        error.StatusCode.Should().Be(404);
+        error.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("session_not_found");
+        service.VerifyNoOtherCalls();
+        persistence.VerifyAll();
+    }
+
+    [Test]
+    public async Task Ask_ValidScopedSession_PassesRequestFolderToPersistence()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var response = new AiChatAnswerResponse("Answer", Array.Empty<AiChatSourceDto>());
+        var persistence = new Mock<IChatPersistenceService>(MockBehavior.Strict);
+        persistence.Setup(p => p.GetMessagesScopedAsync(userId, sessionId, folderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ChatMessageDto>());
+        persistence.Setup(p => p.SaveExchangeAsync(userId, sessionId, folderId, "Question", It.IsAny<string>(), response, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var service = new Mock<IAiChatService>(MockBehavior.Strict);
+        service.Setup(s => s.AskAsync(userId, It.IsAny<AiChatAskRequest>(), It.IsAny<CancellationToken>())).ReturnsAsync(response);
+        var sut = BuildSut(service.Object, Principal(userId), persistence.Object);
+
+        var result = await sut.Ask(new AiChatAskRequest("Question", null, folderId, null, null, SessionId: sessionId), CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        persistence.VerifyAll();
+        service.VerifyAll();
+    }
+
+    [Test]
+    public async Task GetSessionMessages_AndDeleteSession_ForwardExactNullableFolderScope()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var persistence = new Mock<IChatPersistenceService>(MockBehavior.Strict);
+        persistence.Setup(p => p.GetMessagesScopedAsync(userId, sessionId, folderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Array.Empty<ChatMessageDto>());
+        persistence.Setup(p => p.DeleteSessionAsync(userId, sessionId, folderId, It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var sut = BuildSut(Mock.Of<IAiChatService>(), Principal(userId), persistence.Object);
+
+        var get = await sut.GetSessionMessages(sessionId, folderId, CancellationToken.None);
+        var delete = await sut.DeleteSession(sessionId, folderId, CancellationToken.None);
+
+        get.Result.Should().BeOfType<OkObjectResult>();
+        delete.Should().BeOfType<NoContentResult>();
+        persistence.VerifyAll();
+    }
+
+    [Test]
+    public async Task GetSessionMessages_ScopeMismatch_ReturnsNonDisclosingSessionNotFound()
+    {
+        var userId = Guid.NewGuid();
+        var sessionId = Guid.NewGuid();
+        var persistence = new Mock<IChatPersistenceService>(MockBehavior.Strict);
+        persistence.Setup(p => p.GetMessagesScopedAsync(userId, sessionId, null, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiChatException(404, "session_not_found", "Chat session not found."));
+        var sut = BuildSut(Mock.Of<IAiChatService>(), Principal(userId), persistence.Object);
+
+        var result = await sut.GetSessionMessages(sessionId, null, CancellationToken.None);
+
+        var error = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        error.StatusCode.Should().Be(404);
+        error.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("session_not_found");
+        persistence.VerifyAll();
+    }
+
+    [Test]
+    public async Task CreateSession_ForeignFolder_ReturnsNonDisclosingFolderNotFound_WithoutCreatingSession()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = new User
+        {
+            Id = Guid.NewGuid(),
+            RoleId = 2,
+            SupabaseUserId = Guid.NewGuid(),
+            Username = "owner",
+            FullName = "Owner",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        var other = new User
+        {
+            Id = Guid.NewGuid(),
+            RoleId = 2,
+            SupabaseUserId = Guid.NewGuid(),
+            Username = "other",
+            FullName = "Other",
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        var foreignFolder = new Folder
+        {
+            Id = Guid.NewGuid(),
+            UserId = other.Id,
+            Name = "Foreign",
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Users.AddRange(owner, other);
+        db.Folders.Add(foreignFolder);
+        await db.SaveChangesAsync();
+        var service = new Mock<IAiChatService>(MockBehavior.Strict);
+        var persistence = new ChatPersistenceService(db, NullLogger<ChatPersistenceService>.Instance);
+        var sut = BuildSut(service.Object, Principal(owner.SupabaseUserId), persistence);
+
+        var result = await sut.CreateSession(new CreateChatSessionRequest { FolderId = foreignFolder.Id }, CancellationToken.None);
+
+        var error = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        error.StatusCode.Should().Be(404);
+        error.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("folder_not_found");
+        db.ChatSessions.Should().BeEmpty();
+        service.VerifyNoOtherCalls();
     }
 }

@@ -68,9 +68,10 @@
                             <h3 class="text-headline-sm font-headline-sm text-on-surface mb-1">Activity trends</h3>
                             <span class="text-label-md font-label-md text-on-surface-variant uppercase">Uploads, documents, and failed jobs</span>
                         </div>
-                        <select class="bg-surface-container border-none text-label-md font-label-md rounded-lg py-2 px-3" style="background: #eceef0; border-radius: 0.5rem; outline: none; font-weight: 600; font-size: 12px; color: #191c1e;">
-                            <option>Last 7 days</option>
-                            <option>Last 30 days</option>
+                        <select class="bg-surface-container border-none text-label-md font-label-md rounded-lg py-2 px-3" style="background: #eceef0; border-radius: 0.5rem; outline: none; font-weight: 600; font-size: 12px; color: #191c1e;"
+                                @bind="_activityPeriod" @bind:after="OnActivityPeriodChanged">
+                            <option value="day">Last 7 days</option>
+                            <option value="30day">Last 30 days</option>
                         </select>
                     </div>
                     @if (!string.IsNullOrEmpty(_activityError))
@@ -408,6 +409,7 @@
     private readonly List<ChartSeries<double>> _activitySeries = new();
     private string[] _activityLabels = Array.Empty<string>();
     private string? _activityError;
+    private string _activityPeriod = "day";
     private readonly string[] _statusLabels = { "Indexed", "Processing", "Pending", "Failed" };
 
     private readonly List<ChartSeries<double>> _statusSeries = new();
@@ -437,30 +439,7 @@
             var auditLogs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 5);
             ApplyAuditLogs(auditLogs);
 
-            try
-            {
-                var trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken);
-                if (trends is not null && trends.Points.Any())
-                {
-                    _activitySeries.Clear();
-                    _activitySeries.Add(new ChartSeries<double> { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToArray() });
-                    _activitySeries.Add(new ChartSeries<double> { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToArray() });
-                    _activitySeries.Add(new ChartSeries<double> { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToArray() });
-                    var labels = trends.Points.Select(p => p.Label).ToArray();
-                    if (labels.Length > 0) _activityLabels = labels;
-                }
-                else
-                {
-                    _activitySeries.Clear();
-                    _activityLabels = Array.Empty<string>();
-                }
-            }
-            catch (Exception ex)
-            {
-                _activityError = "Activity trends unavailable.";
-                _activitySeries.Clear();
-                _activityLabels = Array.Empty<string>();
-            }
+            await LoadActivityTrendsAsync();
         }
         catch (Npgsql.NpgsqlOperationInProgressException)
         {
@@ -515,6 +494,40 @@
     private void OpenModerationQueue() => Navigation.NavigateTo("/admin/escalations");
 
     private void OpenAuditLogs() => Navigation.NavigateTo("/admin/audit-logs");
+
+    private async Task OnActivityPeriodChanged()
+    {
+        await LoadActivityTrendsAsync();
+    }
+
+    private async Task LoadActivityTrendsAsync()
+    {
+        _activityError = null;
+        try
+        {
+            var trends = await DashboardApi.GetActivityTrendsAsync(Session.AccessToken, _activityPeriod);
+            if (trends is not null && trends.Points.Any())
+            {
+                _activitySeries.Clear();
+                _activitySeries.Add(new ChartSeries<double> { Name = "Uploads", Data = trends.Points.Select(p => (double)p.Uploads).ToArray() });
+                _activitySeries.Add(new ChartSeries<double> { Name = "Documents", Data = trends.Points.Select(p => (double)p.Documents).ToArray() });
+                _activitySeries.Add(new ChartSeries<double> { Name = "Failed", Data = trends.Points.Select(p => (double)p.Failed).ToArray() });
+                var labels = trends.Points.Select(p => p.Label).ToArray();
+                if (labels.Length > 0) _activityLabels = labels;
+            }
+            else
+            {
+                _activitySeries.Clear();
+                _activityLabels = Array.Empty<string>();
+            }
+        }
+        catch (Exception ex)
+        {
+            _activityError = "Activity trends unavailable.";
+            _activitySeries.Clear();
+            _activityLabels = Array.Empty<string>();
+        }
+    }
 
     private static string FormatDateTime(DateTime value) => value.ToString("MMM dd, yyyy HH:mm", System.Globalization.CultureInfo.InvariantCulture);
 

@@ -33,6 +33,14 @@ public class AppDbContext : DbContext
 
     public DbSet<CommunityReport> CommunityReports => Set<CommunityReport>();
 
+    public DbSet<Plan> Plans => Set<Plan>();
+
+    public DbSet<UserPlan> UserPlans => Set<UserPlan>();
+
+    public DbSet<SharedFolderCopyOperation> SharedFolderCopyOperations => Set<SharedFolderCopyOperation>();
+
+    public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
+
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
 
     public DbSet<BenchmarkRunRecord> BenchmarkRuns => Set<BenchmarkRunRecord>();

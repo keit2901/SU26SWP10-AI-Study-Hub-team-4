@@ -783,6 +783,181 @@ namespace AI_Study_Hub_v2.Migrations
                     b.ToTable("folder_reactions", (string)null);
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.PaymentTransaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<long>("AmountVnd")
+                        .HasColumnType("bigint")
+                        .HasColumnName("amount_vnd");
+
+                    b.Property<string>("BillingCycle")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("billing_cycle");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("ErrorMessage")
+                        .HasColumnType("text")
+                        .HasColumnName("error_message");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("PlanKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("plan_key");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TxnRef")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("txn_ref");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<Guid?>("UserPlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_plan_id");
+
+                    b.Property<string>("VnpayResponseJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("vnpay_response_json");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanKey");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("UserPlanId");
+
+                    b.HasIndex("Status", "CreatedAt")
+                        .HasDatabaseName("ix_payment_transactions_status_created_at_pending")
+                        .HasFilter("status = 'pending'");
+
+                    b.HasIndex("TxnRef", "UserId")
+                        .IsUnique();
+
+                    b.ToTable("payment_transactions", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_payment_transactions_amount_non_negative", "amount_vnd >= 0");
+
+                            t.HasCheckConstraint("ck_payment_transactions_billing_cycle", "billing_cycle IN ('monthly', 'yearly')");
+
+                            t.HasCheckConstraint("ck_payment_transactions_status", "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded', 'expired')");
+                        });
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Plan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<long?>("DailyTokenQuota")
+                        .HasColumnType("bigint")
+                        .HasColumnName("daily_token_quota");
+
+                    b.Property<string>("Description")
+                        .HasColumnType("text")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("display_name");
+
+                    b.Property<string>("FeatureFlagsJson")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("feature_flags_json");
+
+                    b.Property<bool>("IsActive")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("is_active");
+
+                    b.Property<int?>("MaxDocsPerFolder")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_docs_per_folder");
+
+                    b.Property<int?>("MaxDocumentCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_document_count");
+
+                    b.Property<long?>("MaxFileSizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("max_file_size_bytes");
+
+                    b.Property<int?>("MaxFolderCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_folder_count");
+
+                    b.Property<long?>("MonthlyPriceVnd")
+                        .HasColumnType("bigint")
+                        .HasColumnName("monthly_price_vnd");
+
+                    b.Property<string>("PlanKey")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("plan_key");
+
+                    b.Property<int>("SortOrder")
+                        .HasColumnType("integer")
+                        .HasColumnName("sort_order");
+
+                    b.Property<long?>("StorageQuotaBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("storage_quota_bytes");
+
+                    b.Property<long?>("YearlyPriceVnd")
+                        .HasColumnType("bigint")
+                        .HasColumnName("yearly_price_vnd");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanKey")
+                        .IsUnique();
+
+                    b.ToTable("plans", (string)null);
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
                 {
                     b.Property<Guid>("Id")
@@ -991,6 +1166,79 @@ namespace AI_Study_Hub_v2.Migrations
                         });
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.SharedFolderCopyOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<Guid>("DestinationFolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("destination_folder_id");
+
+                    b.Property<string>("DestinationName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("destination_name");
+
+                    b.Property<Guid>("DestinationUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("destination_user_id");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(1000)
+                        .HasColumnType("character varying(1000)")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("ManifestJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("manifest_json");
+
+                    b.Property<long>("ReservedStorageBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("reserved_storage_bytes");
+
+                    b.Property<Guid>("SourceFolderId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_folder_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("DestinationUserId")
+                        .IsUnique();
+
+                    b.HasIndex("Status");
+
+                    b.HasIndex("UpdatedAt");
+
+                    b.ToTable("shared_folder_copy_operations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_shared_folder_copy_operations_reserved_storage_non_negative", "reserved_storage_bytes >= 0");
+                        });
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.SystemConfig", b =>
                 {
                     b.Property<string>("Key")
@@ -1097,6 +1345,12 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("role_id");
 
+                    b.Property<long>("StorageUsedBytes")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasDefaultValue(0L)
+                        .HasColumnName("storage_used_bytes");
+
                     b.Property<Guid>("SupabaseUserId")
                         .HasColumnType("uuid")
                         .HasColumnName("supabase_user_id");
@@ -1142,6 +1396,58 @@ namespace AI_Study_Hub_v2.Migrations
                         .IsUnique();
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.UserPlan", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id")
+                        .HasDefaultValueSql("gen_random_uuid()");
+
+                    b.Property<DateTimeOffset>("AssignedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("assigned_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<DateTimeOffset?>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset?>("PaidAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("paid_at");
+
+                    b.Property<Guid>("PlanId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("plan_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("character varying(50)")
+                        .HasColumnName("status");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("PlanId");
+
+                    b.HasIndex("UserId")
+                        .IsUnique()
+                        .HasFilter("status = 'active'");
+
+                    b.HasIndex("UserId", "Status");
+
+                    b.ToTable("user_plans", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_user_plans_status", "status IN ('active', 'deactivated', 'expired')");
+                        });
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.AiAnswerReport", b =>
@@ -1324,6 +1630,33 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.PaymentTransaction", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanKey")
+                        .HasPrincipalKey("PlanKey")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.UserPlan", "UserPlan")
+                        .WithMany()
+                        .HasForeignKey("UserPlanId")
+                        .OnDelete(DeleteBehavior.SetNull);
+
+                    b.Navigation("Plan");
+
+                    b.Navigation("User");
+
+                    b.Navigation("UserPlan");
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
                 {
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.ChatSession", "Session")
@@ -1362,6 +1695,15 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Navigation("User");
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.SharedFolderCopyOperation", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", null)
+                        .WithMany()
+                        .HasForeignKey("DestinationUserId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.User", b =>
                 {
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.Role", "Role")
@@ -1371,6 +1713,25 @@ namespace AI_Study_Hub_v2.Migrations
                         .IsRequired();
 
                     b.Navigation("Role");
+                });
+
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.UserPlan", b =>
+                {
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Plan", "Plan")
+                        .WithMany()
+                        .HasForeignKey("PlanId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Plan");
+
+                    b.Navigation("User");
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.ChatSession", b =>

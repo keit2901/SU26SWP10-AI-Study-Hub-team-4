@@ -76,6 +76,7 @@ public sealed record DocumentEscalationDto(
     string Reason,
     string EscalationStatus,
     string? AdminResponse,
+    string? ResolvedByName,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ResolvedAt,
     IReadOnlyList<DocumentEscalationItemDto> Items);

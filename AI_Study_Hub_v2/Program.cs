@@ -1,15 +1,20 @@
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Text;
+using System.Threading.RateLimiting;
 using AI_Study_Hub_v2.Components;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Services.Payment;
 using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
@@ -40,11 +45,18 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
-builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
+builder.Services
+    .AddOptions<RagOptions>()
+    .Bind(builder.Configuration.GetSection(RagOptions.SectionName))
+    .Validate(RagOptions.HasValidChatBounds,
+        "Rag chat limits must use exchanges 0-10, history chars 0 or 500-10000, assistant chars 100-2000, and context chars 1000-20000.")
+    .ValidateOnStart();
+builder.Services.ConfigureOptions<ConfigureRagOptions>();
 builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
+builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
 builder.Services.AddMemoryCache(options =>
 {
     var ragCacheOptions = builder.Configuration.GetSection(RagOptions.SectionName).Get<RagOptions>() ?? new RagOptions();
@@ -123,11 +135,19 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 builder.Services.AddScoped<IDocumentService, DocumentService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
+builder.Services.AddScoped<ISharedFolderCopyCoordinator, SharedFolderCopyCoordinator>();
+builder.Services.AddScoped<IFolderShareAiModerator, FolderShareAiModerator>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
 builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
+builder.Services.AddScoped<IPlanService, PlanService>();
+builder.Services.AddScoped<IStorageQuotaService, StorageQuotaService>();
+builder.Services.AddScoped<IPlanCapacityGuard, PlanCapacityGuard>();
+builder.Services.AddScoped<IStorageDeletionCoordinator, StorageDeletionCoordinator>();
+builder.Services.AddScoped<IStorageReconciliationService, StorageReconciliationService>();
+builder.Services.AddScoped<IVnPayService, VnPayService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -179,6 +199,7 @@ builder.Services.AddSingleton<BenchmarkEvaluator>();
 builder.Services.AddScoped<BenchmarkRunner>();
 builder.Services.AddScoped<ChunkingBenchmarkService>();
 builder.Services.AddHostedService<BenchmarkAutomationHostedService>();
+builder.Services.AddHostedService<StorageReconciliationHostedService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
@@ -242,6 +263,10 @@ builder.Services.AddHttpClient<BenchmarkApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
 });
+builder.Services.AddHttpClient<PlanApiClient>((sp, http) =>
+{
+    http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
+});
 builder.Services.AddHttpClient<EscalationApiClient>((sp, http) =>
 {
     http.BaseAddress = ResolveDemoUiBackendBaseUrl(sp);
@@ -255,8 +280,69 @@ builder.Services.AddScoped<AuthSessionState>();
 builder.Services.AddScoped<AuthPersistenceService>();
 builder.Services.AddScoped<AiChatSessionState>();
 builder.Services.AddScoped<IChatPersistenceService, ChatPersistenceService>();
-builder.Services.AddScoped<IQuizService, QuizService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+
+// F2.1: background service to handle plan expiry
+builder.Services.AddHostedService<PlanExpiryHostedService>();
+
+// F3.1: Rate limiting on purchase endpoint (per-user)
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy("purchase", context =>
+    {
+        var userId = context.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetSlidingWindowLimiter(userId, _ => new SlidingWindowRateLimiterOptions
+        {
+            PermitLimit = 2,
+            Window = TimeSpan.FromMinutes(1),
+            SegmentsPerWindow = 2,   // was 6 — tighter window, less burst
+            QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
+            QueueLimit = 0
+        });
+    });
+    options.AddPolicy("admin", context =>
+        RateLimitPartition.GetFixedWindowLimiter("admin_global", _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 30,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        }));
+    options.AddFixedWindowLimiter("ipn", config =>
+    {
+        config.PermitLimit = 30;
+        config.Window = TimeSpan.FromMinutes(1);
+        config.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        config.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = 429;
+    options.OnRejected = async (context, ct) =>
+    {
+        context.HttpContext.Response.ContentType = "application/json";
+        await context.HttpContext.Response.WriteAsync(
+            System.Text.Json.JsonSerializer.Serialize(new { code = "rate_limited", message = "Too many requests." }), ct);
+    };
+});
+
+// H5: Unified 400 validation error format
+builder.Services.Configure<ApiBehaviorOptions>(options =>
+{
+    options.InvalidModelStateResponseFactory = context =>
+    {
+        var errors = context.ModelState
+            .Where(kv => kv.Value?.Errors.Count > 0)
+            .ToDictionary(
+                kv => kv.Key,
+                kv => kv.Value!.Errors.Select(e => e.ErrorMessage).ToArray());
+
+        return new BadRequestObjectResult(new ApiErrorResponse
+        {
+            Code = "validation_error",
+            Message = "One or more validation errors occurred.",
+            Errors = errors,
+        });
+    };
+});
 
 // Authentication / Authorization ---------------------------------------------
 builder.Services
@@ -343,6 +429,7 @@ using (var scope = app.Services.CreateScope())
         await SeedDefaultAdminAsync(db, goTrue, seedOptions, startupLogger);
         await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
         await SeedSystemConfigsAsync(db, startupLogger);
+        await SeedDefaultPlansAsync(db, startupLogger);
     }
     catch (Exception ex)
     {
@@ -377,6 +464,8 @@ app.UseRouting();
 app.UseAuthentication();
 app.UseAuthorization();
 app.UseAntiforgery();
+
+app.UseRateLimiter();
 
 app.MapControllers();
 app.MapRazorComponents<App>()
@@ -423,7 +512,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
     if (existing is not null && existing.Id != Guid.Empty)
     {
         supabaseUserId = existing.Id;
-        logger.LogInformation("Default admin already exists in GoTrue: {Email}. Will reuse identity.", emailLower);
+        logger.LogInformation("Default admin already exists in GoTrue. Reusing identity {SupabaseUserId}.", supabaseUserId);
     }
     else
     {
@@ -440,7 +529,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
                 ["role"] = Role.AdminRoleName,
             });
         supabaseUserId = created.Id;
-        logger.LogInformation("Default admin created in GoTrue: {Email}", emailLower);
+        logger.LogInformation("Default admin created in GoTrue with identity {SupabaseUserId}", supabaseUserId);
     }
 
     var profileExists = await db.Users.AnyAsync(u => u.SupabaseUserId == supabaseUserId);
@@ -473,7 +562,7 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
 
     db.Users.Add(admin);
     await db.SaveChangesAsync();
-    logger.LogInformation("Default admin profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
+    logger.LogInformation("Default admin profile inserted for identity {SupabaseUserId}", supabaseUserId);
 }
 
 static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
@@ -528,6 +617,46 @@ static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
         ON document_chunks USING GIN (search_vector);
         """);
 
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_review_source character varying(32);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_reason character varying(2000);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_confidence double precision;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS ai_review_failure_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS human_review_reason character varying(2000);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS requires_human_review boolean NOT NULL DEFAULT false;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS appeal_requested_at timestamp with time zone;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS appeal_message character varying(2000);
+        """);
+
     logger.LogInformation("Phase 3 schema bootstrap completed.");
 }
 
@@ -570,7 +699,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
     if (existing is not null && existing.Id != Guid.Empty)
     {
         supabaseUserId = existing.Id;
-        logger.LogInformation("Default moderator already exists in GoTrue: {Email}. Will reuse identity.", emailLower);
+        logger.LogInformation("Default moderator already exists in GoTrue. Reusing identity {SupabaseUserId}.", supabaseUserId);
     }
     else
     {
@@ -587,7 +716,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
                 ["role"] = Role.ModeratorRoleName,
             });
         supabaseUserId = created.Id;
-        logger.LogInformation("Default moderator created in GoTrue: {Email}", emailLower);
+        logger.LogInformation("Default moderator created in GoTrue with identity {SupabaseUserId}", supabaseUserId);
     }
 
     var profileExists = await db.Users.AnyAsync(u => u.SupabaseUserId == supabaseUserId);
@@ -620,7 +749,7 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
 
     db.Users.Add(moderator);
     await db.SaveChangesAsync();
-    logger.LogInformation("Default moderator profile inserted: {Email} (supabase_user_id={Id})", emailLower, supabaseUserId);
+    logger.LogInformation("Default moderator profile inserted for identity {SupabaseUserId}", supabaseUserId);
 }
 
 static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
@@ -635,8 +764,8 @@ static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
     {
         new SystemConfig { Key = "ai.chat_model", Value = "gpt-4o-mini", DefaultValue = "gpt-4o-mini", Category = "Model", DisplayName = "Chat model", Description = "Model identifier used by the RAG answer generation pipeline.", ConfigType = "Text", IsCritical = true },
         new SystemConfig { Key = "ai.embedding_model", Value = "text-embedding-3-small", DefaultValue = "text-embedding-3-small", Category = "Model", DisplayName = "Embedding model", Description = "Provider model identifier used to embed document_chunks.", ConfigType = "Text", IsCritical = true },
-        new SystemConfig { Key = "rag.chunk_size", Value = "800", DefaultValue = "800", Category = "Retrieval", DisplayName = "Chunk size", Description = "Maximum characters or tokens per source chunk before embedding.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "rag.chunk_overlap", Value = "120", DefaultValue = "120", Category = "Retrieval", DisplayName = "Chunk overlap", Description = "Overlap between consecutive chunks to preserve context.", ConfigType = "Number", IsCritical = true },
+        new SystemConfig { Key = "rag.chunk_size", Value = "700", DefaultValue = "700", Category = "Retrieval", DisplayName = "Chunk size", Description = "Maximum characters or tokens per source chunk before embedding.", ConfigType = "Number", IsCritical = true },
+        new SystemConfig { Key = "rag.chunk_overlap", Value = "70", DefaultValue = "70", Category = "Retrieval", DisplayName = "Chunk overlap", Description = "Overlap between consecutive chunks to preserve context.", ConfigType = "Number", IsCritical = true },
         new SystemConfig { Key = "rag.max_chunks", Value = "8", DefaultValue = "8", Category = "Retrieval", DisplayName = "Max retrieval chunks", Description = "Maximum document chunks sent to the answer generation pipeline.", ConfigType = "Number", IsCritical = true },
         new SystemConfig { Key = "generation.temperature", Value = "0.2", DefaultValue = "0.2", Category = "Generation", DisplayName = "Temperature", Description = "Controls answer randomness for study assistant responses.", ConfigType = "Number", IsCritical = true },
         new SystemConfig { Key = "generation.top_p", Value = "0.9", DefaultValue = "0.9", Category = "Generation", DisplayName = "Top-p", Description = "Nucleus sampling parameter for answer generation.", ConfigType = "Number", IsCritical = true },
@@ -652,4 +781,99 @@ static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
     db.SystemConfigs.AddRange(configs);
     await db.SaveChangesAsync();
     logger.LogInformation("Seeded {Count} system configs.", configs.Length);
+}
+
+static async Task SeedDefaultPlansAsync(AppDbContext db, ILogger logger)
+{
+    var now = DateTimeOffset.UtcNow;
+
+    // 1. Seed plans (only if the table is empty — one-time initialization)
+    if (!await db.Plans.AnyAsync())
+    {
+        var plans = new List<Plan>
+        {
+            new()
+            {
+                Id = Guid.NewGuid(),
+                PlanKey = "free",
+                DisplayName = "Free",
+                Description = "Basic access with limited storage and features.",
+                StorageQuotaBytes = 2L * 1024 * 1024 * 1024,       // 2 GB
+                MaxDocumentCount = 100,
+                MaxFolderCount = 20,
+                DailyTokenQuota = 25_000,
+                MaxFileSizeBytes = 50L * 1024 * 1024,              // 50 MB
+                MaxDocsPerFolder = 30,
+                MonthlyPriceVnd = null,
+                YearlyPriceVnd = null,
+                SortOrder = 1,
+                IsActive = true,
+                CreatedAt = now,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                PlanKey = "pro",
+                DisplayName = "Pro",
+                Description = "Extended storage, unlimited documents and folders.",
+                StorageQuotaBytes = 10L * 1024 * 1024 * 1024,      // 10 GB
+                MaxDocumentCount = null,
+                MaxFolderCount = null,
+                DailyTokenQuota = 100_000,
+                MaxFileSizeBytes = 100L * 1024 * 1024,             // 100 MB
+                MaxDocsPerFolder = null,
+                MonthlyPriceVnd = 50_000,
+                YearlyPriceVnd = 500_000,
+                SortOrder = 2,
+                IsActive = true,
+                CreatedAt = now,
+            },
+            new()
+            {
+                Id = Guid.NewGuid(),
+                PlanKey = "unlimited",
+                DisplayName = "Unlimited",
+                Description = "No limits on storage, documents, or folders.",
+                StorageQuotaBytes = null,
+                MaxDocumentCount = null,
+                MaxFolderCount = null,
+                DailyTokenQuota = null,
+                MaxFileSizeBytes = null,
+                MaxDocsPerFolder = null,
+                MonthlyPriceVnd = 100_000,
+                YearlyPriceVnd = 1_000_000,
+                SortOrder = 3,
+                IsActive = true,
+                CreatedAt = now,
+            },
+        };
+
+        db.Plans.AddRange(plans);
+        await db.SaveChangesAsync();
+        logger.LogInformation("Default plans seeded: 3 plans (free, pro, unlimited).");
+    }
+
+    // 2. ALWAYS backfill UserPlan for users without one (new users post-seed)
+    var freePlan = await db.Plans.FirstAsync(p => p.PlanKey == "free");
+    var usersWithoutPlan = await db.Users
+        .Where(u => !db.UserPlans.Any(up => up.UserId == u.Id))
+        .ToListAsync();
+
+    if (usersWithoutPlan.Any())
+    {
+        var backfillNow = DateTimeOffset.UtcNow;
+        foreach (var user in usersWithoutPlan)
+        {
+            db.UserPlans.Add(new UserPlan
+            {
+                UserId = user.Id,
+                PlanId = freePlan.Id,
+                Status = "active",
+                AssignedAt = backfillNow,
+            });
+        }
+
+        await db.SaveChangesAsync();
+        logger.LogInformation("Backfill: assigned Free plan to {Count} users without a plan.", usersWithoutPlan.Count);
+    }
 }

@@ -133,6 +133,21 @@ public sealed class FolderDto
 
     public DateTimeOffset? SharedAt { get; set; }
 
+    public string? ShareReviewSource { get; set; }
+
+    public string? AiReviewReason { get; set; }
+
+    public double? AiReviewConfidence { get; set; }
+
+    public int AiReviewFailureCount { get; set; }
+
+    public string? HumanReviewReason { get; set; }
+
+    public bool RequiresHumanReview { get; set; }
+
+    public DateTimeOffset? AppealRequestedAt { get; set; }
+
+    public string? AppealMessage { get; set; }
     public string? Icon { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
@@ -186,4 +201,10 @@ public sealed class VoteRequest
 {
     [Required]
     public bool IsLike { get; set; }
+}
+
+public sealed class AppealFolderShareRequest
+{
+    [StringLength(2000)]
+    public string? Message { get; set; }
 }

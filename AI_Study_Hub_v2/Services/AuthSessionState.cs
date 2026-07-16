@@ -19,8 +19,6 @@ public sealed class AuthSessionState
 
     public string? AccessToken => Session?.AccessToken;
 
-    public string? CurrentPassword { get; set; }
-
     /// <summary>
     /// In-memory plan tier for demo purposes. Defaults to "Free".
     /// Valid values: "Free", "Pro", "Unlimited".
@@ -29,9 +27,40 @@ public sealed class AuthSessionState
 
     public event Action? OnChange;
 
+    private static readonly HashSet<string> ValidPlanKeys =
+        new(StringComparer.OrdinalIgnoreCase) { "free", "pro", "unlimited" };
+
     public void SetPlan(string plan)
     {
+        if (string.IsNullOrWhiteSpace(plan) || !ValidPlanKeys.Contains(plan))
+            return;
+
         CurrentPlan = plan;
+        NotifyChanged();
+    }
+
+    /// <summary>
+    /// Loads the user's current plan from the API and updates <see cref="CurrentPlan"/>.
+    /// No-op if the user is not authenticated.
+    /// </summary>
+    public async Task LoadCurrentPlanAsync(PlanApiClient planApiClient, CancellationToken ct = default)
+    {
+        if (!IsAuthenticated || string.IsNullOrWhiteSpace(AccessToken))
+        {
+            CurrentPlan = "Free";
+            return;
+        }
+
+        try
+        {
+            var snapshot = await planApiClient.GetCurrentPlanAsync(AccessToken, ct);
+            CurrentPlan = snapshot.PlanKey;
+        }
+        catch
+        {
+            // Keep whatever the current plan is if the API call fails
+        }
+
         NotifyChanged();
     }
 
@@ -44,7 +73,6 @@ public sealed class AuthSessionState
     public void Clear()
     {
         Session = null;
-        CurrentPassword = null;
         CurrentPlan = "Free";
         NotifyChanged();
     }

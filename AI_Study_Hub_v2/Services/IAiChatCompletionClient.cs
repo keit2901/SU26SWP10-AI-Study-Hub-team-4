@@ -25,3 +25,15 @@ public sealed class AiChatProviderException : Exception
     public string Code { get; }
     public int? StatusCode { get; }
 }
+
+public sealed class AiChatModelException : Exception
+{
+    public AiChatModelException(string modelName)
+        : base("The requested AI model is not supported.")
+    {
+        ModelName = modelName;
+    }
+
+    public string Code => "unsupported_model";
+    public string ModelName { get; }
+}
