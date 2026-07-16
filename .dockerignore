@@ -1,0 +1,47 @@
+# Build artifacts
+**/bin/
+**/obj/
+
+# Tests
+**/*.Tests/
+
+# Git
+.git/
+.gitignore
+.gitattributes
+
+# IDE / config
+.vs/
+.vscode/
+.idea/
+*.user
+launchSettings.json
+
+# Local dev
+opencode.json
+user-secrets/
+appsettings.Development.json
+
+# Docker
+Dockerfile
+.dockerignore
+
+# Infra (Supabase is external in production)
+infra/
+
+# Session logs
+previous_session/
+
+# Worktrees
+.slim/
+
+# Node (agentation dev only)
+**/node_modules/
+
+# Docs / planning
+*.md
+!README.md
+
+# Misc
+*.tmp
+*.log
