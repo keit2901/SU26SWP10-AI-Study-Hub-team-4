@@ -35,8 +35,8 @@ public sealed record QuizQuestionDto(
     string Question,
     string Subtitle,
     IReadOnlyList<QuizOptionDto> Options,
-    string CorrectOptionId,
-    string Explanation,
+    string? CorrectOptionId,
+    string? Explanation,
     string? SourceLabel);
 
 // Sprint 3 quiz DTOs (standalone quiz APIs)
@@ -69,11 +69,8 @@ public sealed record QuizOptionDto(
     string Text);
 
 public sealed record SaveQuizRequest(
-    QuizStatus Status,
     int CurrentQuestionIndex,
-    IReadOnlyDictionary<int, string?> Answers,
-    IReadOnlyDictionary<int, bool> Submitted,
-    int? Score);
+    IReadOnlyDictionary<int, string?> Answers);
 
 public sealed record QuizSourceDto(
     string Label,

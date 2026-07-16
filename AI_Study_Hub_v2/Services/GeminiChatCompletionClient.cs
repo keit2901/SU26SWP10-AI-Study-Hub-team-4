@@ -11,7 +11,8 @@ public sealed class GeminiChatCompletionClient : IAiChatCompletionClient
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
     private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(60);
-    private static readonly int[] RetryDelaysMs = [1_000, 2_000, 4_000];
+    private const int MaxHttpAttempts = 2;
+    private static readonly TimeSpan RetryDelay = TimeSpan.FromMilliseconds(500);
 
     private readonly HttpClient _httpClient;
     private readonly GeminiOptions _options;
@@ -38,7 +39,7 @@ public sealed class GeminiChatCompletionClient : IAiChatCompletionClient
             throw new AiChatProviderException("missing_api_key", "Gemini API key is not configured.");
         }
 
-        for (var attempt = 0; attempt <= RetryDelaysMs.Length; attempt++)
+        for (var attempt = 1; attempt <= MaxHttpAttempts; attempt++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -49,14 +50,14 @@ public sealed class GeminiChatCompletionClient : IAiChatCompletionClient
 
                 var payloadJson = JsonSerializer.Serialize(BuildPayload(request), JsonOptions);
 
-                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildGenerateContentUri())
+                using var httpRequest = new HttpRequestMessage(HttpMethod.Post, BuildGenerateContentUri(request.ModelName))
                 {
                     Content = new StringContent(payloadJson, Encoding.UTF8, MediaTypeNames.Application.Json)
                 };
                 httpRequest.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue(MediaTypeNames.Application.Json));
 
                 using var response = await _httpClient.SendAsync(httpRequest, timeoutCts.Token);
-                var body = await response.Content.ReadAsStringAsync(cancellationToken);
+                var body = await response.Content.ReadAsStringAsync(timeoutCts.Token);
 
                 if (response.IsSuccessStatusCode)
                 {
@@ -69,20 +70,17 @@ public sealed class GeminiChatCompletionClient : IAiChatCompletionClient
                         ?.Text
                         ?.Trim();
 
-                    if (string.IsNullOrWhiteSpace(answer))
-                    {
-                        throw new AiChatProviderException("gemini_empty_response", "Gemini returned an empty answer.");
-                    }
-
-                    return answer;
+                    // Empty completions are content failures. The caller owns one bounded repair attempt.
+                    return answer ?? string.Empty;
                 }
 
-                if ((int)response.StatusCode == 429 && attempt < RetryDelaysMs.Length)
+                if (IsTransientStatusCode(response.StatusCode) && attempt < MaxHttpAttempts)
                 {
-                    var delay = RetryDelaysMs[attempt];
                     _logger.LogWarning(
-                        "Gemini rate limited (attempt {Attempt}). Retrying in {Delay}ms.", attempt + 1, delay);
-                    await Task.Delay(delay, cancellationToken);
+                        "Gemini transient HTTP {StatusCode} on attempt {Attempt}; retrying once.",
+                        (int)response.StatusCode,
+                        attempt);
+                    await Task.Delay(GetRetryDelay(response), cancellationToken);
                     continue;
                 }
 
@@ -99,28 +97,61 @@ public sealed class GeminiChatCompletionClient : IAiChatCompletionClient
                     "gemini_http_error",
                     $"Gemini chat completion failed with HTTP {(int)response.StatusCode}.");
             }
-            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
             {
-                _logger.LogWarning("Gemini request timed out after {Timeout}s.", RequestTimeout.TotalSeconds);
-                throw new AiChatProviderException("gemini_timeout", "Gemini request timed out.");
+                throw;
+            }
+            catch (OperationCanceledException) when (attempt < MaxHttpAttempts)
+            {
+                _logger.LogWarning("Gemini request timed out on attempt {Attempt}; retrying once.", attempt);
+                await Task.Delay(RetryDelay, cancellationToken);
             }
             catch (AiChatProviderException)
             {
                 throw;
             }
-            catch (Exception ex) when (attempt < RetryDelaysMs.Length)
+            catch (HttpRequestException ex) when (attempt < MaxHttpAttempts)
             {
-                _logger.LogWarning(ex, "Gemini transient failure (attempt {Attempt}). Retrying.", attempt + 1);
-                await Task.Delay(RetryDelaysMs[attempt], cancellationToken);
+                _logger.LogWarning(ex, "Gemini transport failure on attempt {Attempt}; retrying once.", attempt);
+                await Task.Delay(RetryDelay, cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                _logger.LogWarning("Gemini request timed out after {Timeout}s.", RequestTimeout.TotalSeconds);
+                throw new AiChatProviderException("gemini_timeout", "Gemini request timed out.");
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Gemini transport failure after {Attempts} attempts.", MaxHttpAttempts);
+                throw new AiChatProviderException("gemini_unavailable", "Gemini is unavailable after retries.", innerException: ex);
+            }
+            catch (JsonException ex)
+            {
+                throw new AiChatProviderException("gemini_invalid_response", "Gemini returned an invalid response.", innerException: ex);
             }
         }
 
         throw new AiChatProviderException("gemini_unavailable", "Gemini is unavailable after retries.");
     }
 
-    private Uri BuildGenerateContentUri()
+    private static bool IsTransientStatusCode(System.Net.HttpStatusCode statusCode) =>
+        statusCode == System.Net.HttpStatusCode.TooManyRequests ||
+        statusCode is System.Net.HttpStatusCode.InternalServerError
+            or System.Net.HttpStatusCode.BadGateway
+            or System.Net.HttpStatusCode.ServiceUnavailable
+            or System.Net.HttpStatusCode.GatewayTimeout;
+
+    private static TimeSpan GetRetryDelay(HttpResponseMessage response)
     {
-        var model = string.IsNullOrWhiteSpace(_options.Model) ? "gemini-2.5-flash" : _options.Model;
+        var retryAfter = response.Headers.RetryAfter?.Delta;
+        return retryAfter is { } delay && delay > TimeSpan.Zero && delay <= TimeSpan.FromSeconds(2)
+            ? delay
+            : RetryDelay;
+    }
+
+    private Uri BuildGenerateContentUri(string? requestedModel)
+    {
+        var model = string.IsNullOrWhiteSpace(requestedModel) ? _options.Model : requestedModel;
         return new Uri($"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={_options.ApiKey}");
     }
 

@@ -2,6 +2,8 @@
 @using System.Text.Json
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Components.Shared.Quiz
+@using AI_Study_Hub_v2.Options
+@using Microsoft.Extensions.Options
 @implements IDisposable
 @inject AuthSessionState Session
 @inject DocumentApiClient DocumentsApi
@@ -13,6 +15,8 @@
 @inject AiChatSessionState ChatSession
 @inject IJSRuntime JS
 @inject IDialogService DialogService
+@inject IOptions<GroqOptions> GroqOptions
+@inject IOptions<GeminiOptions> GeminiOptions
 
 <PageTitle>AI Chat - AI Study Hub v2</PageTitle>
 
@@ -326,8 +330,10 @@
                             <small>Choose which model answers questions</small>
                         </div>
                         <MudSelect T="string" Value="@_selectedModel" ValueChanged="@OnModelChanged" Variant="Variant.Outlined" Margin="Margin.Dense" Disabled="@(_busy || _generatingQuiz)">
-                            <MudSelectItem T="string" Value="@("llama-3.3-70b-versatile")">Llama 3.3 70B (Groq, free)</MudSelectItem>
-                            <MudSelectItem T="string" Value="@("gemini-2.5-flash")">Gemini 2.5 Flash (Google, free)</MudSelectItem>
+                            @foreach (var model in AvailableModels)
+                            {
+                                <MudSelectItem T="string" Value="@model">@model</MudSelectItem>
+                            }
                         </MudSelect>
                     </section>
 
@@ -424,7 +430,7 @@
     private Guid? _folderId;
     private string _workspaceFolderIdStr = "";
     private int _topK = 5;
-    private string _selectedModel = "llama-3.3-70b-versatile";
+    private string _selectedModel = string.Empty;
 
     private string? _quizSubjectCode;
     private string? _quizSemester;
@@ -453,6 +459,31 @@
         _selectedModel = value;
         StateHasChanged();
     }
+
+    private IReadOnlyList<string> AvailableModels
+    {
+        get
+        {
+            var groqModel = GroqOptions.Value.Model?.Trim();
+            var geminiModel = GeminiOptions.Value.Model?.Trim();
+            var models = new List<string>();
+            if (!string.IsNullOrWhiteSpace(groqModel))
+            {
+                models.Add(groqModel);
+            }
+
+            if (!string.IsNullOrWhiteSpace(GeminiOptions.Value.ApiKey)
+                && !string.IsNullOrWhiteSpace(geminiModel)
+                && !models.Contains(geminiModel, StringComparer.OrdinalIgnoreCase))
+            {
+                models.Add(geminiModel);
+            }
+
+            return models;
+        }
+    }
+
+    private string DefaultModel => AvailableModels.FirstOrDefault() ?? string.Empty;
 
     private List<DocumentDto> _documents = new();
     private List<FolderDto> _folders = new();
@@ -706,6 +737,7 @@
     protected override Task OnInitializedAsync()
     {
         _chatApi = ResolveChatApiClient();
+        _selectedModel = DefaultModel;
 
         if (!Session.IsAuthenticated)
         {
