@@ -141,3 +141,86 @@
 - Re-ran isolated build:
   `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\community-sidebar-footer-hard-left`
   -> PASS, 0 errors.
+
+### 2026-07-15T21:18+07:00 - Document Library count header cleaned up
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Removed the `Showing ...` summary text from both pagination bars:
+  - `My Folders`
+  - `Documents Table`
+- Reworked the `Documents Table` header to match `My Folders` by showing a count chip with the total document count next to the title.
+- Added `document-table-title-wrap` so the title and count chip stay aligned on one row.
+- Re-ran isolated build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\document-count-header-clean-pagination`
+  -> PASS, 0 errors.
+
+### 2026-07-15T21:24+07:00 - Community footer offset restored to 10px
+- Edited `AI_Study_Hub_v2/Components/Pages/Community.razor.css`.
+- Updated `.sidebar-footer` padding to `12px 0 12px 10px` so `Starred`, `Recent`, and `All Folders` sit about 10px from the left edge.
+- Re-ran isolated build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\community-footer-left-10px`
+  -> PASS, 0 errors.
+
+### 2026-07-15T22:10+07:00 - Moderator pagination unified with student-style controls
+- Edited moderator/admin pages to remove `Showing ...` summaries and replace them with `Total ...` counts plus numbered pagination with `Prev`, `Next`, ellipsis, and `Page...` jump input.
+- Pages updated:
+  - `AI_Study_Hub_v2/Components/Admin/Users/Users.razor`
+  - `AI_Study_Hub_v2/Components/Admin/AuditLogs/AuditLogs.razor`
+  - `AI_Study_Hub_v2/Components/Admin/Documents/DocumentModeration.razor`
+  - `AI_Study_Hub_v2/Components/Admin/Documents/Documents.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+- Added real client-side pagination for admin pages that previously rendered the full filtered list or placeholder footer text:
+  - Users
+  - Audit Logs
+  - Document Moderation
+- Kept existing paginator logic where present, but aligned the wording and controls:
+  - Admin Documents
+  - Analytics Dashboard
+  - Document Dashboard
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-pagination-unified`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T00:18+07:00 - Moderator dashboard pagination matched to student library visuals
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`.
+- Replaced the custom analytics pager visuals with the same pagination structure and sizing used by `DocumentLibrary`:
+  - square 34px page buttons
+  - `Prev` / `Next`
+  - 3-number sliding window + ellipsis + last page
+  - `Page...` jump input with `Enter`
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`.
+- Reworked the document review pager to use the same student-library pagination classes and sliding-number logic, replacing the older rounded-pill page buttons.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-dashboard-library-pagination`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T07:23:42.6193679+07:00 - Folder dashboard table now paginates like student library
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Added student-library style pagination to the moderator folder table with:
+  - `10` folders per page
+  - `Prev` / `Next`
+  - 3-number sliding window + ellipsis + last page
+  - `Page...` jump input that navigates on `Enter`
+- Split filtered folders from paged folders so sorting/filtering still works correctly while resetting back to page `1`.
+- Added `Total X folders` count above the bottom action area.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-folder-dashboard-pagination`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T07:32:57.1705026+07:00 - Removed total folder count from moderator folder pagination row
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Removed the `Total X folders` label from the bottom pagination row so only the pager controls remain.
+- Updated the pagination bar alignment to stay right-aligned after removing the count text.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-folder-dashboard-pagination-no-total`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T07:39:40.3654246+07:00 - View all folders moved inline with moderator pagination
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Moved `View all folders` onto the same footer row as the moderator folder pagination.
+- Kept the link left-aligned, the pagination controls right-aligned, and reduced the footer row padding to `16px` from the card edge.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\moderator-folder-dashboard-footer-inline`
+  -> PASS, 0 errors. Existing repo warnings remain.

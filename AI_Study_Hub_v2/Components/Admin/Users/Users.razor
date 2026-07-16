@@ -264,7 +264,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var user in FilteredUsers)
+                            @foreach (var user in PagedFilteredUsers)
                             {
                                 <tr>
                                     <td>
@@ -333,7 +333,32 @@
                         </tbody>
                     </table>
                     <div class="users-table-footer">
-                        <span class="footer-count">Showing @FilteredUsers.Count() of @TotalUsersCount users</span>
+                        <span class="footer-count">Total @FilteredUsersCount user@(FilteredUsersCount == 1 ? string.Empty : "s")</span>
+                        @if (TotalUserPages > 1)
+                        {
+                            <div class="footer-pagination">
+                                <button type="button" class="pag-btn" disabled="@(DisplayUserPage <= 1)" @onclick="() => GoToUserPage(DisplayUserPage - 1)">Prev</button>
+                                @foreach (var page in GetUserPageNumbers())
+                                {
+                                    if (page == -1)
+                                    {
+                                        <span class="footer-page-ellipsis">...</span>
+                                    }
+                                    else
+                                    {
+                                        var current = page;
+                                        <button type="button" class="pag-btn @(current == DisplayUserPage ? "active" : "")" @onclick="() => GoToUserPage(current)">@current</button>
+                                    }
+                                }
+                                <button type="button" class="pag-btn" disabled="@(DisplayUserPage >= TotalUserPages)" @onclick="() => GoToUserPage(DisplayUserPage + 1)">Next</button>
+                                <input type="text"
+                                       class="footer-page-jump-input"
+                                       placeholder="Page..."
+                                       value="@_pageJumpInput"
+                                       @oninput="HandlePageJumpInput"
+                                       @onkeydown="HandlePageJumpKeyDown" />
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -448,6 +473,7 @@
     private const string QuotaNormal = "Normal";
     private const string QuotaWarning = "Warning";
     private const string QuotaExceeded = "Exceeded";
+    private const int UserPageSize = 10;
     private readonly List<UserRow> _users = new();
     private readonly List<RoleOption> _roles = new();
     private bool _showHighUsageTab;
@@ -461,6 +487,8 @@
     private string? _selectedQuotaRisk;
     private string? _errorMessage;
     private Guid? _processingUserId;
+    private int _currentPage = 1;
+    private string _pageJumpInput = string.Empty;
     private QuotaEditModel _quotaEdit = new();
 
     private IEnumerable<UserRow> FilteredUsers => _users
@@ -479,6 +507,16 @@
         .OrderBy(role => role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
         .ThenBy(role => role)
         .ToList();
+
+    private int FilteredUsersCount => FilteredUsers.Count();
+
+    private int TotalUserPages => Math.Max(1, (int)Math.Ceiling(FilteredUsersCount / (double)UserPageSize));
+
+    private int DisplayUserPage => Math.Clamp(_currentPage, 1, TotalUserPages);
+
+    private IEnumerable<UserRow> PagedFilteredUsers => FilteredUsers
+        .Skip((DisplayUserPage - 1) * UserPageSize)
+        .Take(UserPageSize);
 
     private IEnumerable<string> ActiveFilters
     {
@@ -565,24 +603,28 @@
     private Task OnSearchChanged(string? value)
     {
         _searchText = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnRoleChanged(string? value)
     {
         _selectedRole = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnStatusChanged(string? value)
     {
         _selectedStatus = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnQuotaRiskChanged(string? value)
     {
         _selectedQuotaRisk = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
@@ -601,6 +643,7 @@
             _selectedQuotaRisk = null;
         }
 
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
@@ -610,7 +653,71 @@
         _selectedRole = null;
         _selectedStatus = null;
         _selectedQuotaRisk = null;
+        _currentPage = 1;
+        _pageJumpInput = string.Empty;
         return Task.CompletedTask;
+    }
+
+    private void GoToUserPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, TotalUserPages);
+    }
+
+    private List<int> GetUserPageNumbers() => BuildSlidingPageNumbers(TotalUserPages, DisplayUserPage);
+
+    private static List<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var i = 1; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var i = 1; i <= 3; i++) pages.Add(i);
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+            for (var i = total - 2; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i);
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(_pageJumpInput, out var page))
+        {
+            GoToUserPage(page);
+        }
+
+        _pageJumpInput = string.Empty;
     }
 
     private void ApplyQuotaRiskFilter()
@@ -983,6 +1090,7 @@
     private Task OnSearchInputChanged(ChangeEventArgs e)
     {
         _searchText = e.Value?.ToString();
+        _currentPage = 1;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -990,6 +1098,7 @@
     private Task OnRoleSelectChanged(ChangeEventArgs e)
     {
         _selectedRole = e.Value?.ToString();
+        _currentPage = 1;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -997,6 +1106,7 @@
     private Task OnStatusSelectChanged(ChangeEventArgs e)
     {
         _selectedStatus = e.Value?.ToString();
+        _currentPage = 1;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -1359,6 +1469,15 @@
     .footer-pagination {
         display: flex;
         gap: 4px;
+        align-items: center;
+        flex-wrap: wrap;
+    }
+
+    .footer-page-ellipsis {
+        padding: 0 4px;
+        color: #767586;
+        font-size: 12px;
+        font-weight: 700;
     }
 
     .pag-btn {
@@ -1385,6 +1504,18 @@
     .pag-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    .footer-page-jump-input {
+        width: 86px;
+        height: 32px;
+        border: 1px solid #c7c6d5;
+        border-radius: 4px;
+        background: #ffffff;
+        color: #191c1e;
+        padding: 0 10px;
+        font-size: 12px;
+        outline: none;
     }
 
     /* Widget Cards */

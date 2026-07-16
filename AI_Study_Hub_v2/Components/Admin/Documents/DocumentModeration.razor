@@ -164,7 +164,7 @@
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var doc in FilteredDocuments)
+                            @foreach (var doc in PagedFilteredDocuments)
                             {
                                 <tr class="@(_selectedDocument?.Id == doc.Id ? "selected" : "")" @onclick="@(() => SelectDocumentAsync(doc))" style="cursor: pointer;">
                                     <td>
@@ -214,12 +214,27 @@
                         </tbody>
                     </table>
                     <div class="moderation-table-footer">
-                        <span class="footer-count">Showing @FilteredDocuments.Count() of @TotalDocumentsCount moderation tasks</span>
-                        <div class="footer-pagination">
-                            <button class="pag-btn" disabled>&lt;</button>
-                            <span class="pag-text">Page 1 of 3</span>
-                            <button class="pag-btn">&gt;</button>
-                        </div>
+                        <span class="footer-count">Total @FilteredDocumentsCount moderation task@(FilteredDocumentsCount == 1 ? string.Empty : "s")</span>
+                        @if (TotalModerationPages > 1)
+                        {
+                            <div class="footer-pagination">
+                                <button type="button" class="pag-btn" disabled="@(DisplayModerationPage <= 1)" @onclick="() => GoToModerationPage(DisplayModerationPage - 1)">Prev</button>
+                                @foreach (var page in GetModerationPageNumbers())
+                                {
+                                    if (page == -1)
+                                    {
+                                        <span class="footer-page-ellipsis">...</span>
+                                    }
+                                    else
+                                    {
+                                        var current = page;
+                                        <button type="button" class="pag-btn @(current == DisplayModerationPage ? "active" : "")" @onclick="() => GoToModerationPage(current)">@current</button>
+                                    }
+                                }
+                                <button type="button" class="pag-btn" disabled="@(DisplayModerationPage >= TotalModerationPages)" @onclick="() => GoToModerationPage(DisplayModerationPage + 1)">Next</button>
+                                <input type="text" class="footer-page-jump-input" placeholder="Page..." value="@_pageJumpInput" @oninput="HandlePageJumpInput" @onkeydown="HandlePageJumpKeyDown" />
+                            </div>
+                        }
                     </div>
                 }
             </div>
@@ -308,6 +323,7 @@
     private const string HighSeverity = "High";
     private const string MediumSeverity = "Medium";
     private const string LowSeverity = "Low";
+    private const int ModerationPageSize = 10;
 
     private readonly List<ReviewDocumentRow> _documents = new();
     private bool _isLoading = true;
@@ -317,6 +333,8 @@
     private string? _selectedSeverity;
     private string? _errorMessage;
     private ReviewDocumentRow? _selectedDocument;
+    private int _currentPage = 1;
+    private string _pageJumpInput = string.Empty;
 
     private int GetCount(string status, int fallback)
     {
@@ -324,6 +342,12 @@
     }
 
     private int TotalDocumentsCount => _documents.Count;
+
+    private int FilteredDocumentsCount => FilteredDocuments.Count();
+
+    private int TotalModerationPages => Math.Max(1, (int)Math.Ceiling(FilteredDocumentsCount / (double)ModerationPageSize));
+
+    private int DisplayModerationPage => Math.Clamp(_currentPage, 1, TotalModerationPages);
 
     private string GetModerationClass(string status)
     {
@@ -351,18 +375,21 @@
     private async Task OnSearchInputChanged(ChangeEventArgs e)
     {
         _searchText = e.Value?.ToString();
+        _currentPage = 1;
         await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnStatusSelectChanged(ChangeEventArgs e)
     {
         _selectedStatus = e.Value?.ToString();
+        _currentPage = 1;
         await InvokeAsync(StateHasChanged);
     }
 
     private async Task OnSeveritySelectChanged(ChangeEventArgs e)
     {
         _selectedSeverity = e.Value?.ToString();
+        _currentPage = 1;
         await InvokeAsync(StateHasChanged);
     }
 
@@ -373,6 +400,10 @@
         .Where(MatchesSearch)
         .OrderByDescending(document => document.Severity == HighSeverity)
         .ThenByDescending(document => document.UploadedAt);
+
+    private IEnumerable<ReviewDocumentRow> PagedFilteredDocuments => FilteredDocuments
+        .Skip((DisplayModerationPage - 1) * ModerationPageSize)
+        .Take(ModerationPageSize);
 
     private IEnumerable<string> ActiveFilters
     {
@@ -433,24 +464,28 @@
     private Task OnSearchChanged(string? value)
     {
         _searchText = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnStatusChanged(string? value)
     {
         _selectedStatus = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnSubjectChanged(string? value)
     {
         _selectedSubject = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnSeverityChanged(string? value)
     {
         _selectedSeverity = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
@@ -469,6 +504,7 @@
             _selectedSubject = null;
         }
 
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
@@ -478,7 +514,71 @@
         _selectedStatus = null;
         _selectedSeverity = null;
         _selectedSubject = null;
+        _currentPage = 1;
+        _pageJumpInput = string.Empty;
         return Task.CompletedTask;
+    }
+
+    private void GoToModerationPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, TotalModerationPages);
+    }
+
+    private List<int> GetModerationPageNumbers() => BuildSlidingPageNumbers(TotalModerationPages, DisplayModerationPage);
+
+    private static List<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var i = 1; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var i = 1; i <= 3; i++) pages.Add(i);
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+            for (var i = total - 2; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i);
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(_pageJumpInput, out var page))
+        {
+            GoToModerationPage(page);
+        }
+
+        _pageJumpInput = string.Empty;
     }
 
     private bool MatchesStatus(ReviewDocumentRow document)
@@ -1053,12 +1153,14 @@
         display: flex;
         align-items: center;
         gap: 8px;
+        flex-wrap: wrap;
     }
 
-    .pag-text {
+    .footer-page-ellipsis {
+        padding: 0 4px;
+        color: #767586;
         font-size: 12px;
-        font-weight: 600;
-        color: #191c1e;
+        font-weight: 700;
     }
 
     .pag-btn {
@@ -1076,9 +1178,27 @@
         font-size: 11px;
     }
 
+    .pag-btn.active {
+        background: #4648d4;
+        color: #ffffff;
+        border-color: #4648d4;
+    }
+
     .pag-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
+    }
+
+    .footer-page-jump-input {
+        width: 86px;
+        height: 28px;
+        border: 1px solid #c7c6d5;
+        border-radius: 4px;
+        background: #ffffff;
+        color: #191c1e;
+        padding: 0 10px;
+        font-size: 12px;
+        outline: none;
     }
 
     /* Inspection Panel */

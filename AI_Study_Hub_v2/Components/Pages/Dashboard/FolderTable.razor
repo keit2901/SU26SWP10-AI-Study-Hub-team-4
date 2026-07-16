@@ -1,6 +1,23 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
+<style>
+    .moderator-folder-pagination-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-top: 1px solid #f1f5f9; flex-wrap: wrap; }
+    .moderator-folder-pagination-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    .moderator-folder-pagination-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .moderator-folder-pagination-jump { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .moderator-folder-view-all-link { display: inline-flex; align-items: center; font-size: 0.875rem; font-weight: 500; color: #4f46e5; text-decoration: none; }
+    .moderator-folder-page-nav-btn { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #475569; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .moderator-folder-page-nav-btn:disabled { opacity: 0.4; cursor: default; }
+    .moderator-folder-page-nav-btn:hover:not(:disabled) { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .moderator-folder-page-number-btn { min-width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #475569; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .moderator-folder-page-number-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .moderator-folder-page-number-btn.active { border-color: #6366f1; background: #6366f1; color: #fff; }
+    .moderator-folder-page-ellipsis { color: #94a3b8; font-size: 12px; font-weight: 700; padding: 0 2px; }
+    .moderator-folder-page-jump-input { width: 86px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; padding: 7px 10px; font-size: 12px; outline: none; }
+    .moderator-folder-page-jump-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+</style>
+
 <div style="background: #fff; border-radius: 1rem; box-shadow: 0 2px 10px -4px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: visible; margin-top: 2rem;">
     <div style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
         <div>
@@ -204,7 +221,7 @@
                 </tr>
             </thead>
             <tbody>
-                @if (VisibleFolders.Any())
+                @if (FilteredFolders.Any())
                 {
                     @foreach (var folder in VisibleFolders)
                     {
@@ -254,11 +271,56 @@
     </div>
     </div>
 
-    <div style="padding: 1rem; border-top: 1px solid #f1f5f9; text-align: center;">
-        <a href="community" style="display: inline-flex; align-items: center; font-size: 0.875rem; font-weight: 500; color: #4f46e5; text-decoration: none;">
+    <div class="moderator-folder-pagination-bar">
+        <a href="community" class="moderator-folder-view-all-link">
             View all folders
             <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Style="font-size: 1rem; margin-left: 0.375rem;" />
         </a>
+
+        @if (TotalPages > 1)
+        {
+            <div class="moderator-folder-pagination-actions">
+                <div class="moderator-folder-pagination-controls">
+                    <button type="button"
+                            class="moderator-folder-page-nav-btn"
+                            @onclick="() => GoToPage(CurrentPage - 1)"
+                            disabled="@(CurrentPage == 1)">
+                        Prev
+                    </button>
+                    @foreach (var pageNumber in GetPageWindow())
+                    {
+                        if (pageNumber == -1)
+                        {
+                            <span class="moderator-folder-page-ellipsis">...</span>
+                        }
+                        else
+                        {
+                            var isActivePage = pageNumber == CurrentPage;
+                            <button type="button"
+                                    class="moderator-folder-page-number-btn @(isActivePage ? "active" : "")"
+                                    @onclick="() => GoToPage(pageNumber)">
+                                @pageNumber
+                            </button>
+                        }
+                    }
+                    <button type="button"
+                            class="moderator-folder-page-nav-btn"
+                            @onclick="() => GoToPage(CurrentPage + 1)"
+                            disabled="@(CurrentPage == TotalPages)">
+                        Next
+                    </button>
+                </div>
+                <div class="moderator-folder-pagination-jump">
+                    <input type="text"
+                           class="moderator-folder-page-jump-input"
+                           value="@PageJumpInput"
+                           placeholder="Page..."
+                           inputmode="numeric"
+                           @oninput="HandlePageJumpInput"
+                           @onkeydown="HandlePageJumpKeyDown" />
+                </div>
+            </div>
+        }
     </div>
 </div>
 
@@ -289,10 +351,27 @@
     private string FilterSemesterQuery = string.Empty;
     private string FilterStatus = string.Empty;
     private string SortBy = string.Empty;
+    private const int PageSize = 10;
+    private int CurrentPage = 1;
+    private string PageJumpInput = string.Empty;
 
     private IReadOnlyList<FolderViewModel> SourceFolders => Folders?.ToList() ?? [];
 
-    private IReadOnlyList<FolderViewModel> VisibleFolders => GetVisibleFolders();
+    private IReadOnlyList<FolderViewModel> FilteredFolders => GetFilteredFolders();
+
+    private IReadOnlyList<FolderViewModel> VisibleFolders
+    {
+        get
+        {
+            EnsureCurrentPage();
+            return FilteredFolders
+                .Skip((CurrentPage - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredFolders.Count / (double)PageSize));
 
     private IReadOnlyList<string> NameOptions => SourceFolders
         .Select(folder => folder.Name)
@@ -329,7 +408,7 @@
         .OrderBy(status => status, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
-    private IReadOnlyList<FolderViewModel> GetVisibleFolders()
+    private IReadOnlyList<FolderViewModel> GetFilteredFolders()
     {
         IEnumerable<FolderViewModel> query = SourceFolders;
 
@@ -374,6 +453,18 @@
         };
 
         return query.ToList();
+    }
+
+    private void EnsureCurrentPage()
+    {
+        if (CurrentPage < 1)
+        {
+            CurrentPage = 1;
+        }
+        else if (CurrentPage > TotalPages)
+        {
+            CurrentPage = TotalPages;
+        }
     }
 
     private IReadOnlyList<string> GetSuggestions(string columnKey)
@@ -433,6 +524,8 @@
                 FilterStatus = normalizedValue;
                 break;
         }
+
+        CurrentPage = 1;
     }
 
     private void ApplyTextSuggestion(string columnKey, string value)
@@ -461,6 +554,7 @@
                 break;
         }
 
+        CurrentPage = 1;
         CloseOpenMenu();
     }
 
@@ -490,6 +584,7 @@
                 break;
         }
 
+        CurrentPage = 1;
         CloseOpenMenu();
     }
 
@@ -497,6 +592,7 @@
     {
         FilterStatus = statusValue;
         StatusSearchTerm = statusValue;
+        CurrentPage = 1;
         CloseOpenMenu();
     }
 
@@ -513,6 +609,8 @@
         FilterSemesterQuery = string.Empty;
         FilterStatus = string.Empty;
         SortBy = string.Empty;
+        CurrentPage = 1;
+        PageJumpInput = string.Empty;
         OpenMenuColumn = null;
     }
 
@@ -532,6 +630,7 @@
     private void ApplySortOption(string columnKey, string sortKey)
     {
         SortBy = sortKey;
+        CurrentPage = 1;
         CloseOpenMenu();
     }
 
@@ -739,6 +838,87 @@
         };
         return $"display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 9999px; margin-right: 0.375rem; background: {dotColor};";
     }
+
+    private IReadOnlyList<int> GetPageWindow() =>
+        BuildSlidingPageNumbers(TotalPages, CurrentPage);
+
+    private static IReadOnlyList<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var index = 1; index <= total; index++)
+            {
+                pages.Add(index);
+            }
+
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var index = 1; index <= 3; index++)
+            {
+                pages.Add(index);
+            }
+
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+
+            for (var index = total - 2; index <= total; index++)
+            {
+                pages.Add(index);
+            }
+
+            return pages;
+        }
+
+        for (var index = current - 1; index <= current + 1; index++)
+        {
+            pages.Add(index);
+        }
+
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void GoToPage(int pageNumber)
+    {
+        CurrentPage = Math.Clamp(pageNumber, 1, TotalPages);
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        PageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(PageJumpInput, out var page))
+        {
+            GoToPage(page);
+        }
+
+        PageJumpInput = string.Empty;
+    }
+
     private void HandleRowClick(Guid folderId)
     {
         Nav.NavigateTo($"/dashboard/analytics?folderId={folderId}");
