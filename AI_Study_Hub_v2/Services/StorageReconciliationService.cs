@@ -1,129 +1,85 @@
-using System.Runtime.CompilerServices;
+using System.Data;
 using AI_Study_Hub_v2.Data;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 
 namespace AI_Study_Hub_v2.Services;
 
-public sealed class StorageReconciliationService : IStorageReconciliationService
+public sealed class StorageReconciliationService(IServiceScopeFactory scopeFactory, ILogger<StorageReconciliationService> logger) : IStorageReconciliationService
 {
-    private readonly IServiceScopeFactory _scopeFactory;
-    private readonly ILogger<StorageReconciliationService> _logger;
-
-    public StorageReconciliationService(
-        IServiceScopeFactory scopeFactory,
-        ILogger<StorageReconciliationService> logger)
-    {
-        _scopeFactory = scopeFactory;
-        _logger = logger;
-    }
-
     public async Task<IReadOnlyList<StorageDiscrepancy>> ReconcileAllAsync(CancellationToken ct)
     {
-        await using var scope = _scopeFactory.CreateAsyncScope();
+        await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        var discrepancies = await db.Database
-            .SqlQuery<DiscrepancyRow>(FormattableStringFactory.Create(
-                @"SELECT u.id, u.username, u.storage_used_bytes AS ""CachedBytes"",
-                         COALESCE(SUM(d.file_size_bytes), 0) AS ""ActualBytes""
-                  FROM users u
-                  LEFT JOIN documents d ON d.user_id = u.id
-                  GROUP BY u.id
-                  HAVING u.storage_used_bytes != COALESCE(SUM(d.file_size_bytes), 0)"))
-            .ToListAsync(ct);
-
-        var results = new List<StorageDiscrepancy>(discrepancies.Count);
-
-        foreach (var row in discrepancies)
+        var userIds = await db.Users.AsNoTracking().Select(user => user.Id).ToListAsync(ct);
+        var results = new List<StorageDiscrepancy>();
+        foreach (var userId in userIds)
         {
-            var delta = row.ActualBytes - row.CachedBytes;
-            var result = new StorageDiscrepancy(
-                row.Id,
-                row.Username,
-                row.CachedBytes,
-                row.ActualBytes,
-                delta);
-
-            if (delta > 0)
-            {
-                // Cached less than actual — auto-fix.
-                await db.Users
-                    .Where(u => u.Id == row.Id)
-                    .ExecuteUpdateAsync(
-                        s => s.SetProperty(u => u.StorageUsedBytes, row.ActualBytes),
-                        ct);
-                _logger.LogInformation(
-                    "Storage reconciliation: auto-fixed user {UserId} ({Username}): " +
-                    "cached={Cached}, actual={Actual}, delta=+{Delta}",
-                    row.Id, row.Username, row.CachedBytes, row.ActualBytes, delta);
-            }
-            else
-            {
-                // Cached more than actual — log warning (may indicate orphaned records).
-                _logger.LogWarning(
-                    "Storage reconciliation: user {UserId} ({Username}) has cached > actual: " +
-                    "cached={Cached}, actual={Actual}, delta={Delta}. Manual review recommended.",
-                    row.Id, row.Username, row.CachedBytes, row.ActualBytes, delta);
-            }
-
-            results.Add(result);
+            var result = await ReconcileUserCoreAsync(userId, ct);
+            if (result is not null) results.Add(result);
         }
-
         return results;
     }
 
-    public async Task ReconcileUserAsync(Guid userId, CancellationToken ct)
+    public async Task ReconcileUserAsync(Guid userId, CancellationToken ct) => await ReconcileUserCoreAsync(userId, ct);
+
+    private async Task<StorageDiscrepancy?> ReconcileUserCoreAsync(Guid userId, CancellationToken ct)
     {
-        await using var scope = _scopeFactory.CreateAsyncScope();
+        await using var scope = scopeFactory.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-
-        var row = await db.Database
-            .SqlQuery<DiscrepancyRow>(FormattableStringFactory.Create(
-                @"SELECT u.id, u.username, u.storage_used_bytes AS ""CachedBytes"",
-                         COALESCE(SUM(d.file_size_bytes), 0) AS ""ActualBytes""
-                  FROM users u
-                  LEFT JOIN documents d ON d.user_id = u.id
-                  WHERE u.id = {0}
-                  GROUP BY u.id
-                  HAVING u.storage_used_bytes != COALESCE(SUM(d.file_size_bytes), 0)", userId))
-            .FirstOrDefaultAsync(ct);
-
-        if (row is null)
+        await using var transaction = await BeginTransactionAsync(db, ct);
+        try
         {
-            _logger.LogInformation(
-                "Storage reconciliation: user {UserId} is consistent — no fix needed.", userId);
-            return;
+            if (db.Database.IsRelational())
+                await db.Database.ExecuteSqlInterpolatedAsync($"SELECT 1 FROM public.users WHERE id = {userId} FOR UPDATE", ct);
+
+            var user = await db.Users.SingleOrDefaultAsync(item => item.Id == userId, ct);
+            if (user is null)
+            {
+                if (transaction is not null) await transaction.CommitAsync(ct);
+                logger.LogInformation("Storage reconciliation: user {UserId} is consistent — no fix needed.", userId);
+                return null;
+            }
+
+            var documentBytes = await db.Documents.Where(document => document.UserId == userId)
+                .Select(document => document.FileSizeBytes).ToListAsync(ct);
+            var reservationBytes = await db.SharedFolderCopyOperations
+                .Where(operation => operation.DestinationUserId == userId
+                    && !db.Folders.Any(folder => folder.Id == operation.DestinationFolderId && folder.UserId == userId))
+                .Select(operation => operation.ReservedStorageBytes).ToListAsync(ct);
+            long expectedBytes = 0;
+            checked
+            {
+                foreach (var bytes in documentBytes) expectedBytes += bytes;
+                foreach (var bytes in reservationBytes) expectedBytes += bytes;
+            }
+            if (user.StorageUsedBytes == expectedBytes)
+            {
+                if (transaction is not null) await transaction.CommitAsync(ct);
+                logger.LogInformation("Storage reconciliation: user {UserId} is consistent — no fix needed.", userId);
+                return null;
+            }
+
+            var result = new StorageDiscrepancy(user.Id, user.Username, user.StorageUsedBytes, expectedBytes, checked(expectedBytes - user.StorageUsedBytes));
+            user.StorageUsedBytes = expectedBytes;
+            await db.SaveChangesAsync(ct);
+            if (transaction is not null) await transaction.CommitAsync(ct);
+            logger.LogInformation("Storage reconciliation: auto-fixed user {UserId}: cached={Cached}, actual={Actual}, delta={Delta}", user.Id, result.CachedBytes, expectedBytes, result.Delta);
+            return result;
         }
-
-        var delta = row.ActualBytes - row.CachedBytes;
-
-        if (delta > 0)
+        catch
         {
-            await db.Users
-                .Where(u => u.Id == row.Id)
-                .ExecuteUpdateAsync(
-                    s => s.SetProperty(u => u.StorageUsedBytes, row.ActualBytes),
-                    ct);
-            _logger.LogInformation(
-                "Storage reconciliation: auto-fixed user {UserId} ({Username}): " +
-                "cached={Cached}, actual={Actual}, delta=+{Delta}",
-                row.Id, row.Username, row.CachedBytes, row.ActualBytes, delta);
-        }
-        else
-        {
-            _logger.LogWarning(
-                "Storage reconciliation: user {UserId} ({Username}) has cached > actual: " +
-                "cached={Cached}, actual={Actual}, delta={Delta}. Manual review recommended.",
-                row.Id, row.Username, row.CachedBytes, row.ActualBytes, delta);
+            if (transaction is not null)
+            {
+                try { await transaction.RollbackAsync(CancellationToken.None); } catch { }
+            }
+            throw;
         }
     }
 
-    // ReSharper disable once ClassNeverInstantiated.Local
-    private sealed class DiscrepancyRow
+    private static async Task<IDbContextTransaction?> BeginTransactionAsync(AppDbContext db, CancellationToken ct)
     {
-        public Guid Id { get; set; }
-        public string Username { get; set; } = string.Empty;
-        public long CachedBytes { get; set; }
-        public long ActualBytes { get; set; }
+        if (!db.Database.IsRelational()) return null;
+        return await db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct);
     }
 }

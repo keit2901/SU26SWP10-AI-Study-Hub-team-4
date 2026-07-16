@@ -104,7 +104,7 @@
         AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role);
 
     private bool IsModerator =>
-        Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true;
+        Session.CurrentUser?.Role?.Equals(Role.ModeratorRoleName, StringComparison.OrdinalIgnoreCase) == true;
 
     private bool IsModeratorOrAdmin => IsAdmin || IsModerator;
 

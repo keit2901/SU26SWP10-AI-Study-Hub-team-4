@@ -17,6 +17,23 @@ namespace AI_Study_Hub_v2.Tests.Controllers;
 public sealed class AdminDocumentsControllerTests
 {
     [Test]
+    [TestCase(true, typeof(NoContentResult))]
+    [TestCase(false, typeof(NotFoundResult))]
+    public async Task Delete_DelegatesToPrivilegedCoordinator(bool deleted, Type resultType)
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var coordinator = new Mock<IStorageDeletionCoordinator>(MockBehavior.Strict);
+        var documentId = Guid.NewGuid();
+        coordinator.Setup(c => c.DeletePrivilegedDocumentAsync(documentId, It.IsAny<CancellationToken>())).ReturnsAsync(deleted);
+        var sut = BuildSut(db, coordinator.Object);
+
+        var result = await sut.Delete(documentId, CancellationToken.None);
+
+        result.Should().BeOfType(resultType);
+        coordinator.VerifyAll();
+    }
+
+    [Test]
     public async Task List_HappyPath_ReturnsDocuments()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
@@ -85,11 +102,12 @@ public sealed class AdminDocumentsControllerTests
         ((NotFoundObjectResult)result.Result!).StatusCode.Should().Be(404);
     }
 
-    private static AdminDocumentsController BuildSut(AppDbContext db)
+    private static AdminDocumentsController BuildSut(AppDbContext db, IStorageDeletionCoordinator? coordinator = null)
     {
         var ragOptions = Microsoft.Extensions.Options.Options.Create(new RagOptions { ChunkingStrategy = "fixed" });
         var mock = new Mock<IDocumentIngestionService>();
-        return new AdminDocumentsController(db, mock.Object, ragOptions, NullLogger<AdminDocumentsController>.Instance);
+        return new AdminDocumentsController(db, mock.Object, ragOptions, NullLogger<AdminDocumentsController>.Instance,
+            coordinator ?? Mock.Of<IStorageDeletionCoordinator>());
     }
 
     private static User SeedUser(AppDbContext db, string username, string fullName)

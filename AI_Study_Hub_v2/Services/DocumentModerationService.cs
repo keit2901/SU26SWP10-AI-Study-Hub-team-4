@@ -1,7 +1,6 @@
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
-using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Services;
@@ -20,12 +19,12 @@ public sealed class DocumentModerationService : IDocumentModerationService
     private const string LowSeverity = "Low";
 
     private readonly AppDbContext _db;
-    private readonly ISupabaseStorageClient _storage;
+    private readonly IStorageDeletionCoordinator _deletionCoordinator;
 
-    public DocumentModerationService(AppDbContext db, ISupabaseStorageClient storage)
+    public DocumentModerationService(AppDbContext db, IStorageDeletionCoordinator deletionCoordinator)
     {
         _db = db;
-        _storage = storage;
+        _deletionCoordinator = deletionCoordinator;
     }
 
     public async Task<IReadOnlyList<ModerationQueueDocumentDto>> GetQueueAsync(CancellationToken ct = default)
@@ -115,17 +114,7 @@ public sealed class DocumentModerationService : IDocumentModerationService
 
     public async Task<bool> DeleteAsync(Guid documentId, CancellationToken ct = default)
     {
-        var doc = await _db.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
-        if (doc is null)
-        {
-            return false;
-        }
-
-        await _storage.DeleteAsync(DocumentService.BucketName, doc.StoragePath, ct);
-
-        _db.Documents.Remove(doc);
-        await _db.SaveChangesAsync(ct);
-        return true;
+        return await _deletionCoordinator.DeletePrivilegedDocumentAsync(documentId, ct);
     }
 
     public async Task<bool> EscalateAsync(Guid documentId, CancellationToken ct = default)
