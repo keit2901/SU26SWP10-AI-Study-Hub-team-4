@@ -15,14 +15,7 @@
 <PageTitle>Analytics - AI Study Hub</PageTitle>
 
 <div style="display: flex; flex-direction: column; flex: 1; height: 100%;">
-    <div style="display: flex; height: 4rem; align-items: center; border-bottom: 1px solid rgba(199,196,215,0.3); background: rgba(255,255,255,0.88); backdrop-filter: blur(4px); padding: 0 2rem; position: sticky; top: 0; z-index: 10;">
-        <div style="display: flex; align-items: center; gap: 0.5rem; font-size: 0.875rem; min-width: 0;">
-            <span style="font-weight: 600; color: #464554;">Analytics</span>
-            <span style="color: #c7c4d7;">></span>
-            <span style="font-weight: 700; color: #1a1b1f; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@PageSubtitle</span>
-        </div>
-    </div>
-
+    
     <div style="padding: 2rem; max-width: 82rem; margin: 0 auto; width: 100%; display: flex; flex-direction: column; gap: 1.5rem;">
         <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 1rem; flex-wrap: wrap;">
             <div style="display: flex; flex-direction: column; gap: 0.25rem;">
@@ -246,16 +239,22 @@
                                             <div style='@GetAnalyticsHeaderMenuStyle("16rem", true)'>
                                                 <span style='@GetAnalyticsMenuSectionLabelStyle()'>Filter</span>
                                                 <input type="text"
+                                                       @ref="_analyticsNameSearchInput"
                                                        value="@AnalyticsNameSearchTerm"
                                                        @oninput='e => UpdateAnalyticsTextSearch(e.Value?.ToString())'
+                                                       @onkeydown='e => HandleAnalyticsSearchKeyDown("name", e)'
                                                        placeholder="Search document name"
                                                        style='@GetAnalyticsFilterInputStyle()' />
                                                 <div style='@GetAnalyticsFilterOptionsListStyle()'>
                                                     @if (nameSuggestions.Count > 0)
                                                     {
-                                                        @foreach (var option in nameSuggestions)
+                                                        @for (var suggestionIndex = 0; suggestionIndex < nameSuggestions.Count; suggestionIndex++)
                                                         {
-                                                            <button @onclick='() => ApplyAnalyticsNameSuggestion(option)' style='@GetAnalyticsFilterMenuItemStyle(string.Equals(FilterAnalyticsNameQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                            var option = nameSuggestions[suggestionIndex];
+                                                            var isHighlightedSuggestion = suggestionIndex == _highlightedAnalyticsNameSuggestionIndex;
+                                                            <button type="button"
+                                                                    @onclick='() => ApplyAnalyticsNameSuggestion(option)'
+                                                                    style='@GetAnalyticsFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedAnalyticsNameSuggestionIndex < 0 && string.Equals(AnalyticsNameSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                                         }
                                                     }
                                                     else
@@ -283,16 +282,22 @@
                                                 <div style='@GetAnalyticsHeaderMenuStyle("15rem", true)'>
                                                     <span style='@GetAnalyticsMenuSectionLabelStyle()'>Filter</span>
                                                     <input type="text"
+                                                           @ref="_analyticsFolderSearchInput"
                                                            value="@AnalyticsFolderSearchTerm"
                                                            @oninput='e => UpdateAnalyticsFolderSearch(e.Value?.ToString())'
+                                                           @onkeydown='e => HandleAnalyticsSearchKeyDown("folder", e)'
                                                            placeholder="Search folder"
                                                            style='@GetAnalyticsFilterInputStyle()' />
                                                     <div style='@GetAnalyticsFilterOptionsListStyle()'>
                                                         @if (folderSuggestions.Count > 0)
                                                         {
-                                                            @foreach (var option in folderSuggestions)
+                                                            @for (var suggestionIndex = 0; suggestionIndex < folderSuggestions.Count; suggestionIndex++)
                                                             {
-                                                                <button @onclick='() => ApplyAnalyticsFolderSuggestion(option)' style='@GetAnalyticsFilterMenuItemStyle(string.Equals(FilterAnalyticsFolderQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                                var option = folderSuggestions[suggestionIndex];
+                                                                var isHighlightedSuggestion = suggestionIndex == _highlightedAnalyticsFolderSuggestionIndex;
+                                                                <button type="button"
+                                                                        @onclick='() => ApplyAnalyticsFolderSuggestion(option)'
+                                                                        style='@GetAnalyticsFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedAnalyticsFolderSuggestionIndex < 0 && string.Equals(AnalyticsFolderSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                                             }
                                                         }
                                                         else
@@ -308,8 +313,8 @@
                                             }
                                         </th>
                                     }
-                                    <th style="padding: 1rem 1.5rem; position: relative;">
-                                        <button @ref="_statusHeaderButton" @onclick='() => HandleDocumentsHeaderClick("status")' style='@GetAnalyticsHeaderButtonStyle("status", true)'>
+                                    <th style="padding: 1rem 1.5rem; position: relative; text-align: center;">
+                                        <button @ref="_statusHeaderButton" @onclick='() => HandleDocumentsHeaderClick("status")' style='@GetAnalyticsHeaderButtonStyle("status")'>
                                             <span>Status</span>
                                             <MudIcon Icon='@GetAnalyticsSortIcon("status")' Style='@GetAnalyticsSortIconStyle("status")' />
                                         </button>
@@ -319,16 +324,22 @@
                                             <div style='@GetAnalyticsHeaderMenuStyle("14rem", true)'>
                                                 <span style='@GetAnalyticsMenuSectionLabelStyle()'>Filter</span>
                                                 <input type="text"
+                                                       @ref="_analyticsStatusSearchInput"
                                                        value="@AnalyticsStatusSearchTerm"
                                                        @oninput='e => UpdateAnalyticsStatusSearch(e.Value?.ToString())'
+                                                       @onkeydown='e => HandleAnalyticsSearchKeyDown("status", e)'
                                                        placeholder="Search status"
                                                        style='@GetAnalyticsFilterInputStyle()' />
                                                 <div style='@GetAnalyticsFilterOptionsListStyle()'>
                                                     @if (statusSuggestions.Count > 0)
                                                     {
-                                                        @foreach (var statusOption in statusSuggestions)
+                                                        @for (var suggestionIndex = 0; suggestionIndex < statusSuggestions.Count; suggestionIndex++)
                                                         {
-                                                            <button @onclick='() => ApplyAnalyticsStatusFilter(statusOption)' style='@GetAnalyticsFilterMenuItemStyle(string.Equals(FilterAnalyticsStatus, statusOption, StringComparison.OrdinalIgnoreCase))'>@statusOption</button>
+                                                            var statusOption = statusSuggestions[suggestionIndex];
+                                                            var isHighlightedSuggestion = suggestionIndex == _highlightedAnalyticsStatusSuggestionIndex;
+                                                            <button type="button"
+                                                                    @onclick='() => ApplyAnalyticsStatusSuggestion(statusOption)'
+                                                                    style='@GetAnalyticsFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedAnalyticsStatusSuggestionIndex < 0 && string.Equals(AnalyticsStatusSearchTerm, statusOption, StringComparison.OrdinalIgnoreCase)))'>@statusOption</button>
                                                         }
                                                     }
                                                     else
@@ -343,8 +354,8 @@
                                             </div>
                                         }
                                     </th>
-                                    <th style="padding: 1rem 1.5rem; position: relative;">
-                                        <button @ref="_dateHeaderButton" @onclick='() => HandleDocumentsHeaderClick("date")' style='@GetAnalyticsHeaderButtonStyle("date", true)'>
+                                    <th style="padding: 1rem 1.5rem; position: relative; text-align: center;">
+                                        <button @ref="_dateHeaderButton" @onclick='() => HandleDocumentsHeaderClick("date")' style='@GetAnalyticsHeaderButtonStyle("date")'>
                                             <span>Upload Date</span>
                                             <MudIcon Icon='@GetAnalyticsSortIcon("date")' Style='@GetAnalyticsSortIconStyle("date")' />
                                         </button>
@@ -356,6 +367,7 @@
                                                     <div style="display: flex; flex-direction: column; gap: 0.2rem;">
                                                         <span style="font-size: 0.75rem; font-weight: 600; color: #5f6372; text-align: left;">From</span>
                                                         <input type="datetime-local"
+                                                               @ref="_analyticsDateFromInput"
                                                                value="@FilterAnalyticsDateFrom"
                                                                @oninput='e => UpdateAnalyticsDateFilter("from", e.Value?.ToString())'
                                                                style='@GetAnalyticsFilterInputStyle()' />
@@ -376,7 +388,7 @@
                                             </div>
                                         }
                                     </th>
-                                    <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 700; color: #464554; text-transform: uppercase; letter-spacing: 0.05em;">Structure</th>
+                                    <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 700; color: #464554; text-transform: uppercase; letter-spacing: 0.05em; text-align: center;">Structure</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -400,7 +412,7 @@
                                                 </span>
                                             </td>
                                         }
-                                        <td style="padding: 1rem 1.5rem;">
+                                        <td style="padding: 1rem 1.5rem; text-align: center;">
                                             @{
                                                 var isApproved = string.Equals(doc.Status, "Approved", StringComparison.OrdinalIgnoreCase);
                                                 var isRejected = string.Equals(doc.Status, "Rejected", StringComparison.OrdinalIgnoreCase);
@@ -414,14 +426,14 @@
                                                     @text
                                                 </span>
                                             </td>
-                                            <td style="padding: 1rem 1.5rem;">
-                                                <div style="display: flex; flex-direction: column; gap: 0.125rem;">
+                                        <td style="padding: 1rem 1.5rem; text-align: center;">
+                                                <div style="display: flex; flex-direction: column; gap: 0.125rem; align-items: center;">
                                                     <span style="font-size: 0.875rem; font-weight: 500; color: #464554;">@doc.CreatedAt.ToLocalTime().ToString("MMM dd")</span>
                                                     <span style="font-size: 0.75rem; color: #9ca3af;">@doc.CreatedAt.ToLocalTime().ToString("yyyy")</span>
                                                 </div>
                                             </td>
-                                            <td style="padding: 1rem 1.5rem;">
-                                                <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                            <td style="padding: 1rem 1.5rem; text-align: center;">
+                                                <div style="display: flex; align-items: center; justify-content: center; gap: 0.75rem;">
                                                     <span style="font-size: 0.875rem; font-weight: 700; color: #5e5ce6;">@doc.ChunkCount chunks</span>
                                                     <span style="font-size: 0.75rem; color: #6b7280;">(@(doc.PageCount?.ToString() ?? "N/A") pages)</span>
                                                 </div>
@@ -452,8 +464,7 @@
                     <!-- Pagination -->
                     @if (!FolderId.HasValue && documentsList != null && documentsList.Any() && _totalPages > 1)
                     {
-                        <div class="folder-pagination-bar" style="padding: 1rem 1.5rem 0;">
-                            <span class="dashboard-pagination-total">Total @_totalDocumentCount document@(_totalDocumentCount == 1 ? string.Empty : "s")</span>
+                        <div class="folder-pagination-bar" style="padding: 1rem 1.5rem 1rem;">
                             <div class="folder-pagination-actions">
                                 <div class="folder-pagination-controls">
                                 <button class="folder-page-nav-btn" disabled="@(_currentPage <= 1)" @onclick="() => GoToPageAsync(_currentPage - 1)">
@@ -529,6 +540,10 @@
     private ElementReference _folderHeaderButton;
     private ElementReference _statusHeaderButton;
     private ElementReference _dateHeaderButton;
+    private ElementReference _analyticsNameSearchInput;
+    private ElementReference _analyticsFolderSearchInput;
+    private ElementReference _analyticsStatusSearchInput;
+    private ElementReference _analyticsDateFromInput;
     private double _analyticsMenuLeft = 16;
     private double _analyticsMenuTop = 112;
     private double _analyticsMenuWidth = 256;
@@ -545,6 +560,10 @@
     private FolderStatus _folderShareStatus = FolderStatus.None;
     private bool _allDocumentsReviewed;
     private bool _hasRejectedDocument;
+    private string? _pendingAnalyticsFocusColumn;
+    private int _highlightedAnalyticsNameSuggestionIndex = -1;
+    private int _highlightedAnalyticsFolderSuggestionIndex = -1;
+    private int _highlightedAnalyticsStatusSuggestionIndex = -1;
 
     private bool HasIssues => issuesList is { Count: > 0 };
 
@@ -604,7 +623,7 @@
         .OrderBy(folder => folder, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
-    private const int DefaultPageSize = 20;
+    private const int DefaultPageSize = 10;
     private int _currentPage = 1;
     private int _pageSize = DefaultPageSize;
     private string _pageJumpInput = string.Empty;
@@ -660,7 +679,7 @@
             documentsList = analytics.RecentDocuments;
 
             _totalDocumentCount = analytics.TotalDocumentCount > 0 ? analytics.TotalDocumentCount : (documentsList?.Count ?? 0);
-            if (analytics.PageSize > 0) _pageSize = analytics.PageSize;
+            if (analytics.PageSize > 0) _pageSize = Math.Min(DefaultPageSize, analytics.PageSize);
 
             // Compute folder-level document review status for button locking
             if (FolderId.HasValue)
@@ -776,33 +795,33 @@
     private void UpdateAnalyticsTextSearch(string? value)
     {
         AnalyticsNameSearchTerm = value?.Trim() ?? string.Empty;
-        FilterAnalyticsNameQuery = AnalyticsNameSearchTerm;
+        ResetHighlightedAnalyticsSuggestion("name");
     }
 
     private void UpdateAnalyticsFolderSearch(string? value)
     {
         AnalyticsFolderSearchTerm = value?.Trim() ?? string.Empty;
-        FilterAnalyticsFolderQuery = AnalyticsFolderSearchTerm;
+        ResetHighlightedAnalyticsSuggestion("folder");
     }
 
     private void UpdateAnalyticsStatusSearch(string? value)
     {
         AnalyticsStatusSearchTerm = value?.Trim() ?? string.Empty;
-        FilterAnalyticsStatus = AnalyticsStatusSearchTerm;
+        ResetHighlightedAnalyticsSuggestion("status");
     }
 
     private void ApplyAnalyticsNameSuggestion(string value)
     {
-        FilterAnalyticsNameQuery = value;
         AnalyticsNameSearchTerm = value;
-        CloseDocumentsMenu();
+        ResetHighlightedAnalyticsSuggestion("name");
+        ApplyAnalyticsSearch("name");
     }
 
     private void ApplyAnalyticsFolderSuggestion(string value)
     {
-        FilterAnalyticsFolderQuery = value;
         AnalyticsFolderSearchTerm = value;
-        CloseDocumentsMenu();
+        ResetHighlightedAnalyticsSuggestion("folder");
+        ApplyAnalyticsSearch("folder");
     }
 
     private void ClearAnalyticsNameFilter()
@@ -812,11 +831,11 @@
         CloseDocumentsMenu();
     }
 
-    private void ApplyAnalyticsStatusFilter(string statusValue)
+    private void ApplyAnalyticsStatusSuggestion(string statusValue)
     {
-        FilterAnalyticsStatus = statusValue;
         AnalyticsStatusSearchTerm = statusValue;
-        CloseDocumentsMenu();
+        ResetHighlightedAnalyticsSuggestion("status");
+        ApplyAnalyticsSearch("status");
     }
 
     private void UpdateAnalyticsDateFilter(string boundary, string? value)
@@ -867,6 +886,9 @@
         FilterAnalyticsDateFrom = string.Empty;
         FilterAnalyticsDateTo = string.Empty;
         AnalyticsSortBy = "date-desc";
+        _pageJumpInput = string.Empty;
+        _pendingAnalyticsFocusColumn = null;
+        ResetAllAnalyticsHighlightedSuggestions();
     }
 
     private async Task HandleDocumentsHeaderClick(string columnKey)
@@ -877,20 +899,9 @@
             return;
         }
 
-        if (string.Equals(columnKey, "name", StringComparison.OrdinalIgnoreCase))
-        {
-            AnalyticsNameSearchTerm = FilterAnalyticsNameQuery;
-        }
-        else if (string.Equals(columnKey, "folder", StringComparison.OrdinalIgnoreCase))
-        {
-            AnalyticsFolderSearchTerm = FilterAnalyticsFolderQuery;
-        }
-        else if (string.Equals(columnKey, "status", StringComparison.OrdinalIgnoreCase))
-        {
-            AnalyticsStatusSearchTerm = FilterAnalyticsStatus;
-        }
-
+        ClearAnalyticsDraftSearch(columnKey);
         OpenDocumentsMenuColumn = columnKey;
+        _pendingAnalyticsFocusColumn = columnKey;
         await PositionAnalyticsMenuAsync(columnKey);
     }
 
@@ -900,8 +911,16 @@
         CloseDocumentsMenu();
     }
 
-    private void CloseDocumentsMenu() =>
+    private void CloseDocumentsMenu()
+    {
+        if (!string.IsNullOrWhiteSpace(OpenDocumentsMenuColumn))
+        {
+            ClearAnalyticsDraftSearch(OpenDocumentsMenuColumn);
+        }
+
         OpenDocumentsMenuColumn = null;
+        _pendingAnalyticsFocusColumn = null;
+    }
 
     private bool HasActiveAnalyticsFilters() =>
         !string.IsNullOrWhiteSpace(FilterAnalyticsNameQuery)
@@ -1028,6 +1047,199 @@
             "date" => !string.IsNullOrWhiteSpace(FilterAnalyticsDateFrom) || !string.IsNullOrWhiteSpace(FilterAnalyticsDateTo),
             _ => false
         };
+
+    private void ApplyAnalyticsSearch(string columnKey)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                FilterAnalyticsNameQuery = AnalyticsNameSearchTerm;
+                ResetHighlightedAnalyticsSuggestion("name");
+                break;
+            case "folder":
+                FilterAnalyticsFolderQuery = AnalyticsFolderSearchTerm;
+                ResetHighlightedAnalyticsSuggestion("folder");
+                break;
+            case "status":
+                FilterAnalyticsStatus = AnalyticsStatusSearchTerm;
+                ResetHighlightedAnalyticsSuggestion("status");
+                break;
+        }
+
+        CloseDocumentsMenu();
+    }
+
+    private void HandleAnalyticsSearchKeyDown(string columnKey, KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "ArrowDown", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveAnalyticsSuggestionSelection(columnKey, 1);
+            return;
+        }
+
+        if (string.Equals(e.Key, "ArrowUp", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveAnalyticsSuggestionSelection(columnKey, -1);
+            return;
+        }
+
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplyHighlightedOrTypedAnalyticsSearch(columnKey);
+            return;
+        }
+
+        if (string.Equals(e.Key, "Escape", StringComparison.OrdinalIgnoreCase))
+        {
+            CloseDocumentsMenu();
+        }
+    }
+
+    private void ClearAnalyticsDraftSearch(string columnKey)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                AnalyticsNameSearchTerm = string.Empty;
+                ResetHighlightedAnalyticsSuggestion("name");
+                break;
+            case "folder":
+                AnalyticsFolderSearchTerm = string.Empty;
+                ResetHighlightedAnalyticsSuggestion("folder");
+                break;
+            case "status":
+                AnalyticsStatusSearchTerm = string.Empty;
+                ResetHighlightedAnalyticsSuggestion("status");
+                break;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (string.IsNullOrWhiteSpace(_pendingAnalyticsFocusColumn))
+        {
+            return;
+        }
+
+        var focusColumn = _pendingAnalyticsFocusColumn;
+        _pendingAnalyticsFocusColumn = null;
+
+        if (string.Equals(focusColumn, "name", StringComparison.OrdinalIgnoreCase))
+        {
+            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsNameSearchInput, true);
+        }
+        else if (string.Equals(focusColumn, "folder", StringComparison.OrdinalIgnoreCase))
+        {
+            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsFolderSearchInput, true);
+        }
+        else if (string.Equals(focusColumn, "status", StringComparison.OrdinalIgnoreCase))
+        {
+            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsStatusSearchInput, true);
+        }
+        else if (string.Equals(focusColumn, "date", StringComparison.OrdinalIgnoreCase))
+        {
+            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsDateFromInput, false);
+        }
+    }
+
+    private IReadOnlyList<string> GetAnalyticsSuggestionOptions(string columnKey) =>
+        columnKey switch
+        {
+            "name" => GetAnalyticsNameSuggestions(),
+            "folder" => GetAnalyticsFolderSuggestions(),
+            "status" => GetAnalyticsStatusSuggestions(),
+            _ => []
+        };
+
+    private void MoveAnalyticsSuggestionSelection(string columnKey, int offset)
+    {
+        var suggestions = GetAnalyticsSuggestionOptions(columnKey);
+        if (suggestions.Count == 0)
+        {
+            ResetHighlightedAnalyticsSuggestion(columnKey);
+            return;
+        }
+
+        var highlightedIndex = GetHighlightedAnalyticsSuggestionIndex(columnKey);
+        if (highlightedIndex < 0)
+        {
+            SetHighlightedAnalyticsSuggestionIndex(columnKey, offset > 0 ? 0 : suggestions.Count - 1);
+        }
+        else
+        {
+            SetHighlightedAnalyticsSuggestionIndex(columnKey, (highlightedIndex + offset + suggestions.Count) % suggestions.Count);
+        }
+    }
+
+    private void ApplyHighlightedOrTypedAnalyticsSearch(string columnKey)
+    {
+        var selectedValue = columnKey switch
+        {
+            "name" => AnalyticsNameSearchTerm,
+            "folder" => AnalyticsFolderSearchTerm,
+            "status" => AnalyticsStatusSearchTerm,
+            _ => string.Empty
+        };
+
+        var suggestions = GetAnalyticsSuggestionOptions(columnKey);
+        var highlightedIndex = GetHighlightedAnalyticsSuggestionIndex(columnKey);
+        if (highlightedIndex >= 0 && highlightedIndex < suggestions.Count)
+        {
+            selectedValue = suggestions[highlightedIndex];
+        }
+
+        switch (columnKey)
+        {
+            case "name":
+                AnalyticsNameSearchTerm = selectedValue;
+                break;
+            case "folder":
+                AnalyticsFolderSearchTerm = selectedValue;
+                break;
+            case "status":
+                AnalyticsStatusSearchTerm = selectedValue;
+                break;
+        }
+
+        ApplyAnalyticsSearch(columnKey);
+    }
+
+    private int GetHighlightedAnalyticsSuggestionIndex(string columnKey) =>
+        columnKey switch
+        {
+            "name" => _highlightedAnalyticsNameSuggestionIndex,
+            "folder" => _highlightedAnalyticsFolderSuggestionIndex,
+            "status" => _highlightedAnalyticsStatusSuggestionIndex,
+            _ => -1
+        };
+
+    private void SetHighlightedAnalyticsSuggestionIndex(string columnKey, int value)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                _highlightedAnalyticsNameSuggestionIndex = value;
+                break;
+            case "folder":
+                _highlightedAnalyticsFolderSuggestionIndex = value;
+                break;
+            case "status":
+                _highlightedAnalyticsStatusSuggestionIndex = value;
+                break;
+        }
+    }
+
+    private void ResetHighlightedAnalyticsSuggestion(string columnKey)
+    {
+        SetHighlightedAnalyticsSuggestionIndex(columnKey, -1);
+    }
+
+    private void ResetAllAnalyticsHighlightedSuggestions()
+    {
+        _highlightedAnalyticsNameSuggestionIndex = -1;
+        _highlightedAnalyticsFolderSuggestionIndex = -1;
+        _highlightedAnalyticsStatusSuggestionIndex = -1;
+    }
 
     private void NavigateToFolderDocuments()
     {

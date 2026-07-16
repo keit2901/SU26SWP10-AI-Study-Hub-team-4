@@ -329,3 +329,89 @@
 - Re-ran full project build:
   `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\document-dashboard-body-alignment`
   -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T10:24:00+07:00 - Subjects dashboard body alignment and duplicate scroll cleanup
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`.
+- Center-aligned the table body values under `Total Documents` and `Storage Used`.
+- Removed the extra vertical scroll layer from the page content wrapper so the dashboard no longer shows two stacked scroll behaviors.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\subjects-dashboard-alignment-scroll`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T10:42:00+07:00 - Synced document-style filter and pagination patterns across dashboard tables
+- Edited:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Applied `DocumentDashboard`-style table behavior to `SubjectsDashboard` and `SemestersDashboard`:
+  - page size `10`
+  - numbered pagination with page jump input
+  - filter input stays as draft until `Enter`
+  - suggestion click fills input only
+  - draft search clears when the menu closes or reopens
+- Updated `AnalyticsDashboard` document table filters to match the same draft/Enter-only interaction while preserving the existing API-backed pagination flow.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\dashboard-pagination-filter-sync`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T10:56:00+07:00 - Semesters dashboard upgraded with focus-first filter and keyboard suggestion navigation
+- Edited:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+  - `AI_Study_Hub_v2/Components/App.razor`
+- Reapplied `DocumentDashboard`-style local pagination and filter flow to `SemestersDashboard` with page size `10`.
+- Added automatic focus when opening the semester filter menu so users can type immediately without clicking the input.
+- Added keyboard suggestion navigation for semester filter:
+  - `ArrowDown` / `ArrowUp` moves through visible suggestions
+  - `Enter` applies the highlighted value
+  - `Escape` closes the filter menu
+- Added shared `codexTableFilter.focusElement(...)` helper in `App.razor` to support focus-on-open behavior.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\semesters-dashboard-focus-keyboard`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T11:06:00+07:00 - Semesters filter arrow navigation changed to highlight-only and table widened
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`.
+- Changed semester filter keyboard behavior so `ArrowUp` / `ArrowDown` only moves the highlighted suggestion and does not write that value into the input immediately.
+- Pressing `Enter` now applies the currently highlighted suggestion as the filter value; if nothing is highlighted, it applies the typed input.
+- Widened the table layout using a fixed column structure and larger minimum width so the semester management table feels more spread out.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build\semesters-arrow-highlight-enter`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T11:49:29+07:00 - Semesters filter suggestion click now applies immediately
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`.
+- Updated the semester filter suggestion click handler so choosing a value from the dropdown now applies the filter immediately instead of only filling the input box.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/semesters-click-suggestion-applies`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T12:03:17+07:00 - Analytics dashboard filter flow synced with semesters dashboard
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`.
+- Applied the `SemestersDashboard` filter interaction to analytics table text filters:
+  - opening a filter menu now focuses the input immediately
+  - `ArrowDown` / `ArrowUp` highlights suggestions without writing into the input
+  - `Enter` applies the highlighted suggestion or the typed value
+  - clicking a suggestion now applies that filter immediately
+  - `Escape` closes the filter menu
+- Adjusted analytics pagination padding so the pagination row sits `16px` above the bottom edge of the card.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/analytics-filter-sync`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T12:08:46+07:00 - Analytics dashboard page size capped at 10 items
+- Edited:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+  - `AI_Study_Hub_v2/Services/DashboardService.cs`
+- Changed analytics pagination to load a maximum of `10` documents per page.
+- Updated both the dashboard default page size and the analytics service default page size to `10`, and clamped the returned page size on the dashboard so it cannot grow past that limit.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/analytics-page-size-10`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T12:14:19+07:00 - Analytics status/date/structure columns centered
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`.
+- Center-aligned the `Status`, `Upload Date`, and `Structure` table headers.
+- Center-aligned the tbody content under those same three columns, including the date stack and structure metadata row.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/analytics-center-columns`
+  -> PASS, 0 errors. Existing repo warnings remain.
