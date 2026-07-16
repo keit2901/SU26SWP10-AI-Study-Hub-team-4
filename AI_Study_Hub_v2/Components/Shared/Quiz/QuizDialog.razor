@@ -127,7 +127,7 @@
 
                             <button type="button"
                                     class="@optClass"
-                                    disabled="@isSubmitted"
+                                    disabled="@(isSubmitted || _isSaving)"
                                     @onclick="() => SelectOption(question.Index, optId)">
                                 <span class="quiz-option-id">@optId</span>
                                 <span class="quiz-option-text">@option.Text</span>
@@ -285,6 +285,7 @@
     private SaveQuizRequest? _pendingSave;
     private Task? _pendingSaveTask;
     private bool _isCompleting;
+    private bool _isSaving;
 
     private bool _isReviewMode => _quiz?.Status == QuizStatus.Completed && !_showResult;
 
@@ -314,40 +315,22 @@
         }
     }
 
-    private void SelectOption(int questionIndex, string optionId)
+    private async Task SelectOption(int questionIndex, string optionId)
     {
-        if (_localSubmitted.TryGetValue(questionIndex, out var sub) && sub)
+        if (_isSaving || (_localSubmitted.TryGetValue(questionIndex, out var sub) && sub))
         {
             return;
         }
 
         _localAnswers[questionIndex] = optionId;
-        _localSubmitted[questionIndex] = true;
-
-        if (IsAnswerCorrect(questionIndex, optionId))
-        {
-            _localScore = (_localScore ?? 0) + 1;
-        }
-
-        RecalculateStats();
         _pendingSaveTask = SaveProgressAsync();
-    }
-
-    private bool IsAnswerCorrect(int questionIndex, string optionId)
-    {
-        var question = _quiz?.Questions.FirstOrDefault(q => q.Index == questionIndex);
-        return question is not null && question.CorrectOptionId == optionId;
+        await _pendingSaveTask;
     }
 
     private void RecalculateStats()
     {
         _answeredQuestions = _localSubmitted.Count(kvp => kvp.Value);
-        if (_quiz is not null)
-        {
-            _localScore = _quiz.Questions.Count(q =>
-                _localSubmitted.TryGetValue(q.Index, out var sub) && sub &&
-                _localAnswers.TryGetValue(q.Index, out var ans) && ans == q.CorrectOptionId);
-        }
+        _localScore = _quiz?.Score;
     }
 
     private async Task NextQuestion()
@@ -374,6 +357,12 @@
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            _saveError = true;
+            return;
+        }
+
         _isCompleting = true;
 
         // Wait for any in-flight progress save to complete first
@@ -382,33 +371,23 @@
             try { await _pendingSaveTask; } catch { /* best-effort */ }
         }
 
-        var saveRequest = new SaveQuizRequest(
-            QuizStatus.Completed,
-            _currentIndex,
-            _localAnswers,
-            _localSubmitted,
-            _localScore);
+        var saveRequest = new SaveQuizRequest(_currentIndex, _localAnswers);
 
         _pendingSave = saveRequest;
 
         try
         {
-            if (!string.IsNullOrWhiteSpace(Session.AccessToken))
-            {
-                await ChatApi.SaveQuizAsync(Session.AccessToken!, _quiz.Id, saveRequest);
-            }
+            var savedQuiz = await ChatApi.SaveQuizAsync(Session.AccessToken, _quiz.Id, saveRequest);
 
             _saveError = false;
             _pendingSave = null;
 
-            _quiz = _quiz with
+            ApplySavedQuiz(savedQuiz);
+            if (_quiz.Status != QuizStatus.Completed)
             {
-                Status = QuizStatus.Completed,
-                Score = _localScore,
-                Answers = _localAnswers,
-                Submitted = _localSubmitted,
-                CurrentQuestionIndex = _currentIndex,
-            };
+                _saveError = true;
+                return;
+            }
 
             _showResult = true;
             await OnQuizUpdated.InvokeAsync(_quiz);
@@ -424,7 +403,7 @@
 
     private async Task SaveProgressAsync()
     {
-        if (_isCompleting || _quiz?.Status == QuizStatus.Completed)
+        if (_isCompleting || _isSaving || _quiz?.Status == QuizStatus.Completed)
         {
             return;
         }
@@ -434,34 +413,26 @@
             return;
         }
 
-        var saveRequest = new SaveQuizRequest(
-            QuizStatus.InProgress,
-            _currentIndex,
-            _localAnswers,
-            _localSubmitted,
-            _localScore);
-
-        _pendingSave = saveRequest;
-
+        _isSaving = true;
         try
         {
-            await ChatApi.SaveQuizAsync(Session.AccessToken!, _quiz.Id, saveRequest);
+            var saveRequest = new SaveQuizRequest(_currentIndex, _localAnswers);
+            _pendingSave = saveRequest;
+            var savedQuiz = await ChatApi.SaveQuizAsync(Session.AccessToken!, _quiz.Id, saveRequest);
             _saveError = false;
             _pendingSave = null;
 
-            _quiz = _quiz with
-            {
-                CurrentQuestionIndex = _currentIndex,
-                Answers = _localAnswers,
-                Submitted = _localSubmitted,
-                Score = _localScore,
-            };
+            ApplySavedQuiz(savedQuiz);
 
             await OnQuizUpdated.InvokeAsync(_quiz);
         }
         catch
         {
             _saveError = true;
+        }
+        finally
+        {
+            _isSaving = false;
         }
     }
 
@@ -475,17 +446,11 @@
 
         try
         {
-            await ChatApi.SaveQuizAsync(Session.AccessToken!, _quiz.Id, _pendingSave);
+            var savedQuiz = await ChatApi.SaveQuizAsync(Session.AccessToken!, _quiz.Id, _pendingSave);
             _saveError = false;
             _pendingSave = null;
 
-            _quiz = _quiz with
-            {
-                CurrentQuestionIndex = _currentIndex,
-                Answers = _localAnswers,
-                Submitted = _localSubmitted,
-                Score = _localScore,
-            };
+            ApplySavedQuiz(savedQuiz);
 
             await OnQuizUpdated.InvokeAsync(_quiz);
         }
@@ -499,6 +464,16 @@
     {
         _saveError = false;
         _pendingSave = null;
+    }
+
+    private void ApplySavedQuiz(QuizDto savedQuiz)
+    {
+        _quiz = savedQuiz;
+        _currentIndex = Math.Clamp(savedQuiz.CurrentQuestionIndex, 0, savedQuiz.Questions.Count - 1);
+        _localAnswers = new Dictionary<int, string?>(savedQuiz.Answers);
+        _localSubmitted = new Dictionary<int, bool>(savedQuiz.Submitted);
+        _localScore = savedQuiz.Score;
+        RecalculateStats();
     }
 
     private string GetResultIcon()
