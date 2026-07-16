@@ -136,6 +136,25 @@ public class AiChatControllerTests
     }
 
     [Test]
+    public async Task Ask_UnsupportedModel_MapsTo400()
+    {
+        var service = new Mock<IAiChatService>(MockBehavior.Strict);
+        service.Setup(s => s.AskAsync(
+                It.IsAny<Guid>(),
+                It.IsAny<AiChatAskRequest>(),
+                It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AiChatException(400, "unsupported_model", "The requested AI model is not supported."));
+        var sut = BuildSut(service.Object, Principal(Guid.NewGuid()));
+
+        var result = await sut.Ask(new AiChatAskRequest("Question", null, null, null, null, Model: "unknown"), CancellationToken.None);
+
+        var error = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        error.StatusCode.Should().Be(400);
+        error.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("unsupported_model");
+        service.VerifyAll();
+    }
+
+    [Test]
     public async Task Ask_ProviderUnavailable_MapsTo503()
     {
         var service = new Mock<IAiChatService>(MockBehavior.Strict);

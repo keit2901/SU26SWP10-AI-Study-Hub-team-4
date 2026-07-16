@@ -45,7 +45,12 @@ builder.Services
     .ValidateOnStart();
 
 builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOptions.SectionName));
-builder.Services.Configure<RagOptions>(builder.Configuration.GetSection(RagOptions.SectionName));
+builder.Services
+    .AddOptions<RagOptions>()
+    .Bind(builder.Configuration.GetSection(RagOptions.SectionName))
+    .Validate(RagOptions.HasValidChatBounds,
+        "Rag chat limits must use exchanges 0-10, history chars 0 or 500-10000, assistant chars 100-2000, and context chars 1000-20000.")
+    .ValidateOnStart();
 builder.Services.ConfigureOptions<ConfigureRagOptions>();
 builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
