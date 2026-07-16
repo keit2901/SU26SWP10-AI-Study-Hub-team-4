@@ -99,7 +99,7 @@
     .document-reset-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
     .document-filter-overlay { position: fixed; inset: 0; z-index: 20; border: none; background: transparent; padding: 0; margin: 0; }
     .table-header-cell { color: #94a3b8 !important; font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; background: #f8fafc; padding: 12px 8px !important; position: relative; overflow: visible; }
-    .table-header-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; border: none; background: transparent; color: #64748b; padding: 0; cursor: pointer; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
+    .table-header-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: auto; max-width: 100%; border: none; background: transparent; color: #64748b; padding: 0; cursor: pointer; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
     .table-header-button-active { color: #4f46e5; }
     .table-filter-menu { position: fixed; z-index: 30; overflow-y: auto; border-radius: 12px; border: 1px solid rgba(199,196,215,0.55); background: #fff; box-shadow: 0 18px 42px rgba(15,23,42,0.18); padding: 8px; text-align: left; }
     .table-filter-menu-left { left: auto; transform: none; }
@@ -535,7 +535,7 @@ else
                             <col style="width: 16%" />
                         </ColGroup>
                         <HeaderContent>
-                            <MudTh Class="table-header-cell">
+                            <MudTh Class="table-header-cell" Style="text-align: center;">
                                 <button type="button" class="@GetDocumentHeaderButtonClass("name")" @ref="_nameHeaderButton" @onclick='() => HandleDocumentHeaderClick("name")'>
                                     <span>NAME</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("name")" Size="Size.Small" />
@@ -545,13 +545,20 @@ else
                                     var nameSuggestions = GetDocumentSuggestions("name");
                                     <div class="table-filter-menu table-filter-menu-left" style='@GetDocumentMenuStyle("name")'>
                                         <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_searchQuery" @oninput='e => UpdateDocumentTextFilter("name", e.Value?.ToString())' placeholder="Search document name" />
-                                        <div class="table-filter-options">
+                                        <input class="table-filter-input"
+                                               @ref="_nameSearchInput"
+                                               value="@_nameSearchTerm"
+                                               @oninput='e => UpdateDocumentTextFilter("name", e.Value?.ToString())'
+                                               @onkeydown='e => HandleDocumentSearchKeyDown("name", e)'
+                                               placeholder="Search document name" />
+                                        <div class="table-filter-options" @ref="_nameSuggestionsList">
                                             @if (nameSuggestions.Count > 0)
                                             {
-                                                @foreach (var option in nameSuggestions)
+                                                @for (var index = 0; index < nameSuggestions.Count; index++)
                                                 {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_searchQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("name", option)'>@option</button>
+                                                    var option = nameSuggestions[index];
+                                                    var isHighlightedSuggestion = _highlightedNameSuggestionIndex == index;
+                                                    <button type="button" class="@GetFilterOptionClass(isHighlightedSuggestion || (_highlightedNameSuggestionIndex < 0 && string.Equals(_searchQuery, option, StringComparison.OrdinalIgnoreCase)))" @onclick='() => ApplyDocumentSuggestion("name", option)'>@option</button>
                                                 }
                                             }
                                             else
@@ -576,13 +583,20 @@ else
                                     var subjectSuggestions = GetDocumentSuggestions("subject");
                                     <div class="table-filter-menu" style='@GetDocumentMenuStyle("subject")'>
                                         <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterSubject" @oninput='e => UpdateDocumentTextFilter("subject", e.Value?.ToString())' placeholder="Search subject" />
-                                        <div class="table-filter-options">
+                                        <input class="table-filter-input"
+                                               @ref="_subjectSearchInput"
+                                               value="@_subjectSearchTerm"
+                                               @oninput='e => UpdateDocumentTextFilter("subject", e.Value?.ToString())'
+                                               @onkeydown='e => HandleDocumentSearchKeyDown("subject", e)'
+                                               placeholder="Search subject" />
+                                        <div class="table-filter-options" @ref="_subjectSuggestionsList">
                                             @if (subjectSuggestions.Count > 0)
                                             {
-                                                @foreach (var option in subjectSuggestions)
+                                                @for (var index = 0; index < subjectSuggestions.Count; index++)
                                                 {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSubject, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("subject", option)'>@option</button>
+                                                    var option = subjectSuggestions[index];
+                                                    var isHighlightedSuggestion = _highlightedSubjectSuggestionIndex == index;
+                                                    <button type="button" class="@GetFilterOptionClass(isHighlightedSuggestion || (_highlightedSubjectSuggestionIndex < 0 && string.Equals(_filterSubject, option, StringComparison.OrdinalIgnoreCase)))" @onclick='() => ApplyDocumentSuggestion("subject", option)'>@option</button>
                                                 }
                                             }
                                             else
@@ -607,13 +621,20 @@ else
                                     var semesterSuggestions = GetDocumentSuggestions("semester");
                                     <div class="table-filter-menu" style='@GetDocumentMenuStyle("semester")'>
                                         <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterSemester" @oninput='e => UpdateDocumentTextFilter("semester", e.Value?.ToString())' placeholder="Search semester" />
-                                        <div class="table-filter-options">
+                                        <input class="table-filter-input"
+                                               @ref="_semesterSearchInput"
+                                               value="@_semesterSearchTerm"
+                                               @oninput='e => UpdateDocumentTextFilter("semester", e.Value?.ToString())'
+                                               @onkeydown='e => HandleDocumentSearchKeyDown("semester", e)'
+                                               placeholder="Search semester" />
+                                        <div class="table-filter-options" @ref="_semesterSuggestionsList">
                                             @if (semesterSuggestions.Count > 0)
                                             {
-                                                @foreach (var option in semesterSuggestions)
+                                                @for (var index = 0; index < semesterSuggestions.Count; index++)
                                                 {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSemester, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("semester", option)'>@option</button>
+                                                    var option = semesterSuggestions[index];
+                                                    var isHighlightedSuggestion = _highlightedSemesterSuggestionIndex == index;
+                                                    <button type="button" class="@GetFilterOptionClass(isHighlightedSuggestion || (_highlightedSemesterSuggestionIndex < 0 && string.Equals(_filterSemester, option, StringComparison.OrdinalIgnoreCase)))" @onclick='() => ApplyDocumentSuggestion("semester", option)'>@option</button>
                                                 }
                                             }
                                             else
@@ -638,13 +659,20 @@ else
                                     var folderSuggestions = GetDocumentSuggestions("folder");
                                     <div class="table-filter-menu" style='@GetDocumentMenuStyle("folder")'>
                                         <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterFolderQuery" @oninput='e => UpdateDocumentTextFilter("folder", e.Value?.ToString())' placeholder="Search folder" />
-                                        <div class="table-filter-options">
+                                        <input class="table-filter-input"
+                                               @ref="_folderSearchInput"
+                                               value="@_folderFilterSearchTerm"
+                                               @oninput='e => UpdateDocumentTextFilter("folder", e.Value?.ToString())'
+                                               @onkeydown='e => HandleDocumentSearchKeyDown("folder", e)'
+                                               placeholder="Search folder" />
+                                        <div class="table-filter-options" @ref="_folderSuggestionsList">
                                             @if (folderSuggestions.Count > 0)
                                             {
-                                                @foreach (var option in folderSuggestions)
+                                                @for (var index = 0; index < folderSuggestions.Count; index++)
                                                 {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterFolderQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("folder", option)'>@option</button>
+                                                    var option = folderSuggestions[index];
+                                                    var isHighlightedSuggestion = _highlightedFolderSuggestionIndex == index;
+                                                    <button type="button" class="@GetFilterOptionClass(isHighlightedSuggestion || (_highlightedFolderSuggestionIndex < 0 && string.Equals(_filterFolderQuery, option, StringComparison.OrdinalIgnoreCase)))" @onclick='() => ApplyDocumentSuggestion("folder", option)'>@option</button>
                                                 }
                                             }
                                             else
@@ -669,13 +697,20 @@ else
                                     var sizeSuggestions = GetDocumentSuggestions("size");
                                     <div class="table-filter-menu" style='@GetDocumentMenuStyle("size")'>
                                         <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterSizeQuery" @oninput='e => UpdateDocumentTextFilter("size", e.Value?.ToString())' placeholder="Search size" />
-                                        <div class="table-filter-options">
+                                        <input class="table-filter-input"
+                                               @ref="_sizeSearchInput"
+                                               value="@_sizeSearchTerm"
+                                               @oninput='e => UpdateDocumentTextFilter("size", e.Value?.ToString())'
+                                               @onkeydown='e => HandleDocumentSearchKeyDown("size", e)'
+                                               placeholder="Search size" />
+                                        <div class="table-filter-options" @ref="_sizeSuggestionsList">
                                             @if (sizeSuggestions.Count > 0)
                                             {
-                                                @foreach (var option in sizeSuggestions)
+                                                @for (var index = 0; index < sizeSuggestions.Count; index++)
                                                 {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSizeQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("size", option)'>@option</button>
+                                                    var option = sizeSuggestions[index];
+                                                    var isHighlightedSuggestion = _highlightedSizeSuggestionIndex == index;
+                                                    <button type="button" class="@GetFilterOptionClass(isHighlightedSuggestion || (_highlightedSizeSuggestionIndex < 0 && string.Equals(_filterSizeQuery, option, StringComparison.OrdinalIgnoreCase)))" @onclick='() => ApplyDocumentSuggestion("size", option)'>@option</button>
                                                 }
                                             }
                                             else
@@ -700,13 +735,20 @@ else
                                     var statusSuggestions = GetDocumentSuggestions("status");
                                     <div class="table-filter-menu" style='@GetDocumentMenuStyle("status")'>
                                         <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterStatusQuery" @oninput='e => UpdateDocumentTextFilter("status", e.Value?.ToString())' placeholder="Search status" />
-                                        <div class="table-filter-options">
+                                        <input class="table-filter-input"
+                                               @ref="_statusSearchInput"
+                                               value="@_statusSearchTerm"
+                                               @oninput='e => UpdateDocumentTextFilter("status", e.Value?.ToString())'
+                                               @onkeydown='e => HandleDocumentSearchKeyDown("status", e)'
+                                               placeholder="Search status" />
+                                        <div class="table-filter-options" @ref="_statusSuggestionsList">
                                             @if (statusSuggestions.Count > 0)
                                             {
-                                                @foreach (var option in statusSuggestions)
+                                                @for (var index = 0; index < statusSuggestions.Count; index++)
                                                 {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterStatusQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("status", option)'>@option</button>
+                                                    var option = statusSuggestions[index];
+                                                    var isHighlightedSuggestion = _highlightedStatusSuggestionIndex == index;
+                                                    <button type="button" class="@GetFilterOptionClass(isHighlightedSuggestion || (_highlightedStatusSuggestionIndex < 0 && string.Equals(_filterStatusQuery, option, StringComparison.OrdinalIgnoreCase)))" @onclick='() => ApplyDocumentSuggestion("status", option)'>@option</button>
                                                 }
                                             }
                                             else
@@ -730,9 +772,9 @@ else
                                 {
                                     <div class="table-filter-menu" style='@GetDocumentMenuStyle("created")'>
                                         <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" type="datetime-local" value="@_filterCreatedFrom" @oninput='e => UpdateCreatedDateFilter("from", e.Value?.ToString())' />
+                                        <input class="table-filter-input" @ref="_createdFromInput" type="datetime-local" value="@_filterCreatedFrom" @oninput='e => UpdateCreatedDateFilter("from", e.Value?.ToString())' @onkeydown="HandleCreatedDateKeyDown" />
                                         <div style="height: 6px;"></div>
-                                        <input class="table-filter-input" type="datetime-local" value="@_filterCreatedTo" @oninput='e => UpdateCreatedDateFilter("to", e.Value?.ToString())' />
+                                        <input class="table-filter-input" type="datetime-local" value="@_filterCreatedTo" @oninput='e => UpdateCreatedDateFilter("to", e.Value?.ToString())' @onkeydown="HandleCreatedDateKeyDown" />
                                         <button type="button" class="table-filter-option" @onclick="ClearCreatedDateFilter">Clear date range</button>
                                         <div class="table-menu-divider"></div>
                                         <span class="table-filter-section-label">Sort</span>
@@ -919,9 +961,37 @@ else
     private ElementReference _sizeHeaderButton;
     private ElementReference _statusHeaderButton;
     private ElementReference _createdHeaderButton;
+    private ElementReference _nameSearchInput;
+    private ElementReference _subjectSearchInput;
+    private ElementReference _semesterSearchInput;
+    private ElementReference _folderSearchInput;
+    private ElementReference _sizeSearchInput;
+    private ElementReference _statusSearchInput;
+    private ElementReference _createdFromInput;
+    private ElementReference _nameSuggestionsList;
+    private ElementReference _subjectSuggestionsList;
+    private ElementReference _semesterSuggestionsList;
+    private ElementReference _folderSuggestionsList;
+    private ElementReference _sizeSuggestionsList;
+    private ElementReference _statusSuggestionsList;
     private double _documentMenuLeft = 16;
     private double _documentMenuTop = 112;
     private double _documentMenuWidth = 256;
+    private string _nameSearchTerm = "";
+    private string _subjectSearchTerm = "";
+    private string _semesterSearchTerm = "";
+    private string _folderFilterSearchTerm = "";
+    private string _sizeSearchTerm = "";
+    private string _statusSearchTerm = "";
+    private string? _pendingDocumentFocusColumn;
+    private string? _pendingDocumentSuggestionScrollColumn;
+    private int? _pendingDocumentSuggestionScrollIndex;
+    private int _highlightedNameSuggestionIndex = -1;
+    private int _highlightedSubjectSuggestionIndex = -1;
+    private int _highlightedSemesterSuggestionIndex = -1;
+    private int _highlightedFolderSuggestionIndex = -1;
+    private int _highlightedSizeSuggestionIndex = -1;
+    private int _highlightedStatusSuggestionIndex = -1;
 
     private int _currentPage = 1;
     private int _pageSize = 10;
@@ -1164,6 +1234,11 @@ else
         _searchQuery = "";
         _documentSortBy = "created-desc";
         _openDocumentMenuColumn = null;
+        ResetAllDocumentDraftSearches();
+        ResetAllDocumentHighlightedSuggestions();
+        _pendingDocumentFocusColumn = null;
+        _pendingDocumentSuggestionScrollColumn = null;
+        _pendingDocumentSuggestionScrollIndex = null;
         _currentPage = 1;
     }
 
@@ -1189,17 +1264,28 @@ else
     {
         if (string.Equals(_openDocumentMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
         {
-            _openDocumentMenuColumn = null;
+            CloseDocumentMenu();
             return;
         }
 
+        SyncDocumentDraftSearch(columnKey);
+        ResetDocumentHighlightedSuggestion(columnKey);
         _openDocumentMenuColumn = columnKey;
+        _pendingDocumentFocusColumn = columnKey;
         await PositionDocumentMenuAsync(columnKey);
     }
 
     private void CloseDocumentMenu()
     {
+        if (!string.IsNullOrWhiteSpace(_openDocumentMenuColumn))
+        {
+            SyncDocumentDraftSearch(_openDocumentMenuColumn);
+        }
+
         _openDocumentMenuColumn = null;
+        _pendingDocumentFocusColumn = null;
+        _pendingDocumentSuggestionScrollColumn = null;
+        _pendingDocumentSuggestionScrollIndex = null;
     }
 
     private void UpdateDocumentTextFilter(string columnKey, string? value)
@@ -1208,24 +1294,26 @@ else
         switch (columnKey)
         {
             case "name":
-                SetDocumentFilterValue(ref _searchQuery, normalizedValue);
+                _nameSearchTerm = normalizedValue;
                 break;
             case "subject":
-                SetNullableDocumentFilterValue(ref _filterSubject, normalizedValue);
+                _subjectSearchTerm = normalizedValue;
                 break;
             case "semester":
-                SetNullableDocumentFilterValue(ref _filterSemester, normalizedValue);
+                _semesterSearchTerm = normalizedValue;
                 break;
             case "folder":
-                SetDocumentFilterValue(ref _filterFolderQuery, normalizedValue);
+                _folderFilterSearchTerm = normalizedValue;
                 break;
             case "size":
-                SetDocumentFilterValue(ref _filterSizeQuery, normalizedValue);
+                _sizeSearchTerm = normalizedValue;
                 break;
             case "status":
-                SetDocumentFilterValue(ref _filterStatusQuery, normalizedValue);
+                _statusSearchTerm = normalizedValue;
                 break;
         }
+
+        ResetDocumentHighlightedSuggestion(columnKey);
     }
 
     private void ApplyDocumentSuggestion(string columnKey, string value)
@@ -1233,26 +1321,27 @@ else
         switch (columnKey)
         {
             case "name":
-                SetDocumentFilterValue(ref _searchQuery, value);
+                _nameSearchTerm = value;
                 break;
             case "subject":
-                SetNullableDocumentFilterValue(ref _filterSubject, value);
+                _subjectSearchTerm = value;
                 break;
             case "semester":
-                SetNullableDocumentFilterValue(ref _filterSemester, value);
+                _semesterSearchTerm = value;
                 break;
             case "folder":
-                SetDocumentFilterValue(ref _filterFolderQuery, value);
+                _folderFilterSearchTerm = value;
                 break;
             case "size":
-                SetDocumentFilterValue(ref _filterSizeQuery, value);
+                _sizeSearchTerm = value;
                 break;
             case "status":
-                SetDocumentFilterValue(ref _filterStatusQuery, value);
+                _statusSearchTerm = value;
                 break;
         }
 
-        CloseDocumentMenu();
+        ResetDocumentHighlightedSuggestion(columnKey);
+        ApplyDocumentSearch(columnKey);
     }
 
     private void UpdateCreatedDateFilter(string boundary, string? value)
@@ -1296,12 +1385,12 @@ else
 
         var filterValue = columnKey switch
         {
-            "name" => _searchQuery,
-            "subject" => _filterSubject ?? string.Empty,
-            "semester" => _filterSemester ?? string.Empty,
-            "folder" => _filterFolderQuery,
-            "size" => _filterSizeQuery,
-            "status" => _filterStatusQuery,
+            "name" => _nameSearchTerm,
+            "subject" => _subjectSearchTerm,
+            "semester" => _semesterSearchTerm,
+            "folder" => _folderFilterSearchTerm,
+            "size" => _sizeSearchTerm,
+            "status" => _statusSearchTerm,
             _ => string.Empty
         };
 
@@ -1397,6 +1486,64 @@ else
     private string GetDocumentMenuStyle(string columnKey) =>
         $"top: {FormatDocumentMenuValue(_documentMenuTop)}px; left: {FormatDocumentMenuValue(_documentMenuLeft)}px; width: {FormatDocumentMenuValue(_documentMenuWidth)}px; max-width: calc(100vw - 32px); max-height: calc(100vh - {FormatDocumentMenuValue(_documentMenuTop + 24)}px);";
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var focusColumn = _pendingDocumentFocusColumn;
+        _pendingDocumentFocusColumn = null;
+
+        if (!string.IsNullOrWhiteSpace(focusColumn))
+        {
+            switch (focusColumn)
+            {
+                case "name":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _nameSearchInput, true);
+                    break;
+                case "subject":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _subjectSearchInput, true);
+                    break;
+                case "semester":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _semesterSearchInput, true);
+                    break;
+                case "folder":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _folderSearchInput, true);
+                    break;
+                case "size":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _sizeSearchInput, true);
+                    break;
+                case "status":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _statusSearchInput, true);
+                    break;
+                case "created":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _createdFromInput, false);
+                    break;
+            }
+        }
+
+        if (_pendingDocumentSuggestionScrollIndex.HasValue && !string.IsNullOrWhiteSpace(_pendingDocumentSuggestionScrollColumn))
+        {
+            var scrollIndex = _pendingDocumentSuggestionScrollIndex.Value;
+            var scrollColumn = _pendingDocumentSuggestionScrollColumn;
+            _pendingDocumentSuggestionScrollIndex = null;
+            _pendingDocumentSuggestionScrollColumn = null;
+
+            if (string.Equals(_openDocumentMenuColumn, scrollColumn, StringComparison.OrdinalIgnoreCase))
+            {
+                var suggestionsList = scrollColumn switch
+                {
+                    "name" => _nameSuggestionsList,
+                    "subject" => _subjectSuggestionsList,
+                    "semester" => _semesterSuggestionsList,
+                    "folder" => _folderSuggestionsList,
+                    "size" => _sizeSuggestionsList,
+                    "status" => _statusSuggestionsList,
+                    _ => default
+                };
+
+                await JS.InvokeVoidAsync("codexTableFilter.scrollOptionIntoViewByIndex", suggestionsList, scrollIndex);
+            }
+        }
+    }
+
     private async Task PositionDocumentMenuAsync(string columnKey)
     {
         var anchor = columnKey switch
@@ -1420,6 +1567,223 @@ else
         _documentMenuLeft = rect.Left;
         _documentMenuTop = rect.Top;
         _documentMenuWidth = rect.Width;
+    }
+
+    private void ApplyDocumentSearch(string columnKey)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                SetDocumentFilterValue(ref _searchQuery, _nameSearchTerm);
+                break;
+            case "subject":
+                SetNullableDocumentFilterValue(ref _filterSubject, _subjectSearchTerm);
+                break;
+            case "semester":
+                SetNullableDocumentFilterValue(ref _filterSemester, _semesterSearchTerm);
+                break;
+            case "folder":
+                SetDocumentFilterValue(ref _filterFolderQuery, _folderFilterSearchTerm);
+                break;
+            case "size":
+                SetDocumentFilterValue(ref _filterSizeQuery, _sizeSearchTerm);
+                break;
+            case "status":
+                SetDocumentFilterValue(ref _filterStatusQuery, _statusSearchTerm);
+                break;
+        }
+
+        ResetDocumentHighlightedSuggestion(columnKey);
+        CloseDocumentMenu();
+    }
+
+    private void HandleDocumentSearchKeyDown(string columnKey, KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "ArrowDown", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveDocumentSuggestionSelection(columnKey, 1);
+            return;
+        }
+
+        if (string.Equals(e.Key, "ArrowUp", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveDocumentSuggestionSelection(columnKey, -1);
+            return;
+        }
+
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplyHighlightedOrTypedDocumentSearch(columnKey);
+            return;
+        }
+
+        if (string.Equals(e.Key, "Escape", StringComparison.OrdinalIgnoreCase))
+        {
+            CloseDocumentMenu();
+        }
+    }
+
+    private void HandleCreatedDateKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Escape", StringComparison.OrdinalIgnoreCase))
+        {
+            CloseDocumentMenu();
+        }
+    }
+
+    private void MoveDocumentSuggestionSelection(string columnKey, int offset)
+    {
+        var suggestions = GetDocumentSuggestions(columnKey);
+        if (suggestions.Count == 0)
+        {
+            ResetDocumentHighlightedSuggestion(columnKey);
+            return;
+        }
+
+        var highlightedIndex = GetDocumentHighlightedSuggestionIndex(columnKey);
+        if (highlightedIndex < 0)
+        {
+            SetDocumentHighlightedSuggestionIndex(columnKey, offset > 0 ? 0 : suggestions.Count - 1);
+        }
+        else
+        {
+            SetDocumentHighlightedSuggestionIndex(columnKey, (highlightedIndex + offset + suggestions.Count) % suggestions.Count);
+        }
+
+        _pendingDocumentSuggestionScrollColumn = columnKey;
+        _pendingDocumentSuggestionScrollIndex = GetDocumentHighlightedSuggestionIndex(columnKey);
+    }
+
+    private void ApplyHighlightedOrTypedDocumentSearch(string columnKey)
+    {
+        var selectedValue = columnKey switch
+        {
+            "name" => _nameSearchTerm,
+            "subject" => _subjectSearchTerm,
+            "semester" => _semesterSearchTerm,
+            "folder" => _folderFilterSearchTerm,
+            "size" => _sizeSearchTerm,
+            "status" => _statusSearchTerm,
+            _ => string.Empty
+        };
+
+        var suggestions = GetDocumentSuggestions(columnKey);
+        var highlightedIndex = GetDocumentHighlightedSuggestionIndex(columnKey);
+        if (highlightedIndex >= 0 && highlightedIndex < suggestions.Count)
+        {
+            selectedValue = suggestions[highlightedIndex];
+        }
+
+        switch (columnKey)
+        {
+            case "name":
+                _nameSearchTerm = selectedValue;
+                break;
+            case "subject":
+                _subjectSearchTerm = selectedValue;
+                break;
+            case "semester":
+                _semesterSearchTerm = selectedValue;
+                break;
+            case "folder":
+                _folderFilterSearchTerm = selectedValue;
+                break;
+            case "size":
+                _sizeSearchTerm = selectedValue;
+                break;
+            case "status":
+                _statusSearchTerm = selectedValue;
+                break;
+        }
+
+        ApplyDocumentSearch(columnKey);
+    }
+
+    private int GetDocumentHighlightedSuggestionIndex(string columnKey) =>
+        columnKey switch
+        {
+            "name" => _highlightedNameSuggestionIndex,
+            "subject" => _highlightedSubjectSuggestionIndex,
+            "semester" => _highlightedSemesterSuggestionIndex,
+            "folder" => _highlightedFolderSuggestionIndex,
+            "size" => _highlightedSizeSuggestionIndex,
+            "status" => _highlightedStatusSuggestionIndex,
+            _ => -1
+        };
+
+    private void SetDocumentHighlightedSuggestionIndex(string columnKey, int value)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                _highlightedNameSuggestionIndex = value;
+                break;
+            case "subject":
+                _highlightedSubjectSuggestionIndex = value;
+                break;
+            case "semester":
+                _highlightedSemesterSuggestionIndex = value;
+                break;
+            case "folder":
+                _highlightedFolderSuggestionIndex = value;
+                break;
+            case "size":
+                _highlightedSizeSuggestionIndex = value;
+                break;
+            case "status":
+                _highlightedStatusSuggestionIndex = value;
+                break;
+        }
+    }
+
+    private void ResetDocumentHighlightedSuggestion(string columnKey)
+    {
+        SetDocumentHighlightedSuggestionIndex(columnKey, -1);
+    }
+
+    private void ResetAllDocumentHighlightedSuggestions()
+    {
+        _highlightedNameSuggestionIndex = -1;
+        _highlightedSubjectSuggestionIndex = -1;
+        _highlightedSemesterSuggestionIndex = -1;
+        _highlightedFolderSuggestionIndex = -1;
+        _highlightedSizeSuggestionIndex = -1;
+        _highlightedStatusSuggestionIndex = -1;
+    }
+
+    private void SyncDocumentDraftSearch(string columnKey)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                _nameSearchTerm = _searchQuery;
+                break;
+            case "subject":
+                _subjectSearchTerm = _filterSubject ?? string.Empty;
+                break;
+            case "semester":
+                _semesterSearchTerm = _filterSemester ?? string.Empty;
+                break;
+            case "folder":
+                _folderFilterSearchTerm = _filterFolderQuery;
+                break;
+            case "size":
+                _sizeSearchTerm = _filterSizeQuery;
+                break;
+            case "status":
+                _statusSearchTerm = _filterStatusQuery;
+                break;
+        }
+    }
+
+    private void ResetAllDocumentDraftSearches()
+    {
+        _nameSearchTerm = _searchQuery;
+        _subjectSearchTerm = _filterSubject ?? string.Empty;
+        _semesterSearchTerm = _filterSemester ?? string.Empty;
+        _folderFilterSearchTerm = _filterFolderQuery;
+        _sizeSearchTerm = _filterSizeQuery;
+        _statusSearchTerm = _filterStatusQuery;
     }
 
     private static double GetDocumentMenuWidthPx(string columnKey) =>

@@ -65,8 +65,8 @@
                     <table style="width: 100%; text-align: left; border-collapse: collapse;">
                         <thead>
                             <tr style="background: rgba(249,250,251,0.8); border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;">
-                                <th style="padding: 1rem 1.5rem; position: relative;">
-                                    <button @ref="_subjectHeaderButton" @onclick='() => HandleHeaderMenuClick("subject")' style='@GetHeaderButtonStyle("subject", true)'>
+                                <th style="padding: 1rem 1.5rem 1rem 10px; position: relative; text-align: left;">
+                                    <button @ref="_subjectHeaderButton" @onclick='() => HandleHeaderMenuClick("subject")' style='@GetHeaderButtonStyle("subject")'>
                                         <span>Subject Code</span>
                                         <MudIcon Icon='@GetSortIcon("subject")' Style='@GetSortIconStyle("subject")' />
                                     </button>
@@ -76,17 +76,22 @@
                                         <div style='@GetHeaderMenuStyle("14rem", true)'>
                                             <span style='@GetMenuSectionLabelStyle()'>Filter</span>
                                             <input type="text"
+                                                   @ref="_subjectSearchInput"
                                                    value="@SubjectSearchTerm"
                                                    @oninput='e => UpdateTextSearch(e.Value?.ToString())'
                                                    @onkeydown='HandleSearchKeyDown'
                                                    placeholder="Search subject code"
                                                    style='@GetFilterInputStyle()' />
-                                            <div style='@GetFilterOptionsListStyle()'>
+                                            <div @ref="_subjectSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                                 @if (subjectSuggestions.Count > 0)
                                                 {
-                                                    @foreach (var option in subjectSuggestions)
+                                                    @for (var suggestionIndex = 0; suggestionIndex < subjectSuggestions.Count; suggestionIndex++)
                                                     {
-                                                        <button type="button" @onclick='() => ApplySubjectSuggestion(option)' style='@GetFilterMenuItemStyle(string.Equals(SubjectSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                                        var option = subjectSuggestions[suggestionIndex];
+                                                        var isHighlightedSuggestion = suggestionIndex == _highlightedSubjectSuggestionIndex;
+                                                        <button type="button"
+                                                                @onclick='() => ApplySubjectSuggestion(option)'
+                                                                style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedSubjectSuggestionIndex < 0 && string.Equals(SubjectSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                                     }
                                                 }
                                                 else
@@ -103,8 +108,8 @@
                                 </th>
                                 <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase; text-align: center;">Total Documents</th>
                                 <th style="padding: 1rem 1.5rem; font-size: 0.75rem; font-weight: 600; color: #6b7280; text-transform: uppercase; text-align: center;">Storage Used</th>
-                                <th style="padding: 1rem 1.5rem; position: relative;">
-                                    <button @ref="_dateHeaderButton" @onclick='() => HandleHeaderMenuClick("date")' style='@GetHeaderButtonStyle("date", true)'>
+                                <th style="padding: 1rem 1.5rem; position: relative; text-align: center;">
+                                    <button @ref="_dateHeaderButton" @onclick='() => HandleHeaderMenuClick("date")' style='@GetHeaderButtonStyle("date")'>
                                         <span>Latest Upload</span>
                                         <MudIcon Icon='@GetSortIcon("date")' Style='@GetSortIconStyle("date")' />
                                     </button>
@@ -116,6 +121,7 @@
                                                 <div style="display: flex; flex-direction: column; gap: 0.2rem;">
                                                     <span style="font-size: 0.75rem; font-weight: 600; color: #5f6372; text-align: left;">From</span>
                                                     <input type="datetime-local"
+                                                           @ref="_dateFromInput"
                                                            value="@FilterDateFrom"
                                                            @oninput='e => UpdateDateFilter("from", e.Value?.ToString())'
                                                            style='@GetFilterInputStyle()' />
@@ -144,8 +150,8 @@
                                 @foreach (var subject in pagedSubjects)
                                 {
                                     <tr style="border-bottom: 1px solid #f1f5f9;">
-                                        <td style="padding: 1.25rem 1.5rem; font-weight: 600; color: #1f2937;">
-                                            <div style="display: flex; align-items: center; gap: 0.75rem;">
+                                        <td style="padding: 1.25rem 1.5rem 1.25rem 10px; font-weight: 600; color: #1f2937; text-align: left;">
+                                            <div style="display: flex; align-items: center; justify-content: flex-start; gap: 0.75rem;">
                                                 <MudIcon Icon="@Icons.Material.Filled.MenuBook" Style="color: #5e5ce6;" />
                                                 @subject.SubjectCode
                                             </div>
@@ -156,7 +162,7 @@
                                         <td style="padding: 1.25rem 1.5rem; color: #4b5563; font-weight: 500; text-align: center;">
                                             @subject.StorageUsedMb MB
                                         </td>
-                                        <td style="padding: 1.25rem 1.5rem; color: #6b7280; font-size: 0.875rem;">
+                                        <td style="padding: 1.25rem 1.5rem; color: #6b7280; font-size: 0.875rem; text-align: center;">
                                             @(subject.LatestUploadDate?.ToString("MMM dd, yyyy HH:mm") ?? "N/A")
                                         </td>
                                     </tr>
@@ -237,6 +243,9 @@
     private string? OpenMenuColumn;
     private ElementReference _subjectHeaderButton;
     private ElementReference _dateHeaderButton;
+    private ElementReference _subjectSearchInput;
+    private ElementReference _dateFromInput;
+    private ElementReference _subjectSuggestionsList;
     private double _menuLeft = 16;
     private double _menuTop = 112;
     private double _menuWidth = 224;
@@ -245,6 +254,9 @@
     private string FilterDateFrom = string.Empty;
     private string FilterDateTo = string.Empty;
     private string SortBy = "date-desc";
+    private string? _pendingFocusColumn;
+    private int _highlightedSubjectSuggestionIndex = -1;
+    private int? _pendingSubjectSuggestionScrollIndex;
 
     private IReadOnlyList<DashboardSubjectDto> SourceSubjects => subjects ?? [];
 
@@ -320,11 +332,14 @@
     private void UpdateTextSearch(string? value)
     {
         SubjectSearchTerm = value?.Trim() ?? string.Empty;
+        ResetHighlightedSubjectSuggestion();
     }
 
     private void ApplySubjectSuggestion(string value)
     {
         SubjectSearchTerm = value;
+        ResetHighlightedSubjectSuggestion();
+        ApplySearch();
     }
 
     private void ClearSubjectFilter()
@@ -380,6 +395,8 @@
         SortBy = "date-desc";
         CurrentPage = 1;
         _pageJumpInput = string.Empty;
+        _pendingFocusColumn = null;
+        ResetHighlightedSubjectSuggestion();
     }
 
     private async Task HandleHeaderMenuClick(string columnKey)
@@ -392,6 +409,7 @@
 
         ClearDraftSearch();
         OpenMenuColumn = columnKey;
+        _pendingFocusColumn = columnKey;
         await PositionMenuAsync(columnKey);
     }
 
@@ -410,6 +428,8 @@
         }
 
         OpenMenuColumn = null;
+        _pendingFocusColumn = null;
+        _pendingSubjectSuggestionScrollIndex = null;
     }
 
     private bool HasActiveFilters() =>
@@ -440,7 +460,7 @@
         var isActive = IsSortedBy(columnKey) || IsColumnFiltered(columnKey);
         var color = isActive ? "#5e5ce6" : "#464554";
         var justifyContent = alignLeft ? "flex-start" : "center";
-        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;";
+        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: auto; max-width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;";
     }
 
     private string GetSortIconStyle(string columnKey)
@@ -522,23 +542,112 @@
             _ => false
         };
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var focusColumn = _pendingFocusColumn;
+        _pendingFocusColumn = null;
+
+        if (!string.IsNullOrWhiteSpace(focusColumn))
+        {
+            if (string.Equals(focusColumn, "subject", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("codexTableFilter.focusElement", _subjectSearchInput, true);
+            }
+            else if (string.Equals(focusColumn, "date", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("codexTableFilter.focusElement", _dateFromInput, false);
+            }
+        }
+
+        if (_pendingSubjectSuggestionScrollIndex.HasValue && string.Equals(OpenMenuColumn, "subject", StringComparison.OrdinalIgnoreCase))
+        {
+            var scrollIndex = _pendingSubjectSuggestionScrollIndex.Value;
+            _pendingSubjectSuggestionScrollIndex = null;
+            await JS.InvokeVoidAsync("codexTableFilter.scrollOptionIntoViewByIndex", _subjectSuggestionsList, scrollIndex);
+        }
+    }
+
     private void ApplySearch()
     {
         SetFilterValue(ref FilterSubjectQuery, SubjectSearchTerm);
+        ResetHighlightedSubjectSuggestion();
         CloseOpenMenu();
     }
 
     private void HandleSearchKeyDown(KeyboardEventArgs e)
     {
+        if (string.Equals(e.Key, "ArrowDown", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveSubjectSuggestionSelection(1);
+            return;
+        }
+
+        if (string.Equals(e.Key, "ArrowUp", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveSubjectSuggestionSelection(-1);
+            return;
+        }
+
         if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
         {
-            ApplySearch();
+            ApplyHighlightedOrTypedSubjectSearch();
+            return;
+        }
+
+        if (string.Equals(e.Key, "Escape", StringComparison.OrdinalIgnoreCase))
+        {
+            CloseOpenMenu();
         }
     }
 
     private void ClearDraftSearch()
     {
         SubjectSearchTerm = string.Empty;
+        ResetHighlightedSubjectSuggestion();
+    }
+
+    private void MoveSubjectSuggestionSelection(int offset)
+    {
+        var suggestions = GetSubjectSuggestions();
+        if (suggestions.Count == 0)
+        {
+            ResetHighlightedSubjectSuggestion();
+            return;
+        }
+
+        if (_highlightedSubjectSuggestionIndex < 0)
+        {
+            _highlightedSubjectSuggestionIndex = offset > 0 ? 0 : suggestions.Count - 1;
+        }
+        else
+        {
+            _highlightedSubjectSuggestionIndex = (_highlightedSubjectSuggestionIndex + offset + suggestions.Count) % suggestions.Count;
+        }
+
+        _pendingSubjectSuggestionScrollIndex = _highlightedSubjectSuggestionIndex;
+    }
+
+    private void ResetHighlightedSubjectSuggestion()
+    {
+        _highlightedSubjectSuggestionIndex = -1;
+        _pendingSubjectSuggestionScrollIndex = null;
+    }
+
+    private void ApplyHighlightedOrTypedSubjectSearch()
+    {
+        var selectedValue = SubjectSearchTerm;
+
+        if (_highlightedSubjectSuggestionIndex >= 0)
+        {
+            var suggestions = GetSubjectSuggestions();
+            if (_highlightedSubjectSuggestionIndex < suggestions.Count)
+            {
+                selectedValue = suggestions[_highlightedSubjectSuggestionIndex];
+            }
+        }
+
+        SubjectSearchTerm = selectedValue;
+        ApplySearch();
     }
 
     private int GetTotalPages(int itemCount) =>

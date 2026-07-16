@@ -55,18 +55,21 @@
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
                                 <div style='@GetFilterSearchRowStyle()'>
                                     <input type="text"
+                                           @ref="_nameSearchInput"
                                            value="@NameSearchTerm"
                                            @oninput='e => UpdateTextSearch("name", e.Value?.ToString())'
                                            @onkeydown='e => HandleSearchKeyDown("name", e)'
                                            placeholder="Search folder name"
                                            style='@GetFilterInputStyle()' />
                                 </div>
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div @ref="_nameSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (nameSuggestions.Count > 0)
                                     {
-                                        @foreach (var option in nameSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < nameSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button type="button" @onclick='() => ApplyTextSuggestion("name", option)' style='@GetFilterMenuItemStyle(string.Equals(NameSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                            var option = nameSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedNameSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("name", option)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedNameSuggestionIndex < 0 && string.Equals(NameSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                         }
                                     }
                                     else
@@ -93,18 +96,21 @@
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
                                 <div style='@GetFilterSearchRowStyle()'>
                                     <input type="text"
+                                           @ref="_ownerSearchInput"
                                            value="@OwnerSearchTerm"
                                            @oninput='e => UpdateTextSearch("owner", e.Value?.ToString())'
                                            @onkeydown='e => HandleSearchKeyDown("owner", e)'
                                            placeholder="Search owner"
                                            style='@GetFilterInputStyle()' />
                                 </div>
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div @ref="_ownerSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (ownerSuggestions.Count > 0)
                                     {
-                                        @foreach (var option in ownerSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < ownerSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button type="button" @onclick='() => ApplyTextSuggestion("owner", option)' style='@GetFilterMenuItemStyle(string.Equals(OwnerSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                            var option = ownerSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedOwnerSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("owner", option)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedOwnerSuggestionIndex < 0 && string.Equals(OwnerSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                         }
                                     }
                                     else
@@ -131,18 +137,21 @@
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
                                 <div style='@GetFilterSearchRowStyle()'>
                                     <input type="text"
+                                           @ref="_subjectSearchInput"
                                            value="@SubjectSearchTerm"
                                            @oninput='e => UpdateTextSearch("subject", e.Value?.ToString())'
                                            @onkeydown='e => HandleSearchKeyDown("subject", e)'
                                            placeholder="Search subject code"
                                            style='@GetFilterInputStyle()' />
                                 </div>
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div @ref="_subjectSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (subjectSuggestions.Count > 0)
                                     {
-                                        @foreach (var option in subjectSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < subjectSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button type="button" @onclick='() => ApplyTextSuggestion("subject", option)' style='@GetFilterMenuItemStyle(string.Equals(SubjectSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                            var option = subjectSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedSubjectSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("subject", option)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedSubjectSuggestionIndex < 0 && string.Equals(SubjectSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                         }
                                     }
                                     else
@@ -169,18 +178,21 @@
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
                                 <div style='@GetFilterSearchRowStyle()'>
                                     <input type="text"
+                                           @ref="_semesterSearchInput"
                                            value="@SemesterSearchTerm"
                                            @oninput='e => UpdateTextSearch("semester", e.Value?.ToString())'
                                            @onkeydown='e => HandleSearchKeyDown("semester", e)'
                                            placeholder="Search semester"
                                            style='@GetFilterInputStyle()' />
                                 </div>
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div @ref="_semesterSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (semesterSuggestions.Count > 0)
                                     {
-                                        @foreach (var option in semesterSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < semesterSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button type="button" @onclick='() => ApplyTextSuggestion("semester", option)' style='@GetFilterMenuItemStyle(string.Equals(SemesterSearchTerm, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                            var option = semesterSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedSemesterSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("semester", option)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedSemesterSuggestionIndex < 0 && string.Equals(SemesterSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                         }
                                     }
                                     else
@@ -207,18 +219,21 @@
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
                                 <div style='@GetFilterSearchRowStyle()'>
                                     <input type="text"
+                                           @ref="_statusSearchInput"
                                            value="@StatusSearchTerm"
                                            @oninput='e => UpdateTextSearch("status", e.Value?.ToString())'
                                            @onkeydown='e => HandleSearchKeyDown("status", e)'
                                            placeholder="Search status"
                                            style='@GetFilterInputStyle()' />
                                 </div>
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div @ref="_statusSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (statusSuggestions.Count > 0)
                                     {
-                                        @foreach (var statusOption in statusSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < statusSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button type="button" @onclick='() => ApplyTextSuggestion("status", statusOption)' style='@GetFilterMenuItemStyle(string.Equals(StatusSearchTerm, statusOption, StringComparison.OrdinalIgnoreCase))'>@statusOption</button>
+                                            var statusOption = statusSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedStatusSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("status", statusOption)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedStatusSuggestionIndex < 0 && string.Equals(StatusSearchTerm, statusOption, StringComparison.OrdinalIgnoreCase)))'>@statusOption</button>
                                         }
                                     }
                                     else
@@ -352,6 +367,16 @@
     private ElementReference _subjectHeaderButton;
     private ElementReference _semesterHeaderButton;
     private ElementReference _statusHeaderButton;
+    private ElementReference _nameSearchInput;
+    private ElementReference _ownerSearchInput;
+    private ElementReference _subjectSearchInput;
+    private ElementReference _semesterSearchInput;
+    private ElementReference _statusSearchInput;
+    private ElementReference _nameSuggestionsList;
+    private ElementReference _ownerSuggestionsList;
+    private ElementReference _subjectSuggestionsList;
+    private ElementReference _semesterSuggestionsList;
+    private ElementReference _statusSuggestionsList;
     private double _menuLeft = 16;
     private double _menuTop = 112;
     private double _menuWidth = 256;
@@ -369,6 +394,14 @@
     private const int PageSize = 10;
     private int CurrentPage = 1;
     private string PageJumpInput = string.Empty;
+    private string? _pendingFocusColumn;
+    private string? _pendingSuggestionScrollColumn;
+    private int? _pendingSuggestionScrollIndex;
+    private int _highlightedNameSuggestionIndex = -1;
+    private int _highlightedOwnerSuggestionIndex = -1;
+    private int _highlightedSubjectSuggestionIndex = -1;
+    private int _highlightedSemesterSuggestionIndex = -1;
+    private int _highlightedStatusSuggestionIndex = -1;
 
     private IReadOnlyList<FolderViewModel> SourceFolders => Folders?.ToList() ?? [];
 
@@ -520,18 +553,23 @@
         {
             case "name":
                 NameSearchTerm = normalizedValue;
+                ResetHighlightedSuggestion("name");
                 break;
             case "owner":
                 OwnerSearchTerm = normalizedValue;
+                ResetHighlightedSuggestion("owner");
                 break;
             case "subject":
                 SubjectSearchTerm = normalizedValue;
+                ResetHighlightedSuggestion("subject");
                 break;
             case "semester":
                 SemesterSearchTerm = normalizedValue;
+                ResetHighlightedSuggestion("semester");
                 break;
             case "status":
                 StatusSearchTerm = normalizedValue;
+                ResetHighlightedSuggestion("status");
                 break;
         }
     }
@@ -556,6 +594,9 @@
                 StatusSearchTerm = value;
                 break;
         }
+
+        ResetHighlightedSuggestion(columnKey);
+        ApplySearch(columnKey);
     }
 
     private void ClearTextFilter(string columnKey)
@@ -612,6 +653,8 @@
         CurrentPage = 1;
         PageJumpInput = string.Empty;
         OpenMenuColumn = null;
+        _pendingFocusColumn = null;
+        ResetAllHighlightedSuggestions();
     }
 
     private async Task HandleHeaderMenuClick(string columnKey)
@@ -624,6 +667,7 @@
 
         ClearDraftSearch(columnKey);
         OpenMenuColumn = columnKey;
+        _pendingFocusColumn = columnKey;
         await PositionMenuAsync(columnKey);
     }
 
@@ -640,18 +684,23 @@
         {
             case "name":
                 NameSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("name");
                 break;
             case "owner":
                 OwnerSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("owner");
                 break;
             case "subject":
                 SubjectSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("subject");
                 break;
             case "semester":
                 SemesterSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("semester");
                 break;
             case "status":
                 StatusSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("status");
                 break;
         }
     }
@@ -664,6 +713,9 @@
         }
 
         OpenMenuColumn = null;
+        _pendingFocusColumn = null;
+        _pendingSuggestionScrollColumn = null;
+        _pendingSuggestionScrollIndex = null;
     }
 
     private bool HasActiveFilters() =>
@@ -696,7 +748,7 @@
         var isActive = IsSortedBy(columnKey) || IsColumnFiltered(columnKey);
         var color = isActive ? "#5e5ce6" : "#464554";
         var justifyContent = alignLeft ? "flex-start" : "center";
-        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;";
+        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: auto; max-width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;";
     }
 
     private string GetSortIconStyle(string columnKey)
@@ -798,6 +850,57 @@
             _ => false
         };
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var focusColumn = _pendingFocusColumn;
+        _pendingFocusColumn = null;
+
+        if (!string.IsNullOrWhiteSpace(focusColumn))
+        {
+            switch (focusColumn)
+            {
+                case "name":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _nameSearchInput, true);
+                    break;
+                case "owner":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _ownerSearchInput, true);
+                    break;
+                case "subject":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _subjectSearchInput, true);
+                    break;
+                case "semester":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _semesterSearchInput, true);
+                    break;
+                case "status":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _statusSearchInput, true);
+                    break;
+            }
+        }
+
+        if (_pendingSuggestionScrollIndex.HasValue && !string.IsNullOrWhiteSpace(_pendingSuggestionScrollColumn))
+        {
+            var scrollIndex = _pendingSuggestionScrollIndex.Value;
+            var scrollColumn = _pendingSuggestionScrollColumn;
+            _pendingSuggestionScrollIndex = null;
+            _pendingSuggestionScrollColumn = null;
+
+            if (string.Equals(OpenMenuColumn, scrollColumn, StringComparison.OrdinalIgnoreCase))
+            {
+                var suggestionsList = scrollColumn switch
+                {
+                    "name" => _nameSuggestionsList,
+                    "owner" => _ownerSuggestionsList,
+                    "subject" => _subjectSuggestionsList,
+                    "semester" => _semesterSuggestionsList,
+                    "status" => _statusSuggestionsList,
+                    _ => default
+                };
+
+                await JS.InvokeVoidAsync("codexTableFilter.scrollOptionIntoViewByIndex", suggestionsList, scrollIndex);
+            }
+        }
+    }
+
     private void ApplySearch(string columnKey)
     {
         var value = columnKey switch
@@ -814,18 +917,23 @@
         {
             case "name":
                 FilterNameQuery = value;
+                ResetHighlightedSuggestion("name");
                 break;
             case "owner":
                 FilterOwnerQuery = value;
+                ResetHighlightedSuggestion("owner");
                 break;
             case "subject":
                 FilterSubjectQuery = value;
+                ResetHighlightedSuggestion("subject");
                 break;
             case "semester":
                 FilterSemesterQuery = value;
+                ResetHighlightedSuggestion("semester");
                 break;
             case "status":
                 FilterStatus = value;
+                ResetHighlightedSuggestion("status");
                 break;
         }
 
@@ -835,10 +943,147 @@
 
     private void HandleSearchKeyDown(string columnKey, KeyboardEventArgs e)
     {
+        if (string.Equals(e.Key, "ArrowDown", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveSuggestionSelection(columnKey, 1);
+            return;
+        }
+
+        if (string.Equals(e.Key, "ArrowUp", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveSuggestionSelection(columnKey, -1);
+            return;
+        }
+
         if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
         {
-            ApplySearch(columnKey);
+            ApplyHighlightedOrTypedSearch(columnKey);
+            return;
         }
+
+        if (string.Equals(e.Key, "Escape", StringComparison.OrdinalIgnoreCase))
+        {
+            CloseOpenMenu();
+        }
+    }
+
+    private void MoveSuggestionSelection(string columnKey, int offset)
+    {
+        var suggestions = GetSuggestions(columnKey);
+        if (suggestions.Count == 0)
+        {
+            ResetHighlightedSuggestion(columnKey);
+            return;
+        }
+
+        var highlightedIndex = GetHighlightedSuggestionIndex(columnKey);
+        if (highlightedIndex < 0)
+        {
+            SetHighlightedSuggestionIndex(columnKey, offset > 0 ? 0 : suggestions.Count - 1);
+        }
+        else
+        {
+            SetHighlightedSuggestionIndex(columnKey, (highlightedIndex + offset + suggestions.Count) % suggestions.Count);
+        }
+
+        _pendingSuggestionScrollColumn = columnKey;
+        _pendingSuggestionScrollIndex = GetHighlightedSuggestionIndex(columnKey);
+    }
+
+    private void ApplyHighlightedOrTypedSearch(string columnKey)
+    {
+        var selectedValue = columnKey switch
+        {
+            "name" => NameSearchTerm,
+            "owner" => OwnerSearchTerm,
+            "subject" => SubjectSearchTerm,
+            "semester" => SemesterSearchTerm,
+            "status" => StatusSearchTerm,
+            _ => string.Empty
+        };
+
+        var suggestions = GetSuggestions(columnKey);
+        var highlightedIndex = GetHighlightedSuggestionIndex(columnKey);
+        if (highlightedIndex >= 0 && highlightedIndex < suggestions.Count)
+        {
+            selectedValue = suggestions[highlightedIndex];
+        }
+
+        switch (columnKey)
+        {
+            case "name":
+                NameSearchTerm = selectedValue;
+                break;
+            case "owner":
+                OwnerSearchTerm = selectedValue;
+                break;
+            case "subject":
+                SubjectSearchTerm = selectedValue;
+                break;
+            case "semester":
+                SemesterSearchTerm = selectedValue;
+                break;
+            case "status":
+                StatusSearchTerm = selectedValue;
+                break;
+        }
+
+        ApplySearch(columnKey);
+    }
+
+    private int GetHighlightedSuggestionIndex(string columnKey) =>
+        columnKey switch
+        {
+            "name" => _highlightedNameSuggestionIndex,
+            "owner" => _highlightedOwnerSuggestionIndex,
+            "subject" => _highlightedSubjectSuggestionIndex,
+            "semester" => _highlightedSemesterSuggestionIndex,
+            "status" => _highlightedStatusSuggestionIndex,
+            _ => -1
+        };
+
+    private void SetHighlightedSuggestionIndex(string columnKey, int value)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                _highlightedNameSuggestionIndex = value;
+                break;
+            case "owner":
+                _highlightedOwnerSuggestionIndex = value;
+                break;
+            case "subject":
+                _highlightedSubjectSuggestionIndex = value;
+                break;
+            case "semester":
+                _highlightedSemesterSuggestionIndex = value;
+                break;
+            case "status":
+                _highlightedStatusSuggestionIndex = value;
+                break;
+        }
+    }
+
+    private void ResetHighlightedSuggestion(string columnKey)
+    {
+        SetHighlightedSuggestionIndex(columnKey, -1);
+
+        if (string.Equals(_pendingSuggestionScrollColumn, columnKey, StringComparison.OrdinalIgnoreCase))
+        {
+            _pendingSuggestionScrollColumn = null;
+            _pendingSuggestionScrollIndex = null;
+        }
+    }
+
+    private void ResetAllHighlightedSuggestions()
+    {
+        _highlightedNameSuggestionIndex = -1;
+        _highlightedOwnerSuggestionIndex = -1;
+        _highlightedSubjectSuggestionIndex = -1;
+        _highlightedSemesterSuggestionIndex = -1;
+        _highlightedStatusSuggestionIndex = -1;
+        _pendingSuggestionScrollColumn = null;
+        _pendingSuggestionScrollIndex = null;
     }
 
     private string GetSubjectStyle(string status)

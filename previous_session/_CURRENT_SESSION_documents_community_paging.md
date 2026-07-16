@@ -439,3 +439,73 @@
 - Re-ran full project build:
   `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/analytics-filter-anchor-tight`
   -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T20:38:05+07:00 - Filter suggestion lists now auto-scroll with keyboard navigation
+- Edited:
+  - `AI_Study_Hub_v2/Components/App.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Added shared `codexTableFilter.scrollOptionIntoViewByIndex(...)` JS helper to keep the highlighted suggestion visible inside a scrollable filter list.
+- Applied the behavior to keyboard-enabled suggestion filters in `SemestersDashboard` and `AnalyticsDashboard`, so pressing `ArrowDown` / `ArrowUp` now automatically scrolls the dropdown when the next highlighted item is outside the visible area.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/filter-suggestion-autoscroll`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T20:43:07+07:00 - Analytics document name header centered
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`.
+- Center-aligned the `Document Name` table header to match the centered moderator analytics table headers.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/analytics-document-name-center`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T21:03:20+07:00 - Subjects dashboard filter flow synced with analytics and subject code centered
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`.
+- Applied the analytics-style filter interaction to the subjects table:
+  - filter anchor uses content-width header buttons
+  - opening a filter menu focuses the input immediately
+  - `ArrowDown` / `ArrowUp` highlights suggestions
+  - the suggestion list auto-scrolls to keep the highlighted item visible
+  - `Enter` applies the highlighted suggestion or typed value
+  - clicking a suggestion applies the filter immediately
+  - `Escape` closes the filter menu
+- Center-aligned the `Subject Code` header and tbody content.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/subjects-analytics-filter-sync`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T21:24:13+07:00 - Subject code left-restored and analytics-style filters extended to moderator documents/dashboard
+- Edited:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`
+- Restored `Subject Code` in the subjects table back to left alignment for both the header and tbody.
+- Synced `DocumentDashboard` and moderator `FolderTable` with the analytics-style filter behavior:
+  - content-width header filter anchors
+  - focus input immediately when a filter opens
+  - `ArrowDown` / `ArrowUp` highlights suggestions without typing first
+  - highlighted suggestions auto-scroll into view
+  - `Enter` applies the highlighted suggestion or the typed value
+  - clicking a suggestion applies the filter immediately
+  - `Escape` closes the filter menu
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/document-dashboard-foldertable-filter-sync`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T21:31:00+07:00 - Student documents table filter synced with dashboard interaction
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Applied the dashboard-style filter flow to the actor-student `Documents Table`:
+  - filter anchors now use content-width header buttons
+  - opening a filter focuses the correct input immediately
+  - text filters keep draft input separate from applied filter state
+  - `ArrowDown` / `ArrowUp` highlights suggestions
+  - highlighted suggestions auto-scroll into view
+  - `Enter` applies the highlighted suggestion or typed value
+  - clicking a suggestion applies the filter immediately
+  - `Escape` closes the filter menu
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/student-documentlibrary-filter-sync`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T21:35:00+07:00 - Student document table NAME header centered
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Center-aligned the `NAME` table header in the actor-student `Documents Table`.
