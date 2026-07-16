@@ -1,0 +1,25 @@
+---
+description: Resume SWP391 work from persistent project memory
+---
+
+Resume AI Study Hub / SWP391 work without asking the user to repeat project context.
+
+Read in this order:
+
+1. `PROJECT_MEMORY.md`
+2. `_CURRENT_SESSION.md`
+3. `AGENTS.md`
+4. The newest relevant `..\Project-Docs\sessions\handoff_*.md` only when the live session is missing, stale, or closed
+5. Additional business/test documents only when required by the task
+
+Then run read-only verification:
+
+- `git branch --show-current`
+- `git status --short --branch --untracked-files=all`
+- Check port 5240 only when runtime work is relevant
+
+Reconcile saved state with the verified working tree. Select the correct primary skill and delegate to configured agents when useful.
+
+Output a concise Continue Summary containing branch, working tree, active task, selected skill, next action, and risk. Continue automatically when safe; ask only for risky operations.
+
+User arguments: `$ARGUMENTS`

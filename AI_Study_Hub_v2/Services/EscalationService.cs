@@ -120,7 +120,7 @@ public sealed class EscalationService : IEscalationService
         return new DocumentEscalationDto(
             e.Id, e.FolderId,
             e.EscalatedByUser.FullName,
-            e.Reason, e.EscalationStatus, e.AdminResponse,
+            e.Reason, e.EscalationStatus, e.AdminResponse, null,
             e.CreatedAt, e.ResolvedAt,
             e.Items.Select(i => new DocumentEscalationItemDto(i.DocumentId, i.Document.FileName, i.RejectReason)).ToList());
     }
