@@ -88,7 +88,7 @@
                                                    @onkeydown='HandleSemesterSearchKeyDown'
                                                    placeholder="Search semester"
                                                    style='@GetFilterInputStyle()' />
-                                            <div style='@GetFilterOptionsListStyle()'>
+                                            <div @ref="_semesterSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                                 @if (semesterSuggestions.Count > 0)
                                                 {
                                                     @for (var suggestionIndex = 0; suggestionIndex < semesterSuggestions.Count; suggestionIndex++)
@@ -253,6 +253,7 @@
     private ElementReference _dateHeaderButton;
     private ElementReference _semesterSearchInput;
     private ElementReference _dateFromInput;
+    private ElementReference _semesterSuggestionsList;
     private double _menuLeft = 16;
     private double _menuTop = 112;
     private double _menuWidth = 224;
@@ -263,6 +264,7 @@
     private string SortBy = "date-desc";
     private string? _pendingFocusColumn;
     private int _highlightedSemesterSuggestionIndex = -1;
+    private int? _pendingSemesterSuggestionScrollIndex;
 
     private IReadOnlyList<DashboardSemesterDto> SourceSemesters => semesters ?? [];
 
@@ -404,6 +406,7 @@
         _pageJumpInput = string.Empty;
         _pendingFocusColumn = null;
         ResetHighlightedSemesterSuggestion();
+        _pendingSemesterSuggestionScrollIndex = null;
     }
 
     private async Task HandleHeaderMenuClick(string columnKey)
@@ -436,6 +439,7 @@
 
         OpenMenuColumn = null;
         _pendingFocusColumn = null;
+        _pendingSemesterSuggestionScrollIndex = null;
     }
 
     private bool HasActiveFilters() =>
@@ -466,7 +470,7 @@
         var isActive = IsSortedBy(columnKey) || IsColumnFiltered(columnKey);
         var color = isActive ? "#5e5ce6" : "#464554";
         var justifyContent = alignLeft ? "flex-start" : "center";
-        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;";
+        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: auto; max-width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;";
     }
 
     private string GetSortIconStyle(string columnKey)
@@ -550,21 +554,26 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (string.IsNullOrWhiteSpace(_pendingFocusColumn))
-        {
-            return;
-        }
-
         var focusColumn = _pendingFocusColumn;
         _pendingFocusColumn = null;
 
-        if (string.Equals(focusColumn, "semester", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(focusColumn))
         {
-            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _semesterSearchInput, true);
+            if (string.Equals(focusColumn, "semester", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("codexTableFilter.focusElement", _semesterSearchInput, true);
+            }
+            else if (string.Equals(focusColumn, "date", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("codexTableFilter.focusElement", _dateFromInput, false);
+            }
         }
-        else if (string.Equals(focusColumn, "date", StringComparison.OrdinalIgnoreCase))
+
+        if (_pendingSemesterSuggestionScrollIndex.HasValue && string.Equals(OpenMenuColumn, "semester", StringComparison.OrdinalIgnoreCase))
         {
-            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _dateFromInput, false);
+            var scrollIndex = _pendingSemesterSuggestionScrollIndex.Value;
+            _pendingSemesterSuggestionScrollIndex = null;
+            await JS.InvokeVoidAsync("codexTableFilter.scrollOptionIntoViewByIndex", _semesterSuggestionsList, scrollIndex);
         }
     }
 
@@ -618,11 +627,14 @@
         {
             _highlightedSemesterSuggestionIndex = (_highlightedSemesterSuggestionIndex + offset + suggestions.Count) % suggestions.Count;
         }
+
+        _pendingSemesterSuggestionScrollIndex = _highlightedSemesterSuggestionIndex;
     }
 
     private void ResetHighlightedSemesterSuggestion()
     {
         _highlightedSemesterSuggestionIndex = -1;
+        _pendingSemesterSuggestionScrollIndex = null;
     }
 
     private void ApplyHighlightedOrTypedSemesterSearch()

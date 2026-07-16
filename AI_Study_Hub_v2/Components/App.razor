@@ -106,6 +106,26 @@
                     } catch (error) {
                     }
                 });
+            },
+            scrollOptionIntoViewByIndex: function (container, optionIndex) {
+                if (!container || typeof optionIndex !== "number" || optionIndex < 0) {
+                    return;
+                }
+
+                requestAnimationFrame(function () {
+                    try {
+                        const options = container.querySelectorAll("button");
+                        if (!options || optionIndex >= options.length) {
+                            return;
+                        }
+
+                        options[optionIndex].scrollIntoView({
+                            block: "nearest",
+                            inline: "nearest"
+                        });
+                    } catch (error) {
+                    }
+                });
             }
         };
     </script>

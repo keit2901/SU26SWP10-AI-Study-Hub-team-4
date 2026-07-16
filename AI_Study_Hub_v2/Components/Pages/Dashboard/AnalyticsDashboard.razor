@@ -228,8 +228,8 @@
                         <table style="width: 100%; text-align: left; border-collapse: collapse;">
                             <thead style="background: #faf9fe;">
                                 <tr>
-                                    <th style="padding: 1rem 1.5rem; position: relative;">
-                                        <button @ref="_nameHeaderButton" @onclick='() => HandleDocumentsHeaderClick("name")' style='@GetAnalyticsHeaderButtonStyle("name", true)'>
+                                    <th style="padding: 1rem 1.5rem; position: relative; text-align: center;">
+                                        <button @ref="_nameHeaderButton" @onclick='() => HandleDocumentsHeaderClick("name")' style='@GetAnalyticsHeaderButtonStyle("name")'>
                                             <span>Document Name</span>
                                             <MudIcon Icon='@GetAnalyticsSortIcon("name")' Style='@GetAnalyticsSortIconStyle("name")' />
                                         </button>
@@ -245,7 +245,7 @@
                                                        @onkeydown='e => HandleAnalyticsSearchKeyDown("name", e)'
                                                        placeholder="Search document name"
                                                        style='@GetAnalyticsFilterInputStyle()' />
-                                                <div style='@GetAnalyticsFilterOptionsListStyle()'>
+                                                <div @ref="_analyticsNameSuggestionsList" style='@GetAnalyticsFilterOptionsListStyle()'>
                                                     @if (nameSuggestions.Count > 0)
                                                     {
                                                         @for (var suggestionIndex = 0; suggestionIndex < nameSuggestions.Count; suggestionIndex++)
@@ -288,7 +288,7 @@
                                                            @onkeydown='e => HandleAnalyticsSearchKeyDown("folder", e)'
                                                            placeholder="Search folder"
                                                            style='@GetAnalyticsFilterInputStyle()' />
-                                                    <div style='@GetAnalyticsFilterOptionsListStyle()'>
+                                                    <div @ref="_analyticsFolderSuggestionsList" style='@GetAnalyticsFilterOptionsListStyle()'>
                                                         @if (folderSuggestions.Count > 0)
                                                         {
                                                             @for (var suggestionIndex = 0; suggestionIndex < folderSuggestions.Count; suggestionIndex++)
@@ -330,7 +330,7 @@
                                                        @onkeydown='e => HandleAnalyticsSearchKeyDown("status", e)'
                                                        placeholder="Search status"
                                                        style='@GetAnalyticsFilterInputStyle()' />
-                                                <div style='@GetAnalyticsFilterOptionsListStyle()'>
+                                                <div @ref="_analyticsStatusSuggestionsList" style='@GetAnalyticsFilterOptionsListStyle()'>
                                                     @if (statusSuggestions.Count > 0)
                                                     {
                                                         @for (var suggestionIndex = 0; suggestionIndex < statusSuggestions.Count; suggestionIndex++)
@@ -544,6 +544,9 @@
     private ElementReference _analyticsFolderSearchInput;
     private ElementReference _analyticsStatusSearchInput;
     private ElementReference _analyticsDateFromInput;
+    private ElementReference _analyticsNameSuggestionsList;
+    private ElementReference _analyticsFolderSuggestionsList;
+    private ElementReference _analyticsStatusSuggestionsList;
     private double _analyticsMenuLeft = 16;
     private double _analyticsMenuTop = 112;
     private double _analyticsMenuWidth = 256;
@@ -564,6 +567,8 @@
     private int _highlightedAnalyticsNameSuggestionIndex = -1;
     private int _highlightedAnalyticsFolderSuggestionIndex = -1;
     private int _highlightedAnalyticsStatusSuggestionIndex = -1;
+    private string? _pendingAnalyticsSuggestionScrollColumn;
+    private int? _pendingAnalyticsSuggestionScrollIndex;
 
     private bool HasIssues => issuesList is { Count: > 0 };
 
@@ -889,6 +894,8 @@
         _pageJumpInput = string.Empty;
         _pendingAnalyticsFocusColumn = null;
         ResetAllAnalyticsHighlightedSuggestions();
+        _pendingAnalyticsSuggestionScrollColumn = null;
+        _pendingAnalyticsSuggestionScrollIndex = null;
     }
 
     private async Task HandleDocumentsHeaderClick(string columnKey)
@@ -920,6 +927,8 @@
 
         OpenDocumentsMenuColumn = null;
         _pendingAnalyticsFocusColumn = null;
+        _pendingAnalyticsSuggestionScrollColumn = null;
+        _pendingAnalyticsSuggestionScrollIndex = null;
     }
 
     private bool HasActiveAnalyticsFilters() =>
@@ -1116,29 +1125,48 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (string.IsNullOrWhiteSpace(_pendingAnalyticsFocusColumn))
-        {
-            return;
-        }
-
         var focusColumn = _pendingAnalyticsFocusColumn;
         _pendingAnalyticsFocusColumn = null;
 
-        if (string.Equals(focusColumn, "name", StringComparison.OrdinalIgnoreCase))
+        if (!string.IsNullOrWhiteSpace(focusColumn))
         {
-            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsNameSearchInput, true);
+            if (string.Equals(focusColumn, "name", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsNameSearchInput, true);
+            }
+            else if (string.Equals(focusColumn, "folder", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsFolderSearchInput, true);
+            }
+            else if (string.Equals(focusColumn, "status", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsStatusSearchInput, true);
+            }
+            else if (string.Equals(focusColumn, "date", StringComparison.OrdinalIgnoreCase))
+            {
+                await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsDateFromInput, false);
+            }
         }
-        else if (string.Equals(focusColumn, "folder", StringComparison.OrdinalIgnoreCase))
+
+        if (_pendingAnalyticsSuggestionScrollIndex.HasValue && !string.IsNullOrWhiteSpace(_pendingAnalyticsSuggestionScrollColumn))
         {
-            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsFolderSearchInput, true);
-        }
-        else if (string.Equals(focusColumn, "status", StringComparison.OrdinalIgnoreCase))
-        {
-            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsStatusSearchInput, true);
-        }
-        else if (string.Equals(focusColumn, "date", StringComparison.OrdinalIgnoreCase))
-        {
-            await JS.InvokeVoidAsync("codexTableFilter.focusElement", _analyticsDateFromInput, false);
+            var scrollIndex = _pendingAnalyticsSuggestionScrollIndex.Value;
+            var scrollColumn = _pendingAnalyticsSuggestionScrollColumn;
+            _pendingAnalyticsSuggestionScrollIndex = null;
+            _pendingAnalyticsSuggestionScrollColumn = null;
+
+            if (string.Equals(OpenDocumentsMenuColumn, scrollColumn, StringComparison.OrdinalIgnoreCase))
+            {
+                var suggestionsList = scrollColumn switch
+                {
+                    "name" => _analyticsNameSuggestionsList,
+                    "folder" => _analyticsFolderSuggestionsList,
+                    "status" => _analyticsStatusSuggestionsList,
+                    _ => default
+                };
+
+                await JS.InvokeVoidAsync("codexTableFilter.scrollOptionIntoViewByIndex", suggestionsList, scrollIndex);
+            }
         }
     }
 
@@ -1169,6 +1197,9 @@
         {
             SetHighlightedAnalyticsSuggestionIndex(columnKey, (highlightedIndex + offset + suggestions.Count) % suggestions.Count);
         }
+
+        _pendingAnalyticsSuggestionScrollColumn = columnKey;
+        _pendingAnalyticsSuggestionScrollIndex = GetHighlightedAnalyticsSuggestionIndex(columnKey);
     }
 
     private void ApplyHighlightedOrTypedAnalyticsSearch(string columnKey)
@@ -1232,6 +1263,12 @@
     private void ResetHighlightedAnalyticsSuggestion(string columnKey)
     {
         SetHighlightedAnalyticsSuggestionIndex(columnKey, -1);
+
+        if (string.Equals(_pendingAnalyticsSuggestionScrollColumn, columnKey, StringComparison.OrdinalIgnoreCase))
+        {
+            _pendingAnalyticsSuggestionScrollColumn = null;
+            _pendingAnalyticsSuggestionScrollIndex = null;
+        }
     }
 
     private void ResetAllAnalyticsHighlightedSuggestions()
@@ -1239,6 +1276,8 @@
         _highlightedAnalyticsNameSuggestionIndex = -1;
         _highlightedAnalyticsFolderSuggestionIndex = -1;
         _highlightedAnalyticsStatusSuggestionIndex = -1;
+        _pendingAnalyticsSuggestionScrollColumn = null;
+        _pendingAnalyticsSuggestionScrollIndex = null;
     }
 
     private void NavigateToFolderDocuments()
