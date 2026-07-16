@@ -952,7 +952,7 @@
         var isActive = IsAnalyticsSortedBy(columnKey) || IsAnalyticsColumnFiltered(columnKey);
         var color = isActive ? "#5e5ce6" : "#464554";
         var justifyContent = alignLeft ? "flex-start" : "center";
-        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;";
+        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: auto; max-width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;";
     }
 
     private string GetAnalyticsSortIconStyle(string columnKey)
@@ -977,7 +977,7 @@
     }
 
     private string GetAnalyticsMenuSectionLabelStyle() =>
-        "display: block; padding: 0.35rem 0.55rem 0.2rem; font-size: 0.675rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.08em;";
+        "display: block; padding: 0.35rem 0.55rem 0.2rem; font-size: 0.675rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.08em; text-align: center;";
 
     private string GetAnalyticsMenuDividerStyle() =>
         "height: 1px; background: rgba(199,196,215,0.35); margin: 0.35rem 0;";

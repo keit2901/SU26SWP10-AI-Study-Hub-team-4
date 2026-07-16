@@ -415,3 +415,27 @@
 - Re-ran full project build:
   `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/analytics-center-columns`
   -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T13:51:32+07:00 - Shared filter menus now center under headers and stay within table bounds
+- Edited:
+  - `AI_Study_Hub_v2/Components/App.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`
+- Updated the shared `codexTableFilter.getAnchorRect(...)` helper so filter popovers open centered under the clicked header by default and clamp horizontally inside the visible table/scroll region.
+- This also improves first-column and last-column behavior by automatically shifting the popover just enough to avoid spilling outside the table area.
+- Center-aligned the `Filter` section label in the shared dashboard/document menu styles for a more consistent header menu layout.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/filter-position-center`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-16T14:55:48+07:00 - Analytics header anchor tightened so filter position change is visible
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`.
+- Changed analytics header buttons from full-width anchors to content-width anchors so the filter popover now centers under the actual header label/icon instead of the whole column width.
+- This makes the new centered filter positioning visually obvious on the analytics table, especially for `Document Name`, `Folder`, `Status`, and `Upload Date`.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/analytics-filter-anchor-tight`
+  -> PASS, 0 errors. Existing repo warnings remain.
