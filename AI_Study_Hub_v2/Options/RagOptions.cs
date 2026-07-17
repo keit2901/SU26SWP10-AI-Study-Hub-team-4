@@ -14,6 +14,14 @@ public sealed class RagOptions
 
     public int MaxSectionChars { get; set; } = 700;
 
+    public int SemanticTargetTokens { get; set; } = 144;
+
+    public int SemanticMinTokens { get; set; } = 72;
+
+    public int SemanticMaxTokens { get; set; } = 192;
+
+    public int SemanticOverlapTokens { get; set; } = 24;
+
     public int DefaultTopK { get; set; } = 5;
 
     public int MaxTopK { get; set; } = 10;
@@ -60,5 +68,19 @@ public sealed class RagOptions
             && (options.MaxHistoryChars == 0 || options.MaxHistoryChars is >= 500 and <= 10000)
             && options.MaxAssistantAnswerChars is >= 100 and <= 2000
             && options.MaxContextChars is >= 1000 and <= 20000;
+    }
+
+    public static bool HasValidSemanticV2Bounds(RagOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+
+        return options.SemanticOverlapTokens is >= 0 and <= 48
+            && options.SemanticMinTokens is >= 32 and <= 128
+            && options.SemanticTargetTokens is >= 64 and <= 176
+            && options.SemanticMaxTokens is >= 96 and <= 192
+            && options.SemanticOverlapTokens < options.SemanticMinTokens
+            && options.SemanticMinTokens <= options.SemanticTargetTokens
+            && options.SemanticTargetTokens <= options.SemanticMaxTokens
+            && options.SemanticMaxTokens <= 192;
     }
 }
