@@ -36,11 +36,53 @@
                 const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 0;
                 const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
                 const margin = 16;
+                const clampMargin = 8;
                 const requestedWidth = typeof preferredWidth === "number" && preferredWidth > 0
                     ? preferredWidth
                     : rect.width;
-                const width = Math.min(requestedWidth, Math.max(220, viewportWidth - margin * 2));
-                const left = Math.min(Math.max(rect.left, margin), Math.max(margin, viewportWidth - width - margin));
+                let minLeft = margin;
+                let maxRight = viewportWidth - margin;
+
+                const clampToRect = function (boundsRect, innerMargin) {
+                    if (!boundsRect) {
+                        return;
+                    }
+
+                    minLeft = Math.max(minLeft, boundsRect.left + innerMargin);
+                    maxRight = Math.min(maxRight, boundsRect.right - innerMargin);
+                };
+
+                const tableElement = element.closest("table");
+                if (tableElement) {
+                    clampToRect(tableElement.getBoundingClientRect(), clampMargin);
+                }
+
+                let current = element.parentElement;
+                while (current && current !== document.body) {
+                    const styles = window.getComputedStyle(current);
+                    const overflowX = (styles && styles.overflowX ? styles.overflowX : "").toLowerCase();
+                    const clipsHorizontally = overflowX === "auto"
+                        || overflowX === "scroll"
+                        || overflowX === "hidden"
+                        || overflowX === "clip"
+                        || current.scrollWidth > current.clientWidth + 1;
+
+                    if (clipsHorizontally) {
+                        clampToRect(current.getBoundingClientRect(), clampMargin);
+                        break;
+                    }
+
+                    current = current.parentElement;
+                }
+
+                if (maxRight - minLeft < 160) {
+                    minLeft = margin;
+                    maxRight = viewportWidth - margin;
+                }
+
+                const width = Math.min(requestedWidth, Math.max(160, maxRight - minLeft));
+                let left = rect.left + (rect.width - width) / 2;
+                left = Math.min(Math.max(left, minLeft), Math.max(minLeft, maxRight - width));
                 const top = Math.min(rect.bottom + 8, Math.max(96, viewportHeight - 96));
 
                 return {
@@ -48,6 +90,42 @@
                     top: top,
                     width: width
                 };
+            },
+            focusElement: function (element, selectText) {
+                if (!element) {
+                    return;
+                }
+
+                requestAnimationFrame(function () {
+                    try {
+                        element.focus({ preventScroll: true });
+
+                        if (selectText && typeof element.select === "function") {
+                            element.select();
+                        }
+                    } catch (error) {
+                    }
+                });
+            },
+            scrollOptionIntoViewByIndex: function (container, optionIndex) {
+                if (!container || typeof optionIndex !== "number" || optionIndex < 0) {
+                    return;
+                }
+
+                requestAnimationFrame(function () {
+                    try {
+                        const options = container.querySelectorAll("button");
+                        if (!options || optionIndex >= options.length) {
+                            return;
+                        }
+
+                        options[optionIndex].scrollIntoView({
+                            block: "nearest",
+                            inline: "nearest"
+                        });
+                    } catch (error) {
+                    }
+                });
             }
         };
     </script>

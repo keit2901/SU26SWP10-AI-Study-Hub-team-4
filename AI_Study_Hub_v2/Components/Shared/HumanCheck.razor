@@ -2,7 +2,6 @@
 @implements IAsyncDisposable
 @inject IRecaptchaVerificationService RecaptchaVerifier
 @inject IOptions<RecaptchaOptions> RecaptchaOptionsAccessor
-@inject Microsoft.AspNetCore.Hosting.IWebHostEnvironment HostEnvironment
 @inject IJSRuntime Js
 
 <div class="human-check recaptcha-check" style="padding: 8px 0;">
@@ -23,25 +22,6 @@
                 </MudAlert>
             }
         }
-        else if (UseDevelopmentFallback)
-        {
-            <MudTextField T="string"
-                          Label="@ChallengeText"
-                          Value="_answer"
-                          ValueChanged="OnAnswerChangedAsync"
-                          Immediate="true"
-                          Required="true"
-                          RequiredError="Human check is required"
-                          Error="@(_touched && !IsValid)"
-                          ErrorText="@ErrorText"
-                          Variant="Variant.Outlined"
-                          Margin="Margin.Dense"
-                          InputType="InputType.Number"
-                          Disabled="Disabled" />
-            <MudText Typo="Typo.caption" Color="Color.Secondary">
-                Development fallback only. Configure reCAPTCHA keys for production CAPTCHA.
-            </MudText>
-        }
         else
         {
             <MudAlert Severity="Severity.Error" Dense="true" Variant="Variant.Filled">
@@ -52,13 +32,9 @@
 </div>
 
 @code {
-    private const int Left = 7;
-    private const int Right = 5;
     private readonly string _elementId = $"recaptcha-{Guid.NewGuid():N}";
-    private string? _answer;
     private string? _recaptchaToken;
     private string? _message;
-    private bool _touched;
     private bool _recaptchaPassed;
     private bool _rendered;
     private DotNetObjectReference<HumanCheck>? _dotNetRef;
@@ -71,25 +47,15 @@
 
     private bool UseRecaptcha => RecaptchaVerifier.IsEnabled && RecaptchaVerifier.IsConfigured;
 
-    private bool UseDevelopmentFallback => HostEnvironment.IsDevelopment() && RecaptchaOptions.AllowDevelopmentFallback;
-
     public string? GetResponseToken() => _recaptchaToken;
 
     public bool IsValid => UseRecaptcha
-        ? _recaptchaPassed && !string.IsNullOrWhiteSpace(_recaptchaToken)
-        : UseDevelopmentFallback && int.TryParse(_answer, out var value) && value == Left + Right;
+        && _recaptchaPassed
+        && !string.IsNullOrWhiteSpace(_recaptchaToken);
 
     private string ModeLabel => UseRecaptcha
         ? "Google reCAPTCHA."
-        : UseDevelopmentFallback
-            ? "Development fallback because reCAPTCHA is not configured."
-            : "reCAPTCHA configuration is required.";
-
-    private string ChallengeText => $"What is {Left} + {Right}?";
-
-    private string ErrorText => string.IsNullOrWhiteSpace(_answer)
-        ? "Solve the human check before continuing."
-        : "Human check answer is incorrect.";
+        : "reCAPTCHA configuration is required.";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -101,7 +67,13 @@
         try
         {
             _dotNetRef ??= DotNetObjectReference.Create(this);
-            await Js.InvokeVoidAsync("aiStudyHubRecaptcha.render", _elementId, _dotNetRef);
+            await Js.InvokeVoidAsync(
+                "aiStudyHubRecaptcha.render",
+                _elementId,
+                _dotNetRef,
+                RecaptchaOptions.SiteKey,
+                RecaptchaOptions.Theme,
+                RecaptchaOptions.Size);
             _rendered = true;
         }
         catch (JSException)
@@ -116,8 +88,6 @@
 
     public async Task<bool> ValidateAsync()
     {
-        _touched = true;
-
         if (!UseRecaptcha)
         {
             await ValidChanged.InvokeAsync(IsValid);
@@ -152,7 +122,6 @@
 
     public bool Validate()
     {
-        _touched = true;
         _ = ValidChanged.InvokeAsync(IsValid);
         StateHasChanged();
         return IsValid;
@@ -160,11 +129,9 @@
 
     public async Task ResetAsync()
     {
-        _answer = string.Empty;
         _recaptchaToken = null;
         _recaptchaPassed = false;
         _message = null;
-        _touched = false;
         await ValidChanged.InvokeAsync(false);
         await ResetRecaptchaWidgetAsync();
         StateHasChanged();
@@ -172,21 +139,12 @@
 
     public void Reset()
     {
-        _answer = string.Empty;
         _recaptchaToken = null;
         _recaptchaPassed = false;
         _message = null;
-        _touched = false;
         _ = ValidChanged.InvokeAsync(false);
         _ = ResetRecaptchaWidgetAsync();
         StateHasChanged();
-    }
-
-    private async Task OnAnswerChangedAsync(string? value)
-    {
-        _answer = value;
-        _touched = true;
-        await ValidChanged.InvokeAsync(IsValid);
     }
 
     [JSInvokable]
