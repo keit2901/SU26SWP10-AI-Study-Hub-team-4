@@ -1,4 +1,5 @@
 using System.Net;
+using System.ComponentModel.DataAnnotations;
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text.Json;
@@ -23,15 +24,6 @@ public sealed class GoTrueClient : IGoTrueClient
     {
         _http = http;
         _options = options.Value;
-    }
-
-    public async Task<GoTrueSession> SignUpAsync(string email, string password, Dictionary<string, object?>? metadata, CancellationToken cancellationToken = default)
-    {
-        using var resp = await _http.PostAsJsonAsync(
-            "signup",
-            new SignUpRequest { Email = email, Password = password, UserMetadata = metadata },
-            cancellationToken);
-        return await ParseSessionOrThrowAsync(resp, "signup", cancellationToken);
     }
 
     public async Task<GoTrueSession> SignInWithPasswordAsync(string email, string password, CancellationToken cancellationToken = default)
@@ -119,6 +111,16 @@ public sealed class GoTrueClient : IGoTrueClient
         return user ?? throw new AuthException(500, "gotrue_empty_response", "GoTrue returned empty user from admin create.");
     }
 
+    public async Task AdminDeleteUserAsync(Guid userId, CancellationToken cancellationToken = default)
+    {
+        using var req = BuildAdminRequest(HttpMethod.Delete, $"admin/users/{userId}");
+        using var resp = await _http.SendAsync(req, cancellationToken);
+        if (resp.StatusCode != HttpStatusCode.NoContent && !resp.IsSuccessStatusCode)
+        {
+            await ThrowFromGoTrueAsync(resp, "admin_delete_user", cancellationToken);
+        }
+    }
+
     public async Task<GoTrueUser?> AdminGetUserByEmailAsync(string email, CancellationToken cancellationToken = default)
     {
         // GoTrue admin list endpoint supports `email=` filter via query string.
@@ -130,27 +132,60 @@ public sealed class GoTrueClient : IGoTrueClient
             await ThrowFromGoTrueAsync(resp, "admin_list_users", cancellationToken);
         }
 
-        using var doc = await JsonDocument.ParseAsync(
-            await resp.Content.ReadAsStreamAsync(cancellationToken),
-            cancellationToken: cancellationToken);
-
-        if (!doc.RootElement.TryGetProperty("users", out var usersElem) || usersElem.ValueKind != JsonValueKind.Array)
+        try
         {
+            using var doc = await JsonDocument.ParseAsync(
+                await resp.Content.ReadAsStreamAsync(cancellationToken),
+                cancellationToken: cancellationToken);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object
+                || !doc.RootElement.TryGetProperty("users", out var usersElem)
+                || usersElem.ValueKind != JsonValueKind.Array)
+            {
+                throw LookupFailure();
+            }
+
+            var normalizedEmail = NormalizeEmail(email);
+            foreach (var userElement in usersElem.EnumerateArray())
+            {
+                if (userElement.ValueKind != JsonValueKind.Object
+                    || !userElement.TryGetProperty("id", out var idElement)
+                    || idElement.ValueKind != JsonValueKind.String
+                    || !Guid.TryParse(idElement.GetString(), out var userId)
+                    || userId == Guid.Empty
+                    || !userElement.TryGetProperty("email", out var emailElement)
+                    || emailElement.ValueKind != JsonValueKind.String
+                    || string.IsNullOrWhiteSpace(emailElement.GetString())
+                    || !new EmailAddressAttribute().IsValid(emailElement.GetString()))
+                {
+                    throw LookupFailure();
+                }
+
+                if (!string.Equals(NormalizeEmail(emailElement.GetString()), normalizedEmail, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                var user = userElement.Deserialize<GoTrueUser>(new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                if (user is null || user.Id != userId)
+                {
+                    throw LookupFailure();
+                }
+                return user;
+            }
             return null;
         }
-
-        var lower = email.Trim().ToLowerInvariant();
-        foreach (var u in usersElem.EnumerateArray())
+        catch (OperationCanceledException)
         {
-            var emailField = u.TryGetProperty("email", out var e) && e.ValueKind == JsonValueKind.String
-                ? e.GetString()
-                : null;
-            if (string.Equals(emailField, lower, StringComparison.OrdinalIgnoreCase))
-            {
-                return u.Deserialize<GoTrueUser>();
-            }
+            throw;
         }
-        return null;
+        catch (AuthException)
+        {
+            throw;
+        }
+        catch (Exception)
+        {
+            throw LookupFailure();
+        }
     }
 
     public async Task<GoTrueUser> AdminUpdateUserByIdAsync(Guid userId, Dictionary<string, object?>? appMetadata, CancellationToken cancellationToken = default)
@@ -189,13 +224,10 @@ public sealed class GoTrueClient : IGoTrueClient
     private HttpRequestMessage BuildAdminRequest(HttpMethod method, string path)
     {
         var req = new HttpRequestMessage(method, path);
-        // service role key as Bearer overrides the default apikey header set by HttpClient defaults.
+        // A request-level value overrides the HttpClient's anonymous default for admin calls.
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _options.ServiceRoleKey);
-        // Some GoTrue versions also require the apikey header explicitly.
-        if (req.Headers.TryGetValues("apikey", out _) is false)
-        {
-            req.Headers.TryAddWithoutValidation("apikey", _options.ServiceRoleKey);
-        }
+        req.Headers.Remove("apikey");
+        req.Headers.TryAddWithoutValidation("apikey", _options.ServiceRoleKey);
         return req;
     }
 
@@ -237,6 +269,10 @@ public sealed class GoTrueClient : IGoTrueClient
                 }
             }
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch
         {
             // ignore
@@ -252,7 +288,7 @@ public sealed class GoTrueClient : IGoTrueClient
             translatedCode = "invalid_credentials";
             translatedMessage = "Email or password is incorrect.";
         }
-        else if (operation == "signup" && (status == 422 || status == 400) && (code?.Contains("registered", StringComparison.OrdinalIgnoreCase) == true || message.Contains("registered", StringComparison.OrdinalIgnoreCase)))
+        else if (operation == "admin_create_user" && status is 400 or 409 or 422 && IsDuplicateRegistration(code, message))
         {
             translatedStatus = 409;
             translatedCode = "email_already_registered";
@@ -264,18 +300,49 @@ public sealed class GoTrueClient : IGoTrueClient
             translatedCode = "invalid_refresh_token";
             translatedMessage = "Refresh token is invalid or has been revoked.";
         }
+        else if (operation == "admin_create_user")
+        {
+            translatedStatus = StatusCodes.Status503ServiceUnavailable;
+            translatedCode = "registration_identity_create_failed";
+            translatedMessage = "Registration could not be completed.";
+        }
+        else if (operation == "admin_list_users")
+        {
+            translatedStatus = StatusCodes.Status503ServiceUnavailable;
+            translatedCode = "registration_identity_lookup_failed";
+            translatedMessage = "Registration identity status could not be confirmed.";
+        }
+        else if (operation == "admin_delete_user")
+        {
+            translatedStatus = StatusCodes.Status503ServiceUnavailable;
+            translatedCode = "registration_identity_cleanup_failed";
+            translatedMessage = "Registration cleanup could not be completed.";
+        }
 
         throw new AuthException(translatedStatus, translatedCode, translatedMessage);
     }
 
+    private static bool IsDuplicateRegistration(string? code, string message)
+    {
+        var normalizedCode = code?.Trim().ToLowerInvariant();
+        return normalizedCode is "email_exists" or "user_already_exists" or "user_already_registered" or "email_already_registered"
+            || message.Contains("already registered", StringComparison.OrdinalIgnoreCase)
+            || message.Contains("already exists", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string NormalizeEmail(string? email) => email?.Trim().ToLowerInvariant() ?? string.Empty;
+
+    private static AuthException LookupFailure() =>
+        new(StatusCodes.Status503ServiceUnavailable, "registration_identity_lookup_failed", "Registration identity status could not be confirmed.");
+
     private static string MapDefaultCode(string operation, int status) => (operation, status) switch
     {
         ("login", _)  => "login_failed",
-        ("signup", _) => "signup_failed",
         ("refresh", _) => "refresh_failed",
         ("logout", _) => "logout_failed",
         ("get_user", _) => "get_user_failed",
         ("admin_create_user", _) => "admin_create_failed",
+        ("admin_delete_user", _) => "admin_delete_failed",
         ("admin_list_users", _) => "admin_list_failed",
         ("update_user", _) => "update_user_failed",
         ("admin_update_user", _) => "admin_update_failed",
