@@ -186,11 +186,30 @@ public class AuthControllerTests
         var sut = BuildSut(svc.Object, recaptcha: FailingRecaptcha());
 
         var actionResult = await sut.Register(
-            new RegisterRequest { Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
+            new RegisterRequest { RegistrationOperationId = Guid.NewGuid(), Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
             CancellationToken.None);
 
         var badRequest = actionResult.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
         badRequest.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("recaptcha_failed");
+    }
+
+    [Test]
+    public async Task Register_WhenOperationIdModelValidationFails_ReturnsExistingValidationErrorShape()
+    {
+        var service = new Mock<IAuthService>(MockBehavior.Strict);
+        var sut = BuildSut(service.Object);
+        sut.ModelState.AddModelError(nameof(RegisterRequest.RegistrationOperationId), "Registration operation id is required.");
+
+        var result = await sut.Register(new RegisterRequest
+        {
+            Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1", RegistrationOperationId = Guid.Empty,
+        }, CancellationToken.None);
+
+        var badRequest = result.Result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        var error = badRequest.Value.Should().BeOfType<ApiErrorResponse>().Subject;
+        error.Code.Should().Be("validation_failed");
+        error.Errors.Should().ContainKey(nameof(RegisterRequest.RegistrationOperationId));
+        service.VerifyNoOtherCalls();
     }
 
     [Test]
@@ -203,12 +222,59 @@ public class AuthControllerTests
         var sut = BuildSut(svc.Object);
 
         var actionResult = await sut.Register(
-            new RegisterRequest { Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
+            new RegisterRequest { RegistrationOperationId = Guid.NewGuid(), Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
             CancellationToken.None);
 
         var obj = actionResult.Result.Should().BeOfType<ObjectResult>().Subject;
         obj.StatusCode.Should().Be(409);
         obj.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("username_taken");
+    }
+
+    [TestCase(403, "self_registration_disabled")]
+    [TestCase(503, "registration_policy_unavailable")]
+    [TestCase(503, "registration_session_unavailable")]
+    public async Task Register_WhenServiceThrowsStableRegistrationError_ReturnsMappedStatusAndCode(int status, string code)
+    {
+        var svc = new Mock<IAuthService>();
+        svc.Setup(s => s.RegisterAsync(It.IsAny<RegisterRequest>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AuthException(status, code, "stable message"));
+        var sut = BuildSut(svc.Object);
+
+        var result = await sut.Register(new RegisterRequest { RegistrationOperationId = Guid.NewGuid(), Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" }, CancellationToken.None);
+
+        var error = result.Result.Should().BeOfType<ObjectResult>().Subject;
+        error.StatusCode.Should().Be(status);
+        error.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be(code);
+    }
+
+    [Test]
+    public async Task Register_WhenServiceCancels_PropagatesCancellation()
+    {
+        var svc = new Mock<IAuthService>();
+        svc.Setup(s => s.RegisterAsync(It.IsAny<RegisterRequest>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new OperationCanceledException());
+        var sut = BuildSut(svc.Object);
+
+        var act = () => sut.Register(new RegisterRequest { RegistrationOperationId = Guid.NewGuid(), Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" }, CancellationToken.None);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+    }
+
+    [TestCase("registration_pending", true)]
+    [TestCase("registration_cleanup_pending", true)]
+    [TestCase("registration_session_unavailable", false)]
+    [TestCase("username_taken", false)]
+    public async Task Register_RetryAfterIsSetOnlyForDurablePendingCodes(string code, bool expectedHeader)
+    {
+        var svc = new Mock<IAuthService>();
+        svc.Setup(s => s.RegisterAsync(It.IsAny<RegisterRequest>(), It.IsAny<string?>(), It.IsAny<string?>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AuthException(code.Contains("pending") ? 503 : 409, code, "stable"));
+        var sut = BuildSut(svc.Object);
+
+        await sut.Register(new RegisterRequest { RegistrationOperationId = Guid.NewGuid(), Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" }, CancellationToken.None);
+
+        if (expectedHeader) sut.Response.Headers.RetryAfter.ToString().Should().Be("5");
+        else sut.Response.Headers.RetryAfter.ToString().Should().BeEmpty();
     }
 
     [Test]
