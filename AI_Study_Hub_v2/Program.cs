@@ -9,6 +9,7 @@ using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Payment;
+using AI_Study_Hub_v2.Services.Payment.Abstractions;
 using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
@@ -56,7 +57,9 @@ builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Olla
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
-builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
+builder.Services.Configure<PayOsSettings>(builder.Configuration.GetSection(PayOsSettings.SectionName));
+// Archived: VNPay settings kept for reference
+// builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
 builder.Services.AddMemoryCache(options =>
 {
     var ragCacheOptions = builder.Configuration.GetSection(RagOptions.SectionName).Get<RagOptions>() ?? new RagOptions();
@@ -150,7 +153,11 @@ builder.Services.AddScoped<IStorageQuotaService, StorageQuotaService>();
 builder.Services.AddScoped<IPlanCapacityGuard, PlanCapacityGuard>();
 builder.Services.AddScoped<IStorageDeletionCoordinator, StorageDeletionCoordinator>();
 builder.Services.AddScoped<IStorageReconciliationService, StorageReconciliationService>();
-builder.Services.AddScoped<IVnPayService, VnPayService>();
+// PayOS provider + Payment service
+builder.Services.AddScoped<IPaymentProvider, PayOsProvider>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+// Archived: VNPay service kept for reference
+// builder.Services.AddScoped<IVnPayService, VnPayService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();

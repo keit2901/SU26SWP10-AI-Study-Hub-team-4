@@ -217,8 +217,18 @@
 
         try
         {
+            // Extract txnRef from query string (PayOS redirects to ReturnUrl with ?status=success&txnRef=...)
             var uri = new Uri(Navigation.Uri);
-            _result = await PlanApi.VerifyReturnUrlAsync(Session.AccessToken, uri.Query);
+            var queryParams = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var txnRef = queryParams["txnRef"] ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(txnRef))
+            {
+                _result = new ReturnUrlResult(false, "error", null, 0, "No transaction reference found.");
+                return;
+            }
+
+            _result = await PlanApi.GetPaymentStatusAsync(txnRef);
         }
         catch
         {
@@ -252,5 +262,5 @@
     }
 
     private void GoToPricing() => Navigation.NavigateTo("/pricing", forceLoad: true);
-    private void GoToDashboard() => Navigation.NavigateTo("/", forceLoad: true);
+    private void GoToDashboard() => Navigation.NavigateTo("/pricing", forceLoad: true);
 }

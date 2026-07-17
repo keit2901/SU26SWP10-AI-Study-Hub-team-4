@@ -5,6 +5,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Payment;
+using AI_Study_Hub_v2.Services.Payment.Abstractions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,7 +26,7 @@ public sealed class PlansController : ControllerBase
 {
     private readonly IPlanService _planService;
     private readonly IStorageQuotaService _quotaService;
-    private readonly IVnPayService _vnPayService;
+    private readonly IPaymentService _paymentService;
     private readonly AppDbContext _db;
     private readonly IAuditLogService _audit;
     private readonly ILogger<PlansController> _logger;
@@ -33,14 +34,14 @@ public sealed class PlansController : ControllerBase
     public PlansController(
         IPlanService planService,
         IStorageQuotaService quotaService,
-        IVnPayService vnPayService,
+        IPaymentService paymentService,
         AppDbContext db,
         IAuditLogService audit,
         ILogger<PlansController> logger)
     {
         _planService = planService;
         _quotaService = quotaService;
-        _vnPayService = vnPayService;
+        _paymentService = paymentService;
         _db = db;
         _audit = audit;
         _logger = logger;
@@ -359,8 +360,8 @@ public sealed class PlansController : ControllerBase
 
             try
             {
-                var vnPayResult = await _vnPayService.CreatePaymentAsync(
-                    user.Id, request.PlanKey, request.BillingCycle, ipAddress, ct);
+                var paymentResult = await _paymentService.CreatePaymentAsync(
+                    user.Id, request.PlanKey, request.BillingCycle, ct);
 
                 // Audit log for payment initiation
                 try
@@ -375,7 +376,7 @@ public sealed class PlansController : ControllerBase
                         {
                             planKey = request.PlanKey,
                             billingCycle = request.BillingCycle,
-                            amountVnd = vnPayResult.AmountVnd,
+                            amountVnd = paymentResult.AmountVnd,
                         }),
                         ipAddress: ipAddress,
                         requestId: HttpContext.TraceIdentifier);
@@ -385,7 +386,7 @@ public sealed class PlansController : ControllerBase
                     _logger.LogWarning(ex, "Failed to log audit for payment initiation");
                 }
 
-                return Ok(vnPayResult);
+                return Ok(paymentResult);
             }
             catch (InvalidOperationException ex)
             {
@@ -417,6 +418,17 @@ public sealed class PlansController : ControllerBase
         }
     }
 
+    /// <summary>Returns the status of a payment transaction (no plan activation).</summary>
+    [HttpGet("payment/status/{txnRef}")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ReturnUrlResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPaymentStatus(string txnRef, CancellationToken ct)
+    {
+        var result = await _paymentService.VerifyReturnAsync(txnRef, ct);
+        return Ok(result);
+    }
+
     /// <summary>Retry a failed or expired payment transaction.</summary>
     [HttpPost("purchase/retry/{txnRef}")]
     [EnableRateLimiting("purchase")]
@@ -435,9 +447,8 @@ public sealed class PlansController : ControllerBase
         if (oldTxn.Status != "expired" && oldTxn.Status != "failed")
             return BadRequest(new ApiErrorResponse { Code = "transaction_not_retryable", Message = "Only expired or failed transactions can be retried." });
 
-        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
-        var result = await _vnPayService.CreatePaymentAsync(
-            user.Id, oldTxn.PlanKey, oldTxn.BillingCycle, ipAddress, ct);
+        var result = await _paymentService.CreatePaymentAsync(
+            user.Id, oldTxn.PlanKey, oldTxn.BillingCycle, ct);
         return Ok(result);
     }
 

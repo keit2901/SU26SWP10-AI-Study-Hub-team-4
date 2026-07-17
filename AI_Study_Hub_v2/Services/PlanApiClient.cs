@@ -129,17 +129,14 @@ public sealed class PlanApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
-    /// <summary>Verifies VNPay return URL query parameters.</summary>
-    public async Task<ReturnUrlResult> VerifyReturnUrlAsync(
-        string? accessToken,
-        string queryString,
+    /// <summary>Gets the status of a payment transaction by TxnRef (PayOS flow).</summary>
+    public async Task<ReturnUrlResult> GetPaymentStatusAsync(
+        string txnRef,
         CancellationToken ct = default)
     {
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/vnpay/return{queryString}");
-        if (!string.IsNullOrWhiteSpace(accessToken))
-        {
-            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(txnRef);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/plans/payment/status/{txnRef}");
 
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)
