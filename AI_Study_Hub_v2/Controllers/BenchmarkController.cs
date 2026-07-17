@@ -52,7 +52,7 @@ public sealed class BenchmarkController : ControllerBase
         }
 
         var config = new BenchmarkConfig(
-            request.ModelName ?? "llama-3.3-70b-versatile",
+            string.IsNullOrWhiteSpace(request.ModelName) ? _groqOptions.Model : request.ModelName,
             Count: request.Count,
             DocumentIds: request.DocumentIds);
 
