@@ -44,6 +44,7 @@ public class DocumentIngestionServiceTests
         chunks.Select(c => c.PageNumber).Should().Equal(1);
         chunks.Select(c => c.Content).Should().Equal("First page text. Second page text.");
         chunks.Should().OnlyContain(c => c.TokenCount > 0);
+        chunks[0].TokenCount.Should().Be(new ConservativeTokenEstimator().Estimate(chunks[0].Content));
     }
 
     [Test]
@@ -166,6 +167,7 @@ public class DocumentIngestionServiceTests
             storage ?? new FakeStorageReadService(),
             extraction,
             BuildChunkingService(ragOptions),
+            new ConservativeTokenEstimator(),
             embedding ?? new FakeEmbeddingService(ragOptions.EmbeddingDimensions),
             imageDescription ?? new FakeImageDescriptionService(),
             Microsoft.Extensions.Options.Options.Create(ragOptions),
