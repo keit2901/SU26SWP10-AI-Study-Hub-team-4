@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
 
@@ -14,6 +14,8 @@ namespace AI_Study_Hub_v2.Migrations
             // not EF Core convention. Use IF EXISTS for safety.
             migrationBuilder.Sql(
                 "ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS \"payment_transactions_user_id_fkey\"");
+            migrationBuilder.Sql(
+                "ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS \"FK_payment_transactions_users_user_id\"");
 
             migrationBuilder.AddUniqueConstraint(
                 name: "AK_plans_plan_key",

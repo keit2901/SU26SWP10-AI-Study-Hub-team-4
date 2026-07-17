@@ -556,6 +556,87 @@ public sealed class FolderService : IFolderService
         };
     }
 
+    public async Task<FolderDto> GetFolderAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        CancellationToken cancellationToken = default)
+    {
+        var profile = await _db.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, cancellationToken)
+            ?? throw new DocumentException(404, "user_not_found",
+                "Authenticated user has no profile in public.users.");
+
+        if (!profile.IsActive)
+        {
+            throw new DocumentException(403, "user_inactive",
+                "User account is inactive.");
+        }
+
+        var folder = await _db.Folders
+            .AsNoTracking()
+            .Include(f => f.User)
+            .Include(f => f.Documents)
+            .Include(f => f.Reactions)
+            .FirstOrDefaultAsync(f => f.Id == folderId, cancellationToken)
+            ?? throw new DocumentException(404, "folder_not_found", "Folder not found.");
+
+        var isOwner = folder.UserId == profile.Id;
+        var isApproved = folder.ShareStatus == FolderStatus.Approved;
+        var roleName = profile.Role?.RoleName ?? string.Empty;
+        var isPrivileged = roleName.Equals(Role.AdminRoleName, StringComparison.OrdinalIgnoreCase)
+                        || roleName.Equals(Role.ModeratorRoleName, StringComparison.OrdinalIgnoreCase);
+
+        if (!isOwner && !isApproved && !isPrivileged)
+        {
+            throw new DocumentException(403, "folder_access_denied",
+                "You do not have permission to access this folder.");
+        }
+
+        var likeCount = folder.Reactions.Count(r => r.IsLike);
+        var dislikeCount = folder.Reactions.Count(r => !r.IsLike);
+        var currentVote = folder.Reactions
+            .Where(r => r.UserId == profile.Id)
+            .Select(r => (bool?)r.IsLike)
+            .FirstOrDefault();
+
+        return new FolderDto
+        {
+            Id = folder.Id,
+            Name = folder.Name,
+            Description = folder.Description,
+            DocumentCount = folder.Documents.Count,
+            IsFavorite = folder.IsFavorite,
+            ShareStatus = folder.ShareStatus,
+            SharedAt = folder.SharedAt,
+            ShareReviewSource = folder.ShareReviewSource,
+            AiReviewReason = folder.AiReviewReason,
+            AiReviewConfidence = folder.AiReviewConfidence,
+            AiReviewFailureCount = folder.AiReviewFailureCount,
+            HumanReviewReason = folder.HumanReviewReason,
+            RequiresHumanReview = folder.RequiresHumanReview,
+            AppealRequestedAt = folder.AppealRequestedAt,
+            AppealMessage = folder.AppealMessage,
+            Icon = folder.Icon,
+            OwnerName = folder.User.FullName ?? folder.User.Username,
+            CreatedAt = folder.CreatedAt,
+            UpdatedAt = folder.UpdatedAt,
+            LikeCount = likeCount,
+            DislikeCount = dislikeCount,
+            CurrentUserVote = currentVote,
+            Status = folder.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                     folder.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                     folder.Documents.Any() && folder.Documents.All(d => d.Status == DocumentStatus.Ready) ? (
+                         folder.ShareStatus == FolderStatus.Approved ? "Shared" :
+                         folder.ShareStatus == FolderStatus.PendingShare ? "Pending Share" :
+                         folder.ShareStatus == FolderStatus.Rejected ? "Rejected" :
+                         "Private"
+                     ) :
+                     "Empty"
+        };
+    }
+
     public Task<FolderDto> CopySharedFolderAsync(Guid supabaseUserId, Guid sharedFolderId, CancellationToken cancellationToken = default)
         => _copyCoordinator.CopyAsync(supabaseUserId, sharedFolderId, cancellationToken);
 
