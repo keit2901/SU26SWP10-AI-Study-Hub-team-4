@@ -39,6 +39,8 @@ public class AppDbContext : DbContext
 
     public DbSet<SharedFolderCopyOperation> SharedFolderCopyOperations => Set<SharedFolderCopyOperation>();
 
+    public DbSet<RegistrationOperation> RegistrationOperations => Set<RegistrationOperation>();
+
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
 
     public DbSet<AuditLog> AuditLogs => Set<AuditLog>();
@@ -127,6 +129,14 @@ public class AppDbContext : DbContext
         }
 
         foreach (var entry in ChangeTracker.Entries<SystemConfig>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAt = now;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<RegistrationOperation>())
         {
             if (entry.State == EntityState.Modified)
             {
