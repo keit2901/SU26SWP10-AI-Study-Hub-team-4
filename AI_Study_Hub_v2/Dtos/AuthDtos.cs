@@ -4,6 +4,9 @@ namespace AI_Study_Hub_v2.Dtos;
 
 public sealed class RegisterRequest
 {
+    [NotEmptyGuid(ErrorMessage = "Registration operation id is required.")]
+    public Guid RegistrationOperationId { get; set; }
+
     [Required]
     [EmailAddress]
     [StringLength(255)]
@@ -24,6 +27,11 @@ public sealed class RegisterRequest
 
     [StringLength(10000)]
     public string? RecaptchaToken { get; set; }
+}
+
+public sealed class NotEmptyGuidAttribute : ValidationAttribute
+{
+    public override bool IsValid(object? value) => value is Guid id && id != Guid.Empty;
 }
 
 public sealed class LoginRequest

@@ -32,83 +32,19 @@ public sealed class SupabaseAuthService : IAuthService
 {
     private readonly AppDbContext _db;
     private readonly IGoTrueClient _gotrue;
+    private readonly IRegistrationCoordinator _registrationCoordinator;
     private readonly ILogger<SupabaseAuthService> _logger;
 
-    public SupabaseAuthService(AppDbContext db, IGoTrueClient gotrue, ILogger<SupabaseAuthService> logger)
+    public SupabaseAuthService(AppDbContext db, IGoTrueClient gotrue, IRegistrationCoordinator registrationCoordinator, ILogger<SupabaseAuthService> logger)
     {
         _db = db;
         _gotrue = gotrue;
+        _registrationCoordinator = registrationCoordinator;
         _logger = logger;
     }
 
-    public async Task<AuthResponse> RegisterAsync(RegisterRequest request, string? userAgent, string? ipAddress, CancellationToken cancellationToken = default)
-    {
-        var email = request.Email.Trim().ToLowerInvariant();
-        var username = request.Username.Trim();
-        var fullName = request.FullName.Trim();
-
-        // 1. App-level uniqueness check on username (email uniqueness is enforced by GoTrue).
-        var usernameTaken = await _db.Users.AnyAsync(u => u.Username == username, cancellationToken);
-        if (usernameTaken)
-        {
-            throw new AuthException(409, "username_taken", "Username is already taken.");
-        }
-
-        var studentRole = await _db.Roles.FirstOrDefaultAsync(r => r.RoleName == Role.StudentRoleName, cancellationToken);
-        if (studentRole is null)
-        {
-            throw new AuthException(500, "role_not_seeded", "Student role is missing from the database.");
-        }
-
-        // 2. Create the GoTrue identity. AUTOCONFIRM is on so we get a session back.
-        var session = await _gotrue.SignUpAsync(
-            email,
-            request.Password,
-            metadata: new Dictionary<string, object?>
-            {
-                ["username"] = username,
-                ["full_name"] = fullName,
-            },
-            cancellationToken);
-
-        if (session.User is null || session.User.Id == Guid.Empty)
-        {
-            throw new AuthException(500, "gotrue_no_user", "GoTrue did not return a user on signup.");
-        }
-
-        // 3. Mirror profile into public.users.
-        var now = DateTimeOffset.UtcNow;
-        var user = new User
-        {
-            Id = Guid.NewGuid(),
-            RoleId = studentRole.Id,
-            SupabaseUserId = session.User.Id,
-            Username = username,
-            FullName = fullName,
-            TotalTokensUsed = 0,
-            IsActive = true,
-            CreatedAt = now,
-            UpdatedAt = now,
-        };
-        _db.Users.Add(user);
-
-        var freePlan = await _db.Plans.FirstOrDefaultAsync(p => p.PlanKey == "free", cancellationToken);
-        if (freePlan is not null)
-        {
-            _db.UserPlans.Add(new UserPlan
-            {
-                UserId = user.Id,
-                PlanId = freePlan.Id,
-                Status = "active",
-                AssignedAt = now,
-            });
-        }
-
-        await _db.SaveChangesAsync(cancellationToken);
-        user.Role = studentRole;
-
-        return BuildAuthResponse(user, session);
-    }
+    public Task<AuthResponse> RegisterAsync(RegisterRequest request, string? userAgent, string? ipAddress, CancellationToken cancellationToken = default) =>
+        _registrationCoordinator.RegisterAsync(request, cancellationToken);
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, string? userAgent, string? ipAddress, CancellationToken cancellationToken = default)
     {
