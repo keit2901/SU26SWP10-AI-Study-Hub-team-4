@@ -64,3 +64,26 @@
   - verify the table filters live
   - verify suggestion lists scroll when many choices exist
   - verify `Reset table` clears filters and sorting
+
+### 2026-07-17T10:34:12+07:00 - Student documents status sort removed and size filter removed
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Removed the top filter-panel `Size` field from the student `Documents Table`.
+- Changed the `Status` column header into a non-sortable header while keeping status filtering available in the top filter panel.
+- Cleaned the obsolete size-filter state and the old status-sort cases from the document-table query/reset logic.
+- Re-ran build:
+  `dotnet build "AI_Study_Hub_v2/AI_Study_Hub_v2.csproj" --no-restore -p:UseAppHost=false -o ".codex-build/student-documents-remove-status-sort-size-filter"`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T10:43:43+07:00 - Student documents status header centered and darkened
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Centered the non-sortable `Status` table header and styled it with the same dark text treatment as the other document table headers.
+- Re-ran build:
+  `dotnet build "AI_Study_Hub_v2/AI_Study_Hub_v2.csproj" --no-restore -p:UseAppHost=false -o ".codex-build/student-documents-status-header-center-black"`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T10:48:31+07:00 - Student documents status header color changed to slate
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Updated the non-sortable `Status` table header color to `#94a3b8`.
+- Re-ran build:
+  `dotnet build "AI_Study_Hub_v2/AI_Study_Hub_v2.csproj" --no-restore -p:UseAppHost=false -o ".codex-build/student-documents-status-header-slate"`
+  -> PASS, 0 errors. Existing repo warnings remain.

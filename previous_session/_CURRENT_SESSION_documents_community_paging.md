@@ -509,3 +509,110 @@
 ### 2026-07-16T21:35:00+07:00 - Student document table NAME header centered
 - Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
 - Center-aligned the `NAME` table header in the actor-student `Documents Table`.
+
+### 2026-07-17T00:05:00+07:00 - Student documents table changed to header-sort with top filter bar
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Changed the actor-student `Documents Table` interaction model:
+  - clicking a table header now toggles sort directly on that column
+  - filters were separated out of the header popovers and moved into a dedicated filter panel above the table
+  - top filter bar now exposes direct fields for `Name`, `Subject`, `Semester`, `Folder`, `Size`, `Status`, `Created From`, and `Created To`
+- Removed the temporary popup-filter state/methods that were no longer needed after the new layout.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/student-documentlibrary-header-sort-filterbar-clean`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T00:12:00+07:00 - Student document STATUS header now stays neutral unless it is actually sorted
+- Edited `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`.
+- Updated document table header styling so header active state now depends only on sorting, not on filter values from the top filter bar.
+- This keeps `STATUS` showing the same neutral up/down icon state as other unsorted headers by default and after `Reset table`.
+
+### 2026-07-17T00:26:00+07:00 - Moderator folder/documents tables switched to header-sort with top filter bars
+- Edited:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`
+- Applied the same interaction pattern to moderator tables:
+  - clicking table headers now toggles sorting directly
+  - filters were surfaced into dedicated filter bars above the tables
+  - existing filter criteria were preserved (`FolderTable`: folder/owner/subject/semester/status; `DocumentDashboard`: name/folder/subject/semester/status/date range)
+- Updated header icon/color styling so moderator headers now reflect sorting only, instead of looking active just because a top filter value exists.
+- Re-ran full project build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/moderator-header-sort-top-filter`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T00:40:00+07:00 - Admin topbar logout icon border removed
+- Edited `AI_Study_Hub_v2/Components/Admin/Shared/AdminLayout.razor`.
+- Removed the framed border/background styling from the admin topbar `Logout` icon so it now appears as a plain header icon, with only a subtle hover background.
+
+### 2026-07-17T08:08:00+07:00 - Moderator dashboard folder filter restored to header suggestion mode
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Reverted the moderator dashboard `Folder Management` table back to header-based filter menus instead of the temporary top filter bar.
+- This restores the interaction the user asked for on the moderator dashboard:
+  - clicking a table header opens the filter suggestion list directly under that header
+  - `ArrowDown` / `ArrowUp` highlights suggestion items
+  - when the highlighted suggestion moves below the visible list, the suggestion panel auto-scrolls it into view
+  - filtered columns stay visually active the same way as sorted columns
+- Re-ran build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/moderator-dashboard-filter-menu`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T08:16:00+07:00 - Moderator dashboard folder table moved back to top filter bar plus header sort
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Updated the moderator dashboard `Folder Management` table interaction again to match the user's latest request:
+  - filter controls are separated into a filter bar above the table
+  - clicking each table header now sorts that column directly
+  - header icon/color state now reflects sorting only
+- Re-ran build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/moderator-dashboard-top-filter-sort-header`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T08:28:00+07:00 - Subject, semester, and analytics tables aligned to top-filter plus header-sort pattern
+- Edited:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Applied the same interaction pattern requested for moderator dashboard tables:
+  - filter controls moved into a filter bar above each table
+  - clicking table headers now sorts directly
+  - header icon/color state now reflects sorting only
+- Re-ran build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/moderator-top-filter-sort-all-dashboards`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T08:39:00+07:00 - Removed status sorting from moderator dashboard folder table
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderTable.razor`.
+- Removed direct header sorting from the `Status` column on the moderator dashboard `Folder Management` table.
+- `Status` now stays as a plain header label, while filtering remains available from the top filter bar.
+- Re-ran build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/moderator-dashboard-remove-status-sort-clean2`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T08:49:00+07:00 - Added numeric sorts to subject/semester tables and removed analytics status sort
+- Edited:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SubjectsDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/SemestersDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- Added direct header sorting for:
+  - `Total Documents`
+  - `Storage Used`
+  on both moderator `Subjects` and `Semesters` pages.
+- Removed direct header sorting from the `Status` column on moderator `Analytics`; `Status` remains filterable from the top filter bar.
+- Cleaned unused `AnalyticsDashboard` status menu refs after removing the old status header sort hook.
+- Re-ran build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/moderator-subject-semester-analytics-sort-tune-clean`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T09:01:00+07:00 - Analytics status sort restored and right-side headers padded to 24px
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`.
+- Restored direct header sorting for the moderator analytics `Status` column.
+- Adjusted the right-side analytics table headers with explicit `24px` right padding, including the rightmost `Structure` header alignment.
+- Re-ran build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/moderator-analytics-status-sort-right-header`
+  -> PASS, 0 errors. Existing repo warnings remain.
+
+### 2026-07-17T09:07:00+07:00 - Analytics status sort removed again and document name header returned to left align
+- Edited `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`.
+- Removed direct header sorting from the moderator analytics `Status` column.
+- Changed the `Document Name` table header back to left-aligned instead of centered.
+- Re-ran build:
+  `dotnet build AI_Study_Hub_v2/AI_Study_Hub_v2.csproj --no-restore -p:UseAppHost=false -o .codex-build/moderator-analytics-remove-status-sort-left-name`
+  -> PASS, 0 errors. Existing repo warnings remain.

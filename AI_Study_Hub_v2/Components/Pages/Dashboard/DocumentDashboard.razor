@@ -82,6 +82,71 @@
                         <span>Reset table</span>
                     </button>
                 </div>
+                <div style="padding: 1rem 1.5rem 0.75rem;">
+                    <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.75rem; padding: 0.95rem 1rem; border: 1px solid rgba(199,196,215,0.3); border-radius: 0.875rem; background: #fff;">
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                            <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Document Name</span>
+                            <input type="text"
+                                   value="@FilterNameQuery"
+                                   @oninput='e => UpdateAppliedFilter("name", e.Value?.ToString())'
+                                   placeholder="Search document name"
+                                   style='@GetTopFilterInputStyle()' />
+                        </label>
+                        @if (!FolderId.HasValue)
+                        {
+                            <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                                <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Folder</span>
+                                <input type="text"
+                                       value="@FilterFolderQuery"
+                                       @oninput='e => UpdateAppliedFilter("folder", e.Value?.ToString())'
+                                       placeholder="Search folder"
+                                       style='@GetTopFilterInputStyle()' />
+                            </label>
+                        }
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                            <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Subject Code</span>
+                            <input type="text"
+                                   value="@FilterSubjectQuery"
+                                   @oninput='e => UpdateAppliedFilter("subject", e.Value?.ToString())'
+                                   placeholder="Search subject code"
+                                   style='@GetTopFilterInputStyle()' />
+                        </label>
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                            <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Semester</span>
+                            <input type="text"
+                                   value="@FilterSemesterQuery"
+                                   @oninput='e => UpdateAppliedFilter("semester", e.Value?.ToString())'
+                                   placeholder="Search semester"
+                                   style='@GetTopFilterInputStyle()' />
+                        </label>
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                            <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Status</span>
+                            <select value="@FilterReviewStatus"
+                                    @onchange='e => UpdateAppliedFilter("status", e.Value?.ToString())'
+                                    style='@GetTopFilterInputStyle()'>
+                                <option value="">All status</option>
+                                @foreach (var statusOption in StatusOptions)
+                                {
+                                    <option value="@statusOption">@statusOption</option>
+                                }
+                            </select>
+                        </label>
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                            <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Created From</span>
+                            <input type="datetime-local"
+                                   value="@FilterDateFrom"
+                                   @oninput='e => UpdateDateFilter("from", e.Value?.ToString())'
+                                   style='@GetTopFilterInputStyle()' />
+                        </label>
+                        <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                            <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Created To</span>
+                            <input type="datetime-local"
+                                   value="@FilterDateTo"
+                                   @oninput='e => UpdateDateFilter("to", e.Value?.ToString())'
+                                   style='@GetTopFilterInputStyle()' />
+                        </label>
+                    </div>
+                </div>
                     <div style="position: relative;">
                         @if (!string.IsNullOrWhiteSpace(OpenSortMenuColumn))
                         {
@@ -107,7 +172,7 @@
                             <thead>
                                 <tr style="background: #f4f3f8;">
                                     <th style="padding: 0.8rem 1rem 0.8rem 1.25rem; text-align: center; position: relative;">
-                                        <button @ref="_nameHeaderButton" @onclick='() => HandleHeaderSortClick("name")' style='@GetHeaderSortButtonStyle("name")'>
+                                        <button @ref="_nameHeaderButton" @onclick='() => ToggleSort("name")' style='@GetHeaderSortButtonStyle("name")'>
                                             <span>Document Name</span>
                                             <MudIcon Icon='@GetSortIcon("name")' Style='@GetSortIconStyle("name")' />
                                         </button>
@@ -148,7 +213,7 @@
                                     @if (!FolderId.HasValue)
                                     {
                                         <th style="padding: 0.8rem 1rem; text-align: left; position: relative;">
-                                            <button @ref="_folderHeaderButton" @onclick='() => HandleHeaderSortClick("folder")' style='@GetHeaderSortButtonStyle("folder", true)'>
+                                            <button @ref="_folderHeaderButton" @onclick='() => ToggleSort("folder")' style='@GetHeaderSortButtonStyle("folder", true)'>
                                                 <span>Folder</span>
                                                 <MudIcon Icon='@GetSortIcon("folder")' Style='@GetSortIconStyle("folder")' />
                                             </button>
@@ -188,7 +253,7 @@
                                         </th>
                                     }
                                     <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                        <button @ref="_subjectHeaderButton" @onclick='() => HandleHeaderSortClick("subject")' style='@GetHeaderSortButtonStyle("subject")'>
+                                        <button @ref="_subjectHeaderButton" @onclick='() => ToggleSort("subject")' style='@GetHeaderSortButtonStyle("subject")'>
                                             <span>Subject Code</span>
                                             <MudIcon Icon='@GetSortIcon("subject")' Style='@GetSortIconStyle("subject")' />
                                         </button>
@@ -227,7 +292,7 @@
                                         }
                                     </th>
                                     <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                        <button @ref="_semesterHeaderButton" @onclick='() => HandleHeaderSortClick("semester")' style='@GetHeaderSortButtonStyle("semester")'>
+                                        <button @ref="_semesterHeaderButton" @onclick='() => ToggleSort("semester")' style='@GetHeaderSortButtonStyle("semester")'>
                                             <span>Semester</span>
                                             <MudIcon Icon='@GetSortIcon("semester")' Style='@GetSortIconStyle("semester")' />
                                         </button>
@@ -266,7 +331,7 @@
                                         }
                                     </th>
                                     <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                        <button @ref="_statusHeaderButton" @onclick='() => HandleHeaderSortClick("status")' style='@GetHeaderSortButtonStyle("status")'>
+                                        <button @ref="_statusHeaderButton" @onclick='() => ToggleSort("status")' style='@GetHeaderSortButtonStyle("status")'>
                                             <span>Status</span>
                                             <MudIcon Icon='@GetSortIcon("status")' Style='@GetSortIconStyle("status")' />
                                         </button>
@@ -305,7 +370,7 @@
                                         }
                                     </th>
                                     <th style="padding: 0.8rem 1rem; text-align: center; position: relative;">
-                                        <button @ref="_dateHeaderButton" @onclick='() => HandleHeaderSortClick("date")' style='@GetHeaderSortButtonStyle("date")'>
+                                        <button @ref="_dateHeaderButton" @onclick='() => ToggleSort("date")' style='@GetHeaderSortButtonStyle("date")'>
                                             <span>Upload Date</span>
                                             <MudIcon Icon='@GetSortIcon("date")' Style='@GetSortIconStyle("date")' />
                                         </button>
@@ -1022,6 +1087,34 @@
         ResetAllHighlightedSuggestions();
     }
 
+    private void UpdateAppliedFilter(string columnKey, string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        switch (columnKey)
+        {
+            case "name":
+                SetFilterValue(ref FilterNameQuery, normalizedValue);
+                NameSearchTerm = normalizedValue;
+                break;
+            case "folder":
+                SetFilterValue(ref FilterFolderQuery, normalizedValue);
+                FolderSearchTerm = normalizedValue;
+                break;
+            case "subject":
+                SetFilterValue(ref FilterSubjectQuery, normalizedValue);
+                SubjectSearchTerm = normalizedValue;
+                break;
+            case "semester":
+                SetFilterValue(ref FilterSemesterQuery, normalizedValue);
+                SemesterSearchTerm = normalizedValue;
+                break;
+            case "status":
+                SetFilterValue(ref FilterReviewStatus, normalizedValue);
+                StatusSearchTerm = normalizedValue;
+                break;
+        }
+    }
+
     private bool HasActiveFilters() =>
         !string.IsNullOrWhiteSpace(FilterNameQuery)
         || !string.IsNullOrWhiteSpace(FilterReviewStatus)
@@ -1110,9 +1203,12 @@
             : Icons.Material.Filled.KeyboardArrowUp;
     }
 
+    private string GetTopFilterInputStyle() =>
+        "width: 100%; border: 1px solid rgba(199,196,215,0.65); border-radius: 0.7rem; background: #fff; color: #1a1b1f; padding: 0.62rem 0.75rem; font-size: 0.8125rem; outline: none; box-sizing: border-box;";
+
     private string GetHeaderSortButtonStyle(string columnKey, bool alignLeft = false)
     {
-        var isActive = IsSortedBy(columnKey) || IsColumnFiltered(columnKey);
+        var isActive = IsSortedBy(columnKey);
         var color = isActive ? "#5e5ce6" : "#464554";
         var justifyContent = alignLeft ? "flex-start" : "center";
         return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: auto; max-width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;";
@@ -1120,7 +1216,7 @@
 
     private string GetSortIconStyle(string columnKey)
     {
-        var color = (IsSortedBy(columnKey) || IsColumnFiltered(columnKey)) ? "#5e5ce6" : "#9ca3af";
+        var color = IsSortedBy(columnKey) ? "#5e5ce6" : "#9ca3af";
         return $"font-size: 1rem; color: {color};";
     }
 
