@@ -105,6 +105,19 @@
 - `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-build --filter "FullyQualifiedName~AdminAccessPolicyTests|FullyQualifiedName~PlansControllerTests"` -> Passed 22, Skipped 1
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore` compiled through updated code and failed only at the final exe copy step because `AI_Study_Hub_v2.exe` was locked by running process `AI_Study_Hub_v2 (19620)`
 
+### 2026-07-17T23:50:56.4169474+07:00 - Profile popup compactness refined
+- Updated `AI_Study_Hub_v2/Components/Shared/StudentProfileDialog.razor`
+  - added a dedicated `student-profile-dialog` class so the profile popup can use stronger rounded corners
+  - disabled inner dialog-content scrolling for the profile popup
+  - tightened header spacing and title sizing so the content fits more naturally
+- Updated `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor`
+  - compressed the `compact` variant with smaller padding, avatar, badges, summary cards, and row spacing
+  - reduced compact action/control sizing so the profile content better fits the popup without an internal scrollbar
+
+### 2026-07-17T23:50:56.4169474+07:00 - Verification refresh
+- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-build --filter "FullyQualifiedName~AdminAccessPolicyTests|FullyQualifiedName~PlansControllerTests"` -> Passed 22, Skipped 1
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore` compiled updated code and again failed only at final apphost copy because `AI_Study_Hub_v2.exe` was locked by running process `AI_Study_Hub_v2 (11932)`
+
 ## 4. Files changed this session
 | Path | Change |
 |---|---|
