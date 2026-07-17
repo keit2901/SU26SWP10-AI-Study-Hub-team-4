@@ -14,5 +14,7 @@ public interface IPaymentService
 
     Task<ReturnUrlResult> VerifyReturnAsync(string txnRef, CancellationToken ct);
 
+    Task<bool> CancelTransactionAsync(string txnRef, CancellationToken ct);
+
     Task<int> ExpireStalePaymentsAsync(CancellationToken ct);
 }

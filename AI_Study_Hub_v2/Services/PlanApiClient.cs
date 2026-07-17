@@ -129,6 +129,20 @@ public sealed class PlanApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    /// <summary>Marks a pending transaction as cancelled (user returned via cancelUrl).</summary>
+    public async Task<bool> CancelPaymentAsync(string txnRef, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(txnRef);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/plans/payment/cancel/{txnRef}");
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode) return false;
+
+        var result = await resp.Content.ReadFromJsonAsync<CancelPaymentResponse>(cancellationToken: ct);
+        return result?.Cancelled == true;
+    }
+
     /// <summary>Gets the status of a payment transaction by TxnRef (PayOS flow).</summary>
     public async Task<ReturnUrlResult> GetPaymentStatusAsync(
         string txnRef,

@@ -429,6 +429,16 @@ public sealed class PlansController : ControllerBase
         return Ok(result);
     }
 
+    /// <summary>Marks a pending transaction as expired when user cancels on PayOS checkout.</summary>
+    [HttpPost("payment/cancel/{txnRef}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CancelPayment(string txnRef, CancellationToken ct)
+    {
+        var cancelled = await _paymentService.CancelTransactionAsync(txnRef, ct);
+        return Ok(new { cancelled });
+    }
+
     /// <summary>Retry a failed or expired payment transaction.</summary>
     [HttpPost("purchase/retry/{txnRef}")]
     [EnableRateLimiting("purchase")]
