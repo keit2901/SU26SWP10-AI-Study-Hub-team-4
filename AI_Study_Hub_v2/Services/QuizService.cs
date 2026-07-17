@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Data;
 using System.Text;
 using System.Text.Json;
 using AI_Study_Hub_v2.Data;
@@ -19,18 +20,18 @@ public sealed class QuizService : IQuizService
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
     };
 
-    private const int MaxRetries = 2;
     private const int MinQuestions = 3;
     private const int MaxQuestions = 12;
     private const int MaxQuestionsJsonBytes = 200 * 1024;
-
-    private const string DefaultGroqModel = "llama-3.3-70b-versatile";
-    private const string DefaultGeminiModel = "gemini-2.5-flash";
+    private const int MaxPreviousQuizzes = 5;
+    private const int MaxPreviousQuestions = 40;
+    private const int MaxExclusionPromptChars = 4000;
 
     private readonly AppDbContext _db;
     private readonly IRagSearchService _ragSearch;
     private readonly IAiChatCompletionClientFactory _clientFactory;
     private readonly GroqOptions _groqOptions;
+    private readonly GeminiOptions _geminiOptions;
     private readonly IChatPersistenceService _chatPersistence;
     private readonly IAiQuotaService _quotaService;
     private readonly ILogger<QuizService> _logger;
@@ -40,6 +41,7 @@ public sealed class QuizService : IQuizService
         IRagSearchService ragSearch,
         IAiChatCompletionClientFactory clientFactory,
         IOptions<GroqOptions> groqOptions,
+        IOptions<GeminiOptions> geminiOptions,
         IChatPersistenceService chatPersistence,
         IAiQuotaService quotaService,
         ILogger<QuizService> logger)
@@ -48,6 +50,7 @@ public sealed class QuizService : IQuizService
         _ragSearch = ragSearch;
         _clientFactory = clientFactory;
         _groqOptions = groqOptions.Value;
+        _geminiOptions = geminiOptions.Value;
         _chatPersistence = chatPersistence;
         _quotaService = quotaService;
         _logger = logger;
@@ -120,12 +123,13 @@ public sealed class QuizService : IQuizService
 
         var context = BuildQuizContext(searchResults);
 
-        // Load previous quiz questions to avoid duplicates
+        var scopeJson = BuildCanonicalScopeJson(request);
         var previousQuestions = await _db.Quizzes
             .AsNoTracking()
-            .Where(q => q.UserId == profile.Id)
+            .Where(q => q.UserId == profile.Id && q.ScopeJson == scopeJson && q.Status != QuizStatus.GeneratingFailed)
             .OrderByDescending(q => q.CreatedAt)
-            .Take(20)
+            .ThenByDescending(q => q.Id)
+            .Take(MaxPreviousQuizzes)
             .Select(q => q.QuestionsJson)
             .ToListAsync(ct);
 
@@ -138,6 +142,11 @@ public sealed class QuizService : IQuizService
                 if (prevQuiz is not null)
                 {
                     existingQuestionTexts.AddRange(prevQuiz.Select(q => q.Question));
+                    if (existingQuestionTexts.Count >= MaxPreviousQuestions)
+                    {
+                        existingQuestionTexts.RemoveRange(MaxPreviousQuestions, existingQuestionTexts.Count - MaxPreviousQuestions);
+                        break;
+                    }
                 }
             }
             catch
@@ -146,24 +155,22 @@ public sealed class QuizService : IQuizService
             }
         }
 
-        if (existingQuestionTexts.Count > 0)
-        {
-            var exclusionNote = $"\n\n[EXCLUDED QUESTIONS — Do NOT generate these again]\n{string.Join("\n", existingQuestionTexts.Select(q => $"- {q}"))}\n";
-            context += exclusionNote;
-        }
+        var previousQuestionKeys = existingQuestionTexts
+            .Select(NormalizeQuestionForDuplicateComparison)
+            .Where(question => question.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
+        context += BuildExclusionNote(existingQuestionTexts);
 
         var systemPrompt = BuildQuizSystemPrompt(context, request.Difficulty, count);
         var userPrompt = $"Generate {count} quiz questions based on the source excerpts above. Difficulty: {request.Difficulty}.";
 
-        var activeModel = request.Model;
-        var altModel = activeModel?.StartsWith("gemini", StringComparison.OrdinalIgnoreCase) == true
-            ? DefaultGroqModel
-            : DefaultGeminiModel;
-
+        var activeModel = string.IsNullOrWhiteSpace(request.Model) ? _groqOptions.Model : request.Model.Trim();
+        var alternateModel = GetAlternateModel(activeModel);
+        var alternateUsed = false;
         string rawJson;
-        Exception? fallbackError = null;
 
-        // Try the requested model first
+        // Provider clients own the bounded transport retry. This service makes only logical
+        // content/fallback calls: primary, then one alternate on terminal provider failure.
         try
         {
             var firstRequest = new AiChatCompletionRequest(systemPrompt, userPrompt, activeModel, MaxTokens: 8192);
@@ -173,81 +180,84 @@ public sealed class QuizService : IQuizService
                 firstRequest,
                 ct);
         }
+        catch (AiChatModelException ex)
+        {
+            throw new QuizException(400, ex.Code, ex.Message);
+        }
         catch (AiChatProviderException ex)
         {
-            _logger.LogWarning(ex, "AI provider {Model} failed. Falling back to {Fallback}.", activeModel, altModel);
-            fallbackError = ex;
-            await Task.Delay(1000, ct);
+            if (alternateModel is null)
+            {
+                throw new QuizException(503, "ai_provider_unavailable", "The configured AI provider is unavailable. Please try again later.");
+            }
+
+            _logger.LogWarning(ex, "Primary AI provider {Model} failed; using configured alternate.", activeModel);
+            activeModel = alternateModel;
+            alternateUsed = true;
             try
             {
-                activeModel = altModel;
-                var fallbackRequest = new AiChatCompletionRequest(systemPrompt, userPrompt, altModel, MaxTokens: 8192);
+                var fallbackRequest = new AiChatCompletionRequest(systemPrompt, userPrompt, activeModel, MaxTokens: 8192);
                 rawJson = await CompleteWithQuotaAsync(
                     supabaseUserId,
-                    _clientFactory.GetClient(altModel),
+                    _clientFactory.GetClient(activeModel),
                     fallbackRequest,
                     ct);
-                fallbackError = null;
             }
             catch (AiChatProviderException ex2)
             {
-                _logger.LogError(ex2, "Fallback AI provider {Fallback} also failed.", altModel);
+                _logger.LogWarning(ex2, "Configured alternate AI provider {Model} failed.", activeModel);
                 throw new QuizException(503, "ai_provider_unavailable",
                     "All AI providers failed. Please try again later.");
             }
         }
 
-        if (string.IsNullOrWhiteSpace(rawJson))
-        {
-            throw new QuizException(503, "empty_ai_response",
-                "The AI returned an empty response. Please try again.");
-        }
-
-        var (parsed, failReason) = TryParseAndValidateQuizJson(rawJson, count);
+        var (parsed, failReason) = TryParseAndValidateQuizJson(rawJson, count, previousQuestionKeys);
         if (parsed is null)
         {
-            _logger.LogWarning("AI returned invalid quiz JSON on first attempt (model: {Model}). Failure: {Reason}. Raw preview: {Preview}", activeModel, failReason, TruncatePreview(rawJson, 500));
+            _logger.LogWarning("AI returned invalid quiz content from model {Model}. Failure: {Reason}.", activeModel, failReason);
+            var repairPrompt = systemPrompt + $"\n\nIMPORTANT: Repair the previous response because: {failReason} Output ONLY valid JSON. No markdown, no code fences, no additional text. The JSON must match the schema exactly.";
 
-            var currentProvider = _clientFactory.GetClient(activeModel);
-            for (var attempt = 1; attempt <= MaxRetries; attempt++)
+            try
             {
-                var retryPrompt = systemPrompt + "\n\nIMPORTANT: You MUST output ONLY valid JSON. No markdown, no code fences, no additional text. The JSON must match the schema exactly.";
-
+                rawJson = await CompleteWithQuotaAsync(
+                    supabaseUserId,
+                    _clientFactory.GetClient(activeModel),
+                    new AiChatCompletionRequest(repairPrompt, userPrompt, activeModel, MaxTokens: 8192),
+                    ct);
+            }
+            catch (AiChatProviderException ex) when (!alternateUsed && alternateModel is not null)
+            {
+                activeModel = alternateModel;
+                alternateUsed = true;
+                _logger.LogWarning(ex, "Quiz repair provider failed; attempting one repair with configured alternate {Model}.", activeModel);
                 try
                 {
-                    await Task.Delay(attempt * 500, ct);
                     rawJson = await CompleteWithQuotaAsync(
                         supabaseUserId,
-                        currentProvider,
-                        new AiChatCompletionRequest(retryPrompt, userPrompt, activeModel, MaxTokens: 8192),
+                        _clientFactory.GetClient(activeModel),
+                        new AiChatCompletionRequest(repairPrompt, userPrompt, activeModel, MaxTokens: 8192),
                         ct);
-                    (parsed, failReason) = TryParseAndValidateQuizJson(rawJson, count);
-                    if (parsed is not null)
-                    {
-                        break;
-                    }
-
-                    _logger.LogWarning("AI returned invalid quiz JSON on retry {Attempt} (model: {Model}). Failure: {Reason}. Raw preview: {Preview}", attempt, activeModel, failReason, TruncatePreview(rawJson, 500));
                 }
-                catch (AiChatProviderException ex)
+                catch (AiChatProviderException alternateEx)
                 {
-                    _logger.LogError(ex, "AI provider failed on retry {Attempt} (model: {Model}). Trying fallback model.", attempt, activeModel);
-                    // Switch to the alternative model on provider failure
-                    activeModel = activeModel?.StartsWith("gemini", StringComparison.OrdinalIgnoreCase) == true
-                        ? DefaultGroqModel
-                        : DefaultGeminiModel;
-                    currentProvider = _clientFactory.GetClient(activeModel);
-                    _logger.LogInformation("Quiz retry switched to fallback model {Model}", activeModel);
+                    _logger.LogWarning(alternateEx, "Configured alternate AI provider failed during quiz repair.");
+                    throw new QuizException(503, "ai_provider_unavailable", "All AI providers failed. Please try again later.");
                 }
             }
+            catch (AiChatProviderException ex)
+            {
+                _logger.LogWarning(ex, "AI provider failed during quiz repair.");
+                throw new QuizException(503, "ai_provider_unavailable", "The AI provider is unavailable. Please try again later.");
+            }
+
+            (parsed, failReason) = TryParseAndValidateQuizJson(rawJson, count, previousQuestionKeys);
         }
 
         if (parsed is null)
         {
-            var preview = TruncatePreview(rawJson, 200);
-            _logger.LogError("AI returned invalid quiz JSON after {MaxRetries} retries. Last failure: {Reason}. Raw preview: {Preview}", MaxRetries, failReason, preview);
+            _logger.LogWarning("AI returned invalid quiz content after its single repair allowance. Failure: {Reason}.", failReason);
             throw new QuizException(422, "invalid_quiz_json",
-                $"Quiz generation failed: {failReason}. Raw response preview: {preview}");
+                $"Quiz generation failed: {failReason}.");
         }
 
         var now = DateTimeOffset.UtcNow;
@@ -268,6 +278,7 @@ public sealed class QuizService : IQuizService
             CurrentQuestionIndex = 0,
             TotalQuestions = parsed.Questions.Count,
             QuestionsJson = questionsJson,
+            ScopeJson = scopeJson,
             Score = null,
             CreatedAt = now,
             UpdatedAt = now,
@@ -404,20 +415,16 @@ public sealed class QuizService : IQuizService
         }
     }
 
-    public async Task SaveAsync(Guid supabaseUserId, Guid quizId, SaveQuizRequest request, CancellationToken ct = default)
+    public async Task<QuizDto> SaveAsync(Guid supabaseUserId, Guid quizId, SaveQuizRequest request, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(request);
 
-        Quiz quiz;
+        User profile;
         try
         {
-            var profile = await _db.Users
+            profile = await _db.Users
                 .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct)
                 ?? throw new QuizException(404, "user_not_found", "User profile not found.");
-
-            quiz = await _db.Quizzes
-                .FirstOrDefaultAsync(q => q.Id == quizId && q.UserId == profile.Id, ct)
-                ?? throw new QuizException(404, "quiz_not_found", "Quiz not found.");
         }
         catch (QuizException)
         {
@@ -430,25 +437,11 @@ public sealed class QuizService : IQuizService
                 "Could not load quiz for saving. Please try again.");
         }
 
-        quiz.Status = request.Status;
-        quiz.CurrentQuestionIndex = request.CurrentQuestionIndex;
-        quiz.AnswersJson = JsonSerializer.Serialize(request.Answers);
-        quiz.SubmittedJson = JsonSerializer.Serialize(request.Submitted);
-        quiz.Score = request.Score;
-        quiz.UpdatedAt = DateTimeOffset.UtcNow;
+        var quiz = _db.Database.IsRelational()
+            ? await SaveRelationalAsync(profile.Id, quizId, request, ct)
+            : await SaveNonRelationalAsync(profile.Id, quizId, request, ct);
 
-        try
-        {
-            await _db.SaveChangesAsync(ct);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to save quiz {QuizId}.", quizId);
-            throw new QuizException(500, "quiz_save_failed",
-                "Could not save quiz progress. Please try again.");
-        }
-
-        var statusStr = request.Status switch
+        var statusStr = quiz.Status switch
         {
             QuizStatus.Completed => "Completed",
             QuizStatus.InProgress => "InProgress",
@@ -461,13 +454,141 @@ public sealed class QuizService : IQuizService
                 quizId,
                 statusStr,
                 totalQuestions: quiz.TotalQuestions,
-                score: request.Score,
+                score: quiz.Score,
                 ct: ct);
         }
+
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to update quiz metadata for quiz {QuizId}", quizId);
         }
+
+        return MapToDto(quiz);
+    }
+
+    private async Task<Quiz> SaveRelationalAsync(Guid profileId, Guid quizId, SaveQuizRequest request, CancellationToken ct)
+    {
+        await using var transaction = await _db.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
+        try
+        {
+            // The mapped table and ownership column are public.quizzes and user_id. Reloading
+            // through this lock makes immutable answer validation observe the committed winner.
+            var quiz = await _db.Quizzes
+                .FromSqlRaw("SELECT * FROM quizzes WHERE id = {0} AND user_id = {1} FOR UPDATE", quizId, profileId)
+                .SingleOrDefaultAsync(ct)
+                ?? throw new QuizException(404, "quiz_not_found", "Quiz not found.");
+
+            ApplySaveMutation(quiz, request);
+            await _db.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+            return quiz;
+        }
+        catch (OperationCanceledException)
+        {
+            await RollbackQuietlyAsync(transaction);
+            throw;
+        }
+        catch (QuizException)
+        {
+            await RollbackQuietlyAsync(transaction);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            await RollbackQuietlyAsync(transaction);
+            _logger.LogError(ex, "Failed to save quiz {QuizId}.", quizId);
+            throw new QuizException(500, "quiz_save_failed",
+                "Could not save quiz progress. Please try again.");
+        }
+    }
+
+    private async Task<Quiz> SaveNonRelationalAsync(Guid profileId, Guid quizId, SaveQuizRequest request, CancellationToken ct)
+    {
+        try
+        {
+            var quiz = await _db.Quizzes
+                .SingleOrDefaultAsync(q => q.Id == quizId && q.UserId == profileId, ct)
+                ?? throw new QuizException(404, "quiz_not_found", "Quiz not found.");
+
+            ApplySaveMutation(quiz, request);
+            await _db.SaveChangesAsync(ct);
+            return quiz;
+        }
+        catch (QuizException)
+        {
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to save quiz {QuizId}.", quizId);
+            throw new QuizException(500, "quiz_save_failed",
+                "Could not save quiz progress. Please try again.");
+        }
+    }
+
+    private static async Task RollbackQuietlyAsync(Microsoft.EntityFrameworkCore.Storage.IDbContextTransaction transaction)
+    {
+        try
+        {
+            await transaction.RollbackAsync(CancellationToken.None);
+        }
+        catch
+        {
+            // The transaction is disposed by the caller; rollback is best-effort after a failed command.
+        }
+    }
+
+    private static void ApplySaveMutation(Quiz quiz, SaveQuizRequest request)
+    {
+        var questions = DeserializeQuestions(quiz.QuestionsJson);
+        if (questions.Count == 0)
+        {
+            throw new QuizException(409, "quiz_has_no_questions", "Quiz has no questions to save.");
+        }
+
+        if (request.CurrentQuestionIndex < 0 || request.CurrentQuestionIndex >= questions.Count)
+        {
+            throw new QuizException(400, "invalid_question_index", "Current question index is invalid.");
+        }
+
+        var answers = DeserializeAnswers(quiz.AnswersJson);
+        foreach (var (questionIndex, optionId) in request.Answers ?? new Dictionary<int, string?>())
+        {
+            var question = questions.FirstOrDefault(q => q.Index == questionIndex);
+            if (question is null)
+            {
+                throw new QuizException(400, "invalid_question_index", "Answer question index is invalid.");
+            }
+
+            if (string.IsNullOrWhiteSpace(optionId) || !question.Options.Any(option => option.Id == optionId))
+            {
+                throw new QuizException(400, "invalid_option_id", "Answer option id is invalid.");
+            }
+
+            if (answers.TryGetValue(questionIndex, out var storedAnswer) && !string.Equals(storedAnswer, optionId, StringComparison.Ordinal))
+            {
+                throw new QuizException(409, "answer_already_submitted", "An answer has already been submitted for this question.");
+            }
+
+            answers[questionIndex] = optionId;
+        }
+
+        var submitted = answers
+            .Where(answer => !string.IsNullOrWhiteSpace(answer.Value))
+            .ToDictionary(answer => answer.Key, _ => true);
+        var allQuestionsAnswered = questions.All(question => submitted.ContainsKey(question.Index));
+        quiz.Status = allQuestionsAnswered ? QuizStatus.Completed : QuizStatus.InProgress;
+        quiz.CurrentQuestionIndex = request.CurrentQuestionIndex;
+        quiz.AnswersJson = JsonSerializer.Serialize(answers);
+        quiz.SubmittedJson = JsonSerializer.Serialize(submitted);
+        quiz.Score = allQuestionsAnswered
+            ? questions.Count(question => answers.TryGetValue(question.Index, out var answer) && answer == question.CorrectOptionId)
+            : null;
+        quiz.UpdatedAt = DateTimeOffset.UtcNow;
     }
 
     public async Task<QuizDto?> GetByIdAsync(Guid supabaseUserId, Guid quizId, CancellationToken ct = default)
@@ -575,7 +696,10 @@ Output exactly this JSON structure (no extra text):
         return header + jsonTemplate;
     }
 
-    private static (QuizJsonParsed? Parsed, string? FailureReason) TryParseAndValidateQuizJson(string raw, int expectedCount)
+    private static (QuizJsonParsed? Parsed, string? FailureReason) TryParseAndValidateQuizJson(
+        string raw,
+        int expectedCount,
+        IReadOnlySet<string> previousQuestionKeys)
     {
         var cleaned = StripJsonFences(raw);
         if (string.IsNullOrWhiteSpace(cleaned))
@@ -669,20 +793,90 @@ Output exactly this JSON structure (no extra text):
                     $"Skipped: {skippedDueNoQuestion} missing question/options, {skippedDueOptions} wrong option count, {skippedDueCorrectId} invalid correctOptionId.");
             }
 
-            return (new QuizJsonParsed(
-                titleProp.GetString()!,
-                questions.AsReadOnly()), null);
+            var duplicateKeys = new HashSet<string>(StringComparer.Ordinal);
+            foreach (var question in questions)
+            {
+                var normalizedQuestion = NormalizeQuestionForDuplicateComparison(question.Question);
+                if (previousQuestionKeys.Contains(normalizedQuestion))
+                {
+                    return (null, "The generated quiz contains a duplicate question from this scope's recent quiz history.");
+                }
+
+                if (!duplicateKeys.Add(normalizedQuestion))
+                {
+                    return (null, "The generated quiz contains a duplicate question within the same batch.");
+                }
+            }
+
+            return (new QuizJsonParsed(titleProp.GetString()!, questions.AsReadOnly()), null);
         }
     }
 
-    private static string TruncatePreview(string value, int maxLen)
+    private string? GetAlternateModel(string? activeModel)
     {
-        if (string.IsNullOrEmpty(value))
+        var alternate = string.Equals(activeModel, _geminiOptions.Model, StringComparison.OrdinalIgnoreCase)
+            ? _groqOptions.Model
+            : _geminiOptions.Model;
+        return string.IsNullOrWhiteSpace(alternate) || string.Equals(activeModel, alternate, StringComparison.OrdinalIgnoreCase)
+            ? null
+            : alternate;
+    }
+
+    private static string BuildCanonicalScopeJson(GenerateQuizRequest request)
+    {
+        var documentIds = request.DocumentIds?
+            .Select(id => id.ToString("D"))
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(id => id, StringComparer.Ordinal)
+            .ToArray();
+        var (scopeKind, scopeIds) = documentIds is { Length: > 0 }
+            ? ("documents", documentIds)
+            : request.DocumentId is { } documentId
+                ? ("document", new[] { documentId.ToString("D") })
+                : request.FolderId is { } folderId
+                    ? ("folder", new[] { folderId.ToString("D") })
+                    : ("none", Array.Empty<string>());
+        return JsonSerializer.Serialize(new QuizScope(
+            scopeKind,
+            scopeIds,
+            NormalizeScopeValue(request.SubjectCode),
+            NormalizeScopeValue(request.Semester),
+            NormalizeScopeValue(request.TopicKeyword)), JsonOptions);
+    }
+
+    private static string? NormalizeScopeValue(string? value)
+    {
+        var normalized = string.Join(' ', (value ?? string.Empty).Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+        return normalized.Length == 0 ? null : normalized.ToLowerInvariant();
+    }
+
+    private static string BuildExclusionNote(IReadOnlyList<string> questionTexts)
+    {
+        if (questionTexts.Count == 0)
         {
-            return "(empty)";
+            return string.Empty;
         }
 
-        return value.Length <= maxLen ? value : value[..maxLen] + "...";
+        const string header = "\n\n[EXCLUDED QUESTIONS — Do NOT generate these again]\n";
+        var note = new StringBuilder(header);
+        foreach (var question in questionTexts)
+        {
+            var line = $"- {question}\n";
+            if (note.Length + line.Length > MaxExclusionPromptChars)
+            {
+                break;
+            }
+
+            note.Append(line);
+        }
+
+        return note.ToString();
+    }
+
+    private static string NormalizeQuestionForDuplicateComparison(string? question)
+    {
+        var normalized = string.Join(' ', (question ?? string.Empty).Trim().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToLowerInvariant();
+        return normalized.TrimEnd('.', '!', '?', ';', ':');
     }
 
     private static string StripJsonFences(string raw)
@@ -735,19 +929,16 @@ Output exactly this JSON structure (no extra text):
 
     private static QuizDto MapToDto(Quiz quiz)
     {
-        var questions = string.IsNullOrWhiteSpace(quiz.QuestionsJson)
-            ? new List<QuizQuestionDto>()
-            : JsonSerializer.Deserialize<List<QuizQuestionParsed>>(quiz.QuestionsJson, JsonOptions)?
-                .Select(q => new QuizQuestionDto(q.Index, q.Question, q.Subtitle, q.Options, q.CorrectOptionId, q.Explanation, q.SourceLabel))
-                .ToList() ?? new List<QuizQuestionDto>();
-
-        var answers = string.IsNullOrWhiteSpace(quiz.AnswersJson)
-            ? new Dictionary<int, string?>()
-            : JsonSerializer.Deserialize<Dictionary<int, string?>>(quiz.AnswersJson, JsonOptions) ?? new();
-
-        var submitted = string.IsNullOrWhiteSpace(quiz.SubmittedJson)
-            ? new Dictionary<int, bool>()
-            : JsonSerializer.Deserialize<Dictionary<int, bool>>(quiz.SubmittedJson, JsonOptions) ?? new();
+        var parsedQuestions = DeserializeQuestions(quiz.QuestionsJson);
+        var answers = DeserializeAnswers(quiz.AnswersJson);
+        var submitted = answers
+            .Where(answer => !string.IsNullOrWhiteSpace(answer.Value))
+            .ToDictionary(answer => answer.Key, _ => true);
+        var questions = parsedQuestions
+            .Select(question => submitted.ContainsKey(question.Index)
+                ? new QuizQuestionDto(question.Index, question.Question, question.Subtitle, question.Options, question.CorrectOptionId, question.Explanation, question.SourceLabel)
+                : new QuizQuestionDto(question.Index, question.Question, question.Subtitle, question.Options, null, null, question.SourceLabel))
+            .ToList();
 
         return new QuizDto(
             quiz.Id,
@@ -762,9 +953,26 @@ Output exactly this JSON structure (no extra text):
             quiz.CreatedAt);
     }
 
+    private static List<QuizQuestionParsed> DeserializeQuestions(string questionsJson) =>
+        string.IsNullOrWhiteSpace(questionsJson)
+            ? new List<QuizQuestionParsed>()
+            : JsonSerializer.Deserialize<List<QuizQuestionParsed>>(questionsJson, JsonOptions) ?? new List<QuizQuestionParsed>();
+
+    private static Dictionary<int, string?> DeserializeAnswers(string? answersJson) =>
+        string.IsNullOrWhiteSpace(answersJson)
+            ? new Dictionary<int, string?>()
+            : JsonSerializer.Deserialize<Dictionary<int, string?>>(answersJson, JsonOptions) ?? new Dictionary<int, string?>();
+
     private sealed record QuizJsonParsed(
         string Title,
         IReadOnlyList<QuizQuestionParsed> Questions);
+
+    private sealed record QuizScope(
+        string ScopeKind,
+        IReadOnlyList<string> ScopeIds,
+        string? SubjectCode,
+        string? Semester,
+        string? TopicKeyword);
 
     private sealed record QuizQuestionParsed(
         int Index,

@@ -1110,6 +1110,126 @@ namespace AI_Study_Hub_v2.Migrations
                     b.ToTable("quiz_attempts", (string)null);
                 });
 
+            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.RegistrationOperation", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AttemptCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("attempt_count");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("FullName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("full_name");
+
+                    b.Property<Guid?>("IdentityId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("identity_id");
+
+                    b.Property<string>("LastErrorCode")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("last_error_code");
+
+                    b.Property<DateTimeOffset?>("LeaseExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("lease_expires_at");
+
+                    b.Property<Guid?>("LeaseToken")
+                        .HasColumnType("uuid")
+                        .HasColumnName("lease_token");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<string>("NormalizedEmail")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("normalized_email");
+
+                    b.Property<Guid>("ProfileUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("profile_user_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasDefaultValue("Prepared")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasMaxLength(15)
+                        .HasColumnType("character varying(15)")
+                        .HasColumnName("username");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IdentityId")
+                        .IsUnique()
+                        .HasFilter("identity_id IS NOT NULL");
+
+                    b.HasIndex("LeaseExpiresAt");
+
+                    b.HasIndex("NormalizedEmail")
+                        .IsUnique()
+                        .HasFilter("status NOT IN ('Compensated', 'Conflict', 'Expired')");
+
+                    b.HasIndex("ProfileUserId")
+                        .IsUnique();
+
+                    b.HasIndex("Username")
+                        .IsUnique()
+                        .HasFilter("status NOT IN ('Compensated', 'Conflict', 'Expired')");
+
+                    b.HasIndex("Status", "NextAttemptAt", "UpdatedAt");
+
+                    b.ToTable("registration_operations", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_registration_operations_attempt_count_non_negative", "attempt_count >= 0");
+
+                            t.HasCheckConstraint("ck_registration_operations_id_non_empty", "id <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("ck_registration_operations_identity_id_non_empty", "identity_id IS NULL OR identity_id <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("ck_registration_operations_identity_required", "status NOT IN ('IdentityConfirmed', 'FinalizingProfile', 'ProfileCommitted', 'Completed', 'CompensationRequired', 'Compensating') OR identity_id IS NOT NULL");
+
+                            t.HasCheckConstraint("ck_registration_operations_lease_pair", "(lease_token IS NULL AND lease_expires_at IS NULL) OR (lease_token IS NOT NULL AND lease_expires_at IS NOT NULL)");
+
+                            t.HasCheckConstraint("ck_registration_operations_lease_token_non_empty", "lease_token IS NULL OR lease_token <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("ck_registration_operations_profile_user_id_non_empty", "profile_user_id <> '00000000-0000-0000-0000-000000000000'::uuid");
+
+                            t.HasCheckConstraint("ck_registration_operations_status", "status IN ('Prepared', 'CreatingIdentity', 'IdentityConfirmed', 'FinalizingProfile', 'ProfileCommitted', 'Completed', 'CompensationRequired', 'Compensating', 'Compensated', 'Conflict', 'Expired')");
+                        });
+                });
+
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Role", b =>
                 {
                     b.Property<int>("Id")

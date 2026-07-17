@@ -1,0 +1,81 @@
+# AI Study Hub / SWP391 OpenCode Instructions
+
+## Canonical project
+
+- Repository: `D:\FPT\summer2026\SWP391\AI-Study-Hub-v2`
+- Solution: `AI_Study_Hub_v2\AI_Study_Hub_v2.sln`
+- Project documentation: `..\Project-Docs`
+- Durable handoffs: `..\Project-Docs\sessions`
+- Historical project notes: `previous_session`
+
+Never infer project state from chat memory. Verify files, Git state, and saved session notes.
+
+## Mandatory session bootstrap
+
+At the start of every new session:
+
+1. Read `PROJECT_MEMORY.md` and `_CURRENT_SESSION.md` (also injected by `opencode.json`).
+2. Read the newest relevant handoff from `..\Project-Docs\sessions` when `_CURRENT_SESSION.md` is missing, stale, or closed.
+3. Run `git branch --show-current` and `git status --short --branch --untracked-files=all`.
+4. Reconcile any mismatch between saved notes and the working tree before editing.
+5. Select only the skills needed for the current task.
+
+The commands `/resume-swp` and `/handoff-swp` implement this protocol.
+
+## Agent team
+
+The source of truth is the global `oh-my-opencode-slim.json` preset `aibox`.
+
+- `orchestrator`: plans and delegates.
+- `explorer`: searches the repository and maps code paths.
+- `librarian`: documentation and external research.
+- `oracle`: architecture, debugging, and high-judgment review.
+- `designer`: UI/UX and visual implementation guidance.
+- `fixer`: focused implementation and repairs.
+- `observer`: screenshots, PDFs, and other visual evidence.
+
+Do not recreate these agents inside a chat. Delegate to the configured agents when their specialty applies.
+
+## Skill routing
+
+- Start project work with `aistudy`.
+- Use `one-command-continue` when the user says `tiếp tục SWP` or equivalent.
+- Use `existing-project` for scoped code changes in the existing solution.
+- Use `ui-progress` for UI inventory and prioritized UI backlog.
+- Use `role-audit` for role/permission comparisons.
+- Use `external-test-tools` for Postman, browser, security, load, or external verification.
+- Use `codemap` for broad repository mapping and `deepwork` only for genuinely complex multi-step work.
+
+Do not activate every skill at once. Choose one primary workflow and only the supporting skills it requires.
+
+## Session persistence
+
+- `_CURRENT_SESSION.md` is the live recovery point. Update it after meaningful edits, decisions, tests, failures, or completed milestones.
+- Keep logs evidence-based and never include secrets.
+- On pause or close, update `_CURRENT_SESSION.md` and write a dated handoff under `..\Project-Docs\sessions`.
+- Do not modify closed historical handoffs; write a new handoff or correction.
+
+## Safety
+
+- Preserve all uncommitted work unless the user explicitly authorizes a revert.
+- Do not print, commit, or copy secrets from `.env`, user-secrets, tokens, or credentials.
+- Ask before destructive migrations, data deletion, reset, force operations, push, merge, rebase, or deployment.
+- Do not commit or push unless explicitly requested.
+
+## Technical direction
+
+- .NET 8, ASP.NET Core, Blazor/MudBlazor, EF Core, PostgreSQL/pgvector, Supabase, and RAG services.
+- Preserve existing API and backend contracts during UI work.
+- Keep the premium dark purple/cyan glass visual direction and existing glow/orb motif.
+- Prefer focused incremental edits over broad rewrites.
+
+## Common checks
+
+Run from the repository root:
+
+```powershell
+git status --short --branch --untracked-files=all
+dotnet build "AI_Study_Hub_v2\AI_Study_Hub_v2.sln" --nologo
+dotnet test "AI_Study_Hub_v2\AI_Study_Hub_v2.sln" --nologo --no-build
+Get-NetTCPConnection -LocalPort 5240 -ErrorAction SilentlyContinue
+```

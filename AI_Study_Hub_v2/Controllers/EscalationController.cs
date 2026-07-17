@@ -16,24 +16,14 @@ namespace AI_Study_Hub_v2.Controllers;
 public sealed class EscalationController : ControllerBase
 {
     private readonly IEscalationService _escalation;
-    private readonly ILogger<EscalationController> _logger;
     private readonly AppDbContext _db;
+    private readonly ILogger<EscalationController> _logger;
 
-    public EscalationController(IEscalationService escalation, ILogger<EscalationController> logger, AppDbContext db)
+    public EscalationController(IEscalationService escalation, AppDbContext db, ILogger<EscalationController> logger)
     {
         _escalation = escalation;
-        _logger = logger;
         _db = db;
-    }
-
-    private async Task<Guid?> GetLocalUserIdAsync()
-    {
-        var supabaseUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-        if (supabaseUserIdClaim is null || !Guid.TryParse(supabaseUserIdClaim.Value, out var supabaseUserId))
-            return null;
-
-        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
-        return user?.Id;
+        _logger = logger;
     }
 
     [HttpPost]
@@ -45,7 +35,7 @@ public sealed class EscalationController : ControllerBase
     {
         try
         {
-            var userId = await GetSupabaseUserIdAsync();
+            var userId = await GetLocalUserIdAsync();
             if (userId is null)
                 return Unauthorized();
 
@@ -80,21 +70,11 @@ public sealed class EscalationController : ControllerBase
     [ProducesResponseType(typeof(IReadOnlyList<DocumentEscalationDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<DocumentEscalationDto>>> GetMy(CancellationToken cancellationToken)
     {
-        var userId = await GetSupabaseUserIdAsync();
+        var userId = await GetLocalUserIdAsync();
         if (userId is null)
             return Unauthorized();
 
         return Ok(await _escalation.GetMyAsync(userId.Value, cancellationToken));
-    }
-
-    private async Task<Guid?> GetSupabaseUserIdAsync()
-    {
-        var supabaseUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-        if (supabaseUserIdClaim is null || !Guid.TryParse(supabaseUserIdClaim.Value, out var supabaseUserId))
-            return null;
-
-        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
-        return user?.Id;
     }
 
     [HttpPatch("{id:guid}")]
@@ -107,11 +87,7 @@ public sealed class EscalationController : ControllerBase
     {
         try
         {
-            var userIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
-            if (userIdClaim is null || !Guid.TryParse(userIdClaim.Value, out var userId))
-                return Unauthorized();
-
-            var result = await _escalation.ResolveAsync(id, userId, request, cancellationToken);
+            var result = await _escalation.ResolveAsync(id, request, cancellationToken);
             return Ok(result);
         }
         catch (AdminException ex)
@@ -123,5 +99,17 @@ public sealed class EscalationController : ControllerBase
             _logger.LogError(ex, "Failed to resolve escalation {EscalationId}", id);
             return StatusCode(500, new ApiErrorResponse { Code = "unexpected_error", Message = "An unexpected error occurred." });
         }
+    }
+
+    private async Task<Guid?> GetLocalUserIdAsync()
+    {
+        var supabaseUserIdClaim = User.FindFirst(ClaimTypes.NameIdentifier) ?? User.FindFirst("sub");
+        if (supabaseUserIdClaim is null || !Guid.TryParse(supabaseUserIdClaim.Value, out var supabaseUserId))
+            return null;
+
+        var user = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+        return user?.Id;
     }
 }
