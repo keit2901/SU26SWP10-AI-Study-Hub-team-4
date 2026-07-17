@@ -11,7 +11,7 @@ public interface IEscalationService
     Task<IReadOnlyList<DocumentEscalationDto>> GetPendingAsync(CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(Guid userId, CancellationToken ct = default);
-    Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, Guid resolvedByUserId, ResolveEscalationRequest request, CancellationToken ct = default);
+    Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, ResolveEscalationRequest request, CancellationToken ct = default);
 }
 
 public sealed class EscalationService : IEscalationService
@@ -64,7 +64,6 @@ public sealed class EscalationService : IEscalationService
         return result;
     }
 
-
     public async Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default)
     {
         var escalationIds = await _db.DocumentEscalations
@@ -96,7 +95,7 @@ public sealed class EscalationService : IEscalationService
         return result;
     }
 
-    public async Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, Guid resolvedByUserId, ResolveEscalationRequest request, CancellationToken ct = default)
+    public async Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, ResolveEscalationRequest request, CancellationToken ct = default)
     {
         var escalation = await _db.DocumentEscalations
             .FirstOrDefaultAsync(e => e.Id == escalationId, ct)
@@ -104,7 +103,6 @@ public sealed class EscalationService : IEscalationService
 
         escalation.EscalationStatus = request.Status;
         escalation.AdminResponse = request.AdminResponse;
-        escalation.ResolvedByUserId = resolvedByUserId;
         escalation.ResolvedAt = DateTimeOffset.UtcNow;
         await _db.SaveChangesAsync(ct);
 
@@ -115,7 +113,6 @@ public sealed class EscalationService : IEscalationService
     {
         var e = await _db.DocumentEscalations
             .Include(x => x.EscalatedByUser)
-            .Include(x => x.ResolvedByUser)
             .Include(x => x.Items).ThenInclude(i => i.Document)
             .AsNoTracking()
             .FirstAsync(x => x.Id == escalationId, ct);
@@ -123,8 +120,7 @@ public sealed class EscalationService : IEscalationService
         return new DocumentEscalationDto(
             e.Id, e.FolderId,
             e.EscalatedByUser.FullName,
-            e.Reason, e.EscalationStatus, e.AdminResponse,
-            e.ResolvedByUser?.FullName,
+            e.Reason, e.EscalationStatus, e.AdminResponse, null,
             e.CreatedAt, e.ResolvedAt,
             e.Items.Select(i => new DocumentEscalationItemDto(i.DocumentId, i.Document.FileName, i.RejectReason)).ToList());
     }

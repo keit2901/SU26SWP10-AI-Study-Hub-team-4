@@ -1,0 +1,29 @@
+---
+description: Resume SWP391 work from persistent project memory
+---
+
+Resume AI Study Hub / SWP391 work without asking the user to repeat project context.
+
+Confirm that the OpenCode working directory is this repository root. If it is not, stop and tell the user to exit and run `swp`; a slash command cannot move an existing OpenCode session to another project.
+
+Repository files are the source of truth, not the OpenCode chat/session list.
+
+Read in this order:
+
+1. `AGENTS.md`
+2. `PROJECT_MEMORY.md`
+3. `_CURRENT_SESSION.md`
+4. The newest relevant `previous_session\handoff_*.md` only when the live session is missing, stale, or closed
+5. Task-specific documents under `Project-Docs\` only when required
+
+Then run read-only verification:
+
+- `git branch --show-current`
+- `git status --short --branch --untracked-files=all`
+- Check port 5240 only when runtime work is relevant
+
+Reconcile saved state with the verified working tree. Select the correct primary skill and delegate to configured agents when useful.
+
+Output a concise Continue Summary containing branch, working tree, active task, selected skill, next action, and risk. Continue automatically when safe; ask only for risky operations.
+
+User arguments: `$ARGUMENTS`
