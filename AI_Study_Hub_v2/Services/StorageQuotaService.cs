@@ -111,13 +111,23 @@ public sealed class StorageQuotaService : IStorageQuotaService
             .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct)
             ?? throw new PlanException(404, "user_not_found", "User profile not found.");
 
-        var effectivePlan = await GetEffectivePlanAsync(user.Id, ct);
+        var activeUserPlan = await _db.UserPlans
+            .AsNoTracking()
+            .Include(up => up.Plan)
+            .Where(up => up.UserId == user.Id
+                         && up.Status == "active"
+                         && (up.ExpiresAt == null || up.ExpiresAt > DateTimeOffset.UtcNow))
+            .OrderByDescending(up => up.AssignedAt)
+            .FirstOrDefaultAsync(ct);
+
+        var effectivePlan = activeUserPlan?.Plan ?? _planService.GetFreePlan();
 
         return new StorageQuotaSnapshotDto(
             user.StorageUsedBytes,
             effectivePlan.StorageQuotaBytes,
             effectivePlan.PlanKey,
-            effectivePlan.DisplayName);
+            effectivePlan.DisplayName,
+            activeUserPlan?.ExpiresAt);
     }
 
     public async Task ValidateDocumentCountAsync(

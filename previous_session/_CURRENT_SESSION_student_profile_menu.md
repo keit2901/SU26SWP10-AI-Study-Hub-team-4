@@ -118,6 +118,46 @@
 - `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-build --filter "FullyQualifiedName~AdminAccessPolicyTests|FullyQualifiedName~PlansControllerTests"` -> Passed 22, Skipped 1
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore` compiled updated code and again failed only at final apphost copy because `AI_Study_Hub_v2.exe` was locked by running process `AI_Study_Hub_v2 (11932)`
 
+### 2026-07-17T23:58:00+07:00 - Profile wrapper simplified further
+- Updated `AI_Study_Hub_v2/Components/Shared/StudentProfileDialog.razor`
+  - removed the `Account` kicker text from the profile popup header
+  - tightened the `Profile` title spacing upward after removing the kicker
+- Updated `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor`
+  - removed the large outer panel/card styling entirely
+  - page and compact variants now render without outer wrapper padding so only inner profile blocks remain visible
+
+### 2026-07-17T23:59:00+07:00 - Payment popup restyled to match profile
+- Rebuilt `AI_Study_Hub_v2/Components/Shared/StudentPaymentHistoryDialog.razor`
+  - dialog wrapper now uses stronger rounded corners like the profile popup
+  - removed the `Account` kicker
+  - removed the top expiry note and `10 / page` badge
+  - replaced the top boxed summary with a flatter `Free`/plan label plus a short underline
+  - inserted simple divider lines before `Lịch sử thanh toán` and `Chi tiết giao dịch`
+  - changed payment pagination from 10 items per page to 4 items per page
+  - softened the detail section so it no longer uses the old boxed-card treatment
+
+### 2026-07-17T23:59:00+07:00 - Verification refresh
+- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-build --filter "FullyQualifiedName~AdminAccessPolicyTests|FullyQualifiedName~PlansControllerTests"` -> Passed 22, Skipped 1
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore` compiled updated code and again failed only at final apphost copy because `AI_Study_Hub_v2.exe` was locked by running process `AI_Study_Hub_v2 (16628)`
+
+### 2026-07-17T23:59:30+07:00 - Payment dialog logic simplified and backend expiry surfaced
+- Updated `AI_Study_Hub_v2/Dtos/StorageQuotaSnapshotDto.cs`
+  - added nullable `ExpiresAt` so the current-plan snapshot can expose real plan expiry
+- Updated `AI_Study_Hub_v2/Services/StorageQuotaService.cs`
+  - `GetSnapshotAsync` now reads the active `UserPlan` directly and returns its real `ExpiresAt`
+  - this removes the need for UI-side inferred/fake expiry logic
+- Reworked `AI_Study_Hub_v2/Components/Shared/StudentPaymentHistoryDialog.razor`
+  - removed the underline below `Free`
+  - removed the transaction detail section entirely
+  - removed the per-row `Xem` action and reduced the history table to date / amount / status
+  - if there are no payments, the history section now only shows `Chưa có lịch sử thanh toán`
+  - under the current plan label, the dialog now shows real expiry text from backend (`Expires on ...` or `No expiration`)
+  - expired status text now renders in English as `Expired`
+
+### 2026-07-17T23:59:30+07:00 - Verification refresh
+- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-build --filter "FullyQualifiedName~AdminAccessPolicyTests|FullyQualifiedName~PlansControllerTests"` -> Passed 22, Skipped 1
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore` compiled updated code and again failed only at final apphost copy because `AI_Study_Hub_v2.exe` was locked by running process `AI_Study_Hub_v2 (31948)`
+
 ## 4. Files changed this session
 | Path | Change |
 |---|---|
