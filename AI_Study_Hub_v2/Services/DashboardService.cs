@@ -112,13 +112,33 @@ public class DashboardService : IDashboardService
             var subject = firstDoc?.SubjectCode ?? "N/A";
             var semester = firstDoc?.Semester ?? "N/A";
 
-            string status = "Pending";
-            if (f.Documents.Any(d => d.Status == DocumentStatus.Failed))
-                status = "Rejected";
+            string status = "Private";
+            if (f.ShareStatus != FolderStatus.None)
+            {
+                status = f.ShareStatus switch
+                {
+                    FolderStatus.PendingShare => "Pending Share",
+                    FolderStatus.Approved => "Shared",
+                    FolderStatus.Rejected => "Rejected",
+                    _ => "Private"
+                };
+            }
+            else if (f.Documents.Any(d => d.Status == DocumentStatus.Failed))
+            {
+                status = "Failed";
+            }
             else if (f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing))
-                status = "Pending";
+            {
+                status = "Processing";
+            }
             else if (f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready))
-                status = "Approved";
+            {
+                status = "Private";
+            }
+            else
+            {
+                status = "Empty";
+            }
 
             return new FolderViewModel
             {

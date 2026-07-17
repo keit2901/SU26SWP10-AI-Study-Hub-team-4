@@ -70,6 +70,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
                 return Failure(documentId, "Document does not exist or does not belong to the caller.");
             }
 
+            document.Status = DocumentStatus.Processing;
             document.ErrorMessage = null;
             await _db.SaveChangesAsync(cancellationToken);
 
@@ -240,14 +241,11 @@ return new DocumentIngestionResult(
     Success: true,
     ErrorMessage: null);
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
         catch (Exception ex)
         {
+            var isCancellation = ex is OperationCanceledException;
             _logger.LogWarning(ex, "Document ingestion failed: id={DocumentId}", documentId);
-            var message = TrimError(ex.Message);
+            var message = isCancellation ? "Ingestion was canceled or timed out." : TrimError(ex.Message);
 
             if (document is not null)
             {
@@ -267,6 +265,11 @@ return new DocumentIngestionResult(
                 {
                     _logger.LogError(saveEx, "Failed to persist ingestion failure state for document {DocumentId}.", document.Id);
                 }
+            }
+
+            if (isCancellation)
+            {
+                throw;
             }
 
             return Failure(documentId, message);

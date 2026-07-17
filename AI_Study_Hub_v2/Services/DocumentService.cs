@@ -205,7 +205,7 @@ public sealed class DocumentService : IDocumentService
                 SubjectCode = request.SubjectCode.Trim().ToUpperInvariant(),
                 Semester = request.Semester.Trim().ToUpperInvariant(),
                 PageCount = null,
-                Status = DocumentStatus.Ready,
+                Status = IsIngestionCandidate(canonicalContentType) ? DocumentStatus.Processing : DocumentStatus.Ready,
                 ErrorMessage = null,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -604,6 +604,7 @@ public sealed class DocumentService : IDocumentService
         CreatedAt = doc.CreatedAt,
         UpdatedAt = doc.UpdatedAt,
         DownloadUrl = signedUrl,
+        ReviewStatus = doc.ReviewStatus,
     };
 
     /// <summary>
