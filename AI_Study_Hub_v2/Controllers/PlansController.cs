@@ -48,6 +48,7 @@ public sealed class PlansController : ControllerBase
 
     /// <summary>Returns all active plans, ordered by SortOrder.</summary>
     [HttpGet]
+    [AllowAnonymous]
     [ProducesResponseType(typeof(IReadOnlyList<PlanDto>), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     public IActionResult GetPlans()

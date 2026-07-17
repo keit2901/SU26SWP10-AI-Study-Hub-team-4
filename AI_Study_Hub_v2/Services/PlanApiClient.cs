@@ -20,13 +20,14 @@ public sealed class PlanApiClient
 
     /// <summary>Fetches the list of active plans.</summary>
     public async Task<IReadOnlyList<PlanDto>> GetPlansAsync(
-        string accessToken,
+        string? accessToken = null,
         CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
-
         using var req = new HttpRequestMessage(HttpMethod.Get, "api/plans");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        if (!string.IsNullOrWhiteSpace(accessToken))
+        {
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        }
 
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)
@@ -130,14 +131,15 @@ public sealed class PlanApiClient
 
     /// <summary>Verifies VNPay return URL query parameters.</summary>
     public async Task<ReturnUrlResult> VerifyReturnUrlAsync(
-        string accessToken,
+        string? accessToken,
         string queryString,
         CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
-
         using var req = new HttpRequestMessage(HttpMethod.Get, $"api/vnpay/return{queryString}");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        if (!string.IsNullOrWhiteSpace(accessToken))
+        {
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        }
 
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)

@@ -349,7 +349,7 @@ public class DashboardService : IDashboardService
         }
     }
 
-    public async Task<UserAnalyticsDto> GetAdminAnalyticsAsync(Guid? folderId = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
+    public async Task<UserAnalyticsDto> GetAdminAnalyticsAsync(Guid? folderId = null, int page = 1, int pageSize = 10, CancellationToken ct = default)
     {
         IQueryable<Document> query;
 

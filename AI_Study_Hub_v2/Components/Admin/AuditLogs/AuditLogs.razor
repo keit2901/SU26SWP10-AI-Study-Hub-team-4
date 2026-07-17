@@ -148,7 +148,7 @@
     {
         <div class="audit-list-card mb-6">
             <div class="audit-rows-container">
-                @foreach (var log in FilteredLogs)
+                @foreach (var log in PagedFilteredLogs)
                 {
                     <div class="audit-row-custom">
                         <div class="audit-row-summary" @onclick="@(() => ToggleExpand(log.RequestId))">
@@ -209,12 +209,31 @@
 
             <!-- Pagination Footer -->
             <div class="pagination-row-custom">
-                <span class="pagination-info">Showing 1-@FilteredLogs.Count() of @FilteredLogs.Count() events</span>
-                <div class="pagination-controls">
-                    <button class="pag-btn" disabled><MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" /></button>
-                    <span class="pag-active">1</span>
-                    <button class="pag-btn" disabled><MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" /></button>
-                </div>
+                <span class="pagination-info">Total @FilteredLogsCount event@(FilteredLogsCount == 1 ? string.Empty : "s")</span>
+                @if (TotalAuditPages > 1)
+                {
+                    <div class="pagination-controls">
+                        <button class="pag-btn" disabled="@(DisplayAuditPage <= 1)" @onclick="() => GoToAuditPage(DisplayAuditPage - 1)"><MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" /></button>
+                        @foreach (var pageNumber in GetAuditPageNumbers())
+                        {
+                            if (pageNumber == -1)
+                            {
+                                <span class="footer-page-ellipsis">...</span>
+                            }
+                            else if (pageNumber == DisplayAuditPage)
+                            {
+                                <span class="pag-active">@pageNumber</span>
+                            }
+                            else
+                            {
+                                var current = pageNumber;
+                                <button class="pag-btn" @onclick="() => GoToAuditPage(current)">@current</button>
+                            }
+                        }
+                        <button class="pag-btn" disabled="@(DisplayAuditPage >= TotalAuditPages)" @onclick="() => GoToAuditPage(DisplayAuditPage + 1)"><MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" /></button>
+                        <input type="text" class="footer-page-jump-input" placeholder="Page..." value="@_pageJumpInput" @oninput="HandlePageJumpInput" @onkeydown="HandlePageJumpKeyDown" />
+                    </div>
+                }
             </div>
         </div>
     }
@@ -712,6 +731,7 @@
         display: flex;
         align-items: center;
         gap: 6px;
+        flex-wrap: wrap;
     }
 
     .pag-btn {
@@ -740,6 +760,25 @@
         justify-content: center;
         color: #4648d4;
         font-weight: 700;
+    }
+
+    .footer-page-ellipsis {
+        padding: 0 4px;
+        color: #767586;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .footer-page-jump-input {
+        width: 86px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid #c7c6d5;
+        background: #ffffff;
+        color: #575e72;
+        padding: 0 10px;
+        font-size: 12px;
+        outline: none;
     }
 
     /* Dark theme overrides */
@@ -812,6 +851,7 @@
     private const string MediumSeverity = "Medium";
     private const string LowSeverity = "Low";
     private const string ConfigChangeAction = "CONFIG_CHANGE";
+    private const int AuditPageSize = 10;
 
     private readonly List<AuditLogRow> _logs = new();
     private readonly HashSet<string> _expandedRequests = new();
@@ -824,6 +864,8 @@
     private string? _selectedDateString;
     private string? _errorMessage;
     private bool _loadStarted;
+    private int _currentPage = 1;
+    private string _pageJumpInput = string.Empty;
 
     private IEnumerable<AuditLogRow> FilteredLogs => _logs
         .Where(MatchesAction)
@@ -832,6 +874,16 @@
         .Where(MatchesDateRange)
         .Where(MatchesSearch)
         .OrderByDescending(log => log.CreatedAt);
+
+    private int FilteredLogsCount => FilteredLogs.Count();
+
+    private int TotalAuditPages => Math.Max(1, (int)Math.Ceiling(FilteredLogsCount / (double)AuditPageSize));
+
+    private int DisplayAuditPage => Math.Clamp(_currentPage, 1, TotalAuditPages);
+
+    private IEnumerable<AuditLogRow> PagedFilteredLogs => FilteredLogs
+        .Skip((DisplayAuditPage - 1) * AuditPageSize)
+        .Take(AuditPageSize);
 
     private IEnumerable<string> ActiveFilters
     {
@@ -932,24 +984,28 @@
     private void OnSearchInput(ChangeEventArgs args)
     {
         _searchText = args.Value?.ToString() ?? "";
+        _currentPage = 1;
     }
 
     private void OnActionChanged(ChangeEventArgs args)
     {
         _selectedAction = args.Value?.ToString();
         if (_selectedAction == "") _selectedAction = null;
+        _currentPage = 1;
     }
 
     private void OnActorChanged(ChangeEventArgs args)
     {
         _selectedActor = args.Value?.ToString();
         if (_selectedActor == "") _selectedActor = null;
+        _currentPage = 1;
     }
 
     private void OnSeverityChanged(ChangeEventArgs args)
     {
         _selectedSeverity = args.Value?.ToString();
         if (_selectedSeverity == "") _selectedSeverity = null;
+        _currentPage = 1;
     }
 
     private void OnDateInputChanged(ChangeEventArgs args)
@@ -964,6 +1020,8 @@
             _selectedDate = null;
             _selectedDateString = null;
         }
+
+        _currentPage = 1;
     }
 
     private Task RemoveFilterAsync(string filter)
@@ -986,6 +1044,7 @@
             _selectedDateString = null;
         }
 
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
@@ -997,7 +1056,71 @@
         _selectedSeverity = null;
         _selectedDate = null;
         _selectedDateString = null;
+        _currentPage = 1;
+        _pageJumpInput = string.Empty;
         return Task.CompletedTask;
+    }
+
+    private void GoToAuditPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, TotalAuditPages);
+    }
+
+    private List<int> GetAuditPageNumbers() => BuildSlidingPageNumbers(TotalAuditPages, DisplayAuditPage);
+
+    private static List<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var i = 1; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var i = 1; i <= 3; i++) pages.Add(i);
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+            for (var i = total - 2; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i);
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(_pageJumpInput, out var page))
+        {
+            GoToAuditPage(page);
+        }
+
+        _pageJumpInput = string.Empty;
     }
 
     private bool MatchesAction(AuditLogRow log)
