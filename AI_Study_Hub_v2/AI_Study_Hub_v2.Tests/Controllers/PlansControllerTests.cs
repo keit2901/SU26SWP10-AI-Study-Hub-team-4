@@ -128,6 +128,63 @@ public class PlansControllerTests
     // ── PurchasePlan tests ──
 
     [Test]
+    public async Task GetMyPaymentTransactions_ReturnsOnlyCurrentUsersTransactions()
+    {
+        var supabaseUserId = Guid.NewGuid();
+        SeedUser(supabaseUserId);
+        var user = await _db.Users.SingleAsync(u => u.SupabaseUserId == supabaseUserId);
+
+        var otherUser = new User
+        {
+            Id = Guid.NewGuid(),
+            SupabaseUserId = Guid.NewGuid(),
+            Username = "otheruser",
+            FullName = "Other User",
+            RoleId = 2,
+            IsActive = true,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        _db.Users.Add(otherUser);
+
+        _db.PaymentTransactions.AddRange(
+            new PaymentTransaction
+            {
+                Id = Guid.NewGuid(),
+                UserId = user.Id,
+                TxnRef = "VP_student_1",
+                PlanKey = "pro",
+                BillingCycle = "monthly",
+                AmountVnd = 50_000,
+                Status = "completed",
+                CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-5)
+            },
+            new PaymentTransaction
+            {
+                Id = Guid.NewGuid(),
+                UserId = otherUser.Id,
+                TxnRef = "VP_other_1",
+                PlanKey = "unlimited",
+                BillingCycle = "yearly",
+                AmountVnd = 1_000_000,
+                Status = "completed",
+                CreatedAt = DateTimeOffset.UtcNow.AddMinutes(-1)
+            });
+        await _db.SaveChangesAsync();
+
+        var sut = BuildSut(Principal(supabaseUserId));
+
+        var result = await sut.GetMyPaymentTransactions(12, CancellationToken.None);
+
+        var okResult = result.Should().BeOfType<OkObjectResult>().Subject;
+        var transactions = okResult.Value.Should().BeAssignableTo<IReadOnlyList<PaymentTransactionDto>>().Subject;
+        transactions.Should().HaveCount(1);
+        transactions[0].UserId.Should().Be(user.Id);
+        transactions[0].UserName.Should().Be(user.Username);
+        transactions[0].PlanKey.Should().Be("pro");
+    }
+
+    [Test]
     public async Task PurchasePlan_InvalidPlanKey_ReturnsNotFound()
     {
         var supabaseUserId = Guid.NewGuid();

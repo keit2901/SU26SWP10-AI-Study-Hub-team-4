@@ -59,6 +59,27 @@ public sealed class PlanApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    /// <summary>Fetches recent payment transactions for the calling user.</summary>
+    public async Task<IReadOnlyList<PaymentTransactionDto>> GetMyPaymentTransactionsAsync(
+        string accessToken,
+        int take = 12,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/plans/payments?take={take}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            return await resp.Content.ReadFromJsonAsync<List<PaymentTransactionDto>>(cancellationToken: ct)
+                ?? new List<PaymentTransactionDto>();
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     /// <summary>Purchases (or upgrades to) a plan for the calling user.</summary>
     public async Task<PaymentUrlResponse> PurchasePlanAsync(
         string accessToken,
