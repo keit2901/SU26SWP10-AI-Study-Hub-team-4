@@ -221,11 +221,18 @@
             var uri = new Uri(Navigation.Uri);
             var queryParams = System.Web.HttpUtility.ParseQueryString(uri.Query);
             var txnRef = queryParams["txnRef"] ?? string.Empty;
+            var status = queryParams["status"] ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(txnRef))
             {
                 _result = new ReturnUrlResult(false, "error", null, 0, "No transaction reference found.");
                 return;
+            }
+
+            // If user cancelled on PayOS checkout, expire the transaction immediately
+            if (string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                await PlanApi.CancelPaymentAsync(txnRef);
             }
 
             _result = await PlanApi.GetPaymentStatusAsync(txnRef);

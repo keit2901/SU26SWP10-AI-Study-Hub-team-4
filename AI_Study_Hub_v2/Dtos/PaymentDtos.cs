@@ -19,5 +19,8 @@ public sealed record ReturnUrlResult(
     long AmountVnd,
     string? ErrorMessage);
 
+public sealed record CancelPaymentResponse(
+    bool Cancelled);
+
 public sealed record PurchaseRetryRequest(
     string TxnRef);

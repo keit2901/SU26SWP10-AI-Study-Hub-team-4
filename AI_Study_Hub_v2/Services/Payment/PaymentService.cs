@@ -55,38 +55,17 @@ public sealed class PaymentService : IPaymentService
         if (plan is null)
             throw new InvalidOperationException("Plan not found");
 
-        // FC-04: Check for existing pending payment — expire if different plan
-        var existingPending = await _db.PaymentTransactions
-            .FirstOrDefaultAsync(pt => pt.UserId == userId && pt.Status == "pending", ct);
-        if (existingPending is not null)
+        // FC-04: Expire any existing pending transactions so each purchase gets a fresh QR
+        var existingPendings = await _db.PaymentTransactions
+            .Where(pt => pt.UserId == userId && pt.Status == "pending")
+            .ToListAsync(ct);
+        foreach (var pending in existingPendings)
         {
-            var expiresAt = existingPending.ExpiresAt ?? existingPending.CreatedAt.AddMinutes(_settings.ExpireMinutes);
-
-            if (expiresAt > now)
-            {
-                if (string.Equals(existingPending.PlanKey, planKey, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(existingPending.BillingCycle, billingCycle, StringComparison.OrdinalIgnoreCase))
-                {
-                    // Same plan — reuse existing payment link
-                    var paymentUrl = ExtractPaymentUrlFromJson(existingPending.VnpayResponseJson);
-                    if (!string.IsNullOrWhiteSpace(paymentUrl))
-                    {
-                        return new PaymentUrlResponse(
-                            paymentUrl,
-                            existingPending.TxnRef,
-                            existingPending.PlanKey,
-                            existingPending.BillingCycle,
-                            existingPending.AmountVnd,
-                            expiresAt);
-                    }
-                }
-            }
-
-            existingPending.Status = "expired";
-            existingPending.ErrorMessage = "Payment superseded by a new purchase attempt.";
-            existingPending.CompletedAt = now;
-            await _db.SaveChangesAsync(ct);
+            pending.Status = "expired";
+            pending.ErrorMessage = "Superseded by a new purchase attempt.";
+            pending.CompletedAt = now;
         }
+        if (existingPendings.Count > 0) await _db.SaveChangesAsync(ct);
 
         var amountVnd = billingCycle == "yearly"
             ? (plan.YearlyPriceVnd ?? 0)
@@ -241,6 +220,27 @@ public sealed class PaymentService : IPaymentService
             _logger.LogInformation("Payment failed for txn {TxnRef}: status={Status}", txnRef, verification.Status);
             return new WebhookResult(true, "Confirmed.");
         }
+    }
+
+    /// <summary>
+    /// Marks a pending transaction as expired/cancelled.
+    /// Called when the user returns via PayOS cancelUrl.
+    /// </summary>
+    public async Task<bool> CancelTransactionAsync(string txnRef, CancellationToken ct)
+    {
+        var txn = await _db.PaymentTransactions
+            .FirstOrDefaultAsync(pt => pt.TxnRef == txnRef, ct);
+
+        if (txn is null || txn.Status != "pending")
+            return false;
+
+        txn.Status = "expired";
+        txn.ErrorMessage = "User cancelled the payment.";
+        txn.CompletedAt = DateTimeOffset.UtcNow;
+        await _db.SaveChangesAsync(ct);
+
+        _logger.LogInformation("Transaction {TxnRef} cancelled by user.", txnRef);
+        return true;
     }
 
     /// <summary>
