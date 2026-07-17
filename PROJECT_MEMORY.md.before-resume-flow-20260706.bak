@@ -1,0 +1,38 @@
+# AI Study Hub Persistent Memory
+
+This file stores durable project facts that must survive OpenCode session changes. Chat history is disposable; this file and `_CURRENT_SESSION.md` are not.
+
+## Stable identity
+
+- Course/project: FPT University SWP391, AI Study Hub team 4.
+- Canonical repository: `D:\FPT\summer2026\SWP391\AI-Study-Hub-v2`.
+- Primary solution: `AI_Study_Hub_v2\AI_Study_Hub_v2.sln`.
+- Remote: `https://github.com/keit2901/SU26SWP10-AI-Study-Hub-team-4`.
+- Product: .NET 8 Blazor/MudBlazor academic document platform with RAG chat, citations, administration, PostgreSQL/pgvector, and Supabase integrations.
+
+## Durable context locations
+
+- Live recovery state: `_CURRENT_SESSION.md`.
+- Latest closed handoffs: `previous_session\handoff_*.md`.
+- Project rules and historical engineering notes: `previous_session\`.
+- Business rules and test guidance: `..\Project-Docs\BUSINESS_RULES.md` and `..\Project-Docs\COMPREHENSIVE_TEST_GUIDE.md`.
+
+## OpenCode setup
+
+- Global model provider: AI Box.
+- Active oh-my-opencode-slim preset: `aibox`.
+- Background subagents are enabled through `OPENCODE_EXPERIMENTAL_BACKGROUND_SUBAGENTS=1`.
+- Agent configuration and user skills are global; they must remain available in every new session.
+- Project instructions are loaded from `AGENTS.md`, this file, and `_CURRENT_SESSION.md` through `opencode.json`.
+
+## Resume contract
+
+When the user says `cập nhật SWP`, perform a read-only refresh: load memory/handoff, verify Git state, and report the safest next actions.
+
+When the user says `tiếp tục SWP`, load memory and current work, choose the relevant skill, report a short Continue Summary, and continue the safest unfinished task without asking the user to repeat project context.
+
+If saved notes conflict with Git or the filesystem, trust verified current state and record the reconciliation in `_CURRENT_SESSION.md`.
+
+## Current workstream source
+
+Do not hardcode a task here. The active task, progress, blockers, and next action belong in `_CURRENT_SESSION.md`. The latest dated handoff is the fallback when no live session exists.

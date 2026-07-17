@@ -1,0 +1,81 @@
+# ============================================================================
+# AI Study Hub v2 — Docker Compose (full stack)
+# ============================================================================
+name: aistudyhub
+
+networks:
+  aistudy-net:
+    driver: bridge
+    name: aistudyhub-supabase_default
+
+include:
+  - path: infra/supabase/docker-compose.yml
+
+services:
+  ollama:
+    image: ollama/ollama:0.30.9
+    container_name: aistudy-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    mem_limit: 1g
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 90s
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        sleep 5
+        echo "Pulling all-minilm:l6-v2..."
+        ollama pull all-minilm:l6-v2
+        echo "Model ready. Serving..."
+        wait
+    networks:
+      - aistudy-net
+    restart: unless-stopped
+
+  app:
+    build:
+      context: .
+      dockerfile: AI_Study_Hub_v2/Dockerfile
+    container_name: aistudyhub-app
+    ports:
+      - "5240:8080"
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Development
+      - ASPNETCORE_URLS=http://+:8080
+      - Supabase__Url=http://supabase-kong:8000
+      - Supabase__PublicUrl=http://localhost:8000
+      - Supabase__JwtSecret=${JWT_SECRET}
+      - Supabase__AnonKey=${ANON_KEY}
+      - Supabase__ServiceRoleKey=${SERVICE_ROLE_KEY}
+      - ConnectionStrings__Postgres=Host=supabase-db;Port=5432;Database=postgres;Username=postgres;Password=${POSTGRES_PASSWORD}
+      - Ollama__BaseUrl=http://aistudy-ollama:11434
+      - Ollama__Model=all-minilm:l6-v2
+      - Seed__DefaultAdmin__Password=${SEED__DEFAULTADMIN__PASSWORD:-Admin@2026!}
+      - Groq__ApiKey=${GROQ__APIKEY:-}
+      - Gemini__ApiKey=${GEMINI__APIKEY:-}
+      - Recaptcha__SecretKey=${RECAPTCHA__SECRETKEY:-}
+      - Recaptcha__SiteKey=${RECAPTCHA__SITEKEY:-}
+      - Recaptcha__AllowDevelopmentFallback=true
+    networks:
+      - aistudy-net
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/"]
+      interval: 30s
+      timeout: 5s
+      start_period: 90s
+      retries: 5
+
+volumes:
+  ollama_data:
+    driver: local

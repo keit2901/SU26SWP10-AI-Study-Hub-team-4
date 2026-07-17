@@ -219,7 +219,9 @@ public sealed class StorageDeletionPostgresTests
 
     private AppDbContext CreateDb(params IInterceptor[] interceptors)
     {
-        var options = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_dataSource ?? throw new InvalidOperationException("PostgreSQL data source is not initialized."), o => o.UseVector());
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseNpgsql(_dataSource ?? throw new InvalidOperationException("PostgreSQL data source is not initialized."), o => o.UseVector())
+            .ConfigureWarnings(w => w.Ignore(CoreEventId.ManyServiceProvidersCreatedWarning));
         if (interceptors.Length > 0) options.AddInterceptors(interceptors);
         return new AppDbContext(options.Options);
     }

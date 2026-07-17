@@ -1,6 +1,7 @@
 @namespace AI_Study_Hub_v2.Components.Admin.Documents
 @page "/admin/escalations"
 @layout AdminLayout
+@using AI_Study_Hub_v2.Components.Admin.Shared
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
 @using Microsoft.AspNetCore.Components
@@ -53,95 +54,117 @@
         </div>
     </div>
 
-    <!-- Loading / Error / Empty -->
-    @if (_isLoading)
-    {
-        <div class="pa-6">
-            <MudSkeleton Height="44px" Animation="Animation.Wave" />
-            <MudSkeleton Height="44px" Animation="Animation.Wave" />
-            <MudSkeleton Height="44px" Animation="Animation.Wave" />
+    <!-- Filter Row -->
+    <div class="filter-row-custom mb-6">
+        <div class="search-input-wrapper">
+            <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" />
+            <input type="text" placeholder="Search by reason or moderator name..." value="@_searchText" @oninput="OnSearchInputChanged" class="search-input" />
         </div>
-    }
-    else if (!string.IsNullOrEmpty(_errorMessage))
-    {
-        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="ma-4">
-            @_errorMessage
-        </MudAlert>
-    }
-    else if (_escalations.Count == 0)
-    {
-        <div class="d-flex flex-column align-center justify-center py-10" style="text-align: center; gap: 0.5rem;">
-            <MudIcon Icon="@Icons.Material.Filled.Flag" Size="Size.Large" Color="Color.Secondary" />
-            <div class="font-bold text-lg" style="color: #191c1e;">No pending escalations</div>
-            <div class="text-sm" style="color: #767586;">All escalations have been resolved.</div>
-        </div>
-    }
-    else
-    {
-        <!-- Escalation Cards -->
-        <div class="d-flex flex-column" style="gap: 1rem;">
-            @foreach (var escalation in _escalations)
-            {
-                <MudPaper Class="pa-4 escalation-card" Style="border-radius: 12px; border: 1px solid rgba(199, 196, 215, 0.3);">
-                    <div class="d-flex justify-space-between align-start mb-3">
-                        <div>
-                            <div class="d-flex align-center" style="gap: 0.5rem;">
+
+        <select class="filter-select" value="@_selectedStatus" @onchange="OnStatusSelectChanged">
+            <option value="">All Escalations</option>
+            <option value="Pending">Pending</option>
+            <option value="Resolved">Resolved</option>
+        </select>
+
+        @{
+            var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchText)
+                || !string.IsNullOrWhiteSpace(_selectedStatus);
+            var filterIconColor = hasActiveFilters ? "#575e72" : "#c7c6d5";
+            var filterIconStyle = $"font-size: 18px; color: {filterIconColor};";
+        }
+        <button class="filter-btn @(hasActiveFilters ? "" : "muted")" @onclick="ClearFiltersAsync" disabled="@(!hasActiveFilters)" title="@(hasActiveFilters ? "Clear all filters" : "No filters active")">
+            <MudIcon Icon="@Icons.Material.Outlined.FilterAltOff" Style="@filterIconStyle" />
+        </button>
+    </div>
+
+    <!-- Table -->
+    <div class="moderation-table-container mb-6">
+        @if (_isLoading)
+        {
+            <div class="pa-6">
+                <MudSkeleton Height="44px" Animation="Animation.Wave" />
+                <MudSkeleton Height="44px" Animation="Animation.Wave" />
+                <MudSkeleton Height="44px" Animation="Animation.Wave" />
+            </div>
+        }
+        else if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="ma-4">
+                @_errorMessage
+            </MudAlert>
+        }
+        else if (!FilteredEscalations.Any())
+        {
+            <div class="d-flex flex-column align-center justify-center py-10" style="text-align: center; gap: 0.5rem;">
+                <MudIcon Icon="@Icons.Material.Filled.Flag" Size="Size.Large" Color="Color.Secondary" />
+                <div class="font-bold text-lg" style="color: #191c1e;">No escalations found</div>
+                <div class="text-sm" style="color: #767586;">
+                    @(hasActiveFilters ? "No escalations match the current filters." : "No escalations have been created yet.")
+                </div>
+            </div>
+        }
+        else
+        {
+            <table class="moderation-table">
+                <thead>
+                    <tr>
+                        <th>MODERATOR</th>
+                        <th>STATUS</th>
+                        <th>REASON</th>
+                        <th>DOCUMENTS</th>
+                        <th>DATE</th>
+                        <th style="width: 100px;">ACTIONS</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var escalation in FilteredEscalations)
+                    {
+                        <tr>
+                            <td>
+                                <div>
+                                    <div class="owner-name">@escalation.EscalatedByName</div>
+                                </div>
+                            </td>
+                            <td>
                                 <span class="status-badge @(escalation.EscalationStatus == "Pending" ? "pending" : "resolved")">
                                     @escalation.EscalationStatus.ToUpper()
                                 </span>
-                                <span class="font-bold" style="font-size: 16px; color: #191c1e;">@escalation.EscalatedByName</span>
-                            </div>
-                            <div style="font-size: 12px; color: #767586; margin-top: 4px;">
-                                @escalation.CreatedAt.LocalDateTime.ToString("MMM dd, yyyy HH:mm")
-                            </div>
-                        </div>
-                        @if (escalation.EscalationStatus == "Pending")
-                        {
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                                       OnClick="@(() => ResolveAsync(escalation))"
-                                       Style="background-color: #4648d4; border-radius: 8px; font-weight: 700; text-transform: none; font-size: 12px;">
-                                Resolve
-                            </MudButton>
-                        }
-                    </div>
-
-                    <!-- Reason -->
-                    <div class="mb-3" style="background: #f8fafc; border-radius: 8px; padding: 12px;">
-                        <div class="font-bold mb-1" style="font-size: 11px; color: #767586; letter-spacing: 0.05em;">ESCALATION REASON</div>
-                        <div style="font-size: 13px; color: #191c1e;">@escalation.Reason</div>
-                    </div>
-
-                    <!-- Admin Response (if resolved) -->
-                    @if (!string.IsNullOrEmpty(escalation.AdminResponse))
-                    {
-                        <div class="mb-3" style="background: rgba(70, 72, 212, 0.04); border-radius: 8px; padding: 12px; border-left: 3px solid #4648d4;">
-                            <div class="font-bold mb-1" style="font-size: 11px; color: #4648d4; letter-spacing: 0.05em;">ADMIN RESPONSE</div>
-                            <div style="font-size: 13px; color: #191c1e;">@escalation.AdminResponse</div>
-                        </div>
-                    }
-
-                    <!-- Documents -->
-                    <div>
-                        <div class="font-bold mb-2" style="font-size: 12px; color: #767586;">
-                            Documents (@escalation.Items.Count)
-                        </div>
-                        <div class="d-flex flex-column" style="gap: 4px;">
-                            @foreach (var item in escalation.Items)
-                            {
-                                <div class="d-flex align-center pa-2" style="background: #f8fafc; border-radius: 6px; gap: 0.5rem;">
-                                    <MudIcon Icon="@Icons.Material.Filled.Description" Style="font-size: 16px; color: #767586;" />
-                                    <div style="flex: 1; overflow: hidden;">
-                                        <div class="font-bold" style="font-size: 12px; color: #191c1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@item.FileName</div>
-                                        <div style="font-size: 11px; color: #767586;">@item.RejectReason</div>
-                                    </div>
+                            </td>
+                            <td>
+                                <div style="max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="@escalation.Reason">
+                                    @Truncate(escalation.Reason, 80)
                                 </div>
-                            }
-                        </div>
-                    </div>
-                </MudPaper>
-            }
-        </div>
-    }
+                            </td>
+                            <td>
+                                <span class="subject-badge">@escalation.Items.Count doc(s)</span>
+                            </td>
+                            <td>
+                                <span style="font-size: 12px; color: #575e72;">@escalation.CreatedAt.LocalDateTime.ToString("MMM dd, yyyy HH:mm")</span>
+                            </td>
+                            <td>
+                                @if (escalation.EscalationStatus == "Pending")
+                                {
+                                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
+                                               OnClick="@(() => ResolveAsync(escalation))"
+                                               Style="background-color: #4648d4; border-radius: 6px; font-weight: 700; text-transform: none; font-size: 11px;">
+                                        Resolve
+                                    </MudButton>
+                                }
+                                else
+                                {
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => ShowDetailAsync(escalation))"
+                                               Style="border-radius: 6px; font-weight: 600; text-transform: none; font-size: 11px;">
+                                        Detail
+                                    </MudButton>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+    </div>
 </div>
 
 <style>
@@ -215,6 +238,142 @@
         color: #10b981;
     }
 
+    .filter-row-custom {
+        display: flex;
+        align-items: center;
+        gap: 0.75rem;
+        flex-wrap: wrap;
+    }
+
+    .search-input-wrapper {
+        position: relative;
+        flex: 1;
+        min-width: 200px;
+    }
+
+    .search-icon {
+        position: absolute;
+        left: 12px;
+        top: 50%;
+        transform: translateY(-50%);
+        font-size: 18px;
+        color: #9ca3af;
+    }
+
+    .search-input {
+        width: 100%;
+        padding: 10px 12px 10px 36px;
+        border: 1px solid #e0e3e5;
+        border-radius: 8px;
+        font-size: 13px;
+        font-family: 'Hanken Grotesk', sans-serif;
+        background: #ffffff;
+        color: #191c1e;
+        outline: none;
+        transition: border-color 0.2s;
+    }
+
+    .search-input:focus {
+        border-color: #4648d4;
+    }
+
+    .filter-select {
+        padding: 10px 12px;
+        border: 1px solid #e0e3e5;
+        border-radius: 8px;
+        font-size: 13px;
+        font-family: 'Hanken Grotesk', sans-serif;
+        background: #ffffff;
+        color: #191c1e;
+        outline: none;
+        cursor: pointer;
+        min-width: 160px;
+    }
+
+    .filter-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        border: 1px solid #e0e3e5;
+        border-radius: 8px;
+        background: #ffffff;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+
+    .filter-btn:hover:not(:disabled) {
+        background-color: #f8fafc;
+    }
+
+    .filter-btn:disabled {
+        cursor: default;
+        opacity: 0.5;
+    }
+
+    .moderation-table-container {
+        background: #ffffff;
+        border: 1px solid rgba(199, 196, 215, 0.3);
+        border-radius: 12px;
+        overflow: hidden;
+    }
+
+    .moderation-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-family: 'Hanken Grotesk', sans-serif;
+    }
+
+    .moderation-table th {
+        text-align: left;
+        padding: 12px 16px;
+        font-size: 10px;
+        font-weight: 700;
+        color: #767586;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-bottom: 1px solid #f1f5f9;
+        background: #fafbfc;
+    }
+
+    .moderation-table td {
+        padding: 14px 16px;
+        font-size: 13px;
+        color: #191c1e;
+        border-bottom: 1px solid #f1f5f9;
+        vertical-align: middle;
+    }
+
+    .moderation-table tr:last-child td {
+        border-bottom: none;
+    }
+
+    .moderation-table tr:hover {
+        background-color: #f8fafc;
+    }
+
+    .owner-name {
+        font-size: 13px;
+        font-weight: 600;
+        color: #191c1e;
+    }
+
+    .owner-email {
+        font-size: 11px;
+        color: #767586;
+    }
+
+    .subject-badge {
+        display: inline-block;
+        padding: 2px 8px;
+        border-radius: 4px;
+        font-size: 11px;
+        font-weight: 600;
+        background: #f1f5f9;
+        color: #575e72;
+    }
+
     .status-badge {
         font-size: 10px;
         font-weight: 700;
@@ -236,15 +395,6 @@
         color: #10b981;
     }
 
-    .escalation-card {
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-
-    .escalation-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-    }
-
     @@keyframes pageRise {
         from {
             opacity: 0;
@@ -261,9 +411,21 @@
     private List<DocumentEscalationDto> _escalations = new();
     private bool _isLoading = true;
     private string? _errorMessage;
+    private string? _searchText;
+    private string? _selectedStatus;
 
     private int _pendingCount;
     private int _resolvedCount;
+
+    private IEnumerable<DocumentEscalationDto> FilteredEscalations =>
+        _escalations
+            .Where(e => string.IsNullOrWhiteSpace(_searchText)
+                || (e.EscalatedByName?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true)
+                || (e.Reason?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true))
+            .Where(e => string.IsNullOrWhiteSpace(_selectedStatus)
+                || e.EscalationStatus.Equals(_selectedStatus, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(e => e.EscalationStatus == "Pending")
+            .ThenByDescending(e => e.CreatedAt);
 
     protected override async Task OnInitializedAsync()
     {
@@ -331,5 +493,42 @@
         {
             Snackbar.Add($"Failed to resolve escalation: {ex.Message}", Severity.Error);
         }
+    }
+
+    private async Task ShowDetailAsync(DocumentEscalationDto escalation)
+    {
+        var parameters = new DialogParameters
+        {
+            ["EscalationId"] = escalation.Id,
+            ["FolderName"] = $"Folder #{escalation.FolderId.ToString()[..8]}",
+            ["EscalatedByName"] = escalation.EscalatedByName,
+            ["Reason"] = escalation.Reason,
+            ["DocumentCount"] = escalation.Items.Count
+        };
+
+        var dialog = await DialogService.ShowAsync<ResolveEscalationDialog>($"Escalation Detail — {escalation.EscalationStatus}", parameters);
+    }
+
+    private void OnSearchInputChanged(ChangeEventArgs e)
+    {
+        _searchText = e.Value?.ToString();
+    }
+
+    private void OnStatusSelectChanged(ChangeEventArgs e)
+    {
+        _selectedStatus = e.Value?.ToString();
+    }
+
+    private Task ClearFiltersAsync()
+    {
+        _searchText = null;
+        _selectedStatus = null;
+        return Task.CompletedTask;
+    }
+
+    private static string Truncate(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text)) return string.Empty;
+        return text.Length <= maxLength ? text : text[..maxLength] + "…";
     }
 }

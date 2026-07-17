@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace AI_Study_Hub_v2.Services.Supabase;
@@ -54,6 +55,28 @@ public sealed class GoTrueUser
     public Dictionary<string, object?>? AppMetadata { get; set; }
 }
 
+public static class GoTrueMetadata
+{
+    public const string RegistrationOperationIdKey = "registration_operation_id";
+
+    public static bool TryGetRegistrationOperationId(IReadOnlyDictionary<string, object?>? metadata, out Guid operationId)
+    {
+        operationId = Guid.Empty;
+        if (metadata is null || !metadata.TryGetValue(RegistrationOperationIdKey, out var value))
+        {
+            return false;
+        }
+
+        var text = value switch
+        {
+            string stringValue => stringValue,
+            JsonElement { ValueKind: JsonValueKind.String } jsonValue => jsonValue.GetString(),
+            _ => null,
+        };
+        return Guid.TryParse(text, out operationId) && operationId != Guid.Empty;
+    }
+}
+
 public sealed class GoTrueErrorResponse
 {
     [JsonPropertyName("code")]
@@ -70,18 +93,6 @@ public sealed class GoTrueErrorResponse
 
     [JsonPropertyName("msg")]
     public string? Message { get; set; }
-}
-
-internal sealed class SignUpRequest
-{
-    [JsonPropertyName("email")]
-    public string Email { get; set; } = string.Empty;
-
-    [JsonPropertyName("password")]
-    public string Password { get; set; } = string.Empty;
-
-    [JsonPropertyName("data")]
-    public Dictionary<string, object?>? UserMetadata { get; set; }
 }
 
 internal sealed class PasswordGrantRequest

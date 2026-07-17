@@ -31,7 +31,9 @@ public sealed class AuthController : ControllerBase
     [AllowAnonymous]
     [ProducesResponseType(typeof(AuthResponse), StatusCodes.Status200OK)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     public async Task<ActionResult<AuthResponse>> Register([FromBody] RegisterRequest request, CancellationToken cancellationToken)
     {
         if (!ModelState.IsValid)
@@ -104,6 +106,10 @@ public sealed class AuthController : ControllerBase
         catch (AuthException ex)
         {
             return ToErrorResult(ex);
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -188,6 +194,10 @@ public sealed class AuthController : ControllerBase
         {
             return ToErrorResult(ex);
         }
+        catch (OperationCanceledException)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Unexpected authentication failure.");
@@ -201,6 +211,10 @@ public sealed class AuthController : ControllerBase
 
     private ObjectResult ToErrorResult(AuthException exception)
     {
+        if (exception.Code is "registration_pending" or "registration_cleanup_pending")
+        {
+            Response.Headers.RetryAfter = "5";
+        }
         var response = new ApiErrorResponse
         {
             Code = exception.Code,
