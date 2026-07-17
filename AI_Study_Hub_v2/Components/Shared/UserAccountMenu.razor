@@ -8,8 +8,12 @@
 @if (Session.IsAuthenticated)
 {
     <div class="uam-wrapper">
+        <button type="button" class="uam-notification-btn" title="Notifications">
+            <MudIcon Icon="@Icons.Material.Filled.NotificationsNone" Size="Size.Small" />
+        </button>
+
         <button type="button" class="uam-trigger-btn" @onclick="ToggleMenu">
-            <div class="student-user-icon-btn" title="@DisplayName" style="background-color: @GetAvatarColor();">
+            <div class="uam-trigger-avatar" title="@DisplayName">
                 <span class="user-avatar-initials">@GetInitials()</span>
             </div>
             <div class="uam-user-meta d-none d-md-flex flex-column">
@@ -51,6 +55,28 @@
         position: relative;
         display: inline-flex;
         align-items: center;
+        gap: 0.7rem;
+    }
+
+    .uam-notification-btn {
+        width: 2.6rem;
+        height: 2.6rem;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(206, 202, 224, 0.8);
+        border-radius: 14px;
+        background: rgba(255, 255, 255, 0.94);
+        color: #3f365d;
+        cursor: pointer;
+        box-shadow: 0 10px 24px rgba(27, 22, 52, 0.08);
+        transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+    }
+
+    .uam-notification-btn:hover {
+        background: rgba(245, 242, 255, 0.96);
+        border-color: rgba(94, 92, 230, 0.2);
+        color: #4f46d9;
     }
 
     .uam-trigger-btn {
@@ -59,10 +85,23 @@
         gap: 12px;
         background: transparent;
         border: none;
-        padding: 4px 12px 4px 4px;
+        padding: 4px 10px 4px 0;
         border-radius: 30px;
         cursor: pointer;
         color: inherit;
+    }
+
+    .uam-trigger-avatar {
+        width: 2.7rem;
+        height: 2.7rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #5e5ce6, #8578ff);
+        color: #fff;
+        box-shadow: 0 16px 30px rgba(94, 92, 230, 0.28);
+        flex-shrink: 0;
     }
 
     .uam-user-meta {
@@ -82,11 +121,6 @@
         font-weight: 500;
         color: inherit;
         opacity: 0.7;
-    }
-
-    .uam-dropdown-icon {
-        color: inherit;
-        opacity: 0.6;
     }
 
     .uam-backdrop {
@@ -206,14 +240,6 @@
         return parts.Length >= 2
             ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
             : name[..Math.Min(2, name.Length)].ToUpperInvariant();
-    }
-
-    private string GetAvatarColor()
-    {
-        var name = DisplayName ?? "User";
-        var colors = new[] { "#1a73e8", "#d93025", "#188038", "#e37400", "#a142f4", "#007b83", "#c2185b", "#8d6e63" };
-        var index = Math.Abs(name.GetHashCode()) % colors.Length;
-        return colors[index];
     }
 
     private void ToggleMenu() => _open = !_open;
