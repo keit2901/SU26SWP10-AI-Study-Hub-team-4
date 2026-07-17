@@ -9,10 +9,7 @@
     <DialogContent>
         <div class="payment-dialog-shell">
             <div class="payment-dialog-head">
-                <div>
-                    <span class="payment-dialog-kicker">Account</span>
-                    <h3>Thanh toán</h3>
-                </div>
+                <h3>Thanh toán</h3>
                 <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="Close" />
             </div>
 
@@ -29,11 +26,12 @@
             }
             else
             {
-                <div class="payment-plan-card">
-                    <div>
+                <div class="payment-plan-row">
+                    <div class="payment-plan-summary">
                         <div class="payment-plan-name">@FormatPlanLabel()</div>
-                        <div class="payment-plan-note">@BuildPlanCaption()</div>
+                        <div class="payment-plan-expiry">@BuildExpiryText()</div>
                     </div>
+
                     <MudButton Variant="Variant.Outlined"
                                Color="Color.Primary"
                                Size="Size.Small"
@@ -43,105 +41,66 @@
                     </MudButton>
                 </div>
 
-                <div class="payment-history-card">
-                    <div class="payment-history-card-head">
-                        <div>
-                            <h4>Lịch sử thanh toán</h4>
-                            <p>Hiển thị 10 giao dịch mỗi trang.</p>
+                <div class="payment-section-divider"></div>
+                <div class="payment-section-title">Lịch sử thanh toán</div>
+
+                @if (_payments.Count == 0)
+                {
+                    <div class="payment-empty-state">
+                        <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Large" />
+                        <h4>Chưa có lịch sử thanh toán</h4>
+                    </div>
+                }
+                else
+                {
+                    <div class="payment-history-table">
+                        <div class="payment-history-grid payment-history-grid-head">
+                            <span>Ngày</span>
+                            <span>Số tiền</span>
+                            <span>Trạng thái</span>
                         </div>
-                        <span class="payment-history-page-size">10 / page</span>
+
+                        @foreach (var payment in PagedPayments)
+                        {
+                            <div class="payment-history-grid">
+                                <span>@FormatDate(payment.CreatedAt)</span>
+                                <span>@FormatAmount(payment.AmountVnd)</span>
+                                <span>
+                                    <span class="payment-status-chip @GetStatusClass(payment.Status)">@FormatStatus(payment.Status)</span>
+                                </span>
+                            </div>
+                        }
                     </div>
 
-                    @if (_payments.Count == 0)
+                    @if (TotalPages > 1)
                     {
-                        <div class="payment-empty-state">
-                            <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Large" />
-                            <h4>Chưa có giao dịch</h4>
-                            <p>Lịch sử thanh toán của bạn sẽ xuất hiện ở đây sau khi phát sinh giao dịch.</p>
-                        </div>
-                    }
-                    else
-                    {
-                        <div class="payment-history-table">
-                            <div class="payment-history-grid payment-history-grid-head">
-                                <span>Ngày</span>
-                                <span>Số tiền</span>
-                                <span>Trạng thái</span>
-                                <span></span>
-                            </div>
+                        <div class="payment-pager">
+                            <button type="button" class="payment-page-button" @onclick="PreviousPage" disabled="@(_currentPage == 1)">
+                                Trước
+                            </button>
 
-                            @foreach (var payment in PagedPayments)
+                            @foreach (var pageNumber in VisiblePages)
                             {
-                                <div class="payment-history-grid">
-                                    <span>@FormatDate(payment.CreatedAt)</span>
-                                    <span>@FormatAmount(payment.AmountVnd)</span>
-                                    <span>
-                                        <span class="payment-status-chip @GetStatusClass(payment.Status)">@FormatStatus(payment.Status)</span>
-                                    </span>
-                                    <button type="button" class="payment-view-button" @onclick="@(() => SelectPayment(payment))">Xem</button>
-                                </div>
+                                <button type="button"
+                                        class="payment-page-button @(pageNumber == _currentPage ? "active" : string.Empty)"
+                                        @onclick="@(() => GoToPage(pageNumber))">
+                                    @pageNumber
+                                </button>
                             }
+
+                            <button type="button" class="payment-page-button" @onclick="NextPage" disabled="@(_currentPage == TotalPages)">
+                                Sau
+                            </button>
                         </div>
-
-                        @if (TotalPages > 1)
-                        {
-                            <div class="payment-pager">
-                                <button type="button" class="payment-page-button" @onclick="PreviousPage" disabled="@(_currentPage == 1)">
-                                    Trước
-                                </button>
-
-                                @foreach (var pageNumber in VisiblePages)
-                                {
-                                    <button type="button"
-                                            class="payment-page-button @(pageNumber == _currentPage ? "active" : string.Empty)"
-                                            @onclick="@(() => GoToPage(pageNumber))">
-                                        @pageNumber
-                                    </button>
-                                }
-
-                                <button type="button" class="payment-page-button" @onclick="NextPage" disabled="@(_currentPage == TotalPages)">
-                                    Sau
-                                </button>
-                            </div>
-                        }
-
-                        @if (_selectedPayment is not null)
-                        {
-                            <div class="payment-detail-card">
-                                <div class="payment-detail-head">
-                                    <h5>Chi tiết giao dịch</h5>
-                                    <span class="payment-status-chip @GetStatusClass(_selectedPayment.Status)">@FormatStatus(_selectedPayment.Status)</span>
-                                </div>
-
-                                <div class="payment-detail-grid">
-                                    <div class="payment-detail-item">
-                                        <span>Gói</span>
-                                        <strong>@FormatPlanName(_selectedPayment.PlanKey)</strong>
-                                    </div>
-                                    <div class="payment-detail-item">
-                                        <span>Chu kỳ</span>
-                                        <strong>@FormatBillingCycle(_selectedPayment.BillingCycle)</strong>
-                                    </div>
-                                    <div class="payment-detail-item">
-                                        <span>Ngày tạo</span>
-                                        <strong>@_selectedPayment.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</strong>
-                                    </div>
-                                    <div class="payment-detail-item">
-                                        <span>Hoàn tất</span>
-                                        <strong>@(_selectedPayment.CompletedAt?.ToLocalTime().ToString("dd/MM/yyyy HH:mm") ?? "Chưa hoàn tất")</strong>
-                                    </div>
-                                </div>
-                            </div>
-                        }
                     }
-                </div>
+                }
             }
         </div>
     </DialogContent>
 </MudDialog>
 
 @code {
-    private const int PageSize = 10;
+    private const int PageSize = 4;
 
     [CascadingParameter]
     private IMudDialogInstance MudDialog { get; set; } = null!;
@@ -149,7 +108,7 @@
     private bool _loading = true;
     private string? _error;
     private int _currentPage = 1;
-    private PaymentTransactionDto? _selectedPayment;
+    private DateTimeOffset? _planExpiresAt;
     private readonly List<PaymentTransactionDto> _payments = new();
 
     private IEnumerable<PaymentTransactionDto> PagedPayments =>
@@ -197,8 +156,8 @@
         _loading = true;
         _error = null;
         _payments.Clear();
-        _selectedPayment = null;
         _currentPage = 1;
+        _planExpiresAt = null;
 
         try
         {
@@ -208,10 +167,12 @@
                 return;
             }
 
-            await Session.LoadCurrentPlanAsync(PlanApi);
+            var snapshot = await PlanApi.GetCurrentPlanAsync(Session.AccessToken);
+            Session.SetPlan(snapshot.PlanKey);
+            _planExpiresAt = snapshot.ExpiresAt;
+
             var payments = await PlanApi.GetMyPaymentTransactionsAsync(Session.AccessToken, 100);
             _payments.AddRange(payments.OrderByDescending(item => item.CreatedAt));
-            _selectedPayment = _payments.FirstOrDefault();
         }
         catch (PlanApiException ex)
         {
@@ -234,52 +195,18 @@
             ? "Free"
             : $"{char.ToUpper(Session.CurrentPlan[0])}{Session.CurrentPlan[1..].ToLowerInvariant()}";
 
+    private string BuildExpiryText()
+        => _planExpiresAt.HasValue
+            ? $"Expires on {_planExpiresAt.Value.ToLocalTime():dd/MM/yyyy}"
+            : "No expiration";
+
     private string BuildPlanButtonLabel()
         => string.Equals(Session.CurrentPlan, "free", StringComparison.OrdinalIgnoreCase)
             ? "Nâng cấp gói"
             : $"Gia hạn gói {FormatPlanLabel()}";
 
-    private string BuildPlanCaption()
-    {
-        if (string.Equals(Session.CurrentPlan, "free", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Bạn đang dùng gói miễn phí.";
-        }
-
-        var latestPaid = _payments
-            .Where(item => string.Equals(item.Status, "completed", StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(item => item.CompletedAt ?? item.CreatedAt)
-            .FirstOrDefault();
-
-        var endDate = InferPlanEndDate(latestPaid);
-        return endDate is null
-            ? "Gói hiện tại của bạn đang hoạt động."
-            : $"Gói của bạn dự kiến hết hạn vào {endDate.Value.ToLocalTime():d 'thg' M, yyyy}.";
-    }
-
-    private static DateTimeOffset? InferPlanEndDate(PaymentTransactionDto? payment)
-    {
-        if (payment is null || string.Equals(payment.PlanKey, "free", StringComparison.OrdinalIgnoreCase))
-        {
-            return null;
-        }
-
-        var baseDate = payment.CompletedAt ?? payment.CreatedAt;
-        return string.Equals(payment.BillingCycle, "yearly", StringComparison.OrdinalIgnoreCase)
-            ? baseDate.AddYears(1)
-            : baseDate.AddMonths(1);
-    }
-
-    private static string FormatPlanName(string planKey)
-        => string.IsNullOrWhiteSpace(planKey)
-            ? "Unknown"
-            : $"{char.ToUpper(planKey[0])}{planKey[1..].ToLowerInvariant()}";
-
     private static string FormatAmount(long amountVnd)
         => amountVnd <= 0 ? "0 đ" : $"{amountVnd:N0} đ";
-
-    private static string FormatBillingCycle(string billingCycle)
-        => string.Equals(billingCycle, "yearly", StringComparison.OrdinalIgnoreCase) ? "Năm" : "Tháng";
 
     private static string FormatStatus(string status)
         => status.ToLowerInvariant() switch
@@ -287,7 +214,7 @@
             "completed" => "Đã thanh toán",
             "pending" => "Đang chờ",
             "failed" => "Thất bại",
-            "expired" => "Hết hạn",
+            "expired" => "Expired",
             _ => status
         };
 
@@ -325,11 +252,6 @@
         }
     }
 
-    private void SelectPayment(PaymentTransactionDto payment)
-    {
-        _selectedPayment = payment;
-    }
-
     private void GoToPricing()
     {
         MudDialog.Close();
@@ -340,10 +262,18 @@
 }
 
 <style>
+    .student-payment-dialog-root.mud-dialog {
+        border-radius: 36px !important;
+    }
+
+    .student-payment-dialog-root .mud-dialog-content {
+        padding: 1rem 1rem 1.05rem !important;
+    }
+
     .payment-dialog-shell {
         display: flex;
         flex-direction: column;
-        gap: 1rem;
+        gap: 0.95rem;
     }
 
     .payment-dialog-head {
@@ -351,29 +281,18 @@
         align-items: flex-start;
         justify-content: space-between;
         gap: 1rem;
-    }
-
-    .payment-dialog-kicker {
-        display: inline-flex;
-        padding: 0.28rem 0.7rem;
-        border-radius: 999px;
-        background: rgba(94, 92, 230, 0.1);
-        color: #4f46d9;
-        font-size: 0.72rem;
-        font-weight: 800;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
+        margin-bottom: 0.15rem;
     }
 
     .payment-dialog-head h3 {
-        margin: 0.8rem 0 0;
-        font-size: 1.65rem;
-        font-weight: 900;
+        margin: 0.1rem 0 0;
         color: #19132f;
+        font-size: 1.42rem;
+        font-weight: 900;
     }
 
     .payment-dialog-loading {
-        min-height: 240px;
+        min-height: 220px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -382,32 +301,29 @@
         color: #6f678c;
     }
 
-    .payment-plan-card,
-    .payment-history-card,
-    .payment-detail-card {
-        border: 1px solid rgba(199, 196, 215, 0.35);
-        background: rgba(255, 255, 255, 0.82);
-        border-radius: 24px;
-    }
-
-    .payment-plan-card {
+    .payment-plan-row {
         display: flex;
-        align-items: center;
+        align-items: flex-end;
         justify-content: space-between;
         gap: 1rem;
-        padding: 1.2rem 1.25rem;
+    }
+
+    .payment-plan-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
     }
 
     .payment-plan-name {
-        font-size: 1.25rem;
-        font-weight: 800;
         color: #19132f;
+        font-size: 1.08rem;
+        font-weight: 800;
     }
 
-    .payment-plan-note {
-        margin-top: 0.35rem;
-        color: #776f93;
-        font-size: 0.92rem;
+    .payment-plan-expiry {
+        color: #7b7397;
+        font-size: 0.88rem;
+        font-weight: 600;
     }
 
     .payment-plan-button {
@@ -417,38 +333,16 @@
         font-weight: 700 !important;
     }
 
-    .payment-history-card {
-        padding: 1.1rem 1.2rem;
+    .payment-section-divider {
+        width: 100%;
+        height: 1px;
+        background: rgba(206, 202, 224, 0.75);
     }
 
-    .payment-history-card-head {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 1rem;
-        margin-bottom: 1rem;
-    }
-
-    .payment-history-card-head h4 {
-        margin: 0;
-        font-size: 1.15rem;
-        font-weight: 800;
+    .payment-section-title {
         color: #19132f;
-    }
-
-    .payment-history-card-head p {
-        margin: 0.3rem 0 0;
-        color: #7b7397;
-        font-size: 0.9rem;
-    }
-
-    .payment-history-page-size {
-        padding: 0.4rem 0.7rem;
-        border-radius: 999px;
-        background: rgba(94, 92, 230, 0.08);
-        color: #5146d7;
-        font-size: 0.8rem;
-        font-weight: 700;
+        font-size: 1.08rem;
+        font-weight: 800;
     }
 
     .payment-history-table {
@@ -459,7 +353,7 @@
 
     .payment-history-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.3fr) minmax(0, 0.9fr) minmax(0, 1fr) auto;
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
         gap: 0.75rem;
         align-items: center;
         padding: 0.95rem 1rem;
@@ -510,7 +404,6 @@
         color: #4f46d9;
     }
 
-    .payment-view-button,
     .payment-page-button {
         border: 0;
         background: transparent;
@@ -519,23 +412,18 @@
         font-weight: 700;
     }
 
-    .payment-view-button {
-        text-decoration: underline;
-        text-underline-offset: 0.18rem;
-    }
-
     .payment-pager {
         display: flex;
         align-items: center;
         justify-content: center;
         gap: 0.45rem;
-        margin-top: 1rem;
+        margin-top: 0.95rem;
         flex-wrap: wrap;
     }
 
     .payment-page-button {
-        min-width: 2.3rem;
-        padding: 0.55rem 0.8rem;
+        min-width: 2.25rem;
+        padding: 0.52rem 0.76rem;
         border-radius: 14px;
         border: 1px solid rgba(211, 206, 228, 0.75);
         background: rgba(255, 255, 255, 0.94);
@@ -553,74 +441,25 @@
         cursor: not-allowed;
     }
 
-    .payment-detail-card {
-        margin-top: 1rem;
-        padding: 1rem 1.1rem;
-    }
-
-    .payment-detail-head {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 1rem;
-        margin-bottom: 0.85rem;
-    }
-
-    .payment-detail-head h5 {
-        margin: 0;
-        font-size: 1rem;
-        font-weight: 800;
-        color: #19132f;
-    }
-
-    .payment-detail-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 0.8rem;
-    }
-
-    .payment-detail-item {
-        padding: 0.9rem 1rem;
-        border-radius: 18px;
-        background: rgba(245, 242, 255, 0.82);
-    }
-
-    .payment-detail-item span {
-        display: block;
-        margin-bottom: 0.3rem;
-        color: #7b7397;
-        font-size: 0.78rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .payment-detail-item strong {
-        color: #20193a;
-    }
-
     .payment-empty-state {
-        min-height: 220px;
+        min-height: 180px;
         display: flex;
         flex-direction: column;
         align-items: center;
         justify-content: center;
         gap: 0.6rem;
+        padding: 1rem 0.4rem;
         text-align: center;
         color: #6f678c;
-        padding: 1.5rem;
-        background: rgba(250, 248, 255, 0.84);
     }
 
-    .payment-empty-state h4,
-    .payment-empty-state p {
+    .payment-empty-state h4 {
         margin: 0;
+        color: #19132f;
     }
 
     @@media (max-width: 720px) {
-        .payment-plan-card,
-        .payment-history-card-head,
-        .payment-detail-head {
+        .payment-plan-row {
             flex-direction: column;
             align-items: flex-start;
         }
@@ -631,10 +470,6 @@
 
         .payment-history-grid-head {
             display: none;
-        }
-
-        .payment-detail-grid {
-            grid-template-columns: 1fr;
         }
     }
 </style>
