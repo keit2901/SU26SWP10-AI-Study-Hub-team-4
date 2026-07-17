@@ -18,8 +18,11 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture]
 public class SupabaseAuthServiceTests
 {
-    private static SupabaseAuthService BuildSut(Data.AppDbContext db, IGoTrueClient gotrue) =>
-        new(db, gotrue, NullLogger<SupabaseAuthService>.Instance);
+    private static SupabaseAuthService BuildSut(Data.AppDbContext db, IGoTrueClient gotrue, IRegistrationCoordinator? coordinator = null)
+    {
+        coordinator ??= Mock.Of<IRegistrationCoordinator>();
+        return new(db, gotrue, coordinator, NullLogger<SupabaseAuthService>.Instance);
+    }
 
     private static GoTrueSession BuildSession(Guid userId, string email, string accessToken = "access.jwt.token", string refreshToken = "rt-abc", int expiresIn = 3600) =>
         new()
@@ -44,126 +47,17 @@ public class SupabaseAuthServiceTests
     // -------------------------------------------------------------------------
 
     [Test]
-    public async Task RegisterAsync_HappyPath_CreatesGoTrueIdentity_AndMirrorsProfile_AsStudent()
+    public async Task RegisterAsync_DelegatesToCoordinator_AndPreservesResponse()
     {
         using var db = TestDb.CreateInMemory();
-        var supabaseUserId = Guid.NewGuid();
-        var session = BuildSession(supabaseUserId, "alice@aistudyhub.local");
+        var request = new RegisterRequest { RegistrationOperationId = Guid.NewGuid(), Email = "alice@aistudyhub.local", Username = "alice", FullName = "Alice", Password = "Password!1" };
+        var expected = new AuthResponse { AccessToken = "access", RefreshToken = "refresh", User = new UserDto { Id = Guid.NewGuid(), Email = request.Email, Username = request.Username, FullName = request.FullName, Role = Role.StudentRoleName, IsActive = true } };
+        var coordinator = new Mock<IRegistrationCoordinator>(MockBehavior.Strict);
+        coordinator.Setup(item => item.RegisterAsync(request, It.IsAny<CancellationToken>())).ReturnsAsync(expected);
+        var sut = BuildSut(db, Mock.Of<IGoTrueClient>(), coordinator.Object);
 
-        var gotrue = new Mock<IGoTrueClient>(MockBehavior.Strict);
-        gotrue
-            .Setup(g => g.SignUpAsync(
-                "alice@aistudyhub.local",
-                "Password!1",
-                It.Is<Dictionary<string, object?>>(m =>
-                    (string)m["username"]! == "alice"
-                    && (string)m["full_name"]! == "Alice A."),
-                It.IsAny<CancellationToken>()))
-            .ReturnsAsync(session);
-
-        var sut = BuildSut(db, gotrue.Object);
-
-        var result = await sut.RegisterAsync(
-            new RegisterRequest
-            {
-                Email = "  ALICE@aistudyhub.local  ",
-                Username = "alice",
-                FullName = "  Alice A.  ",
-                Password = "Password!1",
-            },
-            userAgent: "nunit",
-            ipAddress: "127.0.0.1");
-
-        // Response shape
-        result.AccessToken.Should().Be("access.jwt.token");
-        result.RefreshToken.Should().Be("rt-abc");
-        result.TokenType.Should().Be("Bearer");
-        result.ExpiresIn.Should().Be(3600);
-        result.User.Email.Should().Be("alice@aistudyhub.local");
-        result.User.Username.Should().Be("alice");
-        result.User.FullName.Should().Be("Alice A.");
-        result.User.Role.Should().Be(Role.StudentRoleName);
-        result.User.IsActive.Should().BeTrue();
-
-        // Profile mirrored
-        var profile = await db.Users.Include(u => u.Role).SingleAsync();
-        profile.SupabaseUserId.Should().Be(supabaseUserId);
-        profile.Username.Should().Be("alice");
-        profile.FullName.Should().Be("Alice A.");
-        profile.Role.RoleName.Should().Be(Role.StudentRoleName);
-        profile.TotalTokensUsed.Should().Be(0);
-        profile.IsActive.Should().BeTrue();
-
-        gotrue.VerifyAll();
-    }
-
-    [Test]
-    public async Task RegisterAsync_UsernameTaken_Throws409_AndDoesNotCallGoTrue()
-    {
-        using var db = TestDb.CreateInMemory();
-        // pre-seed an existing user with the same username
-        db.Users.Add(new User
-        {
-            Id = Guid.NewGuid(),
-            RoleId = 2,
-            SupabaseUserId = Guid.NewGuid(),
-            Username = "alice",
-            FullName = "Existing",
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        });
-        await db.SaveChangesAsync();
-
-        var gotrue = new Mock<IGoTrueClient>(MockBehavior.Strict);
-        var sut = BuildSut(db, gotrue.Object);
-
-        var act = () => sut.RegisterAsync(
-            new RegisterRequest { Email = "alice@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
-            null, null);
-
-        var ex = await act.Should().ThrowAsync<AuthException>();
-        ex.Which.StatusCode.Should().Be(409);
-        ex.Which.Code.Should().Be("username_taken");
-        gotrue.Verify(g => g.SignUpAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<CancellationToken>()), Times.Never);
-    }
-
-    [Test]
-    public async Task RegisterAsync_StudentRoleMissing_Throws500_RoleNotSeeded()
-    {
-        using var db = TestDb.CreateInMemory(seedRoles: false);
-        var gotrue = new Mock<IGoTrueClient>(MockBehavior.Strict);
-        var sut = BuildSut(db, gotrue.Object);
-
-        var act = () => sut.RegisterAsync(
-            new RegisterRequest { Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
-            null, null);
-
-        var ex = await act.Should().ThrowAsync<AuthException>();
-        ex.Which.StatusCode.Should().Be(500);
-        ex.Which.Code.Should().Be("role_not_seeded");
-    }
-
-    [Test]
-    public async Task RegisterAsync_GoTrueReturnsNullUser_Throws500_GoTrueNoUser()
-    {
-        using var db = TestDb.CreateInMemory();
-        var gotrue = new Mock<IGoTrueClient>();
-        gotrue
-            .Setup(g => g.SignUpAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<Dictionary<string, object?>>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new GoTrueSession { AccessToken = "x", RefreshToken = "y", User = null });
-
-        var sut = BuildSut(db, gotrue.Object);
-
-        var act = () => sut.RegisterAsync(
-            new RegisterRequest { Email = "a@x.com", Username = "alice", FullName = "Alice", Password = "Password!1" },
-            null, null);
-
-        var ex = await act.Should().ThrowAsync<AuthException>();
-        ex.Which.StatusCode.Should().Be(500);
-        ex.Which.Code.Should().Be("gotrue_no_user");
-
-        // No profile should have been persisted.
-        (await db.Users.CountAsync()).Should().Be(0);
+        (await sut.RegisterAsync(request, "nunit", "127.0.0.1")).Should().BeSameAs(expected);
+        coordinator.Verify(item => item.RegisterAsync(request, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     // -------------------------------------------------------------------------
