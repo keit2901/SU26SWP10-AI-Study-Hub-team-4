@@ -48,8 +48,8 @@ builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOpt
 builder.Services
     .AddOptions<RagOptions>()
     .Bind(builder.Configuration.GetSection(RagOptions.SectionName))
-    .Validate(RagOptions.HasValidChatBounds,
-        "Rag chat limits must use exchanges 0-10, history chars 0 or 500-10000, assistant chars 100-2000, and context chars 1000-20000.")
+    .Validate(options => RagOptions.HasValidChatBounds(options) && RagOptions.HasValidSemanticV2Bounds(options),
+        "Rag limits must use valid chat bounds and semantic-v2 bounds: 0 <= overlap < min <= target <= max <= 192.")
     .ValidateOnStart();
 builder.Services.ConfigureOptions<ConfigureRagOptions>();
 builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
@@ -159,11 +159,18 @@ builder.Services.AddScoped<SentenceSplitter>();
 builder.Services.AddScoped<ChunkMerger>();
 builder.Services.AddScoped<ChunkingService>();
 builder.Services.AddScoped<FixedSizeChunkingService>();
+builder.Services.AddSingleton<ITokenEstimator, ConservativeTokenEstimator>();
+builder.Services.AddScoped<SemanticV2ChunkingService>();
 builder.Services.AddScoped<IChunkingService>(sp =>
 {
     var ragOptions = sp.GetRequiredService<IOptions<RagOptions>>().Value;
-    return string.Equals(ragOptions.ChunkingStrategy, "fixed", StringComparison.OrdinalIgnoreCase)
-        ? sp.GetRequiredService<FixedSizeChunkingService>()
+    if (string.Equals(ragOptions.ChunkingStrategy, "fixed", StringComparison.OrdinalIgnoreCase))
+    {
+        return sp.GetRequiredService<FixedSizeChunkingService>();
+    }
+
+    return string.Equals(ragOptions.ChunkingStrategy, "semantic-v2", StringComparison.OrdinalIgnoreCase)
+        ? sp.GetRequiredService<SemanticV2ChunkingService>()
         : sp.GetRequiredService<ChunkingService>();
 });
 builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
