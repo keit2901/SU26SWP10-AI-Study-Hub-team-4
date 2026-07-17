@@ -391,3 +391,83 @@ button.nav-pill {
     letter-spacing: 0.04em;
     text-decoration: none;
 }
+
+/* ── Icon-only user trigger button ── */
+.student-user-icon-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: box-shadow 200ms ease, transform 200ms ease;
+}
+
+.student-user-icon-btn:hover {
+    box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+    transform: scale(1.06);
+}
+
+/* ── Floating user popup ── */
+.student-account-menu-anchor {
+    position: relative;
+}
+
+.user-popup-sheet {
+    position: absolute;
+    top: calc(100% + 0.6rem);
+    right: 0;
+    z-index: 200;
+    width: 13rem;
+    background: #ffffff;
+    border: 1px solid rgba(206, 202, 224, 0.75);
+    border-radius: 1.1rem;
+    box-shadow: 0 20px 48px rgba(27, 22, 52, 0.16);
+    padding: 0.4rem;
+    backdrop-filter: blur(18px);
+    animation: popupFadeIn 150ms ease both;
+}
+
+@keyframes popupFadeIn {
+    from { opacity: 0; transform: translateY(-6px) scale(0.97); }
+    to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.user-popup-action {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    padding: 0.6rem 0.75rem;
+    border: none;
+    border-radius: 0.65rem;
+    background: transparent;
+    color: #374151;
+    font-size: 0.88rem;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    transition: background 150ms ease, color 150ms ease;
+}
+
+.user-popup-action:hover {
+    background: rgba(79, 70, 229, 0.08);
+    color: #4f46e5;
+}
+
+.user-popup-divider {
+    height: 1px;
+    margin: 0.35rem 0.5rem;
+    background: rgba(206, 202, 224, 0.55);
+}
+
+.user-popup-signout {
+    color: #dc2626;
+}
+
+.user-popup-signout:hover {
+    background: rgba(220, 38, 38, 0.07);
+    color: #dc2626;
+}

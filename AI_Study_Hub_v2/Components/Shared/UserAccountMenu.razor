@@ -1,0 +1,270 @@
+@inject AI_Study_Hub_v2.Services.AuthSessionState Session
+@inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
+@inject IDialogService DialogService
+@inject NavigationManager Nav
+@using AI_Study_Hub_v2.Components.Pages
+@implements IDisposable
+
+@if (Session.IsAuthenticated)
+{
+    <div class="uam-wrapper">
+        <button type="button" class="uam-trigger-btn" @onclick="ToggleMenu">
+            <div class="student-user-icon-btn" title="@DisplayName" style="background-color: @GetAvatarColor();">
+                <span class="user-avatar-initials">@GetInitials()</span>
+            </div>
+            <div class="uam-user-meta d-none d-md-flex flex-column">
+                <span class="uam-user-name text-truncate">@DisplayName</span>
+                <span class="uam-user-plan">Free</span>
+            </div>
+        </button>
+
+        @if (_open)
+        {
+            <div class="uam-backdrop" @onclick="CloseMenu"></div>
+            <div class="uam-popup">
+                <button class="uam-item" @onclick="OpenProfileDialogAsync">
+                    <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
+                    <span>Profile</span>
+                </button>
+
+                <button class="uam-item" @onclick="OpenPaymentHistoryDialogAsync">
+                    <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small" />
+                    <span>Thanh toán</span>
+                </button>
+
+                <button class="uam-item" @onclick="GoToPricing">
+                    <MudIcon Icon="@Icons.Material.Filled.WorkspacePremium" Size="Size.Small" />
+                    <span>Nâng cấp gói</span>
+                </button>
+                <div class="uam-divider"></div>
+                <button class="uam-item uam-item--danger" @onclick="LogoutAsync">
+                    <MudIcon Icon="@Icons.Material.Filled.Logout" Size="Size.Small" />
+                    <span>Đăng xuất</span>
+                </button>
+            </div>
+        }
+    </div>
+}
+
+<style>
+    .uam-wrapper {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+    }
+
+    .uam-trigger-btn {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        background: transparent;
+        border: none;
+        padding: 4px 12px 4px 4px;
+        border-radius: 30px;
+        cursor: pointer;
+        color: inherit;
+    }
+
+    .uam-user-meta {
+        text-align: left;
+        line-height: 1.2;
+    }
+
+    .uam-user-name {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: inherit;
+        max-width: 120px;
+    }
+
+    .uam-user-plan {
+        font-size: 0.75rem;
+        font-weight: 500;
+        color: inherit;
+        opacity: 0.7;
+    }
+
+    .uam-dropdown-icon {
+        color: inherit;
+        opacity: 0.6;
+    }
+
+    .uam-backdrop {
+        position: fixed;
+        inset: 0;
+        z-index: 9998;
+        background: transparent;
+    }
+
+    .uam-popup {
+        position: absolute;
+        top: calc(100% + 8px);
+        right: 0;
+        z-index: 9999;
+        min-width: 180px;
+        background: #ffffff;
+        border: 1px solid rgba(206, 202, 224, 0.8);
+        border-radius: 20px;
+        box-shadow: 0 16px 48px rgba(27, 22, 52, 0.18), 0 2px 8px rgba(27, 22, 52, 0.08);
+        padding: 6px;
+        animation: uamIn 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
+    }
+
+    @@keyframes uamIn {
+        from { opacity: 0; transform: translateY(-6px) scale(0.96); }
+        to   { opacity: 1; transform: translateY(0) scale(1); }
+    }
+
+    .uam-item {
+        display: flex;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 10px;
+        width: 100%;
+        padding: 9px 12px;
+        border: none;
+        border-radius: 8px;
+        background: transparent;
+        color: #1e1934;
+        font-size: 0.875rem;
+        font-weight: 600;
+        font-family: inherit;
+        cursor: pointer;
+        text-align: left;
+        transition: background 120ms ease, color 120ms ease;
+    }
+
+    .uam-item:hover {
+        background: rgba(79, 70, 229, 0.08);
+        color: #4f46e5;
+    }
+
+    .uam-divider {
+        height: 1px;
+        margin: 4px 10px;
+        background: rgba(206, 202, 224, 0.6);
+    }
+
+    .uam-section {
+        margin: 2px 0;
+        padding: 0;
+    }
+
+    .uam-section-row {
+        display: block;
+        padding: 8px 14px;
+        font-size: 0.82rem;
+        color: #444;
+        font-family: inherit;
+        line-height: 1.4;
+    }
+
+    .uam-section-btn {
+        width: 100%;
+        text-align: left;
+        background: transparent;
+        border: none;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: background 120ms ease;
+    }
+
+    .uam-section-btn:hover {
+        background: rgba(79, 70, 229, 0.07);
+        color: #4f46e5;
+    }
+
+    .uam-section-sep {
+        height: 1px;
+        margin: 0 14px;
+        background: rgba(206, 202, 224, 0.5);
+    }
+
+    .uam-item--danger { color: #dc2626; }
+    .uam-item--danger:hover { background: rgba(220, 38, 38, 0.06); color: #dc2626; }
+</style>
+
+@code {
+    private bool _open;
+
+    protected override void OnInitialized()
+    {
+        Session.OnChange += OnSessionChanged;
+    }
+
+    private string DisplayName =>
+        Session.CurrentUser?.FullName
+        ?? Session.CurrentUser?.Username
+        ?? Session.CurrentUser?.Email
+        ?? "Student";
+
+    private string GetInitials()
+    {
+        var name = DisplayName;
+        if (string.IsNullOrWhiteSpace(name)) return "U";
+        var parts = name.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        return parts.Length >= 2
+            ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
+            : name[..Math.Min(2, name.Length)].ToUpperInvariant();
+    }
+
+    private string GetAvatarColor()
+    {
+        var name = DisplayName ?? "User";
+        var colors = new[] { "#1a73e8", "#d93025", "#188038", "#e37400", "#a142f4", "#007b83", "#c2185b", "#8d6e63" };
+        var index = Math.Abs(name.GetHashCode()) % colors.Length;
+        return colors[index];
+    }
+
+    private void ToggleMenu() => _open = !_open;
+    private void CloseMenu() => _open = false;
+
+    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+
+    private async Task OpenProfileDialogAsync()
+    {
+        CloseMenu();
+        await DialogService.ShowAsync<StudentProfileDialog>("Profile", BuildDialogOptions());
+    }
+
+    private async Task OpenPaymentHistoryDialogAsync()
+    {
+        CloseMenu();
+        await DialogService.ShowAsync<StudentPaymentHistoryDialog>("Lịch sử thanh toán", BuildDialogOptions());
+    }
+
+    private async Task OpenTransactionDetailAsync()
+    {
+        CloseMenu();
+        await DialogService.ShowAsync<StudentPaymentHistoryDialog>("Chi tiết giao dịch", BuildDialogOptions());
+    }
+
+    private void GoToPricing()
+    {
+        CloseMenu();
+        Nav.NavigateTo("/pricing");
+    }
+
+    private DialogOptions BuildDialogOptions() => new()
+    {
+        MaxWidth = MaxWidth.Small,
+        FullWidth = true,
+        CloseOnEscapeKey = true,
+        BackdropClick = true,
+        NoHeader = true,
+        BackgroundClass = "student-quick-dialog-backdrop"
+    };
+
+    private async Task LogoutAsync()
+    {
+        CloseMenu();
+        await AuthPersistence.ClearAsync();
+        Session.Clear();
+        Nav.NavigateTo("/login", replace: true);
+    }
+
+    public void Dispose()
+    {
+        Session.OnChange -= OnSessionChanged;
+    }
+}

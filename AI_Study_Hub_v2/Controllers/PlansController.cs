@@ -106,6 +106,61 @@ public sealed class PlansController : ControllerBase
         }
     }
 
+    /// <summary>Returns recent payment transactions for the authenticated user.</summary>
+    [HttpGet("payments")]
+    [ProducesResponseType(typeof(IReadOnlyList<PaymentTransactionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetMyPaymentTransactions(
+        [FromQuery] int take = 12,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            if (take < 1) take = 12;
+            if (take > 50) take = 50;
+
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var user = await _db.Users
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct);
+            if (user is null)
+            {
+                return NotFound(new ApiErrorResponse
+                {
+                    Code = "user_not_found",
+                    Message = "User not found."
+                });
+            }
+
+            var payments = await _db.PaymentTransactions
+                .Where(pt => pt.UserId == user.Id)
+                .OrderByDescending(pt => pt.CreatedAt)
+                .Take(take)
+                .Select(pt => new PaymentTransactionDto(
+                    pt.Id,
+                    pt.UserId,
+                    user.Username,
+                    pt.PlanKey,
+                    pt.BillingCycle,
+                    pt.AmountVnd,
+                    pt.Status,
+                    pt.CreatedAt,
+                    pt.CompletedAt))
+                .ToListAsync(ct);
+
+            return Ok(payments);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected payment history fetch failure.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while fetching payment history."
+            });
+        }
+    }
+
     /// <summary>Self-service plan purchase / upgrade for the authenticated user.</summary>
     [HttpPost("purchase")]
     [EnableRateLimiting("purchase")]
