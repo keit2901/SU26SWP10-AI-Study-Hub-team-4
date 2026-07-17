@@ -145,7 +145,7 @@
                     <div>
                         <div class="config-header-row">
                             <div>
-                                <h3 class="config-title">@config.DisplayName</h3>
+                                <h3 class="config-title">@GetConfigDisplayName(config)</h3>
                                 <span class="config-key">@config.Key</span>
                             </div>
                             <div class="badge-group">
@@ -161,7 +161,7 @@
                             </div>
                         </div>
 
-                        <span class="config-desc-label mt-4">@config.Description.ToUpperInvariant()</span>
+                        <span class="config-desc-label mt-4">@GetConfigDescription(config).ToUpperInvariant()</span>
 
                         @if (config.Key == "generation.temperature" || config.Key == "generation.top_p")
                         {
@@ -238,7 +238,7 @@
                             </div>
                         }
 
-                        @if (config.IsCritical || config.Key == "generation.temperature")
+                        @if (config.IsCritical || config.Key == "generation.temperature" || IsChunkingConfigKey(config.Key))
                         {
                             <div class="custom-warning-box">
                                 <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Small" Class="warning-box-icon" />
@@ -858,7 +858,7 @@
     .custom-input {
         width: 100%;
         height: 44px;
-        padding: 0 90px 0 12px;
+        padding: 0 110px 0 12px;
         border: 1px solid #c7c6d5;
         border-radius: 8px;
         background: #ffffff;
@@ -1591,12 +1591,54 @@
         config.Value = value.ToString(CultureInfo.InvariantCulture);
     }
 
+    private static bool IsChunkingConfigKey(string key)
+    {
+        return key is "rag.chunk_size"
+            or "rag.chunk_overlap"
+            or "rag.semantic_target_tokens"
+            or "rag.semantic_min_tokens"
+            or "rag.semantic_max_tokens"
+            or "rag.semantic_overlap_tokens";
+    }
+
+    private static string GetConfigDisplayName(ConfigRow config)
+    {
+        return config.Key switch
+        {
+            "rag.chunk_size" => "Chunk size",
+            "rag.chunk_overlap" => "Chunk overlap",
+            "rag.semantic_target_tokens" => "Semantic v2 target",
+            "rag.semantic_min_tokens" => "Semantic v2 minimum",
+            "rag.semantic_max_tokens" => "Semantic v2 maximum",
+            "rag.semantic_overlap_tokens" => "Semantic v2 overlap",
+            _ => config.DisplayName
+        };
+    }
+
+    private static string GetConfigDescription(ConfigRow config)
+    {
+        return config.Key switch
+        {
+            "rag.chunk_size" => "Maximum characters per fixed/semantic-v1 source chunk before embedding.",
+            "rag.chunk_overlap" => "Character overlap between consecutive fixed-v1 chunks only. Semantic-v1 retains its existing structural overlap behavior.",
+            "rag.semantic_target_tokens" => "Conservative estimated-token target for semantic-v2 chunks (not exact tokenizer counts).",
+            "rag.semantic_min_tokens" => "Conservative estimated-token minimum before semantic-v2 starts a new chunk.",
+            "rag.semantic_max_tokens" => "Conservative estimated-token ceiling for semantic-v2 chunks.",
+            "rag.semantic_overlap_tokens" => "Conservative estimated-token overlap between compatible semantic-v2 chunks.",
+            _ => string.IsNullOrWhiteSpace(config.Description) ? config.DisplayName : config.Description
+        };
+    }
+
     private static string GetSuffixUnit(string key)
     {
         return key switch
         {
-            "rag.chunk_size" => "TOKENS",
-            "rag.chunk_overlap" => "TOKENS",
+            "rag.chunk_size" => "CHARS",
+            "rag.chunk_overlap" => "CHARS",
+            "rag.semantic_target_tokens" => "EST. TOKENS",
+            "rag.semantic_min_tokens" => "EST. TOKENS",
+            "rag.semantic_max_tokens" => "EST. TOKENS",
+            "rag.semantic_overlap_tokens" => "EST. TOKENS",
             "rag.max_chunks" => "CHUNKS",
             "quota.default_student_daily_tokens" => "TOKENS",
             "quota.default_admin_daily_tokens" => "TOKENS",
@@ -1614,8 +1656,12 @@
             "ai.chat_model" => "Directly impacts generation costs, context window limits, and answer latency.",
             "ai.embedding_model" => "Modifying the embedding model invalidates all existing index vectors.",
             "auth.allow_self_registration" => "Exposes student sign-ups to open public domains without whitelist checks.",
-            "rag.chunk_size" => "RAG indexing parameters modify token consumption and LLM context window loading.",
-            "rag.chunk_overlap" => "RAG indexing parameters modify token consumption and LLM context window loading.",
+            "rag.chunk_size" =>
+                "Affects future ingestion/re-ingestion only. Existing chunks/vectors are not rebuilt automatically. App restart is currently required for startup-bound option changes.",
+            "rag.chunk_overlap" =>
+                "Controls fixed-v1 character overlap only; semantic-v1 retains its existing structural overlap behavior. Affects future ingestion/re-ingestion only. Existing chunks/vectors are not rebuilt automatically. App restart is currently required for startup-bound option changes.",
+            "rag.semantic_target_tokens" or "rag.semantic_min_tokens" or "rag.semantic_max_tokens" or "rag.semantic_overlap_tokens" =>
+                "Applies only when ChunkingStrategy is semantic-v2. Affects future ingestion/re-ingestion only; existing chunks/vectors are not rebuilt. App restart is currently required for startup-bound option changes.",
             _ => "Saving this setting requires typed confirmation and writes before/after values to audit_logs."
         };
     }
