@@ -149,7 +149,9 @@
     private bool _humanCheckValid;
     private bool _busy;
     private string? _error;
-    private readonly RegisterRequest _model = new();
+    private readonly RegistrationAttemptState _attemptState = new();
+    // Retained for transport retries of this form instance; a fresh page instance starts a new operation.
+    private readonly RegisterRequest _model = new() { RegistrationOperationId = Guid.NewGuid() };
 
     protected override void OnInitialized()
     {
@@ -180,6 +182,7 @@
         var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
         if (!_isValid || !humanOk) return;
         _model.RecaptchaToken = _humanCheck?.GetResponseToken();
+        _attemptState.PrepareForDispatch(_model);
 
         _busy = true;
         StateHasChanged();
