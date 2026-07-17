@@ -1,6 +1,23 @@
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
+<style>
+    .moderator-folder-pagination-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px; border-top: 1px solid #f1f5f9; flex-wrap: wrap; }
+    .moderator-folder-pagination-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    .moderator-folder-pagination-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .moderator-folder-pagination-jump { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .moderator-folder-view-all-link { display: inline-flex; align-items: center; font-size: 0.875rem; font-weight: 500; color: #4f46e5; text-decoration: none; }
+    .moderator-folder-page-nav-btn { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #475569; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .moderator-folder-page-nav-btn:disabled { opacity: 0.4; cursor: default; }
+    .moderator-folder-page-nav-btn:hover:not(:disabled) { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .moderator-folder-page-number-btn { min-width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #475569; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .moderator-folder-page-number-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .moderator-folder-page-number-btn.active { border-color: #6366f1; background: #6366f1; color: #fff; }
+    .moderator-folder-page-ellipsis { color: #94a3b8; font-size: 12px; font-weight: 700; padding: 0 2px; }
+    .moderator-folder-page-jump-input { width: 86px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; padding: 7px 10px; font-size: 12px; outline: none; }
+    .moderator-folder-page-jump-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+</style>
+
 <div style="background: #fff; border-radius: 1rem; box-shadow: 0 2px 10px -4px rgba(0,0,0,0.05); border: 1px solid #f1f5f9; overflow: visible; margin-top: 2rem;">
     <div style="padding: 1.5rem; display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap;">
         <div>
@@ -12,6 +29,55 @@
             <MudIcon Icon="@Icons.Material.Filled.RestartAlt" Style="font-size: 1rem;" />
             <span>Reset table</span>
         </button>
+    </div>
+
+    <div style="padding: 0 1.5rem 1rem;">
+        <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.75rem; padding: 0.95rem 1rem; border: 1px solid #f1f5f9; border-radius: 0.875rem; background: #fff;">
+            <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Folder Name</span>
+                <input type="text"
+                       value="@FilterNameQuery"
+                       @oninput='e => UpdateAppliedFilter("name", e.Value?.ToString())'
+                       placeholder="Search folder name"
+                       style='@GetTopFilterInputStyle()' />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Owner</span>
+                <input type="text"
+                       value="@FilterOwnerQuery"
+                       @oninput='e => UpdateAppliedFilter("owner", e.Value?.ToString())'
+                       placeholder="Search owner"
+                       style='@GetTopFilterInputStyle()' />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Subject Code</span>
+                <input type="text"
+                       value="@FilterSubjectQuery"
+                       @oninput='e => UpdateAppliedFilter("subject", e.Value?.ToString())'
+                       placeholder="Search subject code"
+                       style='@GetTopFilterInputStyle()' />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Semester</span>
+                <input type="text"
+                       value="@FilterSemesterQuery"
+                       @oninput='e => UpdateAppliedFilter("semester", e.Value?.ToString())'
+                       placeholder="Search semester"
+                       style='@GetTopFilterInputStyle()' />
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 0.35rem; min-width: 0;">
+                <span style="font-size: 0.6875rem; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.08em;">Status</span>
+                <select value="@FilterStatus"
+                        @onchange='e => UpdateAppliedFilter("status", e.Value?.ToString())'
+                        style='@GetTopFilterInputStyle()'>
+                    <option value="">All status</option>
+                    @foreach (var statusOption in StatusOptions)
+                    {
+                        <option value="@statusOption">@statusOption</option>
+                    }
+                </select>
+            </label>
+        </div>
     </div>
 
     <div style="position: relative;">
@@ -26,8 +92,8 @@
         <table style="width: 100%; text-align: left; border-collapse: collapse;">
             <thead>
                 <tr style="background: rgba(249,250,251,0.8); border-top: 1px solid #f1f5f9; border-bottom: 1px solid #f1f5f9;">
-                    <th style="padding: 0.8rem 1rem 0.8rem 1.25rem; text-align: center; position: relative;">
-                        <button @ref="_nameHeaderButton" @onclick='() => HandleHeaderMenuClick("name")' style='@GetHeaderButtonStyle("name")'>
+                    <th style="padding: 0.8rem 1rem 0.8rem 24px; text-align: left; position: relative;">
+                        <button @ref="_nameHeaderButton" @onclick='() => ToggleSort("name")' style='@GetHeaderButtonStyle("name", true)'>
                             <span>Folder Name</span>
                             <MudIcon Icon='@GetSortIcon("name")' Style='@GetSortIconStyle("name")' />
                         </button>
@@ -36,17 +102,23 @@
                             var nameSuggestions = GetSuggestions("name");
                             <div style='@GetHeaderMenuStyle("16rem", true)'>
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
-                                <input type="text"
-                                       value="@NameSearchTerm"
-                                       @oninput='e => UpdateTextSearch("name", e.Value?.ToString())'
-                                       placeholder="Search folder name"
-                                       style='@GetFilterInputStyle()' />
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div style='@GetFilterSearchRowStyle()'>
+                                    <input type="text"
+                                           @ref="_nameSearchInput"
+                                           value="@NameSearchTerm"
+                                           @oninput='e => UpdateTextSearch("name", e.Value?.ToString())'
+                                           @onkeydown='e => HandleSearchKeyDown("name", e)'
+                                           placeholder="Search folder name"
+                                           style='@GetFilterInputStyle()' />
+                                </div>
+                                <div @ref="_nameSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (nameSuggestions.Count > 0)
                                     {
-                                        @foreach (var option in nameSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < nameSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button @onclick='() => ApplyTextSuggestion("name", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterNameQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                            var option = nameSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedNameSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("name", option)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedNameSuggestionIndex < 0 && string.Equals(NameSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                         }
                                     }
                                     else
@@ -61,8 +133,8 @@
                             </div>
                         }
                     </th>
-                    <th style="padding: 0.75rem 1.5rem; text-align: left; position: relative;">
-                        <button @ref="_ownerHeaderButton" @onclick='() => HandleHeaderMenuClick("owner")' style='@GetHeaderButtonStyle("owner", true)'>
+                    <th style="padding: 0.75rem 1.5rem; text-align: center; position: relative;">
+                        <button @ref="_ownerHeaderButton" @onclick='() => ToggleSort("owner")' style='@GetHeaderButtonStyle("owner")'>
                             <span>Owner</span>
                             <MudIcon Icon='@GetSortIcon("owner")' Style='@GetSortIconStyle("owner")' />
                         </button>
@@ -71,17 +143,23 @@
                             var ownerSuggestions = GetSuggestions("owner");
                             <div style='@GetHeaderMenuStyle("14rem", true)'>
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
-                                <input type="text"
-                                       value="@OwnerSearchTerm"
-                                       @oninput='e => UpdateTextSearch("owner", e.Value?.ToString())'
-                                       placeholder="Search owner"
-                                       style='@GetFilterInputStyle()' />
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div style='@GetFilterSearchRowStyle()'>
+                                    <input type="text"
+                                           @ref="_ownerSearchInput"
+                                           value="@OwnerSearchTerm"
+                                           @oninput='e => UpdateTextSearch("owner", e.Value?.ToString())'
+                                           @onkeydown='e => HandleSearchKeyDown("owner", e)'
+                                           placeholder="Search owner"
+                                           style='@GetFilterInputStyle()' />
+                                </div>
+                                <div @ref="_ownerSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (ownerSuggestions.Count > 0)
                                     {
-                                        @foreach (var option in ownerSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < ownerSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button @onclick='() => ApplyTextSuggestion("owner", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterOwnerQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                            var option = ownerSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedOwnerSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("owner", option)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedOwnerSuggestionIndex < 0 && string.Equals(OwnerSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                         }
                                     }
                                     else
@@ -96,8 +174,8 @@
                             </div>
                         }
                     </th>
-                    <th style="padding: 0.75rem 1.5rem; text-align: left; position: relative;">
-                        <button @ref="_subjectHeaderButton" @onclick='() => HandleHeaderMenuClick("subject")' style='@GetHeaderButtonStyle("subject", true)'>
+                    <th style="padding: 0.75rem 1.5rem; text-align: center; position: relative;">
+                        <button @ref="_subjectHeaderButton" @onclick='() => ToggleSort("subject")' style='@GetHeaderButtonStyle("subject")'>
                             <span>Subject Code</span>
                             <MudIcon Icon='@GetSortIcon("subject")' Style='@GetSortIconStyle("subject")' />
                         </button>
@@ -106,17 +184,23 @@
                             var subjectSuggestions = GetSuggestions("subject");
                             <div style='@GetHeaderMenuStyle("14rem", true)'>
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
-                                <input type="text"
-                                       value="@SubjectSearchTerm"
-                                       @oninput='e => UpdateTextSearch("subject", e.Value?.ToString())'
-                                       placeholder="Search subject code"
-                                       style='@GetFilterInputStyle()' />
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div style='@GetFilterSearchRowStyle()'>
+                                    <input type="text"
+                                           @ref="_subjectSearchInput"
+                                           value="@SubjectSearchTerm"
+                                           @oninput='e => UpdateTextSearch("subject", e.Value?.ToString())'
+                                           @onkeydown='e => HandleSearchKeyDown("subject", e)'
+                                           placeholder="Search subject code"
+                                           style='@GetFilterInputStyle()' />
+                                </div>
+                                <div @ref="_subjectSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (subjectSuggestions.Count > 0)
                                     {
-                                        @foreach (var option in subjectSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < subjectSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button @onclick='() => ApplyTextSuggestion("subject", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterSubjectQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                            var option = subjectSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedSubjectSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("subject", option)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedSubjectSuggestionIndex < 0 && string.Equals(SubjectSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                         }
                                     }
                                     else
@@ -131,8 +215,8 @@
                             </div>
                         }
                     </th>
-                    <th style="padding: 0.75rem 1.5rem; text-align: left; position: relative;">
-                        <button @ref="_semesterHeaderButton" @onclick='() => HandleHeaderMenuClick("semester")' style='@GetHeaderButtonStyle("semester", true)'>
+                    <th style="padding: 0.75rem 1.5rem; text-align: center; position: relative;">
+                        <button @ref="_semesterHeaderButton" @onclick='() => ToggleSort("semester")' style='@GetHeaderButtonStyle("semester")'>
                             <span>Semester</span>
                             <MudIcon Icon='@GetSortIcon("semester")' Style='@GetSortIconStyle("semester")' />
                         </button>
@@ -141,17 +225,23 @@
                             var semesterSuggestions = GetSuggestions("semester");
                             <div style='@GetHeaderMenuStyle("13rem", true)'>
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
-                                <input type="text"
-                                       value="@SemesterSearchTerm"
-                                       @oninput='e => UpdateTextSearch("semester", e.Value?.ToString())'
-                                       placeholder="Search semester"
-                                       style='@GetFilterInputStyle()' />
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div style='@GetFilterSearchRowStyle()'>
+                                    <input type="text"
+                                           @ref="_semesterSearchInput"
+                                           value="@SemesterSearchTerm"
+                                           @oninput='e => UpdateTextSearch("semester", e.Value?.ToString())'
+                                           @onkeydown='e => HandleSearchKeyDown("semester", e)'
+                                           placeholder="Search semester"
+                                           style='@GetFilterInputStyle()' />
+                                </div>
+                                <div @ref="_semesterSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (semesterSuggestions.Count > 0)
                                     {
-                                        @foreach (var option in semesterSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < semesterSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button @onclick='() => ApplyTextSuggestion("semester", option)' style='@GetFilterMenuItemStyle(string.Equals(FilterSemesterQuery, option, StringComparison.OrdinalIgnoreCase))'>@option</button>
+                                            var option = semesterSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedSemesterSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("semester", option)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedSemesterSuggestionIndex < 0 && string.Equals(SemesterSearchTerm, option, StringComparison.OrdinalIgnoreCase)))'>@option</button>
                                         }
                                     }
                                     else
@@ -167,26 +257,31 @@
                         }
                     </th>
                     <th style="padding: 0.75rem 1.5rem; text-align: left; position: relative;">
-                        <button @ref="_statusHeaderButton" @onclick='() => HandleHeaderMenuClick("status")' style='@GetHeaderButtonStyle("status", true)'>
-                            <span>Status</span>
-                            <MudIcon Icon='@GetSortIcon("status")' Style='@GetSortIconStyle("status")' />
-                        </button>
+                        <span style="display: inline-flex; align-items: center; justify-content: flex-start; color: #464554; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;">
+                            Status
+                        </span>
                         @if (OpenMenuColumn == "status")
                         {
                             var statusSuggestions = GetSuggestions("status");
                             <div style='@GetHeaderMenuStyle("14rem", true)'>
                                 <span style='@GetMenuSectionLabelStyle()'>Filter</span>
-                                <input type="text"
-                                       value="@StatusSearchTerm"
-                                       @oninput='e => UpdateTextSearch("status", e.Value?.ToString())'
-                                       placeholder="Search status"
-                                       style='@GetFilterInputStyle()' />
-                                <div style='@GetFilterOptionsListStyle()'>
+                                <div style='@GetFilterSearchRowStyle()'>
+                                    <input type="text"
+                                           @ref="_statusSearchInput"
+                                           value="@StatusSearchTerm"
+                                           @oninput='e => UpdateTextSearch("status", e.Value?.ToString())'
+                                           @onkeydown='e => HandleSearchKeyDown("status", e)'
+                                           placeholder="Search status"
+                                           style='@GetFilterInputStyle()' />
+                                </div>
+                                <div @ref="_statusSuggestionsList" style='@GetFilterOptionsListStyle()'>
                                     @if (statusSuggestions.Count > 0)
                                     {
-                                        @foreach (var statusOption in statusSuggestions)
+                                        @for (var suggestionIndex = 0; suggestionIndex < statusSuggestions.Count; suggestionIndex++)
                                         {
-                                            <button @onclick='() => ApplyTextSuggestion("status", statusOption)' style='@GetFilterMenuItemStyle(string.Equals(FilterStatus, statusOption, StringComparison.OrdinalIgnoreCase))'>@statusOption</button>
+                                            var statusOption = statusSuggestions[suggestionIndex];
+                                            var isHighlightedSuggestion = suggestionIndex == _highlightedStatusSuggestionIndex;
+                                            <button type="button" @onclick='() => ApplyTextSuggestion("status", statusOption)' style='@GetFilterMenuItemStyle(isHighlightedSuggestion || (_highlightedStatusSuggestionIndex < 0 && string.Equals(StatusSearchTerm, statusOption, StringComparison.OrdinalIgnoreCase)))'>@statusOption</button>
                                         }
                                     }
                                     else
@@ -204,24 +299,24 @@
                 </tr>
             </thead>
             <tbody>
-                @if (VisibleFolders.Any())
+                @if (FilteredFolders.Any())
                 {
                     @foreach (var folder in VisibleFolders)
                     {
                         <tr style="border-bottom: 1px solid #f1f5f9; cursor: pointer;" class="dashboard-row" @onclick="() => HandleRowClick(folder.Id)">
-                            <td style="padding: 1rem 1.5rem;">
+                            <td style="padding: 1rem 1.5rem 1rem 24px;">
                                 <div style="display: flex; align-items: center;">
                                     <MudIcon Icon="@Icons.Material.Filled.Folder" Style="font-size: 1rem; color: #9ca3af; margin-right: 0.75rem;" />
                                     <span style="font-weight: 500; color: #1f2937; font-size: 0.875rem;">@folder.Name</span>
                                 </div>
                             </td>
-                            <td style="padding: 1rem 1.5rem; font-size: 0.85rem; color: #6b7280; font-weight: 500;">
+                            <td style="padding: 1rem 1.5rem; text-align: center; font-size: 0.85rem; color: #6b7280; font-weight: 500;">
                                 @folder.OwnerName
                             </td>
-                            <td style="padding: 1rem 1.5rem;">
+                            <td style="padding: 1rem 1.5rem; text-align: center;">
                                 <span style="@GetSubjectStyle(folder.Status)">@folder.SubjectCode</span>
                             </td>
-                            <td style="padding: 1rem 1.5rem; font-size: 0.875rem; color: #6b7280; font-weight: 500;">
+                            <td style="padding: 1rem 1.5rem; text-align: center; font-size: 0.875rem; color: #6b7280; font-weight: 500;">
                                 @folder.Semester
                             </td>
                             <td style="padding: 1rem 1.5rem;">
@@ -254,11 +349,56 @@
     </div>
     </div>
 
-    <div style="padding: 1rem; border-top: 1px solid #f1f5f9; text-align: center;">
-        <a href="community" style="display: inline-flex; align-items: center; font-size: 0.875rem; font-weight: 500; color: #4f46e5; text-decoration: none;">
+    <div class="moderator-folder-pagination-bar">
+        <a href="community" class="moderator-folder-view-all-link">
             View all folders
             <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Style="font-size: 1rem; margin-left: 0.375rem;" />
         </a>
+
+        @if (TotalPages > 1)
+        {
+            <div class="moderator-folder-pagination-actions">
+                <div class="moderator-folder-pagination-controls">
+                    <button type="button"
+                            class="moderator-folder-page-nav-btn"
+                            @onclick="() => GoToPage(CurrentPage - 1)"
+                            disabled="@(CurrentPage == 1)">
+                        Prev
+                    </button>
+                    @foreach (var pageNumber in GetPageWindow())
+                    {
+                        if (pageNumber == -1)
+                        {
+                            <span class="moderator-folder-page-ellipsis">...</span>
+                        }
+                        else
+                        {
+                            var isActivePage = pageNumber == CurrentPage;
+                            <button type="button"
+                                    class="moderator-folder-page-number-btn @(isActivePage ? "active" : "")"
+                                    @onclick="() => GoToPage(pageNumber)">
+                                @pageNumber
+                            </button>
+                        }
+                    }
+                    <button type="button"
+                            class="moderator-folder-page-nav-btn"
+                            @onclick="() => GoToPage(CurrentPage + 1)"
+                            disabled="@(CurrentPage == TotalPages)">
+                        Next
+                    </button>
+                </div>
+                <div class="moderator-folder-pagination-jump">
+                    <input type="text"
+                           class="moderator-folder-page-jump-input"
+                           value="@PageJumpInput"
+                           placeholder="Page..."
+                           inputmode="numeric"
+                           @oninput="HandlePageJumpInput"
+                           @onkeydown="HandlePageJumpKeyDown" />
+                </div>
+            </div>
+        }
     </div>
 </div>
 
@@ -274,7 +414,16 @@
     private ElementReference _ownerHeaderButton;
     private ElementReference _subjectHeaderButton;
     private ElementReference _semesterHeaderButton;
-    private ElementReference _statusHeaderButton;
+    private ElementReference _nameSearchInput;
+    private ElementReference _ownerSearchInput;
+    private ElementReference _subjectSearchInput;
+    private ElementReference _semesterSearchInput;
+    private ElementReference _statusSearchInput;
+    private ElementReference _nameSuggestionsList;
+    private ElementReference _ownerSuggestionsList;
+    private ElementReference _subjectSuggestionsList;
+    private ElementReference _semesterSuggestionsList;
+    private ElementReference _statusSuggestionsList;
     private double _menuLeft = 16;
     private double _menuTop = 112;
     private double _menuWidth = 256;
@@ -289,10 +438,35 @@
     private string FilterSemesterQuery = string.Empty;
     private string FilterStatus = string.Empty;
     private string SortBy = string.Empty;
+    private const int PageSize = 10;
+    private int CurrentPage = 1;
+    private string PageJumpInput = string.Empty;
+    private string? _pendingFocusColumn;
+    private string? _pendingSuggestionScrollColumn;
+    private int? _pendingSuggestionScrollIndex;
+    private int _highlightedNameSuggestionIndex = -1;
+    private int _highlightedOwnerSuggestionIndex = -1;
+    private int _highlightedSubjectSuggestionIndex = -1;
+    private int _highlightedSemesterSuggestionIndex = -1;
+    private int _highlightedStatusSuggestionIndex = -1;
 
     private IReadOnlyList<FolderViewModel> SourceFolders => Folders?.ToList() ?? [];
 
-    private IReadOnlyList<FolderViewModel> VisibleFolders => GetVisibleFolders();
+    private IReadOnlyList<FolderViewModel> FilteredFolders => GetFilteredFolders();
+
+    private IReadOnlyList<FolderViewModel> VisibleFolders
+    {
+        get
+        {
+            EnsureCurrentPage();
+            return FilteredFolders
+                .Skip((CurrentPage - 1) * PageSize)
+                .Take(PageSize)
+                .ToList();
+        }
+    }
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(FilteredFolders.Count / (double)PageSize));
 
     private IReadOnlyList<string> NameOptions => SourceFolders
         .Select(folder => folder.Name)
@@ -329,7 +503,7 @@
         .OrderBy(status => status, StringComparer.OrdinalIgnoreCase)
         .ToList();
 
-    private IReadOnlyList<FolderViewModel> GetVisibleFolders()
+    private IReadOnlyList<FolderViewModel> GetFilteredFolders()
     {
         IEnumerable<FolderViewModel> query = SourceFolders;
 
@@ -376,6 +550,18 @@
         return query.ToList();
     }
 
+    private void EnsureCurrentPage()
+    {
+        if (CurrentPage < 1)
+        {
+            CurrentPage = 1;
+        }
+        else if (CurrentPage > TotalPages)
+        {
+            CurrentPage = TotalPages;
+        }
+    }
+
     private IReadOnlyList<string> GetSuggestions(string columnKey)
     {
         IReadOnlyList<string> options = columnKey switch
@@ -414,23 +600,23 @@
         {
             case "name":
                 NameSearchTerm = normalizedValue;
-                FilterNameQuery = normalizedValue;
+                ResetHighlightedSuggestion("name");
                 break;
             case "owner":
                 OwnerSearchTerm = normalizedValue;
-                FilterOwnerQuery = normalizedValue;
+                ResetHighlightedSuggestion("owner");
                 break;
             case "subject":
                 SubjectSearchTerm = normalizedValue;
-                FilterSubjectQuery = normalizedValue;
+                ResetHighlightedSuggestion("subject");
                 break;
             case "semester":
                 SemesterSearchTerm = normalizedValue;
-                FilterSemesterQuery = normalizedValue;
+                ResetHighlightedSuggestion("semester");
                 break;
             case "status":
                 StatusSearchTerm = normalizedValue;
-                FilterStatus = normalizedValue;
+                ResetHighlightedSuggestion("status");
                 break;
         }
     }
@@ -440,28 +626,24 @@
         switch (columnKey)
         {
             case "name":
-                FilterNameQuery = value;
                 NameSearchTerm = value;
                 break;
             case "owner":
-                FilterOwnerQuery = value;
                 OwnerSearchTerm = value;
                 break;
             case "subject":
-                FilterSubjectQuery = value;
                 SubjectSearchTerm = value;
                 break;
             case "semester":
-                FilterSemesterQuery = value;
                 SemesterSearchTerm = value;
                 break;
             case "status":
-                FilterStatus = value;
                 StatusSearchTerm = value;
                 break;
         }
 
-        CloseOpenMenu();
+        ResetHighlightedSuggestion(columnKey);
+        ApplySearch(columnKey);
     }
 
     private void ClearTextFilter(string columnKey)
@@ -490,6 +672,7 @@
                 break;
         }
 
+        CurrentPage = 1;
         CloseOpenMenu();
     }
 
@@ -497,6 +680,7 @@
     {
         FilterStatus = statusValue;
         StatusSearchTerm = statusValue;
+        CurrentPage = 1;
         CloseOpenMenu();
     }
 
@@ -513,7 +697,41 @@
         FilterSemesterQuery = string.Empty;
         FilterStatus = string.Empty;
         SortBy = string.Empty;
+        CurrentPage = 1;
+        PageJumpInput = string.Empty;
         OpenMenuColumn = null;
+        _pendingFocusColumn = null;
+        ResetAllHighlightedSuggestions();
+    }
+
+    private void UpdateAppliedFilter(string columnKey, string? value)
+    {
+        var normalizedValue = value?.Trim() ?? string.Empty;
+        switch (columnKey)
+        {
+            case "name":
+                FilterNameQuery = normalizedValue;
+                NameSearchTerm = normalizedValue;
+                break;
+            case "owner":
+                FilterOwnerQuery = normalizedValue;
+                OwnerSearchTerm = normalizedValue;
+                break;
+            case "subject":
+                FilterSubjectQuery = normalizedValue;
+                SubjectSearchTerm = normalizedValue;
+                break;
+            case "semester":
+                FilterSemesterQuery = normalizedValue;
+                SemesterSearchTerm = normalizedValue;
+                break;
+            case "status":
+                FilterStatus = normalizedValue;
+                StatusSearchTerm = normalizedValue;
+                break;
+        }
+
+        CurrentPage = 1;
     }
 
     private async Task HandleHeaderMenuClick(string columnKey)
@@ -524,41 +742,73 @@
             return;
         }
 
-        SyncSearchTermToFilter(columnKey);
+        ClearDraftSearch(columnKey);
         OpenMenuColumn = columnKey;
+        _pendingFocusColumn = columnKey;
         await PositionMenuAsync(columnKey);
     }
 
     private void ApplySortOption(string columnKey, string sortKey)
     {
         SortBy = sortKey;
+        CurrentPage = 1;
         CloseOpenMenu();
     }
 
-    private void SyncSearchTermToFilter(string columnKey)
+    private void ToggleSort(string columnKey)
+    {
+        SortBy = columnKey switch
+        {
+            "name" => SortBy == "name-asc" ? "name-desc" : "name-asc",
+            "owner" => SortBy == "owner-asc" ? "owner-desc" : "owner-asc",
+            "subject" => SortBy == "subject-asc" ? "subject-desc" : "subject-asc",
+            "semester" => SortBy == "semester-asc" ? "semester-desc" : "semester-asc",
+            _ => string.Empty
+        };
+
+        OpenMenuColumn = null;
+        CurrentPage = 1;
+    }
+
+    private void ClearDraftSearch(string columnKey)
     {
         switch (columnKey)
         {
             case "name":
-                NameSearchTerm = FilterNameQuery;
+                NameSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("name");
                 break;
             case "owner":
-                OwnerSearchTerm = FilterOwnerQuery;
+                OwnerSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("owner");
                 break;
             case "subject":
-                SubjectSearchTerm = FilterSubjectQuery;
+                SubjectSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("subject");
                 break;
             case "semester":
-                SemesterSearchTerm = FilterSemesterQuery;
+                SemesterSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("semester");
                 break;
             case "status":
-                StatusSearchTerm = FilterStatus;
+                StatusSearchTerm = string.Empty;
+                ResetHighlightedSuggestion("status");
                 break;
         }
     }
 
-    private void CloseOpenMenu() =>
+    private void CloseOpenMenu()
+    {
+        if (!string.IsNullOrWhiteSpace(OpenMenuColumn))
+        {
+            ClearDraftSearch(OpenMenuColumn);
+        }
+
         OpenMenuColumn = null;
+        _pendingFocusColumn = null;
+        _pendingSuggestionScrollColumn = null;
+        _pendingSuggestionScrollIndex = null;
+    }
 
     private bool HasActiveFilters() =>
         !string.IsNullOrWhiteSpace(FilterNameQuery)
@@ -585,17 +835,20 @@
             : Icons.Material.Filled.KeyboardArrowUp;
     }
 
+    private string GetTopFilterInputStyle() =>
+        "width: 100%; border: 1px solid #d7dbe7; border-radius: 0.7rem; background: #fff; color: #1a1b1f; padding: 0.62rem 0.75rem; font-size: 0.8125rem; outline: none; box-sizing: border-box;";
+
     private string GetHeaderButtonStyle(string columnKey, bool alignLeft = false)
     {
-        var isActive = IsSortedBy(columnKey) || IsColumnFiltered(columnKey);
+        var isActive = IsSortedBy(columnKey);
         var color = isActive ? "#5e5ce6" : "#464554";
         var justifyContent = alignLeft ? "flex-start" : "center";
-        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;";
+        return $"display: inline-flex; align-items: center; justify-content: {justifyContent}; gap: 0.3rem; width: auto; max-width: 100%; border: none; background: transparent; padding: 0; cursor: pointer; color: {color}; font-size: 0.8125rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.65px;";
     }
 
     private string GetSortIconStyle(string columnKey)
     {
-        var color = (IsSortedBy(columnKey) || IsColumnFiltered(columnKey)) ? "#5e5ce6" : "#9ca3af";
+        var color = IsSortedBy(columnKey) ? "#5e5ce6" : "#9ca3af";
         return $"font-size: 1rem; color: {color};";
     }
 
@@ -615,7 +868,7 @@
     }
 
     private string GetMenuSectionLabelStyle() =>
-        "display: block; padding: 0.35rem 0.55rem 0.2rem; font-size: 0.675rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.08em;";
+        "display: block; padding: 0.35rem 0.55rem 0.2rem; font-size: 0.675rem; font-weight: 700; color: #7c7f8f; text-transform: uppercase; letter-spacing: 0.08em; text-align: center;";
 
     private string GetMenuDividerStyle() =>
         "height: 1px; background: rgba(199,196,215,0.35); margin: 0.35rem 0;";
@@ -633,7 +886,6 @@
             "owner" => _ownerHeaderButton,
             "subject" => _subjectHeaderButton,
             "semester" => _semesterHeaderButton,
-            "status" => _statusHeaderButton,
             _ => default
         };
 
@@ -670,7 +922,10 @@
     }
 
     private string GetFilterInputStyle() =>
-        "width: 100%; border: 1px solid rgba(199,196,215,0.65); border-radius: 0.6rem; background: #fbfbfe; color: #1a1b1f; padding: 0.58rem 0.7rem; font-size: 0.8125rem; outline: none; box-sizing: border-box;";
+        "flex: 1 1 auto; min-width: 0; border: 1px solid rgba(199,196,215,0.65); border-radius: 0.6rem; background: #fbfbfe; color: #1a1b1f; padding: 0.58rem 0.7rem; font-size: 0.8125rem; outline: none; box-sizing: border-box;";
+
+    private string GetFilterSearchRowStyle() =>
+        "display: flex; align-items: center; gap: 0.45rem;";
 
     private string GetFilterOptionsListStyle() =>
         "display: flex; flex-direction: column; gap: 0.2rem; margin-top: 0.4rem; max-height: 12.25rem; overflow-y: auto; padding-right: 0.15rem;";
@@ -689,21 +944,261 @@
             _ => false
         };
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        var focusColumn = _pendingFocusColumn;
+        _pendingFocusColumn = null;
+
+        if (!string.IsNullOrWhiteSpace(focusColumn))
+        {
+            switch (focusColumn)
+            {
+                case "name":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _nameSearchInput, true);
+                    break;
+                case "owner":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _ownerSearchInput, true);
+                    break;
+                case "subject":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _subjectSearchInput, true);
+                    break;
+                case "semester":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _semesterSearchInput, true);
+                    break;
+                case "status":
+                    await JS.InvokeVoidAsync("codexTableFilter.focusElement", _statusSearchInput, true);
+                    break;
+            }
+        }
+
+        if (_pendingSuggestionScrollIndex.HasValue && !string.IsNullOrWhiteSpace(_pendingSuggestionScrollColumn))
+        {
+            var scrollIndex = _pendingSuggestionScrollIndex.Value;
+            var scrollColumn = _pendingSuggestionScrollColumn;
+            _pendingSuggestionScrollIndex = null;
+            _pendingSuggestionScrollColumn = null;
+
+            if (string.Equals(OpenMenuColumn, scrollColumn, StringComparison.OrdinalIgnoreCase))
+            {
+                var suggestionsList = scrollColumn switch
+                {
+                    "name" => _nameSuggestionsList,
+                    "owner" => _ownerSuggestionsList,
+                    "subject" => _subjectSuggestionsList,
+                    "semester" => _semesterSuggestionsList,
+                    "status" => _statusSuggestionsList,
+                    _ => default
+                };
+
+                await JS.InvokeVoidAsync("codexTableFilter.scrollOptionIntoViewByIndex", suggestionsList, scrollIndex);
+            }
+        }
+    }
+
+    private void ApplySearch(string columnKey)
+    {
+        var value = columnKey switch
+        {
+            "name" => NameSearchTerm,
+            "owner" => OwnerSearchTerm,
+            "subject" => SubjectSearchTerm,
+            "semester" => SemesterSearchTerm,
+            "status" => StatusSearchTerm,
+            _ => string.Empty
+        };
+
+        switch (columnKey)
+        {
+            case "name":
+                FilterNameQuery = value;
+                ResetHighlightedSuggestion("name");
+                break;
+            case "owner":
+                FilterOwnerQuery = value;
+                ResetHighlightedSuggestion("owner");
+                break;
+            case "subject":
+                FilterSubjectQuery = value;
+                ResetHighlightedSuggestion("subject");
+                break;
+            case "semester":
+                FilterSemesterQuery = value;
+                ResetHighlightedSuggestion("semester");
+                break;
+            case "status":
+                FilterStatus = value;
+                ResetHighlightedSuggestion("status");
+                break;
+        }
+
+        CurrentPage = 1;
+        CloseOpenMenu();
+    }
+
+    private void HandleSearchKeyDown(string columnKey, KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "ArrowDown", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveSuggestionSelection(columnKey, 1);
+            return;
+        }
+
+        if (string.Equals(e.Key, "ArrowUp", StringComparison.OrdinalIgnoreCase))
+        {
+            MoveSuggestionSelection(columnKey, -1);
+            return;
+        }
+
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            ApplyHighlightedOrTypedSearch(columnKey);
+            return;
+        }
+
+        if (string.Equals(e.Key, "Escape", StringComparison.OrdinalIgnoreCase))
+        {
+            CloseOpenMenu();
+        }
+    }
+
+    private void MoveSuggestionSelection(string columnKey, int offset)
+    {
+        var suggestions = GetSuggestions(columnKey);
+        if (suggestions.Count == 0)
+        {
+            ResetHighlightedSuggestion(columnKey);
+            return;
+        }
+
+        var highlightedIndex = GetHighlightedSuggestionIndex(columnKey);
+        if (highlightedIndex < 0)
+        {
+            SetHighlightedSuggestionIndex(columnKey, offset > 0 ? 0 : suggestions.Count - 1);
+        }
+        else
+        {
+            SetHighlightedSuggestionIndex(columnKey, (highlightedIndex + offset + suggestions.Count) % suggestions.Count);
+        }
+
+        _pendingSuggestionScrollColumn = columnKey;
+        _pendingSuggestionScrollIndex = GetHighlightedSuggestionIndex(columnKey);
+    }
+
+    private void ApplyHighlightedOrTypedSearch(string columnKey)
+    {
+        var selectedValue = columnKey switch
+        {
+            "name" => NameSearchTerm,
+            "owner" => OwnerSearchTerm,
+            "subject" => SubjectSearchTerm,
+            "semester" => SemesterSearchTerm,
+            "status" => StatusSearchTerm,
+            _ => string.Empty
+        };
+
+        var suggestions = GetSuggestions(columnKey);
+        var highlightedIndex = GetHighlightedSuggestionIndex(columnKey);
+        if (highlightedIndex >= 0 && highlightedIndex < suggestions.Count)
+        {
+            selectedValue = suggestions[highlightedIndex];
+        }
+
+        switch (columnKey)
+        {
+            case "name":
+                NameSearchTerm = selectedValue;
+                break;
+            case "owner":
+                OwnerSearchTerm = selectedValue;
+                break;
+            case "subject":
+                SubjectSearchTerm = selectedValue;
+                break;
+            case "semester":
+                SemesterSearchTerm = selectedValue;
+                break;
+            case "status":
+                StatusSearchTerm = selectedValue;
+                break;
+        }
+
+        ApplySearch(columnKey);
+    }
+
+    private int GetHighlightedSuggestionIndex(string columnKey) =>
+        columnKey switch
+        {
+            "name" => _highlightedNameSuggestionIndex,
+            "owner" => _highlightedOwnerSuggestionIndex,
+            "subject" => _highlightedSubjectSuggestionIndex,
+            "semester" => _highlightedSemesterSuggestionIndex,
+            "status" => _highlightedStatusSuggestionIndex,
+            _ => -1
+        };
+
+    private void SetHighlightedSuggestionIndex(string columnKey, int value)
+    {
+        switch (columnKey)
+        {
+            case "name":
+                _highlightedNameSuggestionIndex = value;
+                break;
+            case "owner":
+                _highlightedOwnerSuggestionIndex = value;
+                break;
+            case "subject":
+                _highlightedSubjectSuggestionIndex = value;
+                break;
+            case "semester":
+                _highlightedSemesterSuggestionIndex = value;
+                break;
+            case "status":
+                _highlightedStatusSuggestionIndex = value;
+                break;
+        }
+    }
+
+    private void ResetHighlightedSuggestion(string columnKey)
+    {
+        SetHighlightedSuggestionIndex(columnKey, -1);
+
+        if (string.Equals(_pendingSuggestionScrollColumn, columnKey, StringComparison.OrdinalIgnoreCase))
+        {
+            _pendingSuggestionScrollColumn = null;
+            _pendingSuggestionScrollIndex = null;
+        }
+    }
+
+    private void ResetAllHighlightedSuggestions()
+    {
+        _highlightedNameSuggestionIndex = -1;
+        _highlightedOwnerSuggestionIndex = -1;
+        _highlightedSubjectSuggestionIndex = -1;
+        _highlightedSemesterSuggestionIndex = -1;
+        _highlightedStatusSuggestionIndex = -1;
+        _pendingSuggestionScrollColumn = null;
+        _pendingSuggestionScrollIndex = null;
+    }
+
     private string GetSubjectStyle(string status)
     {
         var bg = status switch
         {
-            "Pending Share" => "#fefce8",
+            "Human Review" => "#eff6ff",
             "Shared" => "#eef2ff",
             "Ready" => "#ecfdf5",
+            "Processing" => "rgba(243,232,255,0.8)",
+            "Rejected" => "#fef2f2",
             "Failed" => "#fef2f2",
             _ => "rgba(243,244,246,0.8)"
         };
         var color = status switch
         {
-            "Pending Share" => "#a16207",
+            "Human Review" => "#1d4ed8",
             "Shared" => "#4338ca",
             "Ready" => "#047857",
+            "Processing" => "#7e22ce",
+            "Rejected" => "#b91c1c",
             "Failed" => "#b91c1c",
             _ => "#4b5563"
         };
@@ -714,7 +1209,7 @@
     {
         var (bg, color) = status switch
         {
-            "Pending Share" => ("#fefce8", "#a16207"),
+            "Human Review" => ("#eff6ff", "#1d4ed8"),
             "Shared" => ("#eef2ff", "#4338ca"),
             "Ready" => ("#ecfdf5", "#047857"),
             "Processing" => ("rgba(243,232,255,0.8)", "#7e22ce"),
@@ -730,7 +1225,7 @@
     {
         var dotColor = status switch
         {
-            "Pending Share" => "#ca8a04",
+            "Human Review" => "#3b82f6",
             "Shared" => "#4f46e5",
             "Ready" => "#059669",
             "Processing" => "#9333ea",
@@ -741,6 +1236,87 @@
         };
         return $"display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 9999px; margin-right: 0.375rem; background: {dotColor};";
     }
+
+    private IReadOnlyList<int> GetPageWindow() =>
+        BuildSlidingPageNumbers(TotalPages, CurrentPage);
+
+    private static IReadOnlyList<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var index = 1; index <= total; index++)
+            {
+                pages.Add(index);
+            }
+
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var index = 1; index <= 3; index++)
+            {
+                pages.Add(index);
+            }
+
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+
+            for (var index = total - 2; index <= total; index++)
+            {
+                pages.Add(index);
+            }
+
+            return pages;
+        }
+
+        for (var index = current - 1; index <= current + 1; index++)
+        {
+            pages.Add(index);
+        }
+
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void GoToPage(int pageNumber)
+    {
+        CurrentPage = Math.Clamp(pageNumber, 1, TotalPages);
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        PageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(PageJumpInput, out var page))
+        {
+            GoToPage(page);
+        }
+
+        PageJumpInput = string.Empty;
+    }
+
     private void HandleRowClick(Guid folderId)
     {
         Nav.NavigateTo($"/dashboard/analytics?folderId={folderId}");

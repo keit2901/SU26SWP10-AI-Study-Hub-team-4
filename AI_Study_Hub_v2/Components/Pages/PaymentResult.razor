@@ -3,6 +3,7 @@
 @inject NavigationManager Navigation
 @inject PlanApiClient PlanApi
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 
 <PageTitle>Payment Result — AI Study Hub</PageTitle>
 
@@ -205,6 +206,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await RestoreSessionAsync();
         await VerifyPayment();
     }
 
@@ -215,15 +217,8 @@
 
         try
         {
-            var accessToken = Session.AccessToken;
-            if (string.IsNullOrWhiteSpace(accessToken))
-            {
-                _result = new ReturnUrlResult(false, "error", null, 0, "Not authenticated.");
-                return;
-            }
-
             var uri = new Uri(Navigation.Uri);
-            _result = await PlanApi.VerifyReturnUrlAsync(accessToken, uri.Query);
+            _result = await PlanApi.VerifyReturnUrlAsync(Session.AccessToken, uri.Query);
         }
         catch
         {
@@ -238,6 +233,22 @@
     private async Task CheckAgain()
     {
         await VerifyPayment();
+    }
+
+    private async Task RestoreSessionAsync()
+    {
+        if (Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        var restored = await AuthPersistence.TryRestoreAsync();
+        if (restored is null || string.IsNullOrWhiteSpace(restored.AccessToken))
+        {
+            return;
+        }
+
+        Session.Set(restored);
     }
 
     private void GoToPricing() => Navigation.NavigateTo("/pricing", forceLoad: true);

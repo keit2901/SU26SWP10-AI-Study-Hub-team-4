@@ -1,8 +1,12 @@
 using System.Text;
+using DocumentFormat.OpenXml;
 using DocumentFormat.OpenXml.Packaging;
 using UglyToad.PdfPig;
 using UglyToad.PdfPig.DocumentLayoutAnalysis.TextExtractor;
 using UglyToad.PdfPig.Content;
+using A = DocumentFormat.OpenXml.Drawing;
+using P = DocumentFormat.OpenXml.Presentation;
+using W = DocumentFormat.OpenXml.Wordprocessing;
 
 namespace AI_Study_Hub_v2.Services.Rag;
 
@@ -96,21 +100,16 @@ public sealed class PdfTextExtractionService : ITextExtractionService
             return Array.Empty<ExtractedPage>();
         }
 
-        var text = new StringBuilder();
-        var body = mainPart.Document.Body;
-
-        foreach (var para in body.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
-        {
-            text.AppendLine(para.InnerText);
-        }
+        var blocks = new List<ExtractedBlock>();
+        CollectWordBlocks(mainPart.Document.Body, blocks);
 
         if (mainPart.HeaderParts is not null)
         {
             foreach (var headerPart in mainPart.HeaderParts)
             {
-                foreach (var para in headerPart.Header.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+                if (headerPart.Header is not null)
                 {
-                    text.AppendLine(para.InnerText);
+                    CollectWordBlocks(headerPart.Header, blocks);
                 }
             }
         }
@@ -119,14 +118,14 @@ public sealed class PdfTextExtractionService : ITextExtractionService
         {
             foreach (var footerPart in mainPart.FooterParts)
             {
-                foreach (var para in footerPart.Footer.Descendants<DocumentFormat.OpenXml.Wordprocessing.Paragraph>())
+                if (footerPart.Footer is not null)
                 {
-                    text.AppendLine(para.InnerText);
+                    CollectWordBlocks(footerPart.Footer, blocks);
                 }
             }
         }
 
-        var fullText = text.ToString().Trim();
+        var fullText = RenderBlocks(blocks);
         var images = ExtractDocxImages(mainPart);
         return string.IsNullOrWhiteSpace(fullText)
             ? (images.Count > 0 ? new[] { new ExtractedPage(1, fullText, images) } : Array.Empty<ExtractedPage>())
@@ -147,11 +146,77 @@ public sealed class PdfTextExtractionService : ITextExtractionService
         return images;
     }
 
+    private static void CollectWordBlocks(OpenXmlElement container, ICollection<ExtractedBlock> blocks)
+    {
+        foreach (var child in container.ChildElements)
+        {
+            switch (child)
+            {
+                case W.Paragraph paragraph:
+                    blocks.Add(new ExtractedBlock(ExtractWordParagraph(paragraph), false));
+                    break;
+                case W.Table table:
+                    blocks.Add(new ExtractedBlock(ExtractWordTable(table), true));
+                    break;
+                case W.SdtBlock sdtBlock when sdtBlock.SdtContentBlock is not null:
+                    CollectWordBlocks(sdtBlock.SdtContentBlock, blocks);
+                    break;
+            }
+        }
+    }
+
+    private static string ExtractWordTable(W.Table table) => string.Join('\n', table.Elements<W.TableRow>()
+        .Select(row => string.Join('\t', row.Elements<W.TableCell>().Select(ExtractWordCell))));
+
+    private static string ExtractWordCell(W.TableCell cell)
+    {
+        var blocks = new List<ExtractedBlock>();
+        CollectWordBlocks(cell, blocks);
+        return RenderBlocks(blocks);
+    }
+
+    private static string ExtractWordParagraph(W.Paragraph paragraph)
+    {
+        var text = ExtractWordText(paragraph);
+        var numbering = paragraph.ParagraphProperties?.NumberingProperties;
+        if (numbering is null)
+        {
+            return text;
+        }
+
+        var level = numbering.NumberingLevelReference?.Val?.Value ?? 0;
+        return string.Concat(new string(' ', Math.Max(0, level) * 2), "- ", text);
+    }
+
+    private static string ExtractWordText(OpenXmlElement element)
+    {
+        var text = new StringBuilder();
+        foreach (var child in element.Descendants())
+        {
+            switch (child)
+            {
+                case W.Text value:
+                    text.Append(value.Text);
+                    break;
+                case W.TabChar:
+                    text.Append('\t');
+                    break;
+                case W.Break:
+                case W.CarriageReturn:
+                    text.Append('\n');
+                    break;
+            }
+        }
+
+        return text.ToString();
+    }
+
     private static IReadOnlyList<ExtractedPage> ExtractPptxPages(Stream fileStream)
     {
         using var pres = PresentationDocument.Open(fileStream, false);
-        var slideParts = pres.PresentationPart?.SlideParts;
-        if (slideParts is null || !slideParts.Any())
+        var presentationPart = pres.PresentationPart;
+        var slideIds = presentationPart?.Presentation?.SlideIdList?.Elements<P.SlideId>().ToList();
+        if (presentationPart is null || slideIds is null || slideIds.Count == 0)
         {
             return Array.Empty<ExtractedPage>();
         }
@@ -159,27 +224,91 @@ public sealed class PdfTextExtractionService : ITextExtractionService
         var pages = new List<ExtractedPage>();
         var pageNumber = 0;
 
-        foreach (var slidePart in slideParts)
+        foreach (var slideId in slideIds)
         {
-            pageNumber++;
-            var slide = slidePart.Slide;
-            var text = new StringBuilder();
-
-            foreach (var textBody in slide.Descendants<DocumentFormat.OpenXml.Drawing.TextBody>())
+            var relationshipId = slideId.RelationshipId?.Value;
+            if (string.IsNullOrWhiteSpace(relationshipId) || presentationPart.GetPartById(relationshipId) is not SlidePart slidePart)
             {
-                foreach (var para in textBody.Elements<DocumentFormat.OpenXml.Drawing.Paragraph>())
-                {
-                    text.AppendLine(para.InnerText);
-                }
+                continue;
             }
 
-            var slideText = text.ToString().Trim();
+            pageNumber++;
+            var blocks = new List<ExtractedBlock>();
+            var shapeTree = slidePart.Slide?.CommonSlideData?.ShapeTree;
+            if (shapeTree is not null)
+            {
+                CollectPresentationBlocks(shapeTree, blocks);
+            }
+
+            var slideText = RenderBlocks(blocks);
             var images = ExtractPptxImages(slidePart);
             pages.Add(new ExtractedPage(pageNumber, slideText, images));
         }
 
         return pages;
     }
+
+    private static void CollectPresentationBlocks(OpenXmlElement container, ICollection<ExtractedBlock> blocks)
+    {
+        foreach (var child in container.ChildElements)
+        {
+            switch (child)
+            {
+                case P.Shape shape when shape.TextBody is not null:
+                    foreach (var paragraph in shape.TextBody.Elements<A.Paragraph>())
+                    {
+                        blocks.Add(new ExtractedBlock(ExtractPresentationParagraph(paragraph), false));
+                    }
+                    break;
+                case P.GroupShape groupShape:
+                    CollectPresentationBlocks(groupShape, blocks);
+                    break;
+                case P.GraphicFrame graphicFrame:
+                    var table = graphicFrame.Graphic?.GraphicData?.GetFirstChild<A.Table>();
+                    if (table is not null)
+                    {
+                        blocks.Add(new ExtractedBlock(ExtractPresentationTable(table), true));
+                    }
+                    break;
+            }
+        }
+    }
+
+    private static string ExtractPresentationTable(A.Table table) => string.Join('\n', table.Elements<A.TableRow>()
+        .Select(row => string.Join('\t', row.Elements<A.TableCell>().Select(ExtractPresentationCell))));
+
+    private static string ExtractPresentationCell(A.TableCell cell) => cell.TextBody is null
+        ? string.Empty
+        : string.Join('\n', cell.TextBody.Elements<A.Paragraph>().Select(ExtractPresentationParagraph));
+
+    private static string ExtractPresentationParagraph(A.Paragraph paragraph)
+    {
+        var text = paragraph.InnerText;
+        var level = paragraph.ParagraphProperties?.Level?.Value;
+        return level is null
+            ? text
+            : string.Concat(new string(' ', Math.Max(0, level.Value) * 2), "- ", text);
+    }
+
+    private static string RenderBlocks(IEnumerable<ExtractedBlock> blocks)
+    {
+        var rendered = new StringBuilder();
+        ExtractedBlock? previous = null;
+        foreach (var block in blocks)
+        {
+            if (previous is not null)
+            {
+                rendered.Append(previous.Value.IsTable || block.IsTable ? "\n\n" : "\n");
+            }
+
+            rendered.Append(block.Text);
+            previous = block;
+        }
+
+        return rendered.ToString().Trim('\r', '\n');
+    }
+
+    private readonly record struct ExtractedBlock(string Text, bool IsTable);
 
     private static IReadOnlyList<ExtractedImage> ExtractPptxImages(SlidePart slidePart)
     {

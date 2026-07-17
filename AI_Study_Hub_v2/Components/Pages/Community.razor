@@ -22,14 +22,14 @@
                     <button class="sidebar-toggle-btn @(_activeTab == "personal" ? "active" : "")"
                             @onclick="SwitchToPersonal">
                         <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" />
-                        <span>Personal Shared</span>
+                        <span>Share Center</span>
                     </button>
                 </div>
             </div>
 
             <div class="sidebar-list">
                 <div class="sidebar-list-label">
-                    @(_activeTab == "community" ? "Public Folders" : "My Shared Folders")
+                    @(_activeTab == "community" ? "Public Folders" : "Share Center")
                 </div>
                 @if (_currentFolders.Count == 0)
                 {
@@ -100,8 +100,8 @@
             {
                 <div class="community-loading">
                     <MudProgressCircular Indeterminate="true" Size="Size.Medium" />
-                    </div>
-
+                </div>
+                @*
                     @if (_activeTab == "personal" && _totalPages > 1)
                     {
                         <div class="pagination-bar">
@@ -125,17 +125,18 @@
                             </div>
                         </div>
                     }
+*@
                 }
                 else
             {
                 <div class="community-main-header">
                     <h1 class="community-title">
-                        @(_activeTab == "community" ? "Public Community" : "Personal Shared")
+                        @(_activeTab == "community" ? "Public Community" : "My Share Center")
                     </h1>
                     <p class="community-subtitle">
                         @(_activeTab == "community"
                             ? "Browse and rate folders shared by the community"
-                            : "Engagement dashboard for your shared folders")
+                            : "Track approved, pending, and rejected share requests for your folders")
                     </p>
                 </div>
 
@@ -169,7 +170,7 @@
                                 <MudIcon Icon="@Icons.Material.Filled.ReportProblem" Size="Size.Small" />
                             </div>
                             <div class="personal-status-content">
-                                <div class="personal-status-label">Reject</div>
+                                <div class="personal-status-label">Rejected</div>
                                 <div class="personal-status-value">@_personalFailedFolders.Count</div>
                                 <p class="personal-status-note">Folders need updates before sharing again.</p>
                             </div>
@@ -232,24 +233,57 @@
 
                 <div class="community-search">
                     <div class="search-filter-row">
-                        <div class="search-wrapper">
-                            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
-                            <input type="text"
-                                   class="search-input"
-                                   placeholder="Search folders..."
-                                   value="@_searchQuery"
-                                   @oninput="HandleSearchInput" />
+                        <div class="search-filter-main">
+                            <div class="search-wrapper">
+                                <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
+                                <input type="text"
+                                       class="search-input"
+                                       placeholder="Search folders..."
+                                       value="@_searchQuery"
+                                       @oninput="HandleSearchInput" />
+                            </div>
+                            @if (_activeTab == "personal")
+                            {
+                                <div class="filter-wrapper">
+                                    <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
+                                        <option value="">All Status</option>
+                                        <option value="Shared">Shared</option>
+                                        <option value="Pending Share">Pending Share</option>
+                                        <option value="Review by human">Review by human</option>
+                                        <option value="Rejected">Rejected</option>
+                                    </select>
+                                </div>
+                            }
                         </div>
-                        @if (_activeTab == "personal")
+
+                        @if (_filteredFolders.Count > 0 && _totalPages > 1)
                         {
-                            <div class="filter-wrapper">
-                                <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
-                                    <option value="">All Status</option>
-                                    <option value="Shared">Shared</option>
-                                    <option value="Pending Share">Pending Share</option>
-                                    <option value="Review by human">Review by human</option>
-                                    <option value="Reject">Reject</option>
-                                </select>
+                            <div class="search-filter-pagination">
+                                <div class="pagination-actions">
+                                    <div class="pagination-controls">
+                                        <button class="pagination-btn" disabled="@(_displayPage <= 1)" @onclick="() => GoToPage(_displayPage - 1)">Prev</button>
+                                        @foreach (var p in GetPageNumbers())
+                                        {
+                                            if (p == -1)
+                                            {
+                                                <span class="pagination-ellipsis">...</span>
+                                            }
+                                            else
+                                            {
+                                                <button class="pagination-btn @(p == _displayPage ? "active" : "")" @onclick="() => GoToPage(p)">@p</button>
+                                            }
+                                        }
+                                        <button class="pagination-btn" disabled="@(_displayPage >= _totalPages)" @onclick="() => GoToPage(_displayPage + 1)">Next</button>
+                                    </div>
+                                    <div class="pagination-jump">
+                                        <input type="text"
+                                               class="pagination-jump-input"
+                                               placeholder="Page..."
+                                               value="@_pageJumpInput"
+                                               @oninput="HandlePageJumpInput"
+                                               @onkeydown="HandlePageJumpKeyDown" />
+                                    </div>
+                                </div>
                             </div>
                         }
                     </div>
@@ -260,7 +294,7 @@
                     <div class="community-grid">
                         @if (_activeTab == "community")
                         {
-                            @foreach (var folder in _filteredFolders)
+                            @foreach (var folder in _pagedFolders)
                             {
                                 var cidx = _allCommunityFolders.IndexOf(folder);
                                 var colors = new[] { "#7c6fcd", "#c0392b", "#2980b9", "#27ae60", "#e67e22", "#8e44ad", "#16a085", "#d35400" };
@@ -379,8 +413,9 @@
                         <MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Large" Color="Color.Secondary" />
                         <p class="empty-title">No folders found</p>
                         <p class="empty-subtitle">Try a different search term</p>
-                    </div>
+                </div>
                 }
+
             }
         </main>
     </div>
@@ -391,8 +426,9 @@
     private string _searchQuery = "";
     private string? _statusFilter;
     private bool _loading = true;
+    private string _pageJumpInput = string.Empty;
 
-    private const int PageSize = 10;
+    private const int PageSize = 9;
     private int _currentPage = 1;
 
     private List<FolderDto> _allCommunityFolders = new();
@@ -403,7 +439,9 @@
     private Guid? _selectedFolderId = null;
 
     private List<FolderDto> _currentFolders =>
-        _activeTab == "community" ? _allCommunityFolders : _personalApprovedFolders;
+        _activeTab == "community"
+            ? _allCommunityFolders
+            : _personalFolders.OrderByDescending(GetPersonalActivityTimestamp).ToList();
 
     private List<FolderDto> _personalApprovedFolders => _personalFolders
         .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Approved)
@@ -447,9 +485,11 @@
         }
     }
 
+    private int _displayPage => Math.Clamp(_currentPage, 1, _totalPages);
+
     private List<FolderDto> _pagedFolders =>
         _filteredFolders
-            .Skip((_currentPage - 1) * PageSize)
+            .Skip((_displayPage - 1) * PageSize)
             .Take(PageSize)
             .ToList();
 
@@ -612,27 +652,63 @@
     private List<int> GetPageNumbers()
     {
         var total = _totalPages;
-        var current = _currentPage;
+        var current = _displayPage;
+        return BuildSlidingPageNumbers(total, current);
+    }
+
+    private static List<int> BuildSlidingPageNumbers(int total, int current)
+    {
         var pages = new List<int>();
 
-        if (total <= 7)
+        if (total <= 4)
         {
             for (var i = 1; i <= total; i++) pages.Add(i);
+            return pages;
         }
-        else
+
+        if (current <= 2)
+        {
+            for (var i = 1; i <= 3; i++) pages.Add(i);
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
         {
             pages.Add(1);
-            if (current > 3) pages.Add(-1); // ellipsis
-
-            var start = Math.Max(2, current - 1);
-            var end = Math.Min(total - 1, current + 1);
-            for (var i = start; i <= end; i++) pages.Add(i);
-
-            if (current < total - 2) pages.Add(-1); // ellipsis
-            pages.Add(total);
+            pages.Add(-1);
+            for (var i = total - 2; i <= total; i++) pages.Add(i);
+            return pages;
         }
 
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i);
+        pages.Add(-1);
+        pages.Add(total);
         return pages;
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(_pageJumpInput, out var page))
+        {
+            GoToPage(page);
+        }
+
+        _pageJumpInput = string.Empty;
     }
 
     private void ToggleMenu(Guid folderId)
@@ -838,7 +914,7 @@
         {
             Data.Entities.FolderStatus.Approved => "Shared",
             Data.Entities.FolderStatus.PendingShare => "Pending Share",
-            Data.Entities.FolderStatus.Rejected => "Reject",
+            Data.Entities.FolderStatus.Rejected => "Rejected",
             _ => "Private"
         };
     }

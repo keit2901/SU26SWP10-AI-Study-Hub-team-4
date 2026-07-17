@@ -26,12 +26,15 @@ window.aiStudyHubRecaptcha = (() => {
   }
 
   return {
-    render: async (elementId, dotNetRef) => {
+    render: async (elementId, dotNetRef, siteKey, theme = 'light', size = 'normal') => {
       await loadScript();
       const element = document.getElementById(elementId);
       if (!element) throw new Error('Container not found: ' + elementId);
+      if (!siteKey) throw new Error('reCAPTCHA site key is missing.');
       const widgetId = grecaptcha.render(element, {
-        sitekey: '6LcglxotAAAAAJMIi0jZaLDtbPWuk9HUDeVTwH2x',
+        sitekey: siteKey,
+        theme,
+        size,
         callback: (token) => {
           if (dotNetRef) dotNetRef.invokeMethodAsync('OnRecaptchaSuccess', token);
         },
