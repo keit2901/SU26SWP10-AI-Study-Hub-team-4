@@ -6,6 +6,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Payment;
+using AI_Study_Hub_v2.Services.Payment.Abstractions;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -21,7 +22,7 @@ public class PlansControllerTests
 {
     private Mock<IPlanService> _planServiceMock = null!;
     private Mock<IStorageQuotaService> _quotaServiceMock = null!;
-    private Mock<IVnPayService> _vnPayServiceMock = null!;
+    private Mock<IPaymentService> _paymentServiceMock = null!;
     private Mock<IAuditLogService> _auditServiceMock = null!;
     private AppDbContext _db = null!;
 
@@ -30,7 +31,7 @@ public class PlansControllerTests
     {
         _planServiceMock = new Mock<IPlanService>();
         _quotaServiceMock = new Mock<IStorageQuotaService>();
-        _vnPayServiceMock = new Mock<IVnPayService>();
+        _paymentServiceMock = new Mock<IPaymentService>();
         _auditServiceMock = new Mock<IAuditLogService>();
         _db = TestDb.CreateInMemory();
     }
@@ -46,7 +47,7 @@ public class PlansControllerTests
         var ctrl = new PlansController(
             _planServiceMock.Object,
             _quotaServiceMock.Object,
-            _vnPayServiceMock.Object,
+            _paymentServiceMock.Object,
             _db,
             _auditServiceMock.Object,
             NullLogger<PlansController>.Instance);
@@ -200,16 +201,16 @@ public class PlansControllerTests
         _planServiceMock.Setup(s => s.GetPlanByKey("pro")).Returns(dbPlan);
 
         var expectedResponse = new PaymentUrlResponse(
-            "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?test=1",
-            "VP_test_txn_ref",
+            "https://pay.payos.vn/test-checkout",
+            "test-txn-ref",
             "pro",
             "monthly",
             49_000,
             DateTimeOffset.UtcNow.AddMinutes(15));
 
-        _vnPayServiceMock
+        _paymentServiceMock
             .Setup(s => s.CreatePaymentAsync(
-                It.IsAny<Guid>(), "pro", "monthly", It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), "pro", "monthly", It.IsAny<CancellationToken>()))
             .ReturnsAsync(expectedResponse);
 
         var sut = BuildSut(Principal(supabaseUserId));
@@ -222,11 +223,11 @@ public class PlansControllerTests
         dto.PlanKey.Should().Be("pro");
         dto.AmountVnd.Should().Be(49_000);
         dto.PaymentUrl.Should().NotBeNullOrEmpty();
-        dto.TxnRef.Should().Be("VP_test_txn_ref");
+        dto.TxnRef.Should().Be("test-txn-ref");
 
-        // Verify VnPayService was called (DB writes happen inside VnPayService)
-        _vnPayServiceMock.Verify(
-            s => s.CreatePaymentAsync(It.IsAny<Guid>(), "pro", "monthly", It.IsAny<string>(), It.IsAny<CancellationToken>()),
+        // Verify PaymentService was called
+        _paymentServiceMock.Verify(
+            s => s.CreatePaymentAsync(It.IsAny<Guid>(), "pro", "monthly", It.IsAny<CancellationToken>()),
             Times.Once);
 
         // Verify audit was logged for payment initiation
@@ -288,9 +289,9 @@ public class PlansControllerTests
         txn!.Status.Should().Be("completed");
         txn.AmountVnd.Should().Be(0);
 
-        // Verify VNPay was NOT called for free plan
-        _vnPayServiceMock.Verify(
-            s => s.CreatePaymentAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+        // Verify PaymentService was NOT called for free plan
+        _paymentServiceMock.Verify(
+            s => s.CreatePaymentAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never);
     }
 
