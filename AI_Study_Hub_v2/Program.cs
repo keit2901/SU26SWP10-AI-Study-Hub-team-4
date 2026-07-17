@@ -111,12 +111,14 @@ builder.Services.AddHttpClient<IGoTrueClient, GoTrueClient>((sp, http) =>
     var opts = sp.GetRequiredService<IOptions<SupabaseOptions>>().Value;
     var baseUrl = opts.Url.TrimEnd('/') + "/auth/v1/";
     http.BaseAddress = new Uri(baseUrl);
-    // Default apikey for non-admin endpoints. Admin requests override Authorization but keep apikey.
+    // GoTrueClient replaces the default anon apikey with the service-role key on every admin request.
     http.DefaultRequestHeaders.TryAddWithoutValidation("apikey", opts.AnonKey);
     http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
 
 builder.Services.AddScoped<IAuthService, SupabaseAuthService>();
+builder.Services.AddScoped<IRegistrationCoordinator, RegistrationCoordinator>();
+builder.Services.AddScoped<IRegistrationReconciliationService, RegistrationReconciliationService>();
 
 // Storage services -----------------------------------------------------------
 // Phase 2 (SCRUM-13): Supabase Storage HTTP wrapper + document service.
@@ -141,6 +143,7 @@ builder.Services.AddScoped<ICommunityService, CommunityService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
+builder.Services.AddScoped<ISelfRegistrationPolicy, SelfRegistrationPolicy>();
 builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<IStorageQuotaService, StorageQuotaService>();
@@ -200,6 +203,7 @@ builder.Services.AddScoped<BenchmarkRunner>();
 builder.Services.AddScoped<ChunkingBenchmarkService>();
 builder.Services.AddHostedService<BenchmarkAutomationHostedService>();
 builder.Services.AddHostedService<StorageReconciliationHostedService>();
+builder.Services.AddHostedService<RegistrationReconciliationHostedService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
@@ -428,7 +432,7 @@ using (var scope = app.Services.CreateScope())
 
         await SeedDefaultAdminAsync(db, goTrue, seedOptions, startupLogger);
         await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
-        await SeedSystemConfigsAsync(db, startupLogger);
+        await SystemConfigSeeder.SeedAsync(db, startupLogger);
         await SeedDefaultPlansAsync(db, startupLogger);
     }
     catch (Exception ex)
@@ -750,37 +754,6 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
     db.Users.Add(moderator);
     await db.SaveChangesAsync();
     logger.LogInformation("Default moderator profile inserted for identity {SupabaseUserId}", supabaseUserId);
-}
-
-static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
-{
-    if (await db.SystemConfigs.AnyAsync())
-    {
-        logger.LogInformation("System configs already seeded — skipping.");
-        return;
-    }
-
-    var configs = new[]
-    {
-        new SystemConfig { Key = "ai.chat_model", Value = "gpt-4o-mini", DefaultValue = "gpt-4o-mini", Category = "Model", DisplayName = "Chat model", Description = "Model identifier used by the RAG answer generation pipeline.", ConfigType = "Text", IsCritical = true },
-        new SystemConfig { Key = "ai.embedding_model", Value = "text-embedding-3-small", DefaultValue = "text-embedding-3-small", Category = "Model", DisplayName = "Embedding model", Description = "Provider model identifier used to embed document_chunks.", ConfigType = "Text", IsCritical = true },
-        new SystemConfig { Key = "rag.chunk_size", Value = "700", DefaultValue = "700", Category = "Retrieval", DisplayName = "Chunk size", Description = "Maximum characters or tokens per source chunk before embedding.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "rag.chunk_overlap", Value = "70", DefaultValue = "70", Category = "Retrieval", DisplayName = "Chunk overlap", Description = "Overlap between consecutive chunks to preserve context.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "rag.max_chunks", Value = "8", DefaultValue = "8", Category = "Retrieval", DisplayName = "Max retrieval chunks", Description = "Maximum document chunks sent to the answer generation pipeline.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "generation.temperature", Value = "0.2", DefaultValue = "0.2", Category = "Generation", DisplayName = "Temperature", Description = "Controls answer randomness for study assistant responses.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "generation.top_p", Value = "0.9", DefaultValue = "0.9", Category = "Generation", DisplayName = "Top-p", Description = "Nucleus sampling parameter for answer generation.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "generation.system_prompt", Value = "You are AI Study Hub.", DefaultValue = "You are AI Study Hub.", Category = "Generation", DisplayName = "System prompt", Description = "Instruction block applied to every RAG chat response.", ConfigType = "Text", IsCritical = true },
-        new SystemConfig { Key = "quota.default_student_daily_tokens", Value = "25000", DefaultValue = "25000", Category = "Quota", DisplayName = "Student daily quota", Description = "Default daily token quota assigned to new student profiles.", ConfigType = "Number", IsCritical = false },
-        new SystemConfig { Key = "quota.default_admin_daily_tokens", Value = "75000", DefaultValue = "75000", Category = "Quota", DisplayName = "Admin daily quota", Description = "Default daily token quota assigned to administrator profiles.", ConfigType = "Number", IsCritical = false },
-        new SystemConfig { Key = "auth.allow_self_registration", Value = "false", DefaultValue = "false", Category = "Security", DisplayName = "Allow self registration", Description = "Controls whether new users can create accounts without an invitation.", ConfigType = "Boolean", IsCritical = true },
-        new SystemConfig { Key = "documents.allowed_extensions", Value = "[\".pdf\", \".docx\"]", DefaultValue = "[\".pdf\", \".docx\"]", Category = "Documents", DisplayName = "Allowed document extensions", Description = "JSON array of file extensions accepted by upload validation.", ConfigType = "Json", IsCritical = false },
-        new SystemConfig { Key = "moderation.report_reasons", Value = "[\"Wrong subject\"]", DefaultValue = "[\"Wrong subject\"]", Category = "Moderation", DisplayName = "Report reasons", Description = "JSON options shown when a user reports a document.", ConfigType = "Json", IsCritical = false },
-        new SystemConfig { Key = "audit.retention_days", Value = "365", DefaultValue = "365", Category = "Governance", DisplayName = "Audit retention days", Description = "Number of days audit_logs remain visible before archival.", ConfigType = "Number", IsCritical = false },
-    };
-
-    db.SystemConfigs.AddRange(configs);
-    await db.SaveChangesAsync();
-    logger.LogInformation("Seeded {Count} system configs.", configs.Length);
 }
 
 static async Task SeedDefaultPlansAsync(AppDbContext db, ILogger logger)
