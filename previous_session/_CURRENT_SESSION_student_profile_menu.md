@@ -158,6 +158,16 @@
 - `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-build --filter "FullyQualifiedName~AdminAccessPolicyTests|FullyQualifiedName~PlansControllerTests"` -> Passed 22, Skipped 1
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore` compiled updated code and again failed only at final apphost copy because `AI_Study_Hub_v2.exe` was locked by running process `AI_Study_Hub_v2 (31948)`
 
+### 2026-07-17T23:59:55+07:00 - Header user icon matched to profile and bell added
+- Updated `AI_Study_Hub_v2/Components/Shared/UserAccountMenu.razor`
+  - changed the header user avatar to the same rounded-square gradient style used by the profile avatar
+  - added a notification bell button to the left of the header user trigger
+  - kept the existing account popup behavior while tightening the trigger spacing for the new icon arrangement
+
+### 2026-07-17T23:59:55+07:00 - Verification refresh
+- `dotnet test "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-build --filter "FullyQualifiedName~AdminAccessPolicyTests|FullyQualifiedName~PlansControllerTests"` -> Passed 22, Skipped 1
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore` -> Build succeeded with existing warnings only
+
 ## 4. Files changed this session
 | Path | Change |
 |---|---|
