@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
@@ -17,8 +18,13 @@ public interface IEscalationService
 public sealed class EscalationService : IEscalationService
 {
     private readonly AppDbContext _db;
+    private readonly IAuditLogService _audit;
 
-    public EscalationService(AppDbContext db) => _db = db;
+    public EscalationService(AppDbContext db, IAuditLogService audit)
+    {
+        _db = db;
+        _audit = audit;
+    }
 
     public async Task<DocumentEscalationDto> CreateAsync(Guid escalatedByUserId, CreateEscalationRequest request, CancellationToken ct = default)
     {
@@ -45,6 +51,20 @@ public sealed class EscalationService : IEscalationService
         }
 
         await _db.SaveChangesAsync(ct);
+
+        _audit.Add(
+            escalatedByUserId,
+            "ESCALATION_CREATED",
+            "DocumentEscalation",
+            escalation.Id.ToString(),
+            "Medium",
+            afterJson: JsonSerializer.Serialize(new
+            {
+                escalation.FolderId,
+                escalation.Reason,
+                DocumentCount = request.Items.Count
+            }));
+
         return await GetByIdAsync(escalation.Id, ct);
     }
 
@@ -104,7 +124,20 @@ public sealed class EscalationService : IEscalationService
         escalation.EscalationStatus = request.Status;
         escalation.AdminResponse = request.AdminResponse;
         escalation.ResolvedAt = DateTimeOffset.UtcNow;
+
+        var beforeJson = JsonSerializer.Serialize(new { Status = "Pending" });
+        var afterJson = JsonSerializer.Serialize(new { escalation.EscalationStatus, escalation.AdminResponse });
+
         await _db.SaveChangesAsync(ct);
+
+        _audit.Add(
+            escalation.ResolvedByUserId,
+            "ESCALATION_RESOLVED",
+            "DocumentEscalation",
+            escalation.Id.ToString(),
+            "Medium",
+            beforeJson: beforeJson,
+            afterJson: afterJson);
 
         return await GetByIdAsync(escalationId, ct);
     }

@@ -69,6 +69,10 @@ public sealed class AdminUserService : IAdminUserService
                 today,
                 user.TotalTokensUsed,
                 _db.Documents.Count(document => document.UserId == user.Id),
+                user.IsActive && _db.AuditLogs.Any(log =>
+                    log.EntityType == "users"
+                    && log.EntityId == user.Id.ToString()
+                    && log.Action == "USER_LOCK"),
                 user.CreatedAt))
             .ToListAsync(cancellationToken);
     }
@@ -117,7 +121,7 @@ public sealed class AdminUserService : IAdminUserService
         var documentCount = await _db.Documents.CountAsync(
             document => document.UserId == user.Id,
             cancellationToken);
-        return ToDto(user, documentCount);
+        return await ToDtoAsync(user, documentCount, cancellationToken: cancellationToken);
     }
 
     public async Task<AdminUserDto> UpdateRoleAsync(
@@ -154,7 +158,7 @@ public sealed class AdminUserService : IAdminUserService
             var documentCount = await _db.Documents.CountAsync(
                 document => document.UserId == user.Id,
                 cancellationToken);
-            return ToDto(user, documentCount);
+            return await ToDtoAsync(user, documentCount, cancellationToken: cancellationToken);
         }
 
         // Admin cannot grant or revoke Admin role (only seed/DB)
@@ -234,7 +238,7 @@ public sealed class AdminUserService : IAdminUserService
         var docCount = await _db.Documents.CountAsync(
             document => document.UserId == user.Id,
             cancellationToken);
-        return ToDto(user, docCount, newRoleName);
+        return await ToDtoAsync(user, docCount, newRoleName, cancellationToken);
     }
 
     public async Task<AdminUserDto> ToggleActiveAsync(
@@ -261,7 +265,7 @@ public sealed class AdminUserService : IAdminUserService
             var docCount = await _db.Documents.CountAsync(
                 document => document.UserId == user.Id,
                 cancellationToken);
-            return ToDto(user, docCount);
+            return await ToDtoAsync(user, docCount, cancellationToken: cancellationToken);
         }
 
         var action = activate ? "USER_UNLOCK" : "USER_LOCK";
@@ -317,7 +321,7 @@ public sealed class AdminUserService : IAdminUserService
         var documentCount = await _db.Documents.CountAsync(
             document => document.UserId == user.Id,
             cancellationToken);
-        return ToDto(user, documentCount);
+        return await ToDtoAsync(user, documentCount, cancellationToken: cancellationToken);
     }
 
     private async Task<User> ResolveActiveAdminAsync(Guid supabaseUserId, CancellationToken cancellationToken)
@@ -338,9 +342,14 @@ public sealed class AdminUserService : IAdminUserService
         return user;
     }
 
-    private static AdminUserDto ToDto(User user, int documentCount, string? roleName = null)
+    private async Task<AdminUserDto> ToDtoAsync(User user, int documentCount, string? roleName = null, CancellationToken cancellationToken = default)
     {
         var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var isPreviouslyBanned = await _db.AuditLogs.AnyAsync(
+            log => log.EntityType == "users"
+                   && log.EntityId == user.Id.ToString()
+                   && log.Action == "USER_LOCK",
+            cancellationToken);
         return new AdminUserDto(
             user.Id,
             user.SupabaseUserId,
@@ -353,6 +362,7 @@ public sealed class AdminUserService : IAdminUserService
             today,
             user.TotalTokensUsed,
             documentCount,
+            isPreviouslyBanned,
             user.CreatedAt);
     }
 }

@@ -232,7 +232,8 @@ public sealed class QuizServicePostgresTests
         Microsoft.Extensions.Options.Options.Create(new GeminiOptions()),
         Mock.Of<IChatPersistenceService>(),
         Mock.Of<IAiQuotaService>(),
-        Mock.Of<ILogger<QuizService>>());
+        Mock.Of<ILogger<QuizService>>(),
+        Mock.Of<IAuditLogService>());
 
     private async Task BootstrapAuthPrerequisiteAsync()
     {

@@ -19,7 +19,7 @@ namespace AI_Study_Hub_v2.Tests.Services;
 public class SupabaseAuthServiceTests
 {
     private static SupabaseAuthService BuildSut(Data.AppDbContext db, IGoTrueClient gotrue) =>
-        new(db, gotrue, NullLogger<SupabaseAuthService>.Instance);
+        new(db, gotrue, NullLogger<SupabaseAuthService>.Instance, Mock.Of<IAuditLogService>());
 
     private static GoTrueSession BuildSession(Guid userId, string email, string accessToken = "access.jwt.token", string refreshToken = "rt-abc", int expiresIn = 3600) =>
         new()

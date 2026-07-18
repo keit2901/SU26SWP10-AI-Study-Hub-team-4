@@ -71,11 +71,16 @@ public sealed class AdminApiClient
     public Task<IReadOnlyList<AuditLogDto>> ListAuditLogsAsync(
         string accessToken,
         int limit = 200,
+        Guid? actorUserId = null,
         CancellationToken cancellationToken = default)
-        => GetListAsync<AuditLogDto>(
-            $"api/admin/audit-logs?limit={Math.Clamp(limit, 1, 500)}",
-            accessToken,
-            cancellationToken);
+    {
+        var url = $"api/admin/audit-logs?limit={Math.Clamp(limit, 1, 500)}";
+        if (actorUserId.HasValue)
+        {
+            url += $"&actorUserId={actorUserId.Value}";
+        }
+        return GetListAsync<AuditLogDto>(url, accessToken, cancellationToken);
+    }
 
     public async Task<IReadOnlyList<AdminDocumentDto>> ListDocumentsAsync(
         string accessToken,

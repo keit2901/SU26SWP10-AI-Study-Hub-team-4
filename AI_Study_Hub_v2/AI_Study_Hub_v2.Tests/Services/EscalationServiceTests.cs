@@ -18,7 +18,7 @@ public sealed class EscalationServiceTests
         var moderator = SeedUser(db, roleId: 3, "Moderator"); // role 3 = Moderator
         var folder = SeedFolder(db, moderator.Id);
         var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         var request = new CreateEscalationRequest
         {
@@ -52,7 +52,7 @@ public sealed class EscalationServiceTests
         var folder = SeedFolder(db, moderator.Id);
         var doc1 = SeedDocument(db, moderator.Id, folder.Id);
         var doc2 = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         var request = new CreateEscalationRequest
         {
@@ -80,7 +80,7 @@ public sealed class EscalationServiceTests
         var moderator = SeedUser(db, roleId: 3, "Moderator");
         var folder = SeedFolder(db, moderator.Id);
         var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         // Create 2 escalations
         var req = new CreateEscalationRequest
@@ -114,7 +114,7 @@ public sealed class EscalationServiceTests
         var moderator = SeedUser(db, roleId: 3, "Moderator");
         var folder = SeedFolder(db, moderator.Id);
         var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         var req = new CreateEscalationRequest
         {
@@ -142,7 +142,7 @@ public sealed class EscalationServiceTests
         var mod2 = SeedUser(db, roleId: 3, "Moderator Two");
         var folder = SeedFolder(db, mod1.Id);
         var doc = SeedDocument(db, mod1.Id, folder.Id);
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         var req = new CreateEscalationRequest
         {
@@ -167,7 +167,7 @@ public sealed class EscalationServiceTests
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var user = SeedUser(db, roleId: 3, "No Escalator");
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         var result = await sut.GetMyAsync(user.Id);
 
@@ -183,7 +183,7 @@ public sealed class EscalationServiceTests
         var moderator = SeedUser(db, roleId: 3, "Moderator");
         var folder = SeedFolder(db, moderator.Id);
         var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         var req = new CreateEscalationRequest
         {
@@ -208,7 +208,7 @@ public sealed class EscalationServiceTests
         var moderator = SeedUser(db, roleId: 3, "Moderator");
         var folder = SeedFolder(db, moderator.Id);
         var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         var req = new CreateEscalationRequest
         {
@@ -227,7 +227,7 @@ public sealed class EscalationServiceTests
     public async Task ResolveAsync_NotFoundId_Throws404()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
-        var sut = new EscalationService(db);
+        var sut = new EscalationService(db, new AuditLogService(db));
 
         var act = () => sut.ResolveAsync(Guid.NewGuid(), new ResolveEscalationRequest { Status = "Approved" });
 
@@ -291,5 +291,60 @@ public sealed class EscalationServiceTests
         db.Documents.Add(doc);
         db.SaveChanges();
         return doc;
+    }
+
+    // ── Audit log tests ──
+
+    [Test]
+    public async Task CreateAsync_WritesAuditLogEntry()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, roleId: 3, "Moderator");
+        var folder = SeedFolder(db, moderator.Id);
+        var doc = SeedDocument(db, moderator.Id, folder.Id);
+        var sut = new EscalationService(db, new AuditLogService(db));
+
+        var request = new CreateEscalationRequest
+        {
+            FolderId = folder.Id,
+            Reason = "Test escalation.",
+            Items = new List<EscalationItemRequest>
+            {
+                new() { DocumentId = doc.Id, RejectReason = "Doc fine." }
+            }
+        };
+
+        var result = await sut.CreateAsync(moderator.Id, request);
+        await db.SaveChangesAsync();
+
+        db.AuditLogs.Should().ContainSingle(log =>
+            log.Action == "ESCALATION_CREATED"
+            && log.EntityType == "DocumentEscalation"
+            && log.ActorUserId == moderator.Id);
+    }
+
+    [Test]
+    public async Task ResolveAsync_WritesAuditLogEntry()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, roleId: 3, "Moderator");
+        var folder = SeedFolder(db, moderator.Id);
+        var doc = SeedDocument(db, moderator.Id, folder.Id);
+        var sut = new EscalationService(db, new AuditLogService(db));
+
+        var req = new CreateEscalationRequest
+        {
+            FolderId = folder.Id,
+            Reason = "Please review.",
+            Items = new List<EscalationItemRequest> { new() { DocumentId = doc.Id, RejectReason = "R" } }
+        };
+        var created = await sut.CreateAsync(moderator.Id, req);
+
+        await sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid." });
+        await db.SaveChangesAsync();
+
+        db.AuditLogs.Should().Contain(log =>
+            log.Action == "ESCALATION_RESOLVED"
+            && log.EntityType == "DocumentEscalation");
     }
 }
