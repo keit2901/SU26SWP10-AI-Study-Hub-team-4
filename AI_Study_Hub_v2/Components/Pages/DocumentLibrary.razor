@@ -17,20 +17,22 @@
     .library-center-stage { flex: 1; min-width: 0; display: flex; flex-direction: column; overflow-y: auto; }
     .library-right-rail { width: 300px; flex-shrink: 0; padding: 16px; background: #fff; border-left: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 16px; overflow-y: auto; }
     .glass-card { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; padding: 16px; }
-    .welcome-banner { background: linear-gradient(135deg, #eef2ff 0%, #f8f9fc 60%, #f0fdf4 100%); padding: 24px 32px; border-bottom: 1px solid #e2e8f0; position: relative; overflow: hidden; }
+    .welcome-banner { background: linear-gradient(135deg, #eef2ff 0%, #f8f9fc 56%, #f0fdf4 100%); padding: 38px 32px; margin: 0; border-bottom: 1px solid #dbe4f0; border-top: 1px solid #dbe4f0; border-radius: 0; box-shadow: none; position: sticky; top: 0; z-index: 5; overflow: hidden; isolation: isolate; flex-shrink: 0; }
+    .welcome-banner::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgba(255,255,255,0.84) 0%, rgba(255,255,255,0.68) 40%, rgba(255,255,255,0.28) 100%); z-index: 0; }
     .banner-orb { position: absolute; border-radius: 50%; pointer-events: none; }
-    .banner-orb-one { top: -40px; right: 200px; width: 200px; height: 200px; background: rgba(99,102,241,0.05); }
-    .banner-orb-two { bottom: -60px; right: 80px; width: 280px; height: 280px; background: rgba(16,185,129,0.04); }
-    .banner-content { position: relative; z-index: 1; }
+    .banner-orb-one { top: -36px; right: 200px; width: 200px; height: 200px; background: rgba(99,102,241,0.08); filter: blur(2px); }
+    .banner-orb-two { bottom: -70px; right: 56px; width: 300px; height: 300px; background: rgba(16,185,129,0.07); filter: blur(2px); }
+    .banner-content { position: relative; z-index: 1; min-height: 108px; display: flex; align-items: center; }
     .banner-breadcrumb { font-size: 10px; color: #6366f1; font-weight: 700; letter-spacing: 1px; display: block; margin-bottom: 12px; }
-    .banner-greeting { font-size: 28px !important; font-weight: 800 !important; color: #1e293b; }
-    .banner-date-text { color: #94a3b8; font-size: 13px; margin-top: 4px; }
-    .banner-actions { display: flex; gap: 12px; align-items: center; }
+    .banner-copy { max-width: 620px; min-width: 0; display: flex; flex-direction: column; justify-content: center; }
+    .banner-greeting { font-size: 30px !important; font-weight: 800 !important; color: #0f172a; line-height: 1.15; text-shadow: 0 1px 0 rgba(255,255,255,0.35); text-align: left; }
+    .banner-date-text { color: #64748b; font-size: 13px; margin-top: 8px; max-width: 540px; text-align: left; }
+    .banner-actions { display: flex; gap: 12px; align-items: center; justify-content: flex-end; flex-wrap: nowrap; }
     .banner-action-button { border-radius: 0.85rem !important; text-transform: none !important; font-weight: 700 !important; font-size: 0.75rem !important; padding: 4px 14px !important; min-height: 0 !important; letter-spacing: 0.02em; white-space: nowrap; }
     .banner-action-primary { box-shadow: 0 4px 16px rgba(16,185,129,0.25) !important; }
     .banner-action-secondary { border-radius: 0.85rem !important; }
-    .banner-flex-row { display: flex; justify-content: space-between; align-items: flex-start; }
-    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px 32px; background: #fff; border-bottom: 1px solid #e2e8f0; }
+    .banner-flex-row { display: flex; width: 100%; align-items: center; justify-content: space-between; gap: 20px; }
+    .stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; padding: 20px 32px; background: #fff; }
     .stat-card { display: flex; align-items: center; gap: 16px; padding: 16px !important; border-radius: 12px !important; }
     .stat-card-violet { background: #f5f3ff; border: 1px solid #ddd6fe; }
     .stat-card-green { background: #f0fdf4; border: 1px solid #bbf7d0; }
@@ -45,13 +47,31 @@
     .stat-value { font-size: 28px !important; font-weight: 800 !important; color: #1e293b; line-height: 1.1; margin: 0; }
     .stat-label { font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; color: #94a3b8; margin: 0; }
     .folders-section { background: #fff; border: 1px solid #e2e8f0; border-radius: 14px; padding: 20px; margin: 24px 32px; }
-    .folders-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+    .folders-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; gap: 12px; flex-wrap: wrap; }
     .folders-header-left { display: flex; align-items: center; gap: 8px; }
     .folders-header-title { font-size: 14px !important; font-weight: 700 !important; color: #1e293b; }
-    .folders-header-right { display: flex; align-items: center; gap: 12px; }
-    .folder-dots { display: flex; align-items: center; gap: 6px; }
-    .folder-dot { width: 6px; height: 6px; border-radius: 3px; background: #e2e8f0; cursor: pointer; transition: all 0.2s; border: none; padding: 0; }
-    .folder-dot-active { width: 20px; height: 6px; border-radius: 3px; background: #6366f1; cursor: pointer; transition: all 0.2s; border: none; padding: 0; }
+    .folders-header-right { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .folder-search-wrapper { display: flex; align-items: center; gap: 8px; min-width: 220px; max-width: 280px; padding: 0 12px; border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; }
+    .folder-search-icon { color: #94a3b8; flex-shrink: 0; }
+    .folder-search-input { flex: 1; border: none; outline: none; background: transparent; padding: 10px 0; font-size: 12px; color: #1e293b; }
+    .folder-search-input::placeholder { color: #94a3b8; }
+    .folder-pagination-bar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid #e2e8f0; flex-wrap: wrap; }
+    .folder-pagination-info { font-size: 12px; color: #64748b; }
+    .folder-pagination-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: flex-end; }
+    .folder-pagination-controls { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+    .folder-pagination-jump { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .folder-page-jump-input { width: 86px; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; padding: 7px 10px; font-size: 12px; outline: none; }
+    .folder-page-jump-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+    .folder-page-jump-btn { border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #475569; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .folder-page-jump-btn:hover:not(:disabled) { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .folder-page-jump-btn:disabled { opacity: 0.45; cursor: default; }
+    .folder-page-nav-btn { border: 1px solid #e2e8f0; border-radius: 8px; background: #fff; color: #475569; padding: 6px 10px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .folder-page-nav-btn:disabled { opacity: 0.4; cursor: default; }
+    .folder-page-nav-btn:hover:not(:disabled) { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .folder-page-number-btn { min-width: 34px; height: 34px; border-radius: 8px; border: 1px solid #e2e8f0; background: #fff; color: #475569; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .folder-page-number-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .folder-page-number-btn.active { border-color: #6366f1; background: #6366f1; color: #fff; }
+    .folder-page-ellipsis { color: #94a3b8; font-size: 12px; font-weight: 700; padding: 0 2px; }
     .folder-card { transition: all 0.15s; cursor: pointer; position: relative; border-radius: 12px !important; background: #fff !important; border: 1px solid #e2e8f0 !important; padding: 16px; }
     .folder-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
     .folder-card-more { position: absolute; top: 8px; right: 8px; color: #94a3b8; cursor: pointer; }
@@ -73,17 +93,25 @@
     .document-table .mud-table-container { overflow: visible; }
     .document-table table { width: 100%; table-layout: fixed; }
     .document-table-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 12px; }
+    .document-table-title-wrap { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .document-table-title { font-size: 14px; font-weight: 800; color: #1e293b; margin: 0; }
-    .document-table-count { font-size: 12px; color: #64748b; }
     .document-reset-btn { display: inline-flex; align-items: center; gap: 6px; border: 1px solid #cbd5e1; background: #fff; color: #475569; border-radius: 8px; padding: 7px 11px; font-size: 12px; font-weight: 700; cursor: pointer; }
     .document-reset-btn:hover { border-color: #6366f1; color: #4f46e5; background: #f8fafc; }
+    .document-filter-panel { margin-bottom: 12px; padding: 14px; border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; }
+    .document-filter-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .document-filter-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+    .document-filter-label { font-size: 11px; font-weight: 800; letter-spacing: 0.04em; color: #64748b; text-transform: uppercase; }
+    .document-filter-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; background: #fff; color: #1e293b; padding: 8px 10px; font-size: 12px; outline: none; box-sizing: border-box; }
+    .document-filter-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+    .document-filter-date-row { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; grid-column: span 2; }
     .document-filter-overlay { position: fixed; inset: 0; z-index: 20; border: none; background: transparent; padding: 0; margin: 0; }
     .table-header-cell { color: #94a3b8 !important; font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.8px; background: #f8fafc; padding: 12px 8px !important; position: relative; overflow: visible; }
-    .table-header-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: 100%; border: none; background: transparent; color: #64748b; padding: 0; cursor: pointer; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
+    .table-header-button { display: inline-flex; align-items: center; justify-content: center; gap: 4px; width: auto; max-width: 100%; border: none; background: transparent; color: #64748b; padding: 0; cursor: pointer; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
     .table-header-button-active { color: #4f46e5; }
+    .document-static-header { display: inline-flex; align-items: center; justify-content: center; width: 100%; color: #94a3b8; font-size: 10px; font-weight: 800; letter-spacing: 0.8px; text-transform: uppercase; }
     .table-filter-menu { position: fixed; z-index: 30; overflow-y: auto; border-radius: 12px; border: 1px solid rgba(199,196,215,0.55); background: #fff; box-shadow: 0 18px 42px rgba(15,23,42,0.18); padding: 8px; text-align: left; }
     .table-filter-menu-left { left: auto; transform: none; }
-    .table-filter-section-label { display: block; padding: 4px 8px 3px; font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; }
+    .table-filter-section-label { display: block; padding: 4px 8px 3px; font-size: 10px; font-weight: 800; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.8px; text-align: center; }
     .table-filter-input { width: 100%; border: 1px solid #cbd5e1; border-radius: 8px; background: #fbfbfe; color: #1e293b; padding: 8px 10px; font-size: 12px; outline: none; box-sizing: border-box; }
     .table-filter-options { display: flex; flex-direction: column; gap: 3px; margin-top: 6px; max-height: 122px; overflow-y: auto; padding-right: 2px; }
     .table-filter-option { display: block; width: 100%; border: none; background: transparent; color: #475569; border-radius: 8px; padding: 7px 9px; text-align: left; font-size: 12px; font-weight: 650; cursor: pointer; white-space: normal; word-break: break-word; line-height: 1.3; }
@@ -96,19 +124,6 @@
     .doc-name { font-weight: 600; color: #1e293b; font-size: 13px; }
     .table-actions { display: inline-flex; align-items: center; justify-content: center; gap: 2px; width: 100%; min-width: 58px; }
     .table-actions .mud-icon-button { width: 28px; height: 28px; padding: 4px; }
-    .pagination-bar { display: flex; align-items: center; justify-content: space-between; margin-top: 16px; gap: 16px; flex-wrap: wrap; }
-    .pagination-left { flex: 1; }
-    .pagination-center { display: flex; align-items: center; gap: 4px; }
-    .pagination-right { display: flex; align-items: center; gap: 8px; }
-    .page-size-select { min-width: 120px; }
-    .go-to-page { display: flex; align-items: center; gap: 4px; }
-    .go-to-input { max-width: 80px; }
-    .pagination-nav-btn { width: 32px; height: 32px; border-radius: 50%; border: 1px solid #e2e8f0; background: #fff; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: all 0.15s; }
-    .pagination-nav-btn:hover { border-color: #6366f1; background: #f5f3ff; }
-    .pagination-nav-btn:disabled { opacity: 0.4; cursor: default; }
-    .page-number-btn { min-width: 32px; height: 32px; border-radius: 6px !important; font-size: 13px !important; font-weight: 600 !important; padding: 0 8px !important; }
-    .page-number-btn-active { background: #6366f1 !important; color: #fff !important; border-color: #6366f1 !important; }
-    .page-number-btn-inactive { background: #fff !important; color: #475569 !important; border: 1px solid #e2e8f0 !important; }
     .recent-folders-list { display: flex; flex-direction: column; gap: 8px; }
     .recent-folder-card { display: flex; align-items: center; gap: 12px; padding: 12px !important; border-radius: 10px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s; background: #fff; }
     .recent-folder-card:hover { transform: translateX(4px); }
@@ -199,20 +214,20 @@ else
                         </MudListItem>
                     }
                 </MudList>
-                @if (_folders.Count > SidebarFolderPageSize)
+                @if (_filteredLibraryFolders.Count > SidebarFolderPageSize)
                 {
                     <div class="sidebar-folder-pagination">
                         <button type="button"
                                 class="sidebar-page-btn"
-                                disabled="@(_sidebarFolderPage <= 1)"
-                                @onclick="@(() => _sidebarFolderPage = Math.Max(1, _sidebarFolderPage - 1))">
+                                disabled="@(_displaySidebarFolderPage <= 1)"
+                                @onclick="@(() => _sidebarFolderPage = Math.Max(1, _displaySidebarFolderPage - 1))">
                             <MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" />
                         </button>
-                        <span class="sidebar-page-info">@_sidebarFolderPage / @_totalSidebarFolderPages</span>
+                        <span class="sidebar-page-info">@_displaySidebarFolderPage / @_totalSidebarFolderPages</span>
                         <button type="button"
                                 class="sidebar-page-btn"
-                                disabled="@(_sidebarFolderPage >= _totalSidebarFolderPages)"
-                                @onclick="@(() => _sidebarFolderPage = Math.Min(_totalSidebarFolderPages, _sidebarFolderPage + 1))">
+                                disabled="@(_displaySidebarFolderPage >= _totalSidebarFolderPages)"
+                                @onclick="@(() => _sidebarFolderPage = Math.Min(_totalSidebarFolderPages, _displaySidebarFolderPage + 1))">
                             <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
                         </button>
                     </div>
@@ -225,9 +240,9 @@ else
                 <div class="banner-orb banner-orb-one" aria-hidden="true"></div>
                 <div class="banner-orb banner-orb-two" aria-hidden="true"></div>
                 <div class="banner-content">
-                    <span class="banner-breadcrumb">STUDY HUB &gt; DASHBOARD</span>
+                    @*<span class="banner-breadcrumb">STUDY HUB &gt; DASHBOARD</span>*@
                     <div class="banner-flex-row">
-                        <div>
+                        <div class="banner-copy">
                             <MudText id="welcome-title" Typo="Typo.h3" Class="banner-greeting">@GetGreetingHtml()</MudText>
                             <MudText Typo="Typo.body1" Class="banner-date-text">@GetCurrentDateString() — what knowledge will you conquer today?</MudText>
                         </div>
@@ -295,15 +310,13 @@ else
                         <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@_folders.Count</MudChip>
                     </div>
                     <div class="folders-header-right">
-                        <div class="folder-dots">
-                            @for (int i = 1; i <= _totalFolderPages; i++)
-                            {
-                                var page = i;
-                                <button class="@(page == _folderPage ? "folder-dot-active" : "folder-dot")"
-                                        @onclick="() => _folderPage = page"
-                                        aria-label="@("Page " + page)">
-                                </button>
-                            }
+                        <div class="folder-search-wrapper">
+                            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="folder-search-icon" />
+                            <input type="text"
+                                   class="folder-search-input"
+                                   placeholder="Search folders, subject, semester..."
+                                   value="@_folderSearchQuery"
+                                   @oninput="HandleFolderSearchInput" />
                         </div>
                         <MudButton Variant="Variant.Filled"
                                    Color="Color.Primary"
@@ -321,6 +334,15 @@ else
                         <MudStack AlignItems="AlignItems.Center" Spacing="2">
                             <MudIcon Icon="@Icons.Material.Filled.FolderOff" Size="Size.Large" Color="Color.Secondary" />
                             <MudText Typo="Typo.body1" Color="Color.Secondary">No folders yet. Create your first folder!</MudText>
+                        </MudStack>
+                    </MudPaper>
+                }
+                else if (_filteredLibraryFolders.Count == 0)
+                {
+                    <MudPaper Class="empty-folders-card glass-card" Elevation="0" Outlined="false">
+                        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                            <MudIcon Icon="@Icons.Material.Filled.ManageSearch" Size="Size.Large" Color="Color.Secondary" />
+                            <MudText Typo="Typo.body1" Color="Color.Secondary">No folders match your search.</MudText>
                         </MudStack>
                     </MudPaper>
                 }
@@ -395,6 +417,52 @@ else
                             </MudItem>
                         }
                     </MudGrid>
+
+                    @if (_totalFolderPages > 1)
+                    {
+                        <div class="folder-pagination-bar">
+                            <div class="folder-pagination-actions">
+                                <div class="folder-pagination-controls">
+                                    <button type="button"
+                                            class="folder-page-nav-btn"
+                                            disabled="@(_displayFolderPage <= 1)"
+                                            @onclick="@(() => _folderPage = Math.Max(1, _displayFolderPage - 1))">
+                                        Prev
+                                    </button>
+                                    @foreach (var page in GetFolderPageNumbers())
+                                    {
+                                        if (page == -1)
+                                        {
+                                            <span class="folder-page-ellipsis">...</span>
+                                        }
+                                        else
+                                        {
+                                            var current = page;
+                                            <button type="button"
+                                                    class="folder-page-number-btn @(current == _displayFolderPage ? "active" : "")"
+                                                    @onclick="@(() => _folderPage = current)">
+                                                @current
+                                            </button>
+                                        }
+                                    }
+                                    <button type="button"
+                                            class="folder-page-nav-btn"
+                                            disabled="@(_displayFolderPage >= _totalFolderPages)"
+                                            @onclick="@(() => _folderPage = Math.Min(_totalFolderPages, _displayFolderPage + 1))">
+                                        Next
+                                    </button>
+                                </div>
+                                <div class="folder-pagination-jump">
+                                    <input type="text"
+                                           class="folder-page-jump-input"
+                                           placeholder="Page..."
+                                           value="@_folderGoToPage"
+                                           @oninput="HandleFolderPageInput"
+                                           @onkeydown="HandleFolderPageKeyDown" />
+                                </div>
+                            </div>
+                        </div>
+                    }
                 }
             </section>
 
@@ -407,9 +475,9 @@ else
 
             <section class="document-table-section" aria-label="Document list">
                 <div class="document-table-toolbar">
-                    <div>
+                    <div class="document-table-title-wrap">
                         <h2 class="document-table-title">Documents Table</h2>
-                        <span class="document-table-count">Showing @_filteredDocuments.Count of @_documents.Count document@(_documents.Count == 1 ? string.Empty : "s")</span>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Outlined">@_documents.Count</MudChip>
                     </div>
                     <button type="button" class="document-reset-btn" @onclick="ResetDocumentTable">
                         <MudIcon Icon="@Icons.Material.Filled.RestartAlt" Size="Size.Small" />
@@ -417,13 +485,66 @@ else
                     </button>
                 </div>
 
-                @if (!string.IsNullOrWhiteSpace(_openDocumentMenuColumn))
-                {
-                    <button type="button"
-                            class="document-filter-overlay"
-                            aria-label="Close filter menu"
-                            @onclick="CloseDocumentMenu"></button>
-                }
+                <div class="document-filter-panel">
+                    <div class="document-filter-grid">
+                        <label class="document-filter-field">
+                            <span class="document-filter-label">Name</span>
+                            <input class="document-filter-input"
+                                   value="@_searchQuery"
+                                   @oninput='e => HandleAppliedDocumentTextFilter("name", e.Value?.ToString())'
+                                   placeholder="Search document name" />
+                        </label>
+                        <label class="document-filter-field">
+                            <span class="document-filter-label">Subject</span>
+                            <input class="document-filter-input"
+                                   value="@(_filterSubject ?? string.Empty)"
+                                   @oninput='e => HandleAppliedDocumentTextFilter("subject", e.Value?.ToString())'
+                                   placeholder="Search subject" />
+                        </label>
+                        <label class="document-filter-field">
+                            <span class="document-filter-label">Semester</span>
+                            <input class="document-filter-input"
+                                   value="@(_filterSemester ?? string.Empty)"
+                                   @oninput='e => HandleAppliedDocumentTextFilter("semester", e.Value?.ToString())'
+                                   placeholder="Search semester" />
+                        </label>
+                        <label class="document-filter-field">
+                            <span class="document-filter-label">Folder</span>
+                            <input class="document-filter-input"
+                                   value="@_filterFolderQuery"
+                                   @oninput='e => HandleAppliedDocumentTextFilter("folder", e.Value?.ToString())'
+                                   placeholder="Search folder" />
+                        </label>
+                        <label class="document-filter-field">
+                            <span class="document-filter-label">Status</span>
+                            <select class="document-filter-input"
+                                    value="@_filterStatusQuery"
+                                    @onchange='e => HandleAppliedDocumentTextFilter("status", e.Value?.ToString())'>
+                                <option value="">All status</option>
+                                @foreach (var statusOption in _statusOptions)
+                                {
+                                    <option value="@statusOption">@statusOption</option>
+                                }
+                            </select>
+                        </label>
+                        <div class="document-filter-date-row">
+                            <label class="document-filter-field">
+                                <span class="document-filter-label">Created From</span>
+                                <input class="document-filter-input"
+                                       type="datetime-local"
+                                       value="@_filterCreatedFrom"
+                                       @oninput='e => UpdateCreatedDateFilter("from", e.Value?.ToString())' />
+                            </label>
+                            <label class="document-filter-field">
+                                <span class="document-filter-label">Created To</span>
+                                <input class="document-filter-input"
+                                       type="datetime-local"
+                                       value="@_filterCreatedTo"
+                                       @oninput='e => UpdateCreatedDateFilter("to", e.Value?.ToString())' />
+                            </label>
+                        </div>
+                    </div>
+                </div>
 
                 @if (_pagedDocuments.Count == 0)
                 {
@@ -475,211 +596,44 @@ else
                             <col style="width: 16%" />
                         </ColGroup>
                         <HeaderContent>
-                            <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("name")" @ref="_nameHeaderButton" @onclick='() => HandleDocumentHeaderClick("name")'>
+                            <MudTh Class="table-header-cell" Style="text-align: center;">
+                                <button type="button" class="@GetDocumentHeaderButtonClass("name")" @onclick='() => HandleDocumentSortHeaderClick("name")'>
                                     <span>NAME</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("name")" Size="Size.Small" />
                                 </button>
-                                @if (_openDocumentMenuColumn == "name")
-                                {
-                                    var nameSuggestions = GetDocumentSuggestions("name");
-                                    <div class="table-filter-menu table-filter-menu-left" style='@GetDocumentMenuStyle("name")'>
-                                        <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_searchQuery" @oninput='e => UpdateDocumentTextFilter("name", e.Value?.ToString())' placeholder="Search document name" />
-                                        <div class="table-filter-options">
-                                            @if (nameSuggestions.Count > 0)
-                                            {
-                                                @foreach (var option in nameSuggestions)
-                                                {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_searchQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("name", option)'>@option</button>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span class="table-filter-empty">No matching names</span>
-                                            }
-                                        </div>
-                                        <div class="table-menu-divider"></div>
-                                        <span class="table-filter-section-label">Sort</span>
-                                        <button type="button" class="@GetSortOptionClass("name-asc")" @onclick='() => ApplyDocumentSort("name-asc")'>A to Z</button>
-                                        <button type="button" class="@GetSortOptionClass("name-desc")" @onclick='() => ApplyDocumentSort("name-desc")'>Z to A</button>
-                                    </div>
-                                }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("subject")" @ref="_subjectHeaderButton" @onclick='() => HandleDocumentHeaderClick("subject")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("subject")" @onclick='() => HandleDocumentSortHeaderClick("subject")'>
                                     <span>SUBJECT</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("subject")" Size="Size.Small" />
                                 </button>
-                                @if (_openDocumentMenuColumn == "subject")
-                                {
-                                    var subjectSuggestions = GetDocumentSuggestions("subject");
-                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("subject")'>
-                                        <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterSubject" @oninput='e => UpdateDocumentTextFilter("subject", e.Value?.ToString())' placeholder="Search subject" />
-                                        <div class="table-filter-options">
-                                            @if (subjectSuggestions.Count > 0)
-                                            {
-                                                @foreach (var option in subjectSuggestions)
-                                                {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSubject, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("subject", option)'>@option</button>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span class="table-filter-empty">No matching subjects</span>
-                                            }
-                                        </div>
-                                        <div class="table-menu-divider"></div>
-                                        <span class="table-filter-section-label">Sort</span>
-                                        <button type="button" class="@GetSortOptionClass("subject-asc")" @onclick='() => ApplyDocumentSort("subject-asc")'>A to Z</button>
-                                        <button type="button" class="@GetSortOptionClass("subject-desc")" @onclick='() => ApplyDocumentSort("subject-desc")'>Z to A</button>
-                                    </div>
-                                }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("semester")" @ref="_semesterHeaderButton" @onclick='() => HandleDocumentHeaderClick("semester")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("semester")" @onclick='() => HandleDocumentSortHeaderClick("semester")'>
                                     <span>SEMESTER</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("semester")" Size="Size.Small" />
                                 </button>
-                                @if (_openDocumentMenuColumn == "semester")
-                                {
-                                    var semesterSuggestions = GetDocumentSuggestions("semester");
-                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("semester")'>
-                                        <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterSemester" @oninput='e => UpdateDocumentTextFilter("semester", e.Value?.ToString())' placeholder="Search semester" />
-                                        <div class="table-filter-options">
-                                            @if (semesterSuggestions.Count > 0)
-                                            {
-                                                @foreach (var option in semesterSuggestions)
-                                                {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSemester, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("semester", option)'>@option</button>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span class="table-filter-empty">No matching semesters</span>
-                                            }
-                                        </div>
-                                        <div class="table-menu-divider"></div>
-                                        <span class="table-filter-section-label">Sort</span>
-                                        <button type="button" class="@GetSortOptionClass("semester-asc")" @onclick='() => ApplyDocumentSort("semester-asc")'>A to Z</button>
-                                        <button type="button" class="@GetSortOptionClass("semester-desc")" @onclick='() => ApplyDocumentSort("semester-desc")'>Z to A</button>
-                                    </div>
-                                }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("folder")" @ref="_folderHeaderButton" @onclick='() => HandleDocumentHeaderClick("folder")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("folder")" @onclick='() => HandleDocumentSortHeaderClick("folder")'>
                                     <span>FOLDER</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("folder")" Size="Size.Small" />
                                 </button>
-                                @if (_openDocumentMenuColumn == "folder")
-                                {
-                                    var folderSuggestions = GetDocumentSuggestions("folder");
-                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("folder")'>
-                                        <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterFolderQuery" @oninput='e => UpdateDocumentTextFilter("folder", e.Value?.ToString())' placeholder="Search folder" />
-                                        <div class="table-filter-options">
-                                            @if (folderSuggestions.Count > 0)
-                                            {
-                                                @foreach (var option in folderSuggestions)
-                                                {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterFolderQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("folder", option)'>@option</button>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span class="table-filter-empty">No matching folders</span>
-                                            }
-                                        </div>
-                                        <div class="table-menu-divider"></div>
-                                        <span class="table-filter-section-label">Sort</span>
-                                        <button type="button" class="@GetSortOptionClass("folder-asc")" @onclick='() => ApplyDocumentSort("folder-asc")'>A to Z</button>
-                                        <button type="button" class="@GetSortOptionClass("folder-desc")" @onclick='() => ApplyDocumentSort("folder-desc")'>Z to A</button>
-                                    </div>
-                                }
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("size")" @ref="_sizeHeaderButton" @onclick='() => HandleDocumentHeaderClick("size")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("size")" @onclick='() => HandleDocumentSortHeaderClick("size")'>
                                     <span>SIZE</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("size")" Size="Size.Small" />
                                 </button>
-                                @if (_openDocumentMenuColumn == "size")
-                                {
-                                    var sizeSuggestions = GetDocumentSuggestions("size");
-                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("size")'>
-                                        <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterSizeQuery" @oninput='e => UpdateDocumentTextFilter("size", e.Value?.ToString())' placeholder="Search size" />
-                                        <div class="table-filter-options">
-                                            @if (sizeSuggestions.Count > 0)
-                                            {
-                                                @foreach (var option in sizeSuggestions)
-                                                {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterSizeQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("size", option)'>@option</button>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span class="table-filter-empty">No matching sizes</span>
-                                            }
-                                        </div>
-                                        <div class="table-menu-divider"></div>
-                                        <span class="table-filter-section-label">Sort</span>
-                                        <button type="button" class="@GetSortOptionClass("size-asc")" @onclick='() => ApplyDocumentSort("size-asc")'>Smallest first</button>
-                                        <button type="button" class="@GetSortOptionClass("size-desc")" @onclick='() => ApplyDocumentSort("size-desc")'>Largest first</button>
-                                    </div>
-                                }
+                            </MudTh>
+                            <MudTh Class="table-header-cell" Style="text-align: center;">
+                                <span class="document-static-header">STATUS</span>
                             </MudTh>
                             <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("status")" @ref="_statusHeaderButton" @onclick='() => HandleDocumentHeaderClick("status")'>
-                                    <span>STATUS</span>
-                                    <MudIcon Icon="@GetDocumentSortIcon("status")" Size="Size.Small" />
-                                </button>
-                                @if (_openDocumentMenuColumn == "status")
-                                {
-                                    var statusSuggestions = GetDocumentSuggestions("status");
-                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("status")'>
-                                        <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" value="@_filterStatusQuery" @oninput='e => UpdateDocumentTextFilter("status", e.Value?.ToString())' placeholder="Search status" />
-                                        <div class="table-filter-options">
-                                            @if (statusSuggestions.Count > 0)
-                                            {
-                                                @foreach (var option in statusSuggestions)
-                                                {
-                                                    <button type="button" class="@GetFilterOptionClass(string.Equals(_filterStatusQuery, option, StringComparison.OrdinalIgnoreCase))" @onclick='() => ApplyDocumentSuggestion("status", option)'>@option</button>
-                                                }
-                                            }
-                                            else
-                                            {
-                                                <span class="table-filter-empty">No matching status</span>
-                                            }
-                                        </div>
-                                        <div class="table-menu-divider"></div>
-                                        <span class="table-filter-section-label">Sort</span>
-                                        <button type="button" class="@GetSortOptionClass("status-asc")" @onclick='() => ApplyDocumentSort("status-asc")'>A to Z</button>
-                                        <button type="button" class="@GetSortOptionClass("status-desc")" @onclick='() => ApplyDocumentSort("status-desc")'>Z to A</button>
-                                    </div>
-                                }
-                            </MudTh>
-                            <MudTh Class="table-header-cell">
-                                <button type="button" class="@GetDocumentHeaderButtonClass("created")" @ref="_createdHeaderButton" @onclick='() => HandleDocumentHeaderClick("created")'>
+                                <button type="button" class="@GetDocumentHeaderButtonClass("created")" @onclick='() => HandleDocumentSortHeaderClick("created")'>
                                     <span>CREATED</span>
                                     <MudIcon Icon="@GetDocumentSortIcon("created")" Size="Size.Small" />
                                 </button>
-                                @if (_openDocumentMenuColumn == "created")
-                                {
-                                    <div class="table-filter-menu" style='@GetDocumentMenuStyle("created")'>
-                                        <span class="table-filter-section-label">Filter</span>
-                                        <input class="table-filter-input" type="datetime-local" value="@_filterCreatedFrom" @oninput='e => UpdateCreatedDateFilter("from", e.Value?.ToString())' />
-                                        <div style="height: 6px;"></div>
-                                        <input class="table-filter-input" type="datetime-local" value="@_filterCreatedTo" @oninput='e => UpdateCreatedDateFilter("to", e.Value?.ToString())' />
-                                        <button type="button" class="table-filter-option" @onclick="ClearCreatedDateFilter">Clear date range</button>
-                                        <div class="table-menu-divider"></div>
-                                        <span class="table-filter-section-label">Sort</span>
-                                        <button type="button" class="@GetSortOptionClass("created-desc")" @onclick='() => ApplyDocumentSort("created-desc")'>Newest first</button>
-                                        <button type="button" class="@GetSortOptionClass("created-asc")" @onclick='() => ApplyDocumentSort("created-asc")'>Oldest first</button>
-                                    </div>
-                                }
                             </MudTh>
                             <MudTh Class="table-header-cell">ACTIONS</MudTh>
                         </HeaderContent>
@@ -727,64 +681,45 @@ else
                         </RowTemplate>
                     </MudTable>
 
-                    <div class="pagination-bar">
-                        <div class="pagination-left">
-                            <MudText Typo="Typo.body2" Color="Color.Secondary">
-                                Showing @((_currentPage - 1) * _pageSize + 1)-@Math.Min(_currentPage * _pageSize, _filteredDocuments.Count) of @_filteredDocuments.Count documents
-                            </MudText>
-                        </div>
-                        <div class="pagination-center">
-                            <MudIconButton Icon="@Icons.Material.Filled.ChevronLeft"
-                                           Size="Size.Small"
-                                           Class="pagination-nav-btn"
-                                           Disabled="@(_currentPage <= 1)"
-                                           OnClick="@(() => GoToPage(_currentPage - 1))" />
-                            @foreach (var pageNum in GetPageNumbers())
-                            {
-                                if (pageNum == -1)
+                    <div class="folder-pagination-bar">
+                        <div class="folder-pagination-actions">
+                            <div class="folder-pagination-controls">
+                                <button type="button"
+                                        class="folder-page-nav-btn"
+                                        disabled="@(_displayDocumentPage <= 1)"
+                                        @onclick="@(() => GoToPage(_displayDocumentPage - 1))">
+                                    Prev
+                                </button>
+                                @foreach (var pageNum in GetPageNumbers())
                                 {
-                                    <MudText Typo="Typo.body2" Color="Color.Secondary">...</MudText>
+                                    if (pageNum == -1)
+                                    {
+                                        <span class="folder-page-ellipsis">...</span>
+                                    }
+                                    else
+                                    {
+                                        var current = pageNum;
+                                        <button type="button"
+                                                class="folder-page-number-btn @(current == _displayDocumentPage ? "active" : "")"
+                                                @onclick="@(() => GoToPage(current))">
+                                            @current
+                                        </button>
+                                    }
                                 }
-                                else
-                                {
-                                    <MudButton Variant="Variant.Filled"
-                                               Size="Size.Small"
-                                               Class="@(pageNum == _currentPage ? "page-number-btn page-number-btn-active" : "page-number-btn page-number-btn-inactive")"
-                                               OnClick="@(() => GoToPage(pageNum))">
-                                        @pageNum
-                                    </MudButton>
-                                }
-                            }
-                            <MudIconButton Icon="@Icons.Material.Filled.ChevronRight"
-                                           Size="Size.Small"
-                                           Class="pagination-nav-btn"
-                                           Disabled="@(_currentPage >= _totalPages)"
-                                           OnClick="@(() => GoToPage(_currentPage + 1))" />
-                        </div>
-                        <div class="pagination-right">
-                            <MudSelect T="int"
-                                       @bind-Value="_pageSize"
-                                       Variant="Variant.Outlined"
-                                       Margin="Margin.Dense"
-                                       Class="page-size-select">
-                                @foreach (var size in PageSizeOptions)
-                                {
-                                    <MudSelectItem T="int" Value="@size">@size / page</MudSelectItem>
-                                }
-                            </MudSelect>
-                            <div class="go-to-page">
-                                <MudTextField T="string"
-                                              @bind-Value="_goToPage"
-                                              Placeholder="Page..."
-                                              Variant="Variant.Outlined"
-                                              Margin="Margin.Dense"
-                                              Class="go-to-input" />
-                                <MudButton Variant="Variant.Outlined"
-                                           Size="Size.Small"
-                                           OnClick="GoToPageInput"
-                                           Disabled="@(string.IsNullOrWhiteSpace(_goToPage))">
-                                    Go
-                                </MudButton>
+                                <button type="button"
+                                        class="folder-page-nav-btn"
+                                        disabled="@(_displayDocumentPage >= _totalPages)"
+                                        @onclick="@(() => GoToPage(_displayDocumentPage + 1))">
+                                    Next
+                                </button>
+                            </div>
+                            <div class="folder-pagination-jump">
+                                <input type="text"
+                                       class="folder-page-jump-input"
+                                       placeholder="Page..."
+                                       value="@_goToPage"
+                                       @oninput="HandleDocumentPageInput"
+                                       @onkeydown="HandleDocumentPageKeyDown" />
                             </div>
                         </div>
                     </div>
@@ -862,29 +797,17 @@ else
     private string? _filterSemester;
     private Guid? _filterFolderId;
     private string _filterFolderQuery = "";
-    private string _filterSizeQuery = "";
     private string _filterStatusQuery = "";
     private string _filterCreatedFrom = "";
     private string _filterCreatedTo = "";
     private string _searchQuery = "";
-    private string? _openDocumentMenuColumn;
+    private string _folderSearchQuery = "";
+    private string _folderGoToPage = "";
     private string _documentSortBy = "created-desc";
-    private ElementReference _nameHeaderButton;
-    private ElementReference _subjectHeaderButton;
-    private ElementReference _semesterHeaderButton;
-    private ElementReference _folderHeaderButton;
-    private ElementReference _sizeHeaderButton;
-    private ElementReference _statusHeaderButton;
-    private ElementReference _createdHeaderButton;
-    private double _documentMenuLeft = 16;
-    private double _documentMenuTop = 112;
-    private double _documentMenuWidth = 256;
 
     private int _currentPage = 1;
     private int _pageSize = 10;
     private string _goToPage = "";
-    private static readonly int[] PageSizeOptions = [10, 25, 50, 100];
-
     private int _folderPage = 1;
     private const int FolderPageSize = 4;
     private int _sidebarFolderPage = 1;
@@ -915,13 +838,6 @@ else
 
     private List<string> _folderNameOptions => _documents
         .Select(d => GetFolderName(d.FolderId))
-        .Where(value => !string.IsNullOrWhiteSpace(value))
-        .Distinct(StringComparer.OrdinalIgnoreCase)
-        .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
-        .ToList();
-
-    private List<string> _fileSizeOptions => _documents
-        .Select(d => FormatFileSize(d.FileSizeBytes))
         .Where(value => !string.IsNullOrWhiteSpace(value))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
@@ -965,11 +881,6 @@ else
                 query = query.Where(d => d.FileName.Contains(_searchQuery, StringComparison.OrdinalIgnoreCase));
             }
 
-            if (!string.IsNullOrWhiteSpace(_filterSizeQuery))
-            {
-                query = query.Where(d => FormatFileSize(d.FileSizeBytes).Contains(_filterSizeQuery, StringComparison.OrdinalIgnoreCase));
-            }
-
             if (!string.IsNullOrWhiteSpace(_filterStatusQuery))
             {
                 query = query.Where(d => GetStatusText(d.Status).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
@@ -999,8 +910,6 @@ else
                 "folder-desc" => query.OrderByDescending(d => GetFolderName(d.FolderId), StringComparer.OrdinalIgnoreCase),
                 "size-asc" => query.OrderBy(d => d.FileSizeBytes),
                 "size-desc" => query.OrderByDescending(d => d.FileSizeBytes),
-                "status-asc" => query.OrderBy(d => GetStatusText(d.Status), StringComparer.OrdinalIgnoreCase),
-                "status-desc" => query.OrderByDescending(d => GetStatusText(d.Status), StringComparer.OrdinalIgnoreCase),
                 "created-asc" => query.OrderBy(d => d.CreatedAt),
                 _ => query.OrderByDescending(d => d.CreatedAt),
             };
@@ -1009,24 +918,37 @@ else
         }
     }
 
+    private int _displayDocumentPage => Math.Clamp(_currentPage, 1, _totalPages);
+
     private List<DocumentDto> _pagedDocuments => _filteredDocuments
-        .Skip((_currentPage - 1) * _pageSize)
+        .Skip((_displayDocumentPage - 1) * _pageSize)
         .Take(_pageSize)
         .ToList();
 
     private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredDocuments.Count / _pageSize));
 
-    private List<FolderDto> _pagedFolders => _folders
-        .Skip((_folderPage - 1) * FolderPageSize)
+    private List<FolderDto> _filteredLibraryFolders => _folders
+        .Where(folder =>
+            string.IsNullOrWhiteSpace(_folderSearchQuery)
+            || folder.Name.Contains(_folderSearchQuery, StringComparison.OrdinalIgnoreCase)
+            || (!string.IsNullOrWhiteSpace(folder.Subject) && folder.Subject.Contains(_folderSearchQuery, StringComparison.OrdinalIgnoreCase))
+            || (!string.IsNullOrWhiteSpace(folder.Semester) && folder.Semester.Contains(_folderSearchQuery, StringComparison.OrdinalIgnoreCase)))
+        .ToList();
+
+    private int _displayFolderPage => Math.Clamp(_folderPage, 1, _totalFolderPages);
+    private int _displaySidebarFolderPage => Math.Clamp(_sidebarFolderPage, 1, _totalSidebarFolderPages);
+
+    private List<FolderDto> _pagedFolders => _filteredLibraryFolders
+        .Skip((_displayFolderPage - 1) * FolderPageSize)
         .Take(FolderPageSize)
         .ToList();
 
-    private int _totalFolderPages => Math.Max(1, (int)Math.Ceiling((double)_folders.Count / FolderPageSize));
-    private List<FolderDto> _pagedSidebarFolders => _folders
-        .Skip((_sidebarFolderPage - 1) * SidebarFolderPageSize)
+    private int _totalFolderPages => Math.Max(1, (int)Math.Ceiling((double)_filteredLibraryFolders.Count / FolderPageSize));
+    private List<FolderDto> _pagedSidebarFolders => _filteredLibraryFolders
+        .Skip((_displaySidebarFolderPage - 1) * SidebarFolderPageSize)
         .Take(SidebarFolderPageSize)
         .ToList();
-    private int _totalSidebarFolderPages => Math.Max(1, (int)Math.Ceiling((double)_folders.Count / SidebarFolderPageSize));
+    private int _totalSidebarFolderPages => Math.Max(1, (int)Math.Ceiling((double)_filteredLibraryFolders.Count / SidebarFolderPageSize));
 
     private int _totalDocuments => _documents.Count;
     private int _readyDocuments => _documents.Count(d => d.Status == DocumentStatus.Ready);
@@ -1103,14 +1025,19 @@ else
         _filterSemester = null;
         _filterFolderId = null;
         _filterFolderQuery = "";
-        _filterSizeQuery = "";
         _filterStatusQuery = "";
         _filterCreatedFrom = "";
         _filterCreatedTo = "";
         _searchQuery = "";
         _documentSortBy = "created-desc";
-        _openDocumentMenuColumn = null;
         _currentPage = 1;
+    }
+
+    private void HandleFolderSearchInput(ChangeEventArgs e)
+    {
+        _folderSearchQuery = e.Value?.ToString()?.Trim() ?? string.Empty;
+        _folderPage = 1;
+        _sidebarFolderPage = 1;
     }
 
     private bool HasActiveDocumentFilters() =>
@@ -1119,29 +1046,11 @@ else
         || !string.IsNullOrWhiteSpace(_filterSemester)
         || _filterFolderId.HasValue
         || !string.IsNullOrWhiteSpace(_filterFolderQuery)
-        || !string.IsNullOrWhiteSpace(_filterSizeQuery)
         || !string.IsNullOrWhiteSpace(_filterStatusQuery)
         || !string.IsNullOrWhiteSpace(_filterCreatedFrom)
         || !string.IsNullOrWhiteSpace(_filterCreatedTo);
 
-    private async Task HandleDocumentHeaderClick(string columnKey)
-    {
-        if (string.Equals(_openDocumentMenuColumn, columnKey, StringComparison.OrdinalIgnoreCase))
-        {
-            _openDocumentMenuColumn = null;
-            return;
-        }
-
-        _openDocumentMenuColumn = columnKey;
-        await PositionDocumentMenuAsync(columnKey);
-    }
-
-    private void CloseDocumentMenu()
-    {
-        _openDocumentMenuColumn = null;
-    }
-
-    private void UpdateDocumentTextFilter(string columnKey, string? value)
+    private void HandleAppliedDocumentTextFilter(string columnKey, string? value)
     {
         var normalizedValue = value?.Trim() ?? string.Empty;
         switch (columnKey)
@@ -1158,40 +1067,34 @@ else
             case "folder":
                 SetDocumentFilterValue(ref _filterFolderQuery, normalizedValue);
                 break;
-            case "size":
-                SetDocumentFilterValue(ref _filterSizeQuery, normalizedValue);
-                break;
             case "status":
                 SetDocumentFilterValue(ref _filterStatusQuery, normalizedValue);
                 break;
         }
     }
 
-    private void ApplyDocumentSuggestion(string columnKey, string value)
+    private void HandleDocumentSortHeaderClick(string columnKey)
     {
-        switch (columnKey)
+        var ascendingKey = $"{columnKey}-asc";
+        var descendingKey = $"{columnKey}-desc";
+        var defaultSortKey = string.Equals(columnKey, "created", StringComparison.OrdinalIgnoreCase)
+            ? descendingKey
+            : ascendingKey;
+
+        if (string.Equals(_documentSortBy, ascendingKey, StringComparison.OrdinalIgnoreCase))
         {
-            case "name":
-                SetDocumentFilterValue(ref _searchQuery, value);
-                break;
-            case "subject":
-                SetNullableDocumentFilterValue(ref _filterSubject, value);
-                break;
-            case "semester":
-                SetNullableDocumentFilterValue(ref _filterSemester, value);
-                break;
-            case "folder":
-                SetDocumentFilterValue(ref _filterFolderQuery, value);
-                break;
-            case "size":
-                SetDocumentFilterValue(ref _filterSizeQuery, value);
-                break;
-            case "status":
-                SetDocumentFilterValue(ref _filterStatusQuery, value);
-                break;
+            _documentSortBy = descendingKey;
+        }
+        else if (string.Equals(_documentSortBy, descendingKey, StringComparison.OrdinalIgnoreCase))
+        {
+            _documentSortBy = ascendingKey;
+        }
+        else
+        {
+            _documentSortBy = defaultSortKey;
         }
 
-        CloseDocumentMenu();
+        _currentPage = 1;
     }
 
     private void UpdateCreatedDateFilter(string boundary, string? value)
@@ -1205,52 +1108,6 @@ else
         {
             SetDocumentFilterValue(ref _filterCreatedTo, normalizedValue);
         }
-    }
-
-    private void ClearCreatedDateFilter()
-    {
-        SetDocumentFilterValue(ref _filterCreatedFrom, string.Empty);
-        SetDocumentFilterValue(ref _filterCreatedTo, string.Empty);
-    }
-
-    private void ApplyDocumentSort(string sortKey)
-    {
-        _documentSortBy = sortKey;
-        _currentPage = 1;
-        CloseDocumentMenu();
-    }
-
-    private IReadOnlyList<string> GetDocumentSuggestions(string columnKey)
-    {
-        IReadOnlyList<string> options = columnKey switch
-        {
-            "name" => _documentNameOptions,
-            "subject" => _uniqueSubjects,
-            "semester" => _uniqueSemesters,
-            "folder" => _folderNameOptions,
-            "size" => _fileSizeOptions,
-            "status" => _statusOptions,
-            _ => []
-        };
-
-        var filterValue = columnKey switch
-        {
-            "name" => _searchQuery,
-            "subject" => _filterSubject ?? string.Empty,
-            "semester" => _filterSemester ?? string.Empty,
-            "folder" => _filterFolderQuery,
-            "size" => _filterSizeQuery,
-            "status" => _filterStatusQuery,
-            _ => string.Empty
-        };
-
-        IEnumerable<string> query = options;
-        if (!string.IsNullOrWhiteSpace(filterValue))
-        {
-            query = query.Where(option => option.Contains(filterValue, StringComparison.OrdinalIgnoreCase));
-        }
-
-        return query.ToList();
     }
 
     private DateTime? ParseDocumentLocalDateTimeFilter(string value)
@@ -1292,22 +1149,9 @@ else
     private bool IsDocumentSortedBy(string columnKey) =>
         _documentSortBy.StartsWith($"{columnKey}-", StringComparison.OrdinalIgnoreCase);
 
-    private bool IsDocumentColumnFiltered(string columnKey) =>
-        columnKey switch
-        {
-            "name" => !string.IsNullOrWhiteSpace(_searchQuery),
-            "subject" => !string.IsNullOrWhiteSpace(_filterSubject),
-            "semester" => !string.IsNullOrWhiteSpace(_filterSemester),
-            "folder" => _filterFolderId.HasValue || !string.IsNullOrWhiteSpace(_filterFolderQuery),
-            "size" => !string.IsNullOrWhiteSpace(_filterSizeQuery),
-            "status" => !string.IsNullOrWhiteSpace(_filterStatusQuery),
-            "created" => !string.IsNullOrWhiteSpace(_filterCreatedFrom) || !string.IsNullOrWhiteSpace(_filterCreatedTo),
-            _ => false
-        };
-
     private string GetDocumentHeaderButtonClass(string columnKey)
     {
-        var activeClass = IsDocumentSortedBy(columnKey) || IsDocumentColumnFiltered(columnKey)
+        var activeClass = IsDocumentSortedBy(columnKey)
             ? " table-header-button-active"
             : string.Empty;
         return $"table-header-button{activeClass}";
@@ -1323,65 +1167,6 @@ else
         return _documentSortBy.EndsWith("-desc", StringComparison.OrdinalIgnoreCase)
             ? Icons.Material.Filled.KeyboardArrowDown
             : Icons.Material.Filled.KeyboardArrowUp;
-    }
-
-    private string GetFilterOptionClass(bool isActive) =>
-        isActive ? "table-filter-option table-filter-option-active" : "table-filter-option";
-
-    private string GetSortOptionClass(string sortKey) =>
-        string.Equals(_documentSortBy, sortKey, StringComparison.OrdinalIgnoreCase)
-            ? "table-filter-option table-filter-option-active"
-            : "table-filter-option";
-
-    private string GetDocumentMenuStyle(string columnKey) =>
-        $"top: {FormatDocumentMenuValue(_documentMenuTop)}px; left: {FormatDocumentMenuValue(_documentMenuLeft)}px; width: {FormatDocumentMenuValue(_documentMenuWidth)}px; max-width: calc(100vw - 32px); max-height: calc(100vh - {FormatDocumentMenuValue(_documentMenuTop + 24)}px);";
-
-    private async Task PositionDocumentMenuAsync(string columnKey)
-    {
-        var anchor = columnKey switch
-        {
-            "name" => _nameHeaderButton,
-            "subject" => _subjectHeaderButton,
-            "semester" => _semesterHeaderButton,
-            "folder" => _folderHeaderButton,
-            "size" => _sizeHeaderButton,
-            "status" => _statusHeaderButton,
-            "created" => _createdHeaderButton,
-            _ => default
-        };
-
-        var rect = await JS.InvokeAsync<MenuAnchorRect?>("codexTableFilter.getAnchorRect", anchor, GetDocumentMenuWidthPx(columnKey));
-        if (rect is null)
-        {
-            return;
-        }
-
-        _documentMenuLeft = rect.Left;
-        _documentMenuTop = rect.Top;
-        _documentMenuWidth = rect.Width;
-    }
-
-    private static double GetDocumentMenuWidthPx(string columnKey) =>
-        columnKey switch
-        {
-            "name" => 256,
-            "subject" => 224,
-            "semester" => 224,
-            "folder" => 224,
-            "size" => 224,
-            "status" => 224,
-            "created" => 288,
-            _ => 240
-        };
-
-    private static string FormatDocumentMenuValue(double value) =>
-        value.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
-
-    private sealed class MenuAnchorRect
-    {
-        public double Left { get; set; }
-        public double Top { get; set; }
-        public double Width { get; set; }
     }
 
     private void ToggleFolderMenu(Guid folderId)
@@ -1421,6 +1206,85 @@ else
         _currentPage = 1;
     }
 
+    private IReadOnlyList<int> GetFolderPageNumbers()
+    {
+        var total = _totalFolderPages;
+        var current = _displayFolderPage;
+        return BuildSlidingPageNumbers(total, current);
+    }
+
+    private static IReadOnlyList<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var index = 1; index <= total; index++)
+            {
+                pages.Add(index);
+            }
+
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var index = 1; index <= 3; index++)
+            {
+                pages.Add(index);
+            }
+
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+
+            for (var index = total - 2; index <= total; index++)
+            {
+                pages.Add(index);
+            }
+
+            return pages;
+        }
+
+        for (var index = current - 1; index <= current + 1; index++)
+        {
+            pages.Add(index);
+        }
+
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void HandleFolderPageInput(ChangeEventArgs e)
+    {
+        _folderGoToPage = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandleFolderPageKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToFolderPageInput();
+        }
+    }
+
+    private void GoToFolderPageInput()
+    {
+        if (int.TryParse(_folderGoToPage, out var page))
+        {
+            _folderPage = Math.Clamp(page, 1, _totalFolderPages);
+        }
+
+        _folderGoToPage = string.Empty;
+    }
+
     private void GoToPage(int page)
     {
         _currentPage = Math.Clamp(page, 1, _totalPages);
@@ -1431,7 +1295,21 @@ else
         if (int.TryParse(_goToPage, out var page))
         {
             GoToPage(page);
-            _goToPage = "";
+        }
+
+        _goToPage = "";
+    }
+
+    private void HandleDocumentPageInput(ChangeEventArgs e)
+    {
+        _goToPage = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandleDocumentPageKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageInput();
         }
     }
 
@@ -1648,21 +1526,7 @@ else
 
     private int[] GetPageNumbers()
     {
-        if (_totalPages <= 7)
-        {
-            return Enumerable.Range(1, _totalPages).ToArray();
-        }
-        var pages = new List<int> { 1 };
-        var start = Math.Max(2, _currentPage - 1);
-        var end = Math.Min(_totalPages - 1, _currentPage + 1);
-        if (start > 2) pages.Add(-1);
-        for (var i = start; i <= end; i++)
-        {
-            pages.Add(i);
-        }
-        if (end < _totalPages - 1) pages.Add(-1);
-        pages.Add(_totalPages);
-        return pages.ToArray();
+        return BuildSlidingPageNumbers(_totalPages, _displayDocumentPage).ToArray();
     }
 
     private static string MapError(DocumentApiException ex) => ex.StatusCode switch

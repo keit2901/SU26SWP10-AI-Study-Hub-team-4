@@ -4,4 +4,5 @@ public sealed record StorageQuotaSnapshotDto(
     long UsedBytes,
     long? QuotaBytes,
     string PlanKey,
-    string PlanDisplayName);
+    string PlanDisplayName,
+    DateTimeOffset? ExpiresAt = null);

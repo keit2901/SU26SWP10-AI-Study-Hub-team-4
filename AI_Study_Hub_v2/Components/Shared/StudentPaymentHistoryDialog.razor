@@ -1,0 +1,475 @@
+@using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Services
+@inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
+@inject PlanApiClient PlanApi
+@inject NavigationManager Nav
+
+<MudDialog Class="student-quick-dialog student-payment-dialog-root">
+    <DialogContent>
+        <div class="payment-dialog-shell">
+            <div class="payment-dialog-head">
+                <h3>Thanh toán</h3>
+                <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="Close" />
+            </div>
+
+            @if (_loading)
+            {
+                <div class="payment-dialog-loading">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Medium" Color="Color.Primary" />
+                    <span>Đang tải lịch sử thanh toán...</span>
+                </div>
+            }
+            else if (!string.IsNullOrWhiteSpace(_error))
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled">@_error</MudAlert>
+            }
+            else
+            {
+                <div class="payment-plan-row">
+                    <div class="payment-plan-summary">
+                        <div class="payment-plan-name">@FormatPlanLabel()</div>
+                        <div class="payment-plan-expiry">@BuildExpiryText()</div>
+                    </div>
+
+                    <MudButton Variant="Variant.Outlined"
+                               Color="Color.Primary"
+                               Size="Size.Small"
+                               Class="payment-plan-button"
+                               OnClick="GoToPricing">
+                        @BuildPlanButtonLabel()
+                    </MudButton>
+                </div>
+
+                <div class="payment-section-divider"></div>
+                <div class="payment-section-title">Lịch sử thanh toán</div>
+
+                @if (_payments.Count == 0)
+                {
+                    <div class="payment-empty-state">
+                        <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Large" />
+                        <h4>Chưa có lịch sử thanh toán</h4>
+                    </div>
+                }
+                else
+                {
+                    <div class="payment-history-table">
+                        <div class="payment-history-grid payment-history-grid-head">
+                            <span>Ngày</span>
+                            <span>Số tiền</span>
+                            <span>Trạng thái</span>
+                        </div>
+
+                        @foreach (var payment in PagedPayments)
+                        {
+                            <div class="payment-history-grid">
+                                <span>@FormatDate(payment.CreatedAt)</span>
+                                <span>@FormatAmount(payment.AmountVnd)</span>
+                                <span>
+                                    <span class="payment-status-chip @GetStatusClass(payment.Status)">@FormatStatus(payment.Status)</span>
+                                </span>
+                            </div>
+                        }
+                    </div>
+
+                    @if (TotalPages > 1)
+                    {
+                        <div class="payment-pager">
+                            <button type="button" class="payment-page-button" @onclick="PreviousPage" disabled="@(_currentPage == 1)">
+                                Trước
+                            </button>
+
+                            @foreach (var pageNumber in VisiblePages)
+                            {
+                                <button type="button"
+                                        class="payment-page-button @(pageNumber == _currentPage ? "active" : string.Empty)"
+                                        @onclick="@(() => GoToPage(pageNumber))">
+                                    @pageNumber
+                                </button>
+                            }
+
+                            <button type="button" class="payment-page-button" @onclick="NextPage" disabled="@(_currentPage == TotalPages)">
+                                Sau
+                            </button>
+                        </div>
+                    }
+                }
+            }
+        </div>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    private const int PageSize = 4;
+
+    [CascadingParameter]
+    private IMudDialogInstance MudDialog { get; set; } = null!;
+
+    private bool _loading = true;
+    private string? _error;
+    private int _currentPage = 1;
+    private DateTimeOffset? _planExpiresAt;
+    private readonly List<PaymentTransactionDto> _payments = new();
+
+    private IEnumerable<PaymentTransactionDto> PagedPayments =>
+        _payments.Skip((_currentPage - 1) * PageSize).Take(PageSize);
+
+    private int TotalPages => Math.Max(1, (int)Math.Ceiling(_payments.Count / (double)PageSize));
+
+    private IEnumerable<int> VisiblePages
+    {
+        get
+        {
+            var start = Math.Max(1, _currentPage - 1);
+            var end = Math.Min(TotalPages, start + 2);
+            if (end - start < 2)
+            {
+                start = Math.Max(1, end - 2);
+            }
+
+            return Enumerable.Range(start, end - start + 1);
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        await RestoreSessionAsync();
+        await LoadAsync();
+    }
+
+    private async Task RestoreSessionAsync()
+    {
+        if (Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        var restored = await AuthPersistence.TryRestoreAsync();
+        if (restored is not null)
+        {
+            Session.Set(restored);
+        }
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        _payments.Clear();
+        _currentPage = 1;
+        _planExpiresAt = null;
+
+        try
+        {
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                _error = "Vui lòng đăng nhập lại để xem lịch sử thanh toán.";
+                return;
+            }
+
+            var snapshot = await PlanApi.GetCurrentPlanAsync(Session.AccessToken);
+            Session.SetPlan(snapshot.PlanKey);
+            _planExpiresAt = snapshot.ExpiresAt;
+
+            var payments = await PlanApi.GetMyPaymentTransactionsAsync(Session.AccessToken, 100);
+            _payments.AddRange(payments.OrderByDescending(item => item.CreatedAt));
+        }
+        catch (PlanApiException ex)
+        {
+            _error = ex.StatusCode == 401
+                ? "Vui lòng đăng nhập lại để xem lịch sử thanh toán."
+                : ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Không thể tải lịch sử thanh toán: {ex.Message}";
+        }
+        finally
+        {
+            _loading = false;
+        }
+    }
+
+    private string FormatPlanLabel()
+        => string.IsNullOrWhiteSpace(Session.CurrentPlan)
+            ? "Free"
+            : $"{char.ToUpper(Session.CurrentPlan[0])}{Session.CurrentPlan[1..].ToLowerInvariant()}";
+
+    private string BuildExpiryText()
+        => _planExpiresAt.HasValue
+            ? $"Expires on {_planExpiresAt.Value.ToLocalTime():dd/MM/yyyy}"
+            : "No expiration";
+
+    private string BuildPlanButtonLabel()
+        => string.Equals(Session.CurrentPlan, "free", StringComparison.OrdinalIgnoreCase)
+            ? "Nâng cấp gói"
+            : $"Gia hạn gói {FormatPlanLabel()}";
+
+    private static string FormatAmount(long amountVnd)
+        => amountVnd <= 0 ? "0 đ" : $"{amountVnd:N0} đ";
+
+    private static string FormatStatus(string status)
+        => status.ToLowerInvariant() switch
+        {
+            "completed" => "Đã thanh toán",
+            "pending" => "Đang chờ",
+            "failed" => "Thất bại",
+            "expired" => "Expired",
+            _ => status
+        };
+
+    private static string GetStatusClass(string status)
+        => status.ToLowerInvariant() switch
+        {
+            "completed" => "success",
+            "pending" => "warning",
+            "failed" => "danger",
+            "expired" => "muted",
+            _ => "info"
+        };
+
+    private static string FormatDate(DateTimeOffset date)
+        => date.ToLocalTime().ToString("d 'thg' M, yyyy");
+
+    private void GoToPage(int page)
+    {
+        _currentPage = Math.Min(Math.Max(1, page), TotalPages);
+    }
+
+    private void PreviousPage()
+    {
+        if (_currentPage > 1)
+        {
+            _currentPage--;
+        }
+    }
+
+    private void NextPage()
+    {
+        if (_currentPage < TotalPages)
+        {
+            _currentPage++;
+        }
+    }
+
+    private void GoToPricing()
+    {
+        MudDialog.Close();
+        Nav.NavigateTo("/pricing");
+    }
+
+    private void Close() => MudDialog.Cancel();
+}
+
+<style>
+    .student-payment-dialog-root.mud-dialog {
+        border-radius: 36px !important;
+    }
+
+    .student-payment-dialog-root .mud-dialog-content {
+        padding: 1rem 1rem 1.05rem !important;
+    }
+
+    .payment-dialog-shell {
+        display: flex;
+        flex-direction: column;
+        gap: 0.95rem;
+    }
+
+    .payment-dialog-head {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 0.15rem;
+    }
+
+    .payment-dialog-head h3 {
+        margin: 0.1rem 0 0;
+        color: #19132f;
+        font-size: 1.42rem;
+        font-weight: 900;
+    }
+
+    .payment-dialog-loading {
+        min-height: 220px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.75rem;
+        color: #6f678c;
+    }
+
+    .payment-plan-row {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 1rem;
+    }
+
+    .payment-plan-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+    }
+
+    .payment-plan-name {
+        color: #19132f;
+        font-size: 1.08rem;
+        font-weight: 800;
+    }
+
+    .payment-plan-expiry {
+        color: #7b7397;
+        font-size: 0.88rem;
+        font-weight: 600;
+    }
+
+    .payment-plan-button {
+        border-radius: 999px !important;
+        padding-inline: 1rem !important;
+        text-transform: none !important;
+        font-weight: 700 !important;
+    }
+
+    .payment-section-divider {
+        width: 100%;
+        height: 1px;
+        background: rgba(206, 202, 224, 0.75);
+    }
+
+    .payment-section-title {
+        color: #19132f;
+        font-size: 1.08rem;
+        font-weight: 800;
+    }
+
+    .payment-history-table {
+        overflow: hidden;
+        border-radius: 18px;
+        border: 1px solid rgba(214, 209, 230, 0.7);
+    }
+
+    .payment-history-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+        gap: 0.75rem;
+        align-items: center;
+        padding: 0.95rem 1rem;
+        background: rgba(255, 255, 255, 0.88);
+    }
+
+    .payment-history-grid + .payment-history-grid {
+        border-top: 1px solid rgba(223, 218, 236, 0.78);
+    }
+
+    .payment-history-grid-head {
+        background: rgba(245, 242, 255, 0.95);
+        color: #6f678c;
+        font-size: 0.8rem;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+    }
+
+    .payment-status-chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0.35rem 0.75rem;
+        border-radius: 999px;
+        font-size: 0.84rem;
+        font-weight: 700;
+    }
+
+    .payment-status-chip.success {
+        background: rgba(16, 185, 129, 0.12);
+        color: #178556;
+    }
+
+    .payment-status-chip.warning {
+        background: rgba(245, 158, 11, 0.14);
+        color: #b16f08;
+    }
+
+    .payment-status-chip.danger {
+        background: rgba(239, 68, 68, 0.12);
+        color: #c23c3c;
+    }
+
+    .payment-status-chip.muted,
+    .payment-status-chip.info {
+        background: rgba(99, 102, 241, 0.1);
+        color: #4f46d9;
+    }
+
+    .payment-page-button {
+        border: 0;
+        background: transparent;
+        color: #241d3f;
+        cursor: pointer;
+        font-weight: 700;
+    }
+
+    .payment-pager {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.45rem;
+        margin-top: 0.95rem;
+        flex-wrap: wrap;
+    }
+
+    .payment-page-button {
+        min-width: 2.25rem;
+        padding: 0.52rem 0.76rem;
+        border-radius: 14px;
+        border: 1px solid rgba(211, 206, 228, 0.75);
+        background: rgba(255, 255, 255, 0.94);
+        transition: background 0.16s ease, border-color 0.16s ease;
+    }
+
+    .payment-page-button.active {
+        border-color: rgba(94, 92, 230, 0.28);
+        background: rgba(94, 92, 230, 0.12);
+        color: #4f46d9;
+    }
+
+    .payment-page-button:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+    }
+
+    .payment-empty-state {
+        min-height: 180px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        padding: 1rem 0.4rem;
+        text-align: center;
+        color: #6f678c;
+    }
+
+    .payment-empty-state h4 {
+        margin: 0;
+        color: #19132f;
+    }
+
+    @@media (max-width: 720px) {
+        .payment-plan-row {
+            flex-direction: column;
+            align-items: flex-start;
+        }
+
+        .payment-history-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .payment-history-grid-head {
+            display: none;
+        }
+    }
+</style>

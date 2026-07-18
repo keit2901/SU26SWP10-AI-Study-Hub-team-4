@@ -1,69 +1,54 @@
 @inherits LayoutComponentBase
 @layout MainLayout
 @inject NavigationManager Nav
+@inject IDialogService DialogService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
+@inject AI_Study_Hub_v2.Services.PlanApiClient PlanApi
 
-<div style="display: flex; min-height: calc(100vh - 4.5rem); background: #faf9fe; overflow: hidden; font-family: 'Inter', sans-serif;">
-    <!-- Sidebar -->
-    <aside style="width: 16rem; flex-shrink: 0; border-right: 1px solid rgba(199,196,215,0.3); background: #fff; display: flex; flex-direction: column; justify-content: space-between; padding: 1.5rem 0;">
-        <div style="padding: 0 1.5rem;">
-
-            <!-- Brand logo -->
-            <a href="/" style="display: flex; align-items: center; gap: 0.625rem; text-decoration: none; margin-bottom: 1.5rem;">
-                <span style="display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 0.5rem; background: #5e5ce6; color: white; font-size: 1rem;">
+<div class="student-dashboard-shell">
+    <aside class="student-sidebar">
+        <div class="student-sidebar-top">
+            <a href="/" class="student-brand-link">
+                <span class="student-brand-mark">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M14 2v20"/><path d="M8 12h4"/><path d="M8 16h4"/></svg>
                 </span>
-                <span style="font-size: 1.125rem; font-weight: 700; color: #1a1b1f; letter-spacing: -0.3px;">AI Study Hub</span>
+                <span>AI Study Hub</span>
             </a>
 
-            <a href="documents/upload" style="width: 100%; background: #5e5ce6; color: #fff; border-radius: 0.375rem; padding: 0.6875rem 1rem; display: flex; align-items: center; justify-content: center; font-size: 0.875rem; font-weight: 600; text-decoration: none; border: none; cursor: pointer; box-shadow: 0 4px 14px 0 rgba(94, 92, 230, 0.39);">
-                <MudIcon Icon="@Icons.Material.Filled.Add" Style="font-size: 1rem; margin-right: 0.5rem;" />
+            <a href="documents/upload" class="student-create-button">
+                <MudIcon Icon="@Icons.Material.Filled.Add" Style="font-size: 1rem; margin-right: 0.45rem;" />
                 New Document
             </a>
 
-            <nav style="margin-top: 1.5rem; display: flex; flex-direction: column; gap: 0.25rem;">
+            <nav class="student-sidebar-nav">
                 @foreach (var item in sidebarItems)
                 {
-                    <a href="@item.Href" style="@GetSidebarItemStyle(IsActive(item.Href))">
-                        <MudIcon Icon="@item.Icon" Style="@($"font-size: 1.25rem; margin-right: 0.75rem; color: {(IsActive(item.Href) ? "#5e5ce6" : "#464554")};")" />
-                        @item.Label
+                    <a href="@item.Href" class="@GetSidebarClass(IsActive(item.Href))">
+                        <MudIcon Icon="@item.Icon" Class="student-sidebar-icon" />
+                        <span>@item.Label</span>
                     </a>
                 }
+
                 @if (Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true)
                 {
-                    <div style="height: 1px; background: rgba(199,196,215,0.3); margin: 0.75rem 0;"></div>
-                    <a href="/admin" style="display: flex; align-items: center; padding: 0.625rem 1.0rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 600; color: #464554; text-decoration: none; transition: background 0.15s, color 0.15s;">
-                        <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Style="font-size: 1.25rem; margin-right: 0.75rem; color: #464554;" />
-                        Admin Console
+                    <div class="student-sidebar-divider"></div>
+                    <a href="/admin" class="student-sidebar-item">
+                        <MudIcon Icon="@Icons.Material.Filled.AdminPanelSettings" Class="student-sidebar-icon" />
+                        <span>Admin Console</span>
                     </a>
                 }
             </nav>
         </div>
-
     </aside>
 
-    <!-- Main Content inside Dashboard Layout -->
-    <div style="flex: 1; display: flex; flex-direction: column; overflow-y: auto; background: #faf9fe;">
-
-        <!-- Top Bar — user avatar + logout -->
-        <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.75rem; padding: 0.5rem 1.5rem; border-bottom: 1px solid rgba(199,196,215,0.3); background: rgba(255,255,255,0.8); backdrop-filter: blur(4px); position: sticky; top: 0; z-index: 20; flex-shrink: 0;">
-            @if (Session.CurrentUser != null)
+    <div class="student-dashboard-main">
+        <div class="student-topbar">
+            @if (Session.CurrentUser is not null)
             {
-                <a href="/profile" title="Profile"
-                   style="display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 9999px; background: #5e5ce6; color: white; font-size: 0.75rem; font-weight: 700; text-decoration: none; border: 2px solid #c2c1ff; cursor: pointer; transition: opacity 0.2s;"
-                   onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">
-                    @(Session.CurrentUser.Username?.Substring(0, Math.Min(2, Session.CurrentUser.Username.Length)).ToUpper() ?? "US")
-                </a>
-                <button @onclick="Logout" title="Logout"
-                        style="display: flex; align-items: center; justify-content: center; width: 2rem; height: 2rem; border-radius: 9999px; background: transparent; border: 1px solid rgba(199,196,215,0.5); cursor: pointer; transition: background 0.2s; color: #464554;"
-                        onmouseover="this.style.background='#fef2f2'" onmouseout="this.style.background='transparent'">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-                        <polyline points="16 17 21 12 16 7"/>
-                        <line x1="21" y1="12" x2="9" y2="12"/>
-                    </svg>
-                </button>
+                <div class="student-topbar-right">
+                    <UserAccountMenu />
+                </div>
             }
         </div>
 
@@ -83,23 +68,31 @@
             }
         }
 
-        if (!Session.IsAuthenticated || Session.CurrentUser == null)
+        if (!Session.IsAuthenticated || Session.CurrentUser is null)
         {
-            Nav.NavigateTo("/login");
+            Nav.NavigateTo("/login", replace: true);
             return;
+        }
+
+        try
+        {
+            await Session.LoadCurrentPlanAsync(PlanApi);
+        }
+        catch
+        {
         }
     }
 
     private record SidebarItem(string Icon, string Label, string Href);
 
-    private readonly SidebarItem[] sidebarItems = new[]
+    private readonly SidebarItem[] sidebarItems =
     {
-        new SidebarItem(Icons.Material.Filled.Dashboard, "Dashboard", "/dashboard"),
-        new SidebarItem(Icons.Material.Filled.Description, "Documents", "/dashboard/documents"),
-        new SidebarItem(Icons.Material.Filled.MenuBook, "Subjects", "/dashboard/subjects"),
-        new SidebarItem(Icons.Material.Filled.CalendarToday, "Semesters", "/dashboard/semesters"),
-        new SidebarItem(Icons.Material.Filled.BarChart, "Analytics", "/dashboard/analytics"),
-        new SidebarItem(Icons.Material.Filled.Flag, "Escalations", "/dashboard/escalations"),
+        new(Icons.Material.Filled.Dashboard, "Dashboard", "/dashboard"),
+        new(Icons.Material.Filled.Description, "Documents", "/dashboard/documents"),
+        new(Icons.Material.Filled.MenuBook, "Subjects", "/dashboard/subjects"),
+        new(Icons.Material.Filled.CalendarToday, "Semesters", "/dashboard/semesters"),
+        new(Icons.Material.Filled.BarChart, "Analytics", "/dashboard/analytics"),
+        new(Icons.Material.Filled.Flag, "Escalations", "/dashboard/escalations"),
     };
 
     private bool IsActive(string href)
@@ -116,16 +109,201 @@
         return currentPath.Equals(href, StringComparison.OrdinalIgnoreCase);
     }
 
-    private string GetSidebarItemStyle(bool active)
+    private string GetSidebarClass(bool active)
+        => active ? "student-sidebar-item active" : "student-sidebar-item";
+
+    private string GetAvatarLabel()
     {
-        var bg = active ? "#e9e7ed" : "transparent";
-        var color = active ? "#5e5ce6" : "#464554";
-        return $"display: flex; align-items: center; padding: 0.625rem 1rem; border-radius: 0.375rem; font-size: 0.875rem; font-weight: 500; color: {color}; background: {bg}; text-decoration: none; transition: background 0.15s, color 0.15s;";
+        if (!string.IsNullOrWhiteSpace(Session.CurrentUser?.FullName))
+        {
+            var fullName = Session.CurrentUser.FullName.Trim();
+            return fullName[..Math.Min(2, fullName.Length)].ToUpperInvariant();
+        }
+
+        if (!string.IsNullOrWhiteSpace(Session.CurrentUser?.Username))
+        {
+            var username = Session.CurrentUser.Username.Trim();
+            return username[..Math.Min(2, username.Length)].ToUpperInvariant();
+        }
+
+        return "US";
     }
 
-    private void Logout()
+    private string FormatAccountSubtitle()
     {
-        Session.Clear();
-        Nav.NavigateTo("/login", replace: true);
+        if (string.IsNullOrWhiteSpace(Session.CurrentPlan))
+        {
+            return "Free";
+        }
+
+        return char.ToUpperInvariant(Session.CurrentPlan[0]) + Session.CurrentPlan[1..].ToLowerInvariant();
     }
+
+
 }
+
+<style>
+    .student-dashboard-shell {
+        display: flex;
+        min-height: calc(100vh - 4.5rem);
+        background: linear-gradient(180deg, #f6f3ff 0%, #fbfbff 100%);
+        overflow: hidden;
+        font-family: 'Inter', sans-serif;
+    }
+
+    .student-sidebar {
+        width: 16rem;
+        flex-shrink: 0;
+        border-right: 1px solid rgba(199, 196, 215, 0.28);
+        background: rgba(255, 255, 255, 0.92);
+        backdrop-filter: blur(12px);
+        padding: 1.4rem 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .student-sidebar-top {
+        padding: 0 1.25rem;
+    }
+
+    .student-brand-link {
+        display: flex;
+        align-items: center;
+        gap: 0.7rem;
+        text-decoration: none;
+        margin-bottom: 1.3rem;
+        color: #1e1934;
+        font-size: 1.08rem;
+        font-weight: 800;
+    }
+
+    .student-brand-mark {
+        width: 2.2rem;
+        height: 2.2rem;
+        border-radius: 0.75rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(135deg, #5e5ce6, #8476ff);
+        color: white;
+        box-shadow: 0 10px 24px rgba(94, 92, 230, 0.28);
+    }
+
+    .student-create-button {
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        padding: 0.78rem 1rem;
+        text-decoration: none;
+        color: white;
+        font-weight: 700;
+        background: linear-gradient(135deg, #5e5ce6, #7268ff);
+        box-shadow: 0 14px 32px rgba(94, 92, 230, 0.28);
+    }
+
+    .student-sidebar-nav {
+        margin-top: 1.35rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+    }
+
+    .student-sidebar-item {
+        display: flex;
+        align-items: center;
+        gap: 0.85rem;
+        padding: 0.82rem 0.95rem;
+        border-radius: 16px;
+        text-decoration: none;
+        color: #4b4563;
+        font-size: 0.92rem;
+        font-weight: 600;
+        transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    }
+
+    .student-sidebar-item:hover {
+        background: rgba(94, 92, 230, 0.08);
+        color: #4f46d9;
+        transform: translateX(2px);
+    }
+
+    .student-sidebar-item.active {
+        background: linear-gradient(135deg, rgba(94, 92, 230, 0.14), rgba(132, 118, 255, 0.08));
+        color: #4f46d9;
+        box-shadow: inset 0 0 0 1px rgba(94, 92, 230, 0.12);
+    }
+
+    .student-sidebar-icon {
+        font-size: 1.2rem;
+    }
+
+    .student-sidebar-divider {
+        height: 1px;
+        margin: 0.55rem 0;
+        background: rgba(199, 196, 215, 0.38);
+    }
+
+    .student-dashboard-main {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
+    }
+
+    .student-topbar {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        display: flex;
+        justify-content: flex-end;
+        padding: 0.85rem 1.4rem;
+        border-bottom: 1px solid rgba(199, 196, 215, 0.24);
+        background: rgba(248, 246, 255, 0.82);
+        backdrop-filter: blur(12px);
+    }
+
+    .student-topbar-right {
+        display: flex;
+        align-items: center;
+    }
+
+    .student-user-meta {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        line-height: 1.15;
+    }
+
+    .student-user-meta strong {
+        font-size: 0.9rem;
+        font-weight: 800;
+        max-width: 11rem;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .student-user-meta small {
+        font-size: 0.75rem;
+        color: #726a92;
+    }
+
+    @@media (max-width: 920px) {
+        .student-sidebar {
+            display: none;
+        }
+    }
+
+    @@media (max-width: 640px) {
+        .student-topbar {
+            padding: 0.8rem 1rem;
+        }
+
+        .student-user-meta {
+            display: none;
+        }
+    }
+</style>

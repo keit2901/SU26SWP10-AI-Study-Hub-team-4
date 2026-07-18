@@ -259,7 +259,7 @@ public sealed class PlanCapacityPostgresTests
             {
                 entered?.TrySetResult(true);
                 await CreateGuard().LockAndValidateAsync(db, userId,
-                    new PlanCapacityRequest(1, 0, folderId, folderId.HasValue ? 1 : 0), timeout.Token);
+                    new PlanCapacityRequest(1, 0, folderId, folderId.HasValue ? 1 : 0, 0), timeout.Token);
                 var document = NewDocument(Guid.NewGuid(), userId, folderId);
                 _createdDocumentIds.Add(document.Id);
                 db.Documents.Add(document);

@@ -273,7 +273,7 @@ public sealed class CommunityServiceTests
     }
 
     private static CommunityService BuildSut(Data.AppDbContext db) =>
-        new(db, NullLogger<CommunityService>.Instance, Mock.Of<IAuditLogService>());
+        new(db, NullLogger<CommunityService>.Instance);
 
     private static void EnsureModeratorRole(Data.AppDbContext db)
     {

@@ -294,7 +294,7 @@ public class AiChatControllerTests
         db.Folders.Add(foreignFolder);
         await db.SaveChangesAsync();
         var service = new Mock<IAiChatService>(MockBehavior.Strict);
-        var persistence = new ChatPersistenceService(db, NullLogger<ChatPersistenceService>.Instance, Mock.Of<IAuditLogService>());
+        var persistence = new ChatPersistenceService(db, NullLogger<ChatPersistenceService>.Instance);
         var sut = BuildSut(service.Object, Principal(owner.SupabaseUserId), persistence);
 
         var result = await sut.CreateSession(new CreateChatSessionRequest { FolderId = foreignFolder.Id }, CancellationToken.None);

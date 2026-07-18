@@ -85,9 +85,12 @@ public sealed class PlanCapacityGuard : IPlanCapacityGuard
         if (plan.MaxDocumentCount.HasValue && documentCount + request.AdditionalDocumentCount > plan.MaxDocumentCount.Value)
             throw new PlanException(StatusCodes.Status402PaymentRequired, "document_count_exceeded", "Document count limit reached.");
 
-        var folderCount = await db.Folders.CountAsync(f => f.UserId == userId, ct);
-        if (plan.MaxFolderCount.HasValue && folderCount + request.AdditionalFolderCount > plan.MaxFolderCount.Value)
-            throw new PlanException(StatusCodes.Status402PaymentRequired, "folder_count_exceeded", "Folder count limit reached.");
+        if (request.AdditionalFolderCount > 0)
+        {
+            var folderCount = await db.Folders.CountAsync(f => f.UserId == userId, ct);
+            if (plan.MaxFolderCount.HasValue && folderCount + request.AdditionalFolderCount > plan.MaxFolderCount.Value)
+                throw new PlanException(StatusCodes.Status402PaymentRequired, "folder_count_exceeded", "Folder count limit reached.");
+        }
 
         if (request.TargetFolderId.HasValue)
         {

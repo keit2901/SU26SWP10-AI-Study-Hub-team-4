@@ -18,10 +18,29 @@ public sealed class RagContractTests
         options.ChunkOverlapChars.Should().Be(70);
         options.MinChunkChars.Should().Be(200);
         options.MaxSectionChars.Should().Be(700);
+        options.SemanticTargetTokens.Should().Be(144);
+        options.SemanticMinTokens.Should().Be(72);
+        options.SemanticMaxTokens.Should().Be(192);
+        options.SemanticOverlapTokens.Should().Be(24);
         options.DefaultTopK.Should().Be(5);
         options.MaxTopK.Should().Be(10);
         options.EmbeddingDimensions.Should().Be(DocumentChunk.EmbeddingDimension);
         options.MaxContextChars.Should().Be(6000);
+    }
+
+    [Test]
+    public void RagOptions_SemanticV2Bounds_RejectInvalidRelationshipsWithoutChangingLegacyCharacterMeaning()
+    {
+        var options = new RagOptions
+        {
+            ChunkSizeChars = 700,
+            ChunkOverlapChars = 70,
+            SemanticOverlapTokens = 72,
+        };
+
+        RagOptions.HasValidSemanticV2Bounds(options).Should().BeFalse();
+        options.ChunkSizeChars.Should().Be(700);
+        options.ChunkOverlapChars.Should().Be(70);
     }
 
     [Test]

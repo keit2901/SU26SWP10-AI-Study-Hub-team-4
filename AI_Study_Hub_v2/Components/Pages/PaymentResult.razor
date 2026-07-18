@@ -3,6 +3,7 @@
 @inject NavigationManager Navigation
 @inject PlanApiClient PlanApi
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 
 <PageTitle>Payment Result — AI Study Hub</PageTitle>
 
@@ -205,6 +206,7 @@
 
     protected override async Task OnInitializedAsync()
     {
+        await RestoreSessionAsync();
         await VerifyPayment();
     }
 
@@ -215,15 +217,25 @@
 
         try
         {
-            var accessToken = Session.AccessToken;
-            if (string.IsNullOrWhiteSpace(accessToken))
+            // Extract txnRef from query string (PayOS redirects to ReturnUrl with ?status=success&txnRef=...)
+            var uri = new Uri(Navigation.Uri);
+            var queryParams = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var txnRef = queryParams["txnRef"] ?? string.Empty;
+            var status = queryParams["status"] ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(txnRef))
             {
-                _result = new ReturnUrlResult(false, "error", null, 0, "Not authenticated.");
+                _result = new ReturnUrlResult(false, "error", null, 0, "No transaction reference found.");
                 return;
             }
 
-            var uri = new Uri(Navigation.Uri);
-            _result = await PlanApi.VerifyReturnUrlAsync(accessToken, uri.Query);
+            // If user cancelled on PayOS checkout, expire the transaction immediately
+            if (string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                await PlanApi.CancelPaymentAsync(txnRef);
+            }
+
+            _result = await PlanApi.GetPaymentStatusAsync(txnRef);
         }
         catch
         {
@@ -240,6 +252,22 @@
         await VerifyPayment();
     }
 
+    private async Task RestoreSessionAsync()
+    {
+        if (Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        var restored = await AuthPersistence.TryRestoreAsync();
+        if (restored is null || string.IsNullOrWhiteSpace(restored.AccessToken))
+        {
+            return;
+        }
+
+        Session.Set(restored);
+    }
+
     private void GoToPricing() => Navigation.NavigateTo("/pricing", forceLoad: true);
-    private void GoToDashboard() => Navigation.NavigateTo("/", forceLoad: true);
+    private void GoToDashboard() => Navigation.NavigateTo("/pricing", forceLoad: true);
 }

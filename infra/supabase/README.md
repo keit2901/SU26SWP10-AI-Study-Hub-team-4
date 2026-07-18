@@ -76,3 +76,9 @@ Note: `volumes/db/data/` is bind-mounted — bumping `JWT_SECRET` requires `down
 - `db` exposes host port `5432:5432` directly (Supavisor disabled).
 - `ENABLE_EMAIL_AUTOCONFIRM=true` (no SMTP setup needed for Phase 1).
 - `JWT_EXPIRY=900` (15 min) to match prior Phase 1 behaviour.
+
+## Registration policy
+
+The self-hosted Compose file hard-sets `GOTRUE_DISABLE_SIGNUP=true`; the `.env` `DISABLE_SIGNUP` entry is informational/compatibility-only and cannot reopen public signup. Application self-registration is separately controlled by the database setting `auth.allow_self_registration`, which defaults to `false`; enable it only through the authenticated system-settings flow when public registration is intended.
+
+For hosted Supabase, disable **Allow new users to sign up** before release. Release smoke must verify: an anon-key direct `/auth/v1/signup` request is rejected; service-role admin create succeeds; and password login plus refresh still succeed. Do not place service-role credentials in scripts or documentation.
