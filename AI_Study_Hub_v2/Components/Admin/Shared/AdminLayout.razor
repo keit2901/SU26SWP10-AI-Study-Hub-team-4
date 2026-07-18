@@ -58,18 +58,45 @@ else if (_authorized)
                 </ChildContent>
             </MudMenu>
 
-            <MudMenu AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight" Dense="true">
-                <ActivatorContent>
-                    <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="admin-profile-button" StartIcon="@Icons.Material.Filled.AdminPanelSettings">
-                        <MudHidden Breakpoint="Breakpoint.SmAndDown">System Admin</MudHidden>
-                    </MudButton>
-                </ActivatorContent>
-                <ChildContent>
-                    <MudMenuItem Icon="@Icons.Material.Filled.AccountCircle">Signed in as @AdminIdentity</MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.Security">Access: @AdminRole</MudMenuItem>
-                    <MudMenuItem Icon="@Icons.Material.Filled.Logout" OnClick="SignOutAsync">Sign out</MudMenuItem>
-                </ChildContent>
-            </MudMenu>
+            <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="admin-profile-button" 
+                        StartIcon="@Icons.Material.Filled.AdminPanelSettings"
+                        @onclick="() => _profileOpen = !_profileOpen">
+                <MudHidden Breakpoint="Breakpoint.SmAndDown">System Admin</MudHidden>
+            </MudButton>
+
+            <MudPopover Open="@_profileOpen" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight"
+                        Style="min-width: 260px; margin-top: 4px;">
+                <MudPaper Elevation="8" Style="border-radius: 12px; border: 1px solid rgba(255,255,255,0.08); background: #1e2124; color: #ffffff; overflow: hidden;">
+                    <div class="d-flex align-center pa-3" style="gap: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06);">
+                        <MudAvatar Color="Color.Primary" Size="Size.Medium">@(AdminIdentity?.FirstOrDefault() ?? 'A')</MudAvatar>
+                        <div style="flex: 1;">
+                            <div style="font-weight: 700; font-size: 14px; color: #ffffff;">System Admin</div>
+                            <div style="font-size: 11px; color: #9ca3af;">@AdminIdentity &middot; @AdminRole</div>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Style="font-size: 16px; color: #6b7280;" />
+                    </div>
+                    <div class="pa-1" style="border-bottom: 1px solid rgba(255,255,255,0.06);">
+                        <div class="d-flex align-center pa-2 popover-item" @onclick="NavigateToProfile" style="gap:8px; cursor:pointer; border-radius:6px;">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountCircle" Size="Size.Small" Style="color:#e5e7eb;" />
+                            <span style="font-size:13px; color:#e5e7eb;">Profile</span>
+                        </div>
+                        <div class="d-flex align-center pa-2 popover-item" @onclick="NavigateToSettings" style="gap:8px; cursor:pointer; border-radius:6px;">
+                            <MudIcon Icon="@Icons.Material.Filled.Settings" Size="Size.Small" Style="color:#e5e7eb;" />
+                            <span style="font-size:13px; color:#e5e7eb;">Settings</span>
+                        </div>
+                    </div>
+                    <div class="pa-1">
+                        <div class="d-flex align-center pa-2" style="gap:8px; border-radius:6px;">
+                            <MudIcon Icon="@Icons.Material.Filled.HelpOutline" Size="Size.Small" Style="color:#9ca3af;" />
+                            <span style="font-size:13px; color:#9ca3af;">Support / Help</span>
+                        </div>
+                        <div class="d-flex align-center pa-2 popover-item" @onclick="SignOutAsync" style="gap:8px; cursor:pointer; border-radius:6px;">
+                            <MudIcon Icon="@Icons.Material.Filled.Logout" Size="Size.Small" Style="color:#fca5a5;" />
+                            <span style="font-size:13px; color:#fca5a5;">Log out</span>
+                        </div>
+                    </div>
+                </MudPaper>
+            </MudPopover>
         </MudAppBar>
 
         <MudDrawer @bind-Open="_drawerOpen"
@@ -97,7 +124,6 @@ else if (_authorized)
                     <MudNavLink Href="/admin/community-reports" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Community Reports</MudNavLink>
                     <MudNavLink Href="/admin/documents" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Description">Document Library</MudNavLink>
                     <MudNavLink Href="/admin/escalations" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Escalations</MudNavLink>
-                    <MudNavLink Href="/dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.FolderShared">Folder Moderation</MudNavLink>
                 </MudNavGroup>
                 <MudNavGroup Title="Governance" Icon="@Icons.Material.Filled.Policy" Expanded="true">
                     <MudNavLink Href="/admin/settings" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Tune">AI System Settings</MudNavLink>
@@ -129,6 +155,7 @@ else if (_authorized)
 
 @code {
     private bool _drawerOpen = true;
+    private bool _profileOpen;
     private bool _isDarkMode = false;
     private bool _checkingAccess = true;
     private bool _authorized;
@@ -306,10 +333,21 @@ else if (_authorized)
 
     private async Task SignOutAsync()
     {
+        _profileOpen = false;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(Session.AccessToken))
+                await AuthApi.LogoutAsync(Session.AccessToken);
+        }
+        catch { }
+
         Session.Clear();
         await AuthPersistence.ClearAsync();
-        Navigation.NavigateTo("/login", replace: true);
+        Navigation.NavigateTo("/login", forceLoad: true);
     }
+
+    private void NavigateToProfile() { _profileOpen = false; Navigation.NavigateTo("/profile"); }
+    private void NavigateToSettings() { _profileOpen = false; Navigation.NavigateTo("/admin/settings"); }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 

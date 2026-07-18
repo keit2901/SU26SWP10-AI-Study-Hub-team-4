@@ -10,10 +10,11 @@ namespace AI_Study_Hub_v2.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
-            // Actual FK name in local DB follows PG lowercase convention,
-            // not EF Core convention. Use IF EXISTS for safety.
+            // Drop both naming conventions to avoid constraint-already-exists error
             migrationBuilder.Sql(
                 "ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS \"payment_transactions_user_id_fkey\"");
+            migrationBuilder.Sql(
+                "ALTER TABLE payment_transactions DROP CONSTRAINT IF EXISTS \"FK_payment_transactions_users_user_id\"");
 
             migrationBuilder.AddUniqueConstraint(
                 name: "AK_plans_plan_key",

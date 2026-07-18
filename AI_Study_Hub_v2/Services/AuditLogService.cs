@@ -24,6 +24,7 @@ public interface IAuditLogService
         DateTimeOffset? from,
         DateTimeOffset? to,
         int limit,
+        Guid? actorUserId = null,
         CancellationToken cancellationToken = default);
 }
 
@@ -70,9 +71,15 @@ public sealed class AuditLogService : IAuditLogService
         DateTimeOffset? from,
         DateTimeOffset? to,
         int limit,
+        Guid? actorUserId = null,
         CancellationToken cancellationToken = default)
     {
         var query = _db.AuditLogs.AsNoTracking();
+
+        if (actorUserId.HasValue)
+        {
+            query = query.Where(log => log.ActorUserId == actorUserId.Value);
+        }
 
         if (!string.IsNullOrWhiteSpace(action))
         {

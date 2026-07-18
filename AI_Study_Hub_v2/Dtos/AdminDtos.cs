@@ -14,6 +14,7 @@ public sealed record AdminUserDto(
     DateOnly TokenUsageDate,
     long TotalTokensUsed,
     int DocumentCount,
+    bool IsPreviouslyBanned,
     DateTimeOffset CreatedAt);
 
 public sealed class UpdateUserQuotaRequest
