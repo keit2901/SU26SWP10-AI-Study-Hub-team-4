@@ -7,12 +7,12 @@ public static class AdminAccessPolicy
 
     public static string GetAuthenticatedLandingPage(string? role)
     {
-        if (string.IsNullOrWhiteSpace(role)) return "/profile";
+        if (string.IsNullOrWhiteSpace(role)) return "/documents";
         return role.Trim().ToLowerInvariant() switch
         {
             "admin"     => "/admin",
             "moderator" => "/dashboard",
-            _           => "/profile"
+            _           => "/documents"
         };
     }
 

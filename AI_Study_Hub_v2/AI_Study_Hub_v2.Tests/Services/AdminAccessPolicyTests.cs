@@ -20,7 +20,7 @@ public sealed class AdminAccessPolicyTests
     public void IsAdmin_NonAdminRole_IsRejected(string? role)
     {
         AdminAccessPolicy.IsAdmin(role).Should().BeFalse();
-        AdminAccessPolicy.GetAuthenticatedLandingPage(role).Should().Be("/profile");
+        AdminAccessPolicy.GetAuthenticatedLandingPage(role).Should().Be("/documents");
     }
 
     [TestCase("Moderator")]

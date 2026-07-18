@@ -5,6 +5,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Payment;
+using AI_Study_Hub_v2.Services.Payment.Abstractions;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -25,7 +26,7 @@ public sealed class PlansController : ControllerBase
 {
     private readonly IPlanService _planService;
     private readonly IStorageQuotaService _quotaService;
-    private readonly IVnPayService _vnPayService;
+    private readonly IPaymentService _paymentService;
     private readonly AppDbContext _db;
     private readonly IAuditLogService _audit;
     private readonly ILogger<PlansController> _logger;
@@ -33,14 +34,14 @@ public sealed class PlansController : ControllerBase
     public PlansController(
         IPlanService planService,
         IStorageQuotaService quotaService,
-        IVnPayService vnPayService,
+        IPaymentService paymentService,
         AppDbContext db,
         IAuditLogService audit,
         ILogger<PlansController> logger)
     {
         _planService = planService;
         _quotaService = quotaService;
-        _vnPayService = vnPayService;
+        _paymentService = paymentService;
         _db = db;
         _audit = audit;
         _logger = logger;
@@ -102,6 +103,61 @@ public sealed class PlansController : ControllerBase
             {
                 Code = "unexpected_error",
                 Message = "An unexpected error occurred while fetching the plan snapshot."
+            });
+        }
+    }
+
+    /// <summary>Returns recent payment transactions for the authenticated user.</summary>
+    [HttpGet("payments")]
+    [ProducesResponseType(typeof(IReadOnlyList<PaymentTransactionDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetMyPaymentTransactions(
+        [FromQuery] int take = 12,
+        CancellationToken ct = default)
+    {
+        try
+        {
+            if (take < 1) take = 12;
+            if (take > 50) take = 50;
+
+            var supabaseUserId = GetSupabaseUserIdFromClaims();
+            var user = await _db.Users
+                .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct);
+            if (user is null)
+            {
+                return NotFound(new ApiErrorResponse
+                {
+                    Code = "user_not_found",
+                    Message = "User not found."
+                });
+            }
+
+            var payments = await _db.PaymentTransactions
+                .Where(pt => pt.UserId == user.Id)
+                .OrderByDescending(pt => pt.CreatedAt)
+                .Take(take)
+                .Select(pt => new PaymentTransactionDto(
+                    pt.Id,
+                    pt.UserId,
+                    user.Username,
+                    pt.PlanKey,
+                    pt.BillingCycle,
+                    pt.AmountVnd,
+                    pt.Status,
+                    pt.CreatedAt,
+                    pt.CompletedAt))
+                .ToListAsync(ct);
+
+            return Ok(payments);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Unexpected payment history fetch failure.");
+            return StatusCode(StatusCodes.Status500InternalServerError, new ApiErrorResponse
+            {
+                Code = "unexpected_error",
+                Message = "An unexpected error occurred while fetching payment history."
             });
         }
     }
@@ -359,8 +415,8 @@ public sealed class PlansController : ControllerBase
 
             try
             {
-                var vnPayResult = await _vnPayService.CreatePaymentAsync(
-                    user.Id, request.PlanKey, request.BillingCycle, ipAddress, ct);
+                var paymentResult = await _paymentService.CreatePaymentAsync(
+                    user.Id, request.PlanKey, request.BillingCycle, ct);
 
                 // Audit log for payment initiation
                 try
@@ -375,7 +431,7 @@ public sealed class PlansController : ControllerBase
                         {
                             planKey = request.PlanKey,
                             billingCycle = request.BillingCycle,
-                            amountVnd = vnPayResult.AmountVnd,
+                            amountVnd = paymentResult.AmountVnd,
                         }),
                         ipAddress: ipAddress,
                         requestId: HttpContext.TraceIdentifier);
@@ -385,7 +441,7 @@ public sealed class PlansController : ControllerBase
                     _logger.LogWarning(ex, "Failed to log audit for payment initiation");
                 }
 
-                return Ok(vnPayResult);
+                return Ok(paymentResult);
             }
             catch (InvalidOperationException ex)
             {
@@ -417,6 +473,27 @@ public sealed class PlansController : ControllerBase
         }
     }
 
+    /// <summary>Returns the status of a payment transaction (no plan activation).</summary>
+    [HttpGet("payment/status/{txnRef}")]
+    [AllowAnonymous]
+    [ProducesResponseType(typeof(ReturnUrlResult), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> GetPaymentStatus(string txnRef, CancellationToken ct)
+    {
+        var result = await _paymentService.VerifyReturnAsync(txnRef, ct);
+        return Ok(result);
+    }
+
+    /// <summary>Marks a pending transaction as expired when user cancels on PayOS checkout.</summary>
+    [HttpPost("payment/cancel/{txnRef}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> CancelPayment(string txnRef, CancellationToken ct)
+    {
+        var cancelled = await _paymentService.CancelTransactionAsync(txnRef, ct);
+        return Ok(new { cancelled });
+    }
+
     /// <summary>Retry a failed or expired payment transaction.</summary>
     [HttpPost("purchase/retry/{txnRef}")]
     [EnableRateLimiting("purchase")]
@@ -435,9 +512,8 @@ public sealed class PlansController : ControllerBase
         if (oldTxn.Status != "expired" && oldTxn.Status != "failed")
             return BadRequest(new ApiErrorResponse { Code = "transaction_not_retryable", Message = "Only expired or failed transactions can be retried." });
 
-        var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "127.0.0.1";
-        var result = await _vnPayService.CreatePaymentAsync(
-            user.Id, oldTxn.PlanKey, oldTxn.BillingCycle, ipAddress, ct);
+        var result = await _paymentService.CreatePaymentAsync(
+            user.Id, oldTxn.PlanKey, oldTxn.BillingCycle, ct);
         return Ok(result);
     }
 

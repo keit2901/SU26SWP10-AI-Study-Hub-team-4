@@ -217,8 +217,25 @@
 
         try
         {
+            // Extract txnRef from query string (PayOS redirects to ReturnUrl with ?status=success&txnRef=...)
             var uri = new Uri(Navigation.Uri);
-            _result = await PlanApi.VerifyReturnUrlAsync(Session.AccessToken, uri.Query);
+            var queryParams = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var txnRef = queryParams["txnRef"] ?? string.Empty;
+            var status = queryParams["status"] ?? string.Empty;
+
+            if (string.IsNullOrWhiteSpace(txnRef))
+            {
+                _result = new ReturnUrlResult(false, "error", null, 0, "No transaction reference found.");
+                return;
+            }
+
+            // If user cancelled on PayOS checkout, expire the transaction immediately
+            if (string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase))
+            {
+                await PlanApi.CancelPaymentAsync(txnRef);
+            }
+
+            _result = await PlanApi.GetPaymentStatusAsync(txnRef);
         }
         catch
         {
@@ -252,5 +269,5 @@
     }
 
     private void GoToPricing() => Navigation.NavigateTo("/pricing", forceLoad: true);
-    private void GoToDashboard() => Navigation.NavigateTo("/", forceLoad: true);
+    private void GoToDashboard() => Navigation.NavigateTo("/pricing", forceLoad: true);
 }
