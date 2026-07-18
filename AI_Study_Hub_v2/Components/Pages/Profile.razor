@@ -1,281 +1,45 @@
 @page "/profile"
 @using AI_Study_Hub_v2.Services
-@using AI_Study_Hub_v2.Dtos
-@inject AuthApiClient AuthApi
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
-@inject ISnackbar Snackbar
 
 <PageTitle>Profile - AI Study Hub</PageTitle>
 
-@if (!Session.IsAuthenticated)
+@if (!_ready)
 {
-    <MudStack Class="workspace-shell pa-4" Spacing="3">
-        <MudPaper Class="pa-6 glass-card" Elevation="0">
+    <div class="profile-loading-shell">
+        <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
+    </div>
+}
+else if (!Session.IsAuthenticated)
+{
+    <MudStack Class="profile-page-shell" AlignItems="AlignItems.Center" Justify="Justify.Center">
+        <MudPaper Class="profile-alert-card" Elevation="0">
             <MudStack AlignItems="AlignItems.Center" Spacing="2">
-                <MudAlert Severity="Severity.Warning">You are not signed in.</MudAlert>
-                <MudButton Variant="Variant.Filled" Class="premium-button" Href="/login">Go to login</MudButton>
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Filled">You are not signed in.</MudAlert>
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/login">Go to login</MudButton>
             </MudStack>
         </MudPaper>
     </MudStack>
 }
 else
 {
-    var u = Session.CurrentUser!;
-    var s = Session.Session!;
-    
-    // Administrators use the protected admin workspace rather than the student profile.
-    if (AdminAccessPolicy.IsAdmin(u.Role))
-    {
-        Nav.NavigateTo("/admin", replace: true);
-        return;
-    }
-
-    <MudStack Class="workspace-shell" AlignItems="AlignItems.Center" Justify="Justify.FlexStart" Style="min-height: calc(100vh - 4rem); padding: 1.5rem 1.5rem;">
-        <div class="profile-actions-bar">
-            <MudStack Row="true" Spacing="2">
-                <MudButton Variant="Variant.Outlined"
-                           Class="ghost-button"
-                           OnClick="ReloadAsync"
-                           Disabled="_busy"
-                           Size="Size.Small"
-                           StartIcon="@Icons.Material.Filled.Refresh">
-                    Refresh /me
-                </MudButton>
-                <MudButton Variant="Variant.Filled"
-                           Color="Color.Error"
-                           OnClick="LogoutAsync"
-                           Disabled="_busy"
-                           Size="Size.Small"
-                           StartIcon="@Icons.Material.Filled.Logout">
-                    @(_busy ? "Signing out..." : "Sign out")
-                </MudButton>
-            </MudStack>
+    <MudStack Class="profile-page-shell" AlignItems="AlignItems.Center">
+        <div class="profile-page-head">
+            <div>
+                <span class="profile-page-kicker">Student account</span>
+                <h1>Profile</h1>
+                <p>Keep your account details up to date without leaving the workspace.</p>
+            </div>
         </div>
 
-        <div class="identity-card">
-            
-            <div class="identity-card-header">
-                <div class="identity-header-wave">
-                    <div class="identity-header-wave-inner"></div>
-                </div>
-                
-                <div class="identity-avatar">
-                    @(string.IsNullOrEmpty(u.FullName) ? "?" : u.FullName[0].ToString().ToUpperInvariant())
-                </div>
-                
-                <div class="identity-title-container">
-                    <h1 class="identity-title">@u.FullName</h1>
-                    <p class="identity-subtitle">@u.Email</p>
-                </div>
-            </div>
-
-            <div class="identity-details">
-                <div class="identity-detail-item">
-                    <div class="detail-content-wrap">
-                        <div class="detail-label-col">
-                            <MudIcon Icon="@Icons.Material.Filled.Badge" Class="detail-icon" Size="Size.Small" />
-                            <span class="detail-label">User ID</span>
-                        </div>
-                        <div class="detail-value-col detail-value-mono">@u.Id</div>
-                    </div>
-                </div>
-
-                <div class="identity-detail-item border-top">
-                    <div class="detail-content-wrap">
-                        <div class="detail-label-col">
-                            <MudIcon Icon="@Icons.Material.Filled.Person" Class="detail-icon" Size="Size.Small" />
-                            <span class="detail-label">Username</span>
-                        </div>
-                        <div class="detail-value-col">
-                            @if (_editingUsername)
-                            {
-                                <MudTextField @bind-Value="_newUsername" Margin="Margin.Dense" Style="max-width: 250px; margin-top: 0;" />
-                            }
-                            else
-                            {
-                                <span class="detail-value-semibold">@u.Username</span>
-                            }
-                        </div>
-                    </div>
-                    <div class="detail-action-col">
-                        @if (_editingUsername)
-                        {
-                            <MudStack Row="true" Spacing="1">
-                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="SaveUsername" />
-                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" OnClick="CancelEditUsername" />
-                            </MudStack>
-                        }
-                        else
-                        {
-                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="StartEditUsername">Change</MudButton>
-                        }
-                    </div>
-                </div>
-
-                <div class="identity-detail-item border-top">
-                    <div class="detail-content-wrap">
-                        <div class="detail-label-col">
-                            <MudIcon Icon="@Icons.Material.Filled.Email" Class="detail-icon" Size="Size.Small" />
-                            <span class="detail-label">Email</span>
-                        </div>
-                        <div class="detail-value-col">
-                            @if (_editingEmail)
-                            {
-                                <MudTextField @bind-Value="_newEmail" Margin="Margin.Dense" Style="max-width: 250px; margin-top: 0;" />
-                            }
-                            else
-                            {
-                                <span class="detail-value-medium">@u.Email</span>
-                            }
-                        </div>
-                    </div>
-                    <div class="detail-action-col">
-                        @if (_editingEmail)
-                        {
-                            <MudStack Row="true" Spacing="1">
-                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="SaveEmail" />
-                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" OnClick="CancelEditEmail" />
-                            </MudStack>
-                        }
-                        else
-                        {
-                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="StartEditEmail">Change</MudButton>
-                        }
-                    </div>
-                </div>
-
-                <div class="identity-detail-item border-top">
-                    <div class="detail-content-wrap">
-                        <div class="detail-label-col">
-                            <MudIcon Icon="@Icons.Material.Filled.Lock" Class="detail-icon" Size="Size.Small" />
-                            <span class="detail-label">Password</span>
-                        </div>
-                        <div class="detail-value-col detail-value-mono" style="align-items: center; gap: 0.5rem;">
-                            @if (_editingPassword)
-                            {
-                                <MudTextField @bind-Value="_newPassword" 
-                                              InputType="@(_showPassword ? InputType.Text : InputType.Password)"
-                                              Margin="Margin.Dense" 
-                                              Style="max-width: 250px; margin-top: 0;" />
-                            }
-                            else
-                            {
-                                <span>@(_showPassword ? _passwordVal : "••••••••")</span>
-                            }
-                            <MudIconButton Icon="@(_showPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
-                                           Size="Size.Small"
-                                           OnClick="TogglePassword"
-                                           Style="padding: 2px; color: #64748b;" />
-                        </div>
-                    </div>
-                    <div class="detail-action-col">
-                        @if (_editingPassword)
-                        {
-                            <MudStack Row="true" Spacing="1">
-                                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="SavePassword" />
-                                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" OnClick="CancelEditPassword" />
-                            </MudStack>
-                        }
-                        else
-                        {
-                            <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="StartEditPassword">Change</MudButton>
-                        }
-                    </div>
-                </div>
-
-                <div class="identity-detail-item border-top">
-                    <div class="detail-content-wrap">
-                        <div class="detail-label-col">
-                            <MudIcon Icon="@Icons.Material.Filled.Shield" Class="detail-icon" Size="Size.Small" />
-                            <span class="detail-label">Role</span>
-                        </div>
-                        <div class="detail-value-col">
-                            <div class="identity-badge">@u.Role</div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="identity-detail-item border-top">
-                    <div class="detail-content-wrap">
-                        <div class="detail-label-col">
-                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="detail-icon" Size="Size.Small" />
-                            <span class="detail-label">Active</span>
-                        </div>
-                        <div class="detail-value-col detail-value-medium">
-                            @(u.IsActive ? "Yes" : "No")
-                        </div>
-                    </div>
-                </div>
-
-                <div class="identity-detail-item border-top">
-                    <div class="detail-content-wrap">
-                        <div class="detail-label-col">
-                            <MudIcon Icon="@Icons.Material.Filled.CalendarToday" Class="detail-icon" Size="Size.Small" />
-                            <span class="detail-label">Created</span>
-                        </div>
-                        <div class="detail-value-col detail-value-mono">
-                            @u.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm")
-                        </div>
-                    </div>
-                </div>
-
-                <div class="identity-detail-item border-top">
-                    <div class="detail-content-wrap">
-                        <div class="detail-label-col">
-                            <MudIcon Icon="@Icons.Material.Filled.AccessTime" Class="detail-icon" Size="Size.Small" />
-                            <span class="detail-label">Token expires</span>
-                        </div>
-                        <div class="detail-value-col detail-value-mono">
-                            @s.ExpiresAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="identity-footer">
-                <div class="jwt-toggle-btn" @onclick="ToggleJwt">
-                    <span class="jwt-toggle-text">Show JWT (for demo)</span>
-                    <MudIcon Icon="@Icons.Material.Filled.KeyboardArrowDown" 
-                             Class="@($"jwt-toggle-icon {(_showJwt ? "expanded" : "")}")" 
-                             Size="Size.Small" />
-                </div>
-                
-                @if (_showJwt)
-                {
-                    <div class="jwt-content">
-                        <div class="jwt-block">
-                            <span class="jwt-label">Access token (Bearer):</span>
-                            <div class="jwt-value">@s.AccessToken</div>
-                        </div>
-                        <div class="jwt-block">
-                            <span class="jwt-label">Refresh token:</span>
-                            <div class="jwt-value">@s.RefreshToken</div>
-                        </div>
-                    </div>
-                }
-            </div>
-            
-        </div>
-
+        <StudentProfilePanel Compact="false" />
     </MudStack>
 }
 
 @code {
-    private bool _busy;
-    private bool _showJwt;
-    private bool _showPassword;
-
-    private bool _editingUsername;
-    private string _newUsername = string.Empty;
-
-    private bool _editingEmail;
-    private string _newEmail = string.Empty;
-
-    private bool _editingPassword;
-    private string _newPassword = string.Empty;
-    private string _passwordVal = "demo12345";
+    private bool _ready;
 
     protected override async Task OnInitializedAsync()
     {
@@ -288,193 +52,70 @@ else
             }
         }
 
-        if (Session.IsAuthenticated && Session.Session is not null)
+        if (Session.IsAuthenticated && AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role))
         {
-            _passwordVal = Session.Session.Password ?? "demo12345";
+            Nav.NavigateTo("/admin", replace: true);
+            return;
         }
-    }
 
-    private void ToggleJwt()
-    {
-        _showJwt = !_showJwt;
-    }
-
-    private void TogglePassword()
-    {
-        _showPassword = !_showPassword;
-    }
-
-    private void StartEditUsername()
-    {
-        _newUsername = Session.CurrentUser?.Username ?? string.Empty;
-        _editingUsername = true;
-    }
-
-    private void CancelEditUsername()
-    {
-        _editingUsername = false;
-    }
-
-    private async Task SaveUsername()
-    {
-        if (Session.Session is not null && !string.IsNullOrWhiteSpace(_newUsername))
-        {
-            _busy = true;
-            StateHasChanged();
-            try
-            {
-                var updatedUser = await AuthApi.UpdateUserAsync(Session.AccessToken, new UpdateUserRequest { Username = _newUsername });
-                Session.Session.User = updatedUser;
-                Session.Set(Session.Session);
-                await AuthPersistence.SaveAsync(Session.Session);
-                Snackbar.Add("Username updated successfully.", Severity.Success);
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Failed to update username: {ex.Message}", Severity.Error);
-            }
-            finally
-            {
-                _busy = false;
-                StateHasChanged();
-            }
-        }
-        _editingUsername = false;
-    }
-
-    private void StartEditEmail()
-    {
-        _newEmail = Session.CurrentUser?.Email ?? string.Empty;
-        _editingEmail = true;
-    }
-
-    private void CancelEditEmail()
-    {
-        _editingEmail = false;
-    }
-
-    private async Task SaveEmail()
-    {
-        if (Session.Session is not null && !string.IsNullOrWhiteSpace(_newEmail))
-        {
-            _busy = true;
-            StateHasChanged();
-            try
-            {
-                var updatedUser = await AuthApi.UpdateUserAsync(Session.AccessToken, new UpdateUserRequest { Email = _newEmail });
-                Session.Session.User = updatedUser;
-                Session.Set(Session.Session);
-                await AuthPersistence.SaveAsync(Session.Session);
-                Snackbar.Add("Email updated successfully.", Severity.Success);
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Failed to update email: {ex.Message}", Severity.Error);
-            }
-            finally
-            {
-                _busy = false;
-                StateHasChanged();
-            }
-        }
-        _editingEmail = false;
-    }
-
-    private void StartEditPassword()
-    {
-        _newPassword = _passwordVal;
-        _editingPassword = true;
-    }
-
-    private void CancelEditPassword()
-    {
-        _editingPassword = false;
-    }
-
-    private async Task SavePassword()
-    {
-        if (Session.Session is not null && !string.IsNullOrWhiteSpace(_newPassword))
-        {
-            _busy = true;
-            StateHasChanged();
-            try
-            {
-                var updatedUser = await AuthApi.UpdateUserAsync(Session.AccessToken, new UpdateUserRequest { Password = _newPassword });
-                _passwordVal = _newPassword;
-                Session.Session.User = updatedUser;
-                Session.Session.Password = _newPassword;
-                Session.Set(Session.Session);
-                await AuthPersistence.SaveAsync(Session.Session);
-                Snackbar.Add("Password updated successfully.", Severity.Success);
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Failed to update password: {ex.Message}", Severity.Error);
-            }
-            finally
-            {
-                _busy = false;
-                StateHasChanged();
-            }
-        }
-        _editingPassword = false;
-    }
-
-    private async Task LogoutAsync()
-    {
-        if (!Session.IsAuthenticated || string.IsNullOrEmpty(Session.AccessToken)) return;
-        _busy = true;
-        StateHasChanged();
-        try
-        {
-            await AuthApi.LogoutAsync(Session.AccessToken);
-            Snackbar.Add("Signed out. All refresh tokens revoked.", Severity.Success);
-        }
-        catch (AuthApiException ex)
-        {
-            Snackbar.Add($"Logout failed: {ex.Message}", Severity.Warning);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Network error during logout: {ex.Message}", Severity.Warning);
-        }
-        finally
-        {
-            await AuthPersistence.ClearAsync();
-            Session.Clear();
-            _busy = false;
-            Nav.NavigateTo("/login", replace: true);
-        }
-    }
-
-    private async Task ReloadAsync()
-    {
-        if (string.IsNullOrEmpty(Session.AccessToken)) return;
-        _busy = true;
-        StateHasChanged();
-        try
-        {
-            var me = await AuthApi.GetMeAsync(Session.AccessToken);
-            if (Session.Session is not null)
-            {
-                Session.Session.User = me;
-                Session.Set(Session.Session);
-            }
-            Snackbar.Add("Profile refreshed from /me.", Severity.Info);
-        }
-        catch (AuthApiException ex)
-        {
-            Snackbar.Add($"Failed to refresh: {ex.Message}", Severity.Warning);
-            if (ex.StatusCode == 401)
-            {
-                Session.Clear();
-                Nav.NavigateTo("/login", replace: true);
-            }
-        }
-        finally
-        {
-            _busy = false;
-            StateHasChanged();
-        }
+        _ready = true;
     }
 }
+
+<style>
+    .profile-loading-shell,
+    .profile-page-shell {
+        min-height: calc(100vh - 4rem);
+        padding: 1.5rem;
+    }
+
+    .profile-loading-shell {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .profile-page-shell {
+        justify-content: flex-start;
+        gap: 1rem;
+        background: linear-gradient(180deg, #f7f4ff 0%, #fbfaff 100%);
+    }
+
+    .profile-alert-card {
+        max-width: 28rem;
+        width: 100%;
+        padding: 1.5rem;
+        border-radius: 24px;
+        border: 1px solid rgba(199, 196, 215, 0.35);
+        background: rgba(255, 255, 255, 0.9);
+    }
+
+    .profile-page-head {
+        width: min(860px, 100%);
+    }
+
+    .profile-page-kicker {
+        display: inline-flex;
+        padding: 0.35rem 0.7rem;
+        border-radius: 999px;
+        background: rgba(94, 92, 230, 0.1);
+        color: #4f46d9;
+        font-size: 0.76rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+    }
+
+    .profile-page-head h1 {
+        margin: 0.9rem 0 0.35rem;
+        color: #221c3e;
+        font-size: clamp(1.7rem, 3vw, 2.2rem);
+        font-weight: 900;
+    }
+
+    .profile-page-head p {
+        margin: 0;
+        color: #746d90;
+        font-size: 0.96rem;
+    }
+</style>
