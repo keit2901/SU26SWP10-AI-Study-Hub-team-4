@@ -31,8 +31,7 @@ public class DocumentServiceTests
         IStorageQuotaService? quota = null,
         IDocumentIngestionService? ingestion = null) =>
         new(db, storage, quota ?? Mock.Of<IStorageQuotaService>(), NullLogger<DocumentService>.Instance, ingestion,
-            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(),
-            Mock.Of<IAuditLogService>());
+            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance), capacityGuard ?? Mock.Of<IPlanCapacityGuard>());
 
     private static Mock<IStorageQuotaService> CreateQuota(StorageReservation reservation)
     {

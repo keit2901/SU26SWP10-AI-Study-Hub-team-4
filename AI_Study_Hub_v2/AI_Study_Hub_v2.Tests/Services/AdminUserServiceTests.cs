@@ -171,8 +171,10 @@ public sealed class AdminUserServiceTests
         public Task AdminSignOutUserAsync(Guid userId, CancellationToken cancellationToken = default)
             => Task.CompletedTask;
 
+        public Task AdminDeleteUserAsync(Guid userId, CancellationToken cancellationToken = default)
+            => Task.CompletedTask;
+
         // Unused stubs
-        public Task<GoTrueSession> SignUpAsync(string email, string password, Dictionary<string, object?>? metadata, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<GoTrueSession> SignInWithPasswordAsync(string email, string password, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task<GoTrueSession> RefreshAsync(string refreshToken, CancellationToken cancellationToken = default) => throw new NotImplementedException();
         public Task SignOutAsync(string accessToken, bool global, CancellationToken cancellationToken = default) => throw new NotImplementedException();

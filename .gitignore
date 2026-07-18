@@ -20,6 +20,7 @@ Library_UI_UX_v2/
 
 # Build artifacts (CI/temp)
 .codex-build/
+_tmp_recaptcha_status_build/
 
 # System files
 Thumbs.db

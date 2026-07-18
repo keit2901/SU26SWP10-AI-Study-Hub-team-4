@@ -253,17 +253,28 @@
 
             <!-- Pagination Row -->
             <div class="pagination-bar-custom">
-                <div class="pagination-info">
-                    @GetPaginationText()
-                </div>
+                <div class="pagination-info">Total @TotalDocumentsCount document@(TotalDocumentsCount == 1 ? string.Empty : "s")</div>
                 <div class="pagination-buttons">
-                    <button class="pagination-btn" disabled="@(_currentPage <= 1)" @onclick="(() => GoToPage(_currentPage - 1))">Previous</button>
-                    @for (int i = 1; i <= _totalPages; i++)
+                    <button class="pagination-btn" disabled="@(_currentPage <= 1)" @onclick="(() => GoToPage(_currentPage - 1))">Prev</button>
+                    @foreach (var pageNum in GetPageNumbers())
                     {
-                        var pageNum = i;
-                        <button class="pagination-btn @(pageNum == _currentPage ? "active" : "")" @onclick="(() => GoToPage(pageNum))">@pageNum</button>
+                        if (pageNum == -1)
+                        {
+                            <span class="pagination-ellipsis">...</span>
+                        }
+                        else
+                        {
+                            var current = pageNum;
+                            <button class="pagination-btn @(current == _currentPage ? "active" : "")" @onclick="(() => GoToPage(current))">@current</button>
+                        }
                     }
                     <button class="pagination-btn" disabled="@(_currentPage >= _totalPages)" @onclick="(() => GoToPage(_currentPage + 1))">Next</button>
+                    <input type="text"
+                           class="pagination-jump-input"
+                           placeholder="Page..."
+                           value="@_pageJumpInput"
+                           @oninput="HandlePageJumpInput"
+                           @onkeydown="HandlePageJumpKeyDown" />
                 </div>
             </div>
         }
@@ -379,6 +390,7 @@
 
     private int _currentPage = 1;
     private int _pageSize = 10;
+    private string _pageJumpInput = string.Empty;
 
     private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredDocuments.Count() / _pageSize));
 
@@ -387,21 +399,66 @@
     private int NeedsAttentionCount => FilteredDocuments.Count(d => d.ModerationStatus is PendingModeration or ReportedModeration);
     private int FailedCount => FilteredDocuments.Count(d => d.ProcessingStatus == FailedProcessing);
 
-    private string GetPaginationText()
-    {
-        var total = string.IsNullOrEmpty(_searchText) && string.IsNullOrEmpty(_selectedProcessingStatus) && string.IsNullOrEmpty(_selectedModerationStatus) && string.IsNullOrEmpty(_selectedSubject)
-            ? 1482
-            : FilteredDocuments.Count();
-        
-        var start = (_currentPage - 1) * _pageSize + 1;
-        var end = Math.Min(_currentPage * _pageSize, total);
-        if (total == 0) return "Showing 0-0 of 0 results";
-        return $"Showing {start}-{end} of {total:N0} results";
-    }
-
     private void GoToPage(int page)
     {
         _currentPage = Math.Clamp(page, 1, _totalPages);
+    }
+
+    private List<int> GetPageNumbers() => BuildSlidingPageNumbers(_totalPages, _currentPage);
+
+    private static List<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var i = 1; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var i = 1; i <= 3; i++) pages.Add(i);
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+            for (var i = total - 2; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i);
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(_pageJumpInput, out var page))
+        {
+            GoToPage(page);
+        }
+
+        _pageJumpInput = string.Empty;
     }
 
     protected override async Task OnInitializedAsync()
@@ -474,6 +531,7 @@
         _selectedModerationStatus = null;
         _selectedSubject = null;
         _currentPage = 1;
+        _pageJumpInput = string.Empty;
         return Task.CompletedTask;
     }
 
@@ -1210,6 +1268,13 @@
         display: flex;
         gap: 0.25rem;
         align-items: center;
+        flex-wrap: wrap;
+    }
+    .pagination-ellipsis {
+        padding: 0 4px;
+        color: #767586;
+        font-size: 13px;
+        font-weight: 700;
     }
     .pagination-btn {
         padding: 0.375rem 0.75rem;
@@ -1233,6 +1298,17 @@
         background: #4648d4;
         color: #ffffff;
         border-color: #4648d4;
+    }
+    .pagination-jump-input {
+        width: 86px;
+        height: 32px;
+        border: 1px solid rgba(199, 196, 215, 0.5);
+        border-radius: 6px;
+        background: #ffffff;
+        color: #575e72;
+        padding: 0 10px;
+        font-size: 12px;
+        outline: none;
     }
 
     /* Bottom status footer */

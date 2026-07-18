@@ -1,6 +1,9 @@
 @implements IDisposable
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
+@inject IDialogService DialogService
 @inject NavigationManager Nav
+@inject PlanApiClient PlanApi
 
 <header class="community-topbar teammate-topbar">
     <div class="community-topbar-inner teammate-topbar-inner">
@@ -40,30 +43,7 @@
         <div class="community-actions teammate-actions">
             @if (Session.IsAuthenticated)
             {
-                @if (Session.CurrentPlan == "Free")
-                {
-                    <a class="btn-get-pro" href="pricing">Get Pro</a>
-                }
-                else
-                {
-                    <a class="btn-get-pro btn-plans" href="pricing">Plans</a>
-                }
-                <button type="button" class="topbar-icon-btn" title="Notifications">
-                    <MudIcon Icon="@Icons.Material.Outlined.Notifications" Size="Size.Small" />
-                </button>
-                <button type="button" class="topbar-icon-btn" title="Settings">
-                    <MudIcon Icon="@Icons.Material.Outlined.Settings" Size="Size.Small" />
-                </button>
-                <div class="teammate-user-meta">
-                    <span>@DisplayName</span>
-                    <small>@(Session.CurrentPlan ?? "Free") Plan</small>
-                </div>
-                <a class="user-chip teammate-user-chip" href="@ProfileHref" title="@DisplayName — @(Session.CurrentPlan) Plan">
-                    <span class="user-avatar-initials">@GetInitials()</span>
-                </a>
-                <button type="button" class="signout-button teammate-signout" @onclick="Logout" title="Log Out">
-                    <MudIcon Icon="@Icons.Material.Filled.Logout" Size="Size.Small" />
-                </button>
+                <UserAccountMenu />
             }
             else
             {
@@ -75,6 +55,23 @@
 </header>
 
 @code {
+    protected override async Task OnInitializedAsync()
+    {
+        Session.OnChange += OnSessionChanged;
+        Nav.LocationChanged += OnLocationChanged;
+
+        if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            try
+            {
+                await Session.LoadCurrentPlanAsync(PlanApi);
+            }
+            catch
+            {
+            }
+        }
+    }
+
     private string NavClass(string href)
     {
         var rel = Nav.ToBaseRelativePath(Nav.Uri).TrimEnd('/');
@@ -108,17 +105,23 @@
 
     private bool IsModeratorOrAdmin => IsAdmin || IsModerator;
 
-    private string ProfileHref => IsAdmin
-        ? "admin"
-        : IsModerator
-            ? "moderator/community-reports"
-            : "profile";
-
     private string DisplayName =>
         Session.CurrentUser?.FullName
         ?? Session.CurrentUser?.Username
         ?? Session.CurrentUser?.Email
         ?? "Student";
+
+    private string AccountSubtitle => FormatPlanLabel(Session.CurrentPlan);
+
+    private static string FormatPlanLabel(string? planKey)
+    {
+        if (string.IsNullOrWhiteSpace(planKey))
+        {
+            return "Free";
+        }
+
+        return char.ToUpperInvariant(planKey[0]) + planKey[1..].ToLowerInvariant();
+    }
 
     private string GetInitials()
     {
@@ -128,12 +131,6 @@
         return parts.Length >= 2
             ? $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant()
             : name[..1].ToUpperInvariant();
-    }
-
-    protected override void OnInitialized()
-    {
-        Session.OnChange += OnSessionChanged;
-        Nav.LocationChanged += OnLocationChanged;
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -146,16 +143,9 @@
         InvokeAsync(StateHasChanged);
     }
 
-    private void Logout()
-    {
-        Session.Clear();
-        Nav.NavigateTo("/login", replace: true);
-    }
-
     public void Dispose()
     {
         Session.OnChange -= OnSessionChanged;
         Nav.LocationChanged -= OnLocationChanged;
     }
-    private bool IsDashboard => AdminAccessPolicy.IsDashboardPath(Nav.ToBaseRelativePath(Nav.Uri));
 }

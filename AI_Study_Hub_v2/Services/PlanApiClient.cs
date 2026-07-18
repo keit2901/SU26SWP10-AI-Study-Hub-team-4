@@ -20,13 +20,14 @@ public sealed class PlanApiClient
 
     /// <summary>Fetches the list of active plans.</summary>
     public async Task<IReadOnlyList<PlanDto>> GetPlansAsync(
-        string accessToken,
+        string? accessToken = null,
         CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
-
         using var req = new HttpRequestMessage(HttpMethod.Get, "api/plans");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        if (!string.IsNullOrWhiteSpace(accessToken))
+        {
+            req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        }
 
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)
@@ -53,6 +54,27 @@ public sealed class PlanApiClient
         {
             return await resp.Content.ReadFromJsonAsync<StorageQuotaSnapshotDto>(cancellationToken: ct)
                 ?? throw new PlanApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    /// <summary>Fetches recent payment transactions for the calling user.</summary>
+    public async Task<IReadOnlyList<PaymentTransactionDto>> GetMyPaymentTransactionsAsync(
+        string accessToken,
+        int take = 12,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/plans/payments?take={take}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            return await resp.Content.ReadFromJsonAsync<List<PaymentTransactionDto>>(cancellationToken: ct)
+                ?? new List<PaymentTransactionDto>();
         }
         await ThrowFromResponseAsync(resp, ct);
         throw new InvalidOperationException("Unreachable");
@@ -128,16 +150,28 @@ public sealed class PlanApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
-    /// <summary>Verifies VNPay return URL query parameters.</summary>
-    public async Task<ReturnUrlResult> VerifyReturnUrlAsync(
-        string accessToken,
-        string queryString,
+    /// <summary>Marks a pending transaction as cancelled (user returned via cancelUrl).</summary>
+    public async Task<bool> CancelPaymentAsync(string txnRef, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(txnRef);
+
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/plans/payment/cancel/{txnRef}");
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode) return false;
+
+        var result = await resp.Content.ReadFromJsonAsync<CancelPaymentResponse>(cancellationToken: ct);
+        return result?.Cancelled == true;
+    }
+
+    /// <summary>Gets the status of a payment transaction by TxnRef (PayOS flow).</summary>
+    public async Task<ReturnUrlResult> GetPaymentStatusAsync(
+        string txnRef,
         CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentException.ThrowIfNullOrWhiteSpace(txnRef);
 
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/vnpay/return{queryString}");
-        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/plans/payment/status/{txnRef}");
 
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)

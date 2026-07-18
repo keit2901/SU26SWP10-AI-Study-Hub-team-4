@@ -103,6 +103,23 @@ public sealed class SystemConfigServiceTests
     }
 
     [Test]
+    public async Task UpdateValueAsync_InvalidSemanticRelationship_LeavesConfigAndAuditUnchanged()
+    {
+        await using var db = TestDb.CreateInMemory(seedRoles: false);
+        SeedConfigs(db);
+        db.SystemConfigs.AddRange(SemanticConfigs());
+        await db.SaveChangesAsync();
+        var sut = new SystemConfigService(db, new AuditLogService(db));
+
+        var act = () => sut.UpdateValueAsync("rag.semantic_overlap_tokens", "72", "admin@test.edu");
+
+        var error = await act.Should().ThrowAsync<AdminException>();
+        error.Which.StatusCode.Should().Be(400);
+        (await db.SystemConfigs.FindAsync("rag.semantic_overlap_tokens"))!.Value.Should().Be("24");
+        db.AuditLogs.Should().BeEmpty();
+    }
+
+    [Test]
     public async Task GetAllAsync_EmptyTable_ReturnsEmptyList()
     {
         await using var db = TestDb.CreateInMemory(seedRoles: false);
@@ -138,4 +155,12 @@ public sealed class SystemConfigServiceTests
             });
         db.SaveChanges();
     }
+
+    private static IEnumerable<SystemConfig> SemanticConfigs() =>
+    [
+        new() { Key = "rag.semantic_target_tokens", Value = "144", DefaultValue = "144", Category = "Retrieval", DisplayName = "target", ConfigType = "Number" },
+        new() { Key = "rag.semantic_min_tokens", Value = "72", DefaultValue = "72", Category = "Retrieval", DisplayName = "min", ConfigType = "Number" },
+        new() { Key = "rag.semantic_max_tokens", Value = "192", DefaultValue = "192", Category = "Retrieval", DisplayName = "max", ConfigType = "Number" },
+        new() { Key = "rag.semantic_overlap_tokens", Value = "24", DefaultValue = "24", Category = "Retrieval", DisplayName = "overlap", ConfigType = "Number" },
+    ];
 }

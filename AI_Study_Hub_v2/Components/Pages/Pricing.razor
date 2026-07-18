@@ -1,5 +1,6 @@
 @page "/pricing"
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
 @inject IDialogService DialogService
 @inject PlanApiClient PlanApi
@@ -122,7 +123,9 @@ else if (_plans is { Count: > 0 })
     protected override async Task OnInitializedAsync()
     {
         Session.OnChange += StateHasChanged;
+        await RestoreSessionAsync();
         await LoadPlansAsync();
+        await RefreshCurrentPlanAsync();
     }
 
     private async Task LoadPlansAsync()
@@ -133,16 +136,13 @@ else if (_plans is { Count: > 0 })
 
         try
         {
-            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+            var plans = await PlanApi.GetPlansAsync(Session.AccessToken);
+            if (plans.Count > 0)
             {
-                var plans = await PlanApi.GetPlansAsync(Session.AccessToken);
-                if (plans.Count > 0)
-                {
-                    _plans = plans.ToList();
-                    return;
-                }
+                _plans = plans.ToList();
+                return;
             }
-            // Fall back to default plans
+
             _plans = GetDefaultPlans();
         }
         catch
@@ -158,6 +158,38 @@ else if (_plans is { Count: > 0 })
     private bool IsCurrentPlan(string planKey)
     {
         return string.Equals(Session.CurrentPlan, planKey, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private async Task RestoreSessionAsync()
+    {
+        if (Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        var restored = await AuthPersistence.TryRestoreAsync();
+        if (restored is null || string.IsNullOrWhiteSpace(restored.AccessToken))
+        {
+            return;
+        }
+
+        Session.Set(restored);
+    }
+
+    private async Task RefreshCurrentPlanAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        try
+        {
+            await Session.LoadCurrentPlanAsync(PlanApi);
+        }
+        catch
+        {
+        }
     }
 
     private async Task HandleSelectPlan(PlanDto plan)
@@ -320,9 +352,9 @@ else if (_plans is { Count: > 0 })
             new("free", "Free", "Experience basic academic features",
                 2L * 1024 * 1024 * 1024, 100, 20, 25_000, 100L * 1024 * 1024, null, 0, 0),
             new("pro", "Pro", "Perfect for advanced learning and academic tasks",
-                10L * 1024 * 1024 * 1024, null, null, 100_000, null, null, 49_000, 490_000),
+                10L * 1024 * 1024 * 1024, null, null, 100_000, null, null, 50_000, 500_000),
             new("unlimited", "Unlimited", "Fully optimized for unlimited performance",
-                null, null, null, null, null, null, 99_000, 990_000),
+                null, null, null, null, null, null, 100_000, 1_000_000),
         };
     }
 

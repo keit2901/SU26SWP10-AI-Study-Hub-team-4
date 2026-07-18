@@ -40,9 +40,9 @@ public sealed class VnPayController : ControllerBase
         }
     }
 
-    /// <summary>ReturnUrl verification. Auth required — user's browser hits this after VNPay.</summary>
+    /// <summary>ReturnUrl verification. User browser hits this after VNPay.</summary>
     [HttpGet("return")]
-    [Authorize]
+    [AllowAnonymous]
     public async Task<IActionResult> ReturnCallback(CancellationToken ct)
     {
         try
