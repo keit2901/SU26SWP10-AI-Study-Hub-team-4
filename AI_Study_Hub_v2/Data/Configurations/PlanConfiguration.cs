@@ -53,10 +53,6 @@ public sealed class PlanConfiguration : IEntityTypeConfiguration<Plan>
         builder.Property(p => p.YearlyPriceVnd)
             .HasColumnName("yearly_price_vnd");
 
-        builder.Property(p => p.FeatureFlagsJson)
-            .HasColumnName("feature_flags_json")
-            .HasColumnType("jsonb");
-
         builder.Property(p => p.SortOrder)
             .HasColumnName("sort_order")
             .IsRequired();
