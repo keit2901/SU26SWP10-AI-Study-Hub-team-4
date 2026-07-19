@@ -26,8 +26,6 @@ public sealed class Plan
 
     public long? YearlyPriceVnd { get; set; }
 
-    public string? FeatureFlagsJson { get; set; }
-
     public int SortOrder { get; set; }
 
     public bool IsActive { get; set; } = true;
