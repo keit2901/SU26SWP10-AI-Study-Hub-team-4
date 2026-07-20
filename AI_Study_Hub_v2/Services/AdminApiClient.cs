@@ -122,6 +122,28 @@ public sealed class AdminApiClient
         await ThrowFromResponseAsync(response, ct);
     }
 
+    public async Task<AdminDocumentDto> UpdateDocumentAsync(
+        string accessToken,
+        Guid id,
+        UpdateDocumentRequest update,
+        CancellationToken cancellationToken = default)
+    {
+        using var request = CreateAuthorizedRequest(
+            HttpMethod.Patch,
+            $"api/admin/documents/{id}",
+            accessToken);
+        request.Content = JsonContent.Create(update);
+
+        using var response = await _http.SendAsync(request, cancellationToken);
+        if (response.IsSuccessStatusCode)
+        {
+            return await response.Content.ReadFromJsonAsync<AdminDocumentDto>(cancellationToken: cancellationToken)
+                ?? throw new DocumentApiException(500, "empty_response", "Server returned an empty response.");
+        }
+        await ThrowFromResponseAsync(response, cancellationToken);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     private async Task<IReadOnlyList<T>> GetListAsync<T>(
         string url,
         string accessToken,
