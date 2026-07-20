@@ -262,11 +262,11 @@
                                 <th>ROLE</th>
                                 <th>PERMISSIONS</th>
                                 <th>CREATED</th>
-                                <th style="width: 50px;"></th>
+                                <th style="width: 60px;">ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var user in FilteredUsers)
+                            @foreach (var user in PagedUsers)
                             {
                                 <tr>
                                     <td>
@@ -308,11 +308,52 @@
                                         <span class="last-active-text">@user.CreatedAt.ToString("MMM dd, yyyy")</span>
                                     </td>
                                     <td>
+                                        <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
+                                            <ActivatorContent>
+                                                <button class="filter-btn" style="border: none; background: transparent; width: 32px; height: 32px; margin: 0 auto;">
+                                                    <MudIcon Icon="@Icons.Material.Filled.MoreVert" Style="font-size: 20px; color: #575e72;" />
+                                                </button>
+                                            </ActivatorContent>
+                                            <ChildContent>
+                                                <MudMenuItem Icon="@Icons.Material.Outlined.AdminPanelSettings" OnClick="@(() => ChangeRoleAsync(user, AdminRole))" Disabled="@IsRoleChangeDisabled(user, AdminRole)">Make Admin</MudMenuItem>
+                                                <MudMenuItem Icon="@Icons.Material.Outlined.Gavel" OnClick="@(() => ChangeRoleAsync(user, ModeratorRole))" Disabled="@IsRoleChangeDisabled(user, ModeratorRole)">Make Moderator</MudMenuItem>
+                                                <MudMenuItem Icon="@Icons.Material.Outlined.School" OnClick="@(() => ChangeRoleAsync(user, StudentRole))" Disabled="@IsRoleChangeDisabled(user, StudentRole)">Make Student</MudMenuItem>
+                                                <MudDivider />
+                                                <MudMenuItem Icon="@Icons.Material.Filled.ToggleOn" OnClick="@(() => ToggleActiveAsync(user))">
+                                                    @(user.IsActive ? "Deactivate" : "Activate")
+                                                </MudMenuItem>
+                                                <MudMenuItem Icon="@Icons.Material.Filled.Speed" OnClick="@(() => OpenQuotaDialogAsync(user))">Adjust Quota</MudMenuItem>
+                                                <MudDivider />
+                                                <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetailPopupAsync(user))">View Details</MudMenuItem>
+                                            </ChildContent>
+                                        </MudMenu>
                                     </td>
                                 </tr>
                             }
                         </tbody>
                     </table>
+                    <!-- Pagination -->
+                    <div class="pagination-bar-custom mt-3">
+                        <div class="pagination-info">Total @_users.Count user@(_users.Count == 1 ? string.Empty : "s")</div>
+                        <div class="pagination-buttons">
+                            <button class="pagination-btn" disabled="@(_currentPage <= 1)" @onclick="(() => GoToPage(_currentPage - 1))">Prev</button>
+                            @foreach (var pageNum in GetPageNumbers())
+                            {
+                                if (pageNum == -1)
+                                {
+                                    <span class="pagination-ellipsis">...</span>
+                                }
+                                else
+                                {
+                                    var current = pageNum;
+                                    <button class="pagination-btn @(current == _currentPage ? "active" : "")" @onclick="(() => GoToPage(current))">@current</button>
+                                }
+                            }
+                            <button class="pagination-btn" disabled="@(_currentPage >= _totalPages)" @onclick="(() => GoToPage(_currentPage + 1))">Next</button>
+                            <input type="text" class="pagination-jump-input" placeholder="Page..." value="@_pageJumpInput"
+                                   @oninput="HandlePageJumpInput" @onkeydown="HandlePageJumpKeyDown" />
+                        </div>
+                    </div>
                     <div class="users-table-footer">
                         <span class="footer-count">Showing @FilteredUsers.Count() of @TotalUsersCount users</span>
                     </div>
@@ -447,6 +488,38 @@
         .ThenByDescending(user => user.TokenUsagePercent)
         .ThenBy(user => user.FullName);
 
+    private IEnumerable<UserRow> PagedUsers => FilteredUsers
+        .Skip((_currentPage - 1) * _pageSize)
+        .Take(_pageSize);
+
+    private int _currentPage = 1;
+    private int _pageSize = 10;
+    private string _pageJumpInput = string.Empty;
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredUsers.Count() / _pageSize));
+
+    private void GoToPage(int page) => _currentPage = Math.Clamp(page, 1, _totalPages);
+    private List<int> GetPageNumbers() => BuildSlidingPageNumbers(_totalPages, _currentPage);
+
+    private static List<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+        if (total <= 4) { for (var i = 1; i <= total; i++) pages.Add(i); return pages; }
+        if (current <= 2) { for (var i = 1; i <= 3; i++) pages.Add(i); pages.Add(-1); pages.Add(total); return pages; }
+        if (current >= total - 1) { pages.Add(1); pages.Add(-1); for (var i = total - 2; i <= total; i++) pages.Add(i); return pages; }
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i); pages.Add(-1); pages.Add(total);
+        return pages;
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e) => _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            if (int.TryParse(_pageJumpInput, out var page)) GoToPage(page);
+            _pageJumpInput = string.Empty;
+        }
+    }
+
     private IReadOnlyList<string> AvailableRoleNames => _roles
         .Select(role => role.RoleName)
         .Where(role => !string.IsNullOrWhiteSpace(role))
@@ -541,24 +614,28 @@
     private Task OnSearchChanged(string? value)
     {
         _searchText = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnRoleChanged(string? value)
     {
         _selectedRole = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnStatusChanged(string? value)
     {
         _selectedStatus = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task OnQuotaRiskChanged(string? value)
     {
         _selectedQuotaRisk = value;
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
@@ -617,10 +694,10 @@
     {
         return _selectedStatus switch
         {
-            ActiveStatus => user.IsActive,
-            InactiveStatus => !user.IsActive,
-            "Banned" => !user.IsActive,
-            "PreviouslyBanned" => user.IsPreviouslyBanned,
+            ActiveStatus => user.IsActive && !user.IsPreviouslyBanned,
+            InactiveStatus => !user.IsActive && !user.IsPreviouslyBanned,
+            "Banned" => !user.IsActive && user.IsPreviouslyBanned,
+            "PreviouslyBanned" => user.IsActive && user.IsPreviouslyBanned,
             _ => true
         };
     }
@@ -688,8 +765,8 @@
         {
             if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
             {
-                var logs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, limit: 5);
-                activities = logs.Where(l => l.ActorUserId == user.Id).Take(5).ToList();
+                var logs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, limit: 5, actorUserId: user.Id);
+                activities = logs.ToList();
             }
         }
         catch { }

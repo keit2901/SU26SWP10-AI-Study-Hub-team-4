@@ -96,7 +96,7 @@ public sealed class EscalationServiceTests
         var e2 = await sut.CreateAsync(moderator.Id, req);
 
         // Resolve one
-        await sut.ResolveAsync(e1.Id, new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid." });
+        await sut.ResolveAsync(e1.Id, new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid." }, Guid.NewGuid());
 
         // Act
         var all = await sut.GetAllAsync();
@@ -124,7 +124,7 @@ public sealed class EscalationServiceTests
         };
         var e1 = await sut.CreateAsync(moderator.Id, req);
         var e2 = await sut.CreateAsync(moderator.Id, req);
-        await sut.ResolveAsync(e1.Id, new ResolveEscalationRequest { Status = "Rejected", AdminResponse = "No." });
+        await sut.ResolveAsync(e1.Id, new ResolveEscalationRequest { Status = "Rejected", AdminResponse = "No." }, Guid.NewGuid());
 
         var pending = await sut.GetPendingAsync();
 
@@ -194,7 +194,7 @@ public sealed class EscalationServiceTests
         var created = await sut.CreateAsync(moderator.Id, req);
 
         var resolveReq = new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Escalation valid." };
-        var resolved = await sut.ResolveAsync(created.Id, resolveReq);
+        var resolved = await sut.ResolveAsync(created.Id, resolveReq, Guid.NewGuid());
 
         resolved.EscalationStatus.Should().Be("Approved");
         resolved.AdminResponse.Should().Be("Escalation valid.");
@@ -218,7 +218,7 @@ public sealed class EscalationServiceTests
         };
         var created = await sut.CreateAsync(moderator.Id, req);
 
-        var resolved = await sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Rejected" });
+        var resolved = await sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Rejected" }, Guid.NewGuid());
 
         resolved.EscalationStatus.Should().Be("Rejected");
     }
@@ -229,7 +229,7 @@ public sealed class EscalationServiceTests
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var sut = new EscalationService(db, new AuditLogService(db));
 
-        var act = () => sut.ResolveAsync(Guid.NewGuid(), new ResolveEscalationRequest { Status = "Approved" });
+        var act = () => sut.ResolveAsync(Guid.NewGuid(), new ResolveEscalationRequest { Status = "Approved" }, Guid.NewGuid());
 
         var ex = await act.Should().ThrowAsync<AdminException>();
         ex.Which.StatusCode.Should().Be(404);
@@ -340,7 +340,7 @@ public sealed class EscalationServiceTests
         };
         var created = await sut.CreateAsync(moderator.Id, req);
 
-        await sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid." });
+        await sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid." }, Guid.NewGuid());
         await db.SaveChangesAsync();
 
         db.AuditLogs.Should().Contain(log =>

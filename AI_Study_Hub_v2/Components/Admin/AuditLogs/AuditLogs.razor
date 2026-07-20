@@ -1155,7 +1155,7 @@
     private bool MatchesEntityType(AuditLogRow log)
     {
         if (string.IsNullOrWhiteSpace(_selectedEntityType)) return true;
-        return log.EntityName.StartsWith(_selectedEntityType, StringComparison.OrdinalIgnoreCase);
+        return log.EntityName.Contains(_selectedEntityType, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool MatchesDateRangeNew(AuditLogRow log)
