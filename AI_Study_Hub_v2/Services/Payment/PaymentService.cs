@@ -49,11 +49,11 @@ public sealed class PaymentService : IPaymentService
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null)
-            throw new InvalidOperationException("User not found");
+            throw new KeyNotFoundException("User not found.");
 
         var plan = _planService.GetPlanByKey(planKey);
         if (plan is null)
-            throw new InvalidOperationException("Plan not found");
+            throw new KeyNotFoundException("Plan not found.");
 
         // FC-04: Expire any existing pending transactions so each purchase gets a fresh QR
         var existingPendings = await _db.PaymentTransactions
@@ -111,7 +111,15 @@ public sealed class PaymentService : IPaymentService
             txn.Status = "failed";
             txn.ErrorMessage = result.ErrorMessage;
             await _db.SaveChangesAsync(ct);
-            throw new InvalidOperationException($"Provider payment creation failed: {result.ErrorMessage}");
+            _logger.LogWarning(
+                "Payment provider could not create link for user {UserId}, plan {PlanKey}, cycle {BillingCycle}: {ProviderMessage}",
+                userId,
+                planKey,
+                billingCycle,
+                result.ErrorMessage);
+            throw new PaymentProviderException(
+                "The payment gateway is temporarily unavailable. Please try again in a moment.",
+                result.ErrorMessage);
         }
 
         // Store provider response in VnpayResponseJson (generic provider response storage)

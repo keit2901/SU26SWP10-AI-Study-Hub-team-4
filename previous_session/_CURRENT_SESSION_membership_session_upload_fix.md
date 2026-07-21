@@ -127,3 +127,31 @@ Patch `AuthPersistenceService`, plan snapshot DTO/state, upload limit enforcemen
 - Current date: 2026-07-21
 - Payment provider in use: PayOS (`PaymentService`)
 - Existing seeded plan limits: `free` 50 MB/file, `pro` 100 MB/file, `unlimited` null file limit in DB
+
+### 2026-07-21T13:45:00.0000000Z - Follow-up payment + library bug fixes
+- Investigated student-reported `Request failed with status 409` in the payment flow.
+- Root cause:
+  - `PlansController.PurchasePlan` was catching every `InvalidOperationException` from `PaymentService` and converting it into HTTP `409 Conflict`.
+  - That incorrectly treated external PayOS link-creation failures like business-rule conflicts.
+- Applied fixes:
+  - Added `AI_Study_Hub_v2/Services/Payment/PaymentProviderException.cs` for provider-specific failures.
+  - Updated `AI_Study_Hub_v2/Services/Payment/PaymentService.cs`:
+    - missing user/plan now throws `KeyNotFoundException`
+    - PayOS link-creation failure now throws `PaymentProviderException` with a safe user-facing message
+  - Updated `AI_Study_Hub_v2/Controllers/PlansController.cs`:
+    - provider failures now return `503 Service Unavailable`
+    - missing purchase target now returns `404`
+    - invalid purchase request now returns `400`
+  - Updated `AI_Study_Hub_v2/Components/Pages/PricingCheckoutDialog.razor`:
+    - refreshes the current plan before checkout
+    - blocks opening a purchase for the already-active plan
+    - shows cleaner conflict/service-unavailable messaging
+  - Updated `AI_Study_Hub_v2/Components/Pages/Pricing.razor`:
+    - refreshes current plan before selection
+    - fixes downgrade-to-free to call `PurchaseFreePlanAsync`
+  - Updated `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`:
+    - lowered folder menu `z-index` so opened filter/tab overlays cover the `...` menu correctly
+    - closes the open folder menu whenever folder filtering/tab selection changes
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o .codex-build\\payment-fix-build` -> PASS
+  - normal in-place build was blocked by the already running app locking `bin\\Debug\\net8.0\\AI_Study_Hub_v2.dll`, so verification used an alternate output folder instead.

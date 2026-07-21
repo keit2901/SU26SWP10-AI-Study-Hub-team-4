@@ -172,6 +172,7 @@ public sealed class PlansController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> PurchasePlan(
         [FromBody] PurchasePlanRequest request,
@@ -443,15 +444,31 @@ public sealed class PlansController : ControllerBase
 
                 return Ok(paymentResult);
             }
-            catch (InvalidOperationException ex)
+            catch (PaymentProviderException ex)
             {
-                // FC-04: existing pending payment still valid
-                return Conflict(new ApiErrorResponse
+                _logger.LogWarning(ex, "Payment provider unavailable during purchase for user {UserId}", user.Id);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiErrorResponse
                 {
-                    Code = "payment_pending",
+                    Code = "payment_provider_unavailable",
                     Message = ex.Message
                 });
             }
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ApiErrorResponse
+            {
+                Code = "purchase_target_not_found",
+                Message = ex.Message
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new ApiErrorResponse
+            {
+                Code = "invalid_purchase_request",
+                Message = ex.Message
+            });
         }
         // F2.2: handle concurrent purchase race condition
         catch (DbUpdateException)

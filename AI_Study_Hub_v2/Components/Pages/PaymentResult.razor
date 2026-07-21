@@ -29,7 +29,7 @@
             <p class="result-subtitle">The payment confirmation could not be verified. If you were charged, please contact support.</p>
             <div class="result-actions">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                           OnClick="@(() => GoToPricing("failed"))" Style="text-transform:none; font-weight:600; border-radius:12px;">
                     Back to Pricing
                 </MudButton>
             </div>
@@ -56,7 +56,7 @@
             </p>
             <div class="result-actions">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                           OnClick="@(() => GoToPricing("expired"))" Style="text-transform:none; font-weight:600; border-radius:12px;">
                     Back to Pricing
                 </MudButton>
             </div>
@@ -104,6 +104,10 @@
                            OnClick="CheckAgain" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
                     Check Again
                 </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                           OnClick="@(() => GoToPricing())" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                    Back to Pricing
+                </MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Default"
                            OnClick="GoToDashboard" Style="text-transform:none; font-weight:600; border-radius:12px;">
                     Dashboard
@@ -127,10 +131,12 @@
                 {
                     <span>The payment was not completed. No charges were made.</span>
                 }
+                <br />
+                <span>Redirecting you back to the pricing page...</span>
             </p>
             <div class="result-actions">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
+                           OnClick="@(() => GoToPricing(GetPricingNoticeForStatus()))" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
                     Try Again
                 </MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Default"
@@ -230,7 +236,7 @@
 
 @code {
     private bool _loading = true;
-    private bool _expiredRedirectScheduled;
+    private bool _pricingRedirectScheduled;
     private ReturnUrlResult _result = new(false, "pending", null, 0, null);
 
     protected override async Task OnInitializedAsync()
@@ -242,16 +248,15 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (_loading
-            || _expiredRedirectScheduled
-            || !_result.IsValid
-            || !string.Equals(_result.Status, "expired", StringComparison.OrdinalIgnoreCase))
+            || _pricingRedirectScheduled
+            || !ShouldAutoReturnToPricing())
         {
             return;
         }
 
-        _expiredRedirectScheduled = true;
+        _pricingRedirectScheduled = true;
         await Task.Delay(2200);
-        GoToPricing();
+        GoToPricing(GetPricingNoticeForStatus());
     }
 
     private async Task VerifyPayment()
@@ -312,7 +317,41 @@
         Session.Set(restored);
     }
 
-    private void GoToPricing() => Navigation.NavigateTo("/pricing", forceLoad: true);
+    private bool ShouldAutoReturnToPricing()
+    {
+        if (!_result.IsValid)
+        {
+            return true;
+        }
+
+        return !string.Equals(_result.Status, "completed", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(_result.Status, "pending", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetPricingNoticeForStatus()
+    {
+        if (!_result.IsValid)
+        {
+            return "failed";
+        }
+
+        return _result.Status.ToLowerInvariant() switch
+        {
+            "expired" => "expired",
+            "failed" => "failed",
+            "unknown" => "failed",
+            _ => "failed"
+        };
+    }
+
+    private void GoToPricing(string? notice = null)
+    {
+        var target = string.IsNullOrWhiteSpace(notice)
+            ? "/pricing"
+            : $"/pricing?paymentNotice={Uri.EscapeDataString(notice)}";
+        Navigation.NavigateTo(target, forceLoad: true);
+    }
+
     private void GoToDashboard() => Navigation.NavigateTo(
         AdminAccessPolicy.GetAuthenticatedLandingPage(Session.CurrentUser?.Role),
         forceLoad: true);

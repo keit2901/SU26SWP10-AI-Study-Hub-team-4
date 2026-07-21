@@ -45,7 +45,7 @@
 
                 <div class="checkout-info">
                     <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" />
-                    <span>Payment links expire after 2 minutes. If the timer runs out, we will send you back to the pricing page to start again.</span>
+                    <span>Payment links expire after 5 minutes. If the payment is not completed in time, we will send you back to the pricing page to start again.</span>
                 </div>
 
                 <div class="checkout-actions">
@@ -197,7 +197,6 @@
     private bool _isLoading;
     private string? _error;
     private string _billingCycle = "monthly";
-
     private long? SelectedPrice => _billingCycle == "yearly"
         ? Plan.YearlyPriceVnd
         : Plan.MonthlyPriceVnd;
@@ -218,10 +217,19 @@
                 return;
             }
 
+            await Session.LoadCurrentPlanAsync(PlanApi);
+            if (string.Equals(Session.CurrentPlan, Plan.PlanKey, StringComparison.OrdinalIgnoreCase))
+            {
+                _error = $"Your account is already on the {Plan.DisplayName} plan.";
+                _isLoading = false;
+                return;
+            }
+
             // Free plan: immediate activation
             if (Plan.PlanKey == "free")
             {
                 await PlanApi.PurchaseFreePlanAsync(accessToken, Plan.PlanKey);
+                await Session.LoadCurrentPlanAsync(PlanApi);
                 _completed = true;
                 _isLoading = false;
                 return;
@@ -241,9 +249,16 @@
             var message = statusCode switch
             {
                 System.Net.HttpStatusCode.Unauthorized => "Please log in again to continue.",
-                System.Net.HttpStatusCode.Conflict => ex.Message,
+                System.Net.HttpStatusCode.Conflict => ex.Code switch
+                {
+                    "already_on_plan" => $"Your account is already on the {Plan.DisplayName} plan.",
+                    "payment_pending" => "A payment for this account is already in progress. Please wait a moment and try again.",
+                    "concurrent_purchase" => "Another purchase is already being processed. Please try again in a moment.",
+                    _ => ex.Message
+                },
+                System.Net.HttpStatusCode.BadRequest => ex.Message,
                 System.Net.HttpStatusCode.TooManyRequests => "Too many attempts. Please wait a moment and try again.",
-                System.Net.HttpStatusCode.ServiceUnavailable => "Service is temporarily unavailable. Please try again later.",
+                System.Net.HttpStatusCode.ServiceUnavailable => "The payment gateway is temporarily unavailable. Please try again in a moment.",
                 System.Net.HttpStatusCode.PaymentRequired => "Your current usage exceeds the target plan limits. Upgrade or free up space first.",
                 _ => $"Purchase failed: {ex.Message}"
             };
