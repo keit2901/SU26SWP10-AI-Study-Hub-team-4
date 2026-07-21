@@ -448,6 +448,7 @@ using (var scope = app.Services.CreateScope())
         await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
         await SystemConfigSeeder.SeedAsync(db, startupLogger);
         await SeedDefaultPlansAsync(db, startupLogger);
+        await SeedDefaultProStudentAsync(db, goTrue, seedOptions, startupLogger);
     }
     catch (Exception ex)
     {
@@ -863,4 +864,122 @@ static async Task SeedDefaultPlansAsync(AppDbContext db, ILogger logger)
         await db.SaveChangesAsync();
         logger.LogInformation("Backfill: assigned Free plan to {Count} users without a plan.", usersWithoutPlan.Count);
     }
+}
+
+static async Task SeedDefaultProStudentAsync(AppDbContext db, IGoTrueClient gotrue, SeedOptions seedOptions, ILogger logger)
+{
+    var cfg = seedOptions.DefaultProStudent;
+    if (cfg is null
+        || string.IsNullOrWhiteSpace(cfg.Email)
+        || string.IsNullOrWhiteSpace(cfg.Username)
+        || string.IsNullOrWhiteSpace(cfg.FullName)
+        || string.IsNullOrWhiteSpace(cfg.Password))
+    {
+        logger.LogWarning("Default Pro student seed skipped: Seed:DefaultProStudent is not fully configured (Email/Username/FullName/Password). Set Seed:DefaultProStudent:Password via dotnet user-secrets.");
+        return;
+    }
+
+    var studentRole = await db.Roles.FirstOrDefaultAsync(r => r.RoleName == Role.StudentRoleName);
+    var proPlan = await db.Plans.FirstOrDefaultAsync(p => p.PlanKey == "pro");
+    if (studentRole is null || proPlan is null)
+    {
+        logger.LogError("Default Pro student seed failed: Student role or Pro plan is missing.");
+        return;
+    }
+
+    var emailLower = cfg.Email.Trim().ToLowerInvariant();
+    var usernameTrim = cfg.Username.Trim();
+    var fullNameTrim = cfg.FullName.Trim();
+
+    var existingIdentity = await gotrue.AdminGetUserByEmailAsync(emailLower);
+    Guid supabaseUserId;
+    if (existingIdentity is not null && existingIdentity.Id != Guid.Empty)
+    {
+        supabaseUserId = existingIdentity.Id;
+        logger.LogInformation("Default Pro student already exists in GoTrue. Reusing identity {SupabaseUserId}.", supabaseUserId);
+    }
+    else
+    {
+        var created = await gotrue.AdminCreateUserAsync(
+            emailLower,
+            cfg.Password,
+            userMetadata: new Dictionary<string, object?>
+            {
+                ["username"] = usernameTrim,
+                ["full_name"] = fullNameTrim,
+            },
+            appMetadata: new Dictionary<string, object?>
+            {
+                ["role"] = Role.StudentRoleName,
+            });
+        supabaseUserId = created.Id;
+        logger.LogInformation("Default Pro student created in GoTrue with identity {SupabaseUserId}", supabaseUserId);
+    }
+
+    var student = await db.Users
+        .Include(u => u.Role)
+        .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+    if (student is null)
+    {
+        var usernameClash = await db.Users.AnyAsync(u => u.Username == usernameTrim);
+        if (usernameClash)
+        {
+            logger.LogWarning("Default Pro student seed skipped: a user already exists with the same username.");
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        student = new User
+        {
+            Id = Guid.NewGuid(),
+            RoleId = studentRole.Id,
+            SupabaseUserId = supabaseUserId,
+            Username = usernameTrim,
+            FullName = fullNameTrim,
+            TotalTokensUsed = 0,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        db.Users.Add(student);
+        await db.SaveChangesAsync();
+        logger.LogInformation("Default Pro student profile inserted for identity {SupabaseUserId}", supabaseUserId);
+    }
+
+    var activePlans = await db.UserPlans
+        .Where(up => up.UserId == student.Id && up.Status == "active")
+        .ToListAsync();
+
+    var alreadyOnPro = await db.UserPlans
+        .Include(up => up.Plan)
+        .AnyAsync(up => up.UserId == student.Id
+            && up.Status == "active"
+            && up.Plan.PlanKey == "pro"
+            && (up.ExpiresAt == null || up.ExpiresAt > DateTimeOffset.UtcNow));
+    if (alreadyOnPro)
+    {
+        logger.LogInformation("Default Pro student already has an active Pro plan.");
+        return;
+    }
+
+    foreach (var activePlan in activePlans)
+    {
+        activePlan.Status = "deactivated";
+    }
+
+    db.UserPlans.Add(new UserPlan
+    {
+        Id = Guid.NewGuid(),
+        UserId = student.Id,
+        PlanId = proPlan.Id,
+        Status = "active",
+        AssignedAt = DateTimeOffset.UtcNow,
+        PaidAt = DateTimeOffset.UtcNow,
+        ExpiresAt = DateTimeOffset.UtcNow.AddYears(1),
+    });
+
+    await db.SaveChangesAsync();
+    logger.LogInformation("Default Pro student plan assigned to {SupabaseUserId}.", supabaseUserId);
 }

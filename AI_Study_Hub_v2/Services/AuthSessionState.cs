@@ -19,11 +19,11 @@ public sealed class AuthSessionState
 
     public string? AccessToken => Session?.AccessToken;
 
-    /// <summary>
-    /// In-memory plan tier for demo purposes. Defaults to "Free".
-    /// Valid values: "Free", "Pro", "Unlimited".
-    /// </summary>
-    public string CurrentPlan { get; private set; } = "Free";
+    public string CurrentPlan { get; private set; } = "free";
+
+    public StorageQuotaSnapshotDto? CurrentPlanSnapshot { get; private set; }
+
+    public string CurrentPlanDisplayName => CurrentPlanSnapshot?.PlanDisplayName ?? FormatPlanDisplayName(CurrentPlan);
 
     public event Action? OnChange;
 
@@ -33,9 +33,12 @@ public sealed class AuthSessionState
     public void SetPlan(string plan)
     {
         if (string.IsNullOrWhiteSpace(plan) || !ValidPlanKeys.Contains(plan))
+        {
             return;
+        }
 
-        CurrentPlan = plan;
+        CurrentPlan = NormalizePlanKey(plan);
+        CurrentPlanSnapshot = null;
         NotifyChanged();
     }
 
@@ -54,7 +57,8 @@ public sealed class AuthSessionState
         try
         {
             var snapshot = await planApiClient.GetCurrentPlanAsync(AccessToken, ct);
-            CurrentPlan = snapshot.PlanKey;
+            CurrentPlan = NormalizePlanKey(snapshot.PlanKey);
+            CurrentPlanSnapshot = snapshot;
         }
         catch
         {
@@ -67,15 +71,28 @@ public sealed class AuthSessionState
     public void Set(AuthResponse session)
     {
         Session = session;
+        CurrentPlan = "free";
+        CurrentPlanSnapshot = null;
         NotifyChanged();
     }
 
     public void Clear()
     {
         Session = null;
-        CurrentPlan = "Free";
+        CurrentPlan = "free";
+        CurrentPlanSnapshot = null;
         NotifyChanged();
     }
+
+    private static string NormalizePlanKey(string plan) => plan.Trim().ToLowerInvariant();
+
+    private static string FormatPlanDisplayName(string plan) => plan switch
+    {
+        null or "" => "Free",
+        "pro" => "Pro",
+        "unlimited" => "Unlimited",
+        _ => $"{char.ToUpper(plan[0])}{plan[1..].ToLowerInvariant()}",
+    };
 
     private void NotifyChanged() => OnChange?.Invoke();
 }

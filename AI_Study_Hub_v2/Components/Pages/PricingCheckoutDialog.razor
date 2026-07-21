@@ -43,6 +43,11 @@
                     </div>
                 }
 
+                <div class="checkout-info">
+                    <MudIcon Icon="@Icons.Material.Filled.Timer" Size="Size.Small" />
+                    <span>Payment links expire after 2 minutes. If the timer runs out, we will send you back to the pricing page to start again.</span>
+                </div>
+
                 <div class="checkout-actions">
                     <MudButton Variant="Variant.Filled" Color="Color.Primary" FullWidth="true"
                                OnClick="ConfirmPayment" Disabled="_isLoading"

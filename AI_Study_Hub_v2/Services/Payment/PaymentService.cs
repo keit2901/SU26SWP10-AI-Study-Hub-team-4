@@ -256,6 +256,16 @@ public sealed class PaymentService : IPaymentService
         if (txn is null)
             return new ReturnUrlResult(true, "unknown", null, 0, "Transaction not found.");
 
+        if (txn.Status == "pending"
+            && txn.ExpiresAt.HasValue
+            && txn.ExpiresAt.Value <= DateTimeOffset.UtcNow)
+        {
+            txn.Status = "expired";
+            txn.CompletedAt = DateTimeOffset.UtcNow;
+            txn.ErrorMessage = BuildExpiredMessage();
+            await _db.SaveChangesAsync(ct);
+        }
+
         // If still pending, check live status with provider — webhook may be delayed
         if (txn.Status == "pending")
         {
@@ -372,7 +382,7 @@ public sealed class PaymentService : IPaymentService
         foreach (var txn in expired)
         {
             txn.Status = "expired";
-            txn.ErrorMessage = $"Payment expired after {_settings.ExpireMinutes} minutes.";
+            txn.ErrorMessage = BuildExpiredMessage();
             count++;
         }
 
@@ -421,6 +431,8 @@ public sealed class PaymentService : IPaymentService
 
         return "http://localhost:5240";
     }
+
+    private string BuildExpiredMessage() => $"Payment expired after {_settings.ExpireMinutes} minutes.";
 }
 
 /// <summary>

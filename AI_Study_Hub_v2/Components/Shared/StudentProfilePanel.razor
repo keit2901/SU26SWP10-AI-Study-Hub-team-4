@@ -252,9 +252,7 @@ else
     }
 
     private string FormatPlanLabel()
-        => string.IsNullOrWhiteSpace(Session.CurrentPlan)
-            ? "Free"
-            : $"{char.ToUpper(Session.CurrentPlan[0])}{Session.CurrentPlan[1..].ToLowerInvariant()}";
+        => Session.CurrentPlanDisplayName;
 
     private void TogglePassword() => _showPassword = !_showPassword;
 

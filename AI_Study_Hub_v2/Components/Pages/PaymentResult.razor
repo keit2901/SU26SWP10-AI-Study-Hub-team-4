@@ -4,6 +4,7 @@
 @inject PlanApiClient PlanApi
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
+@using AI_Study_Hub_v2.Services
 
 <PageTitle>Payment Result — AI Study Hub</PageTitle>
 
@@ -26,6 +27,33 @@
             </div>
             <h2 class="result-title error-text">Verification Failed</h2>
             <p class="result-subtitle">The payment confirmation could not be verified. If you were charged, please contact support.</p>
+            <div class="result-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                    Back to Pricing
+                </MudButton>
+            </div>
+        </div>
+    }
+    else if (_result.Status == "expired")
+    {
+        <div class="result-card">
+            <div class="result-icon pending-bg">
+                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Large" Style="color:#F59E0B; font-size:3.5rem;" />
+            </div>
+            <h2 class="result-title pending-text">Payment Expired</h2>
+            <p class="result-subtitle">
+                @if (!string.IsNullOrWhiteSpace(_result.ErrorMessage))
+                {
+                    <span>@_result.ErrorMessage</span>
+                }
+                else
+                {
+                    <span>Your payment window has expired.</span>
+                }
+                <br />
+                <span>Redirecting you back to the pricing page...</span>
+            </p>
             <div class="result-actions">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
                            OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px;">
@@ -202,12 +230,28 @@
 
 @code {
     private bool _loading = true;
+    private bool _expiredRedirectScheduled;
     private ReturnUrlResult _result = new(false, "pending", null, 0, null);
 
     protected override async Task OnInitializedAsync()
     {
         await RestoreSessionAsync();
         await VerifyPayment();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_loading
+            || _expiredRedirectScheduled
+            || !_result.IsValid
+            || !string.Equals(_result.Status, "expired", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        _expiredRedirectScheduled = true;
+        await Task.Delay(2200);
+        GoToPricing();
     }
 
     private async Task VerifyPayment()
@@ -269,5 +313,7 @@
     }
 
     private void GoToPricing() => Navigation.NavigateTo("/pricing", forceLoad: true);
-    private void GoToDashboard() => Navigation.NavigateTo("/pricing", forceLoad: true);
+    private void GoToDashboard() => Navigation.NavigateTo(
+        AdminAccessPolicy.GetAuthenticatedLandingPage(Session.CurrentUser?.Role),
+        forceLoad: true);
 }

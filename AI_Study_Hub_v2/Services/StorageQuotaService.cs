@@ -127,7 +127,11 @@ public sealed class StorageQuotaService : IStorageQuotaService
             effectivePlan.StorageQuotaBytes,
             effectivePlan.PlanKey,
             effectivePlan.DisplayName,
-            activeUserPlan?.ExpiresAt);
+            activeUserPlan?.ExpiresAt,
+            effectivePlan.MaxFileSizeBytes,
+            effectivePlan.MaxDocumentCount,
+            effectivePlan.MaxFolderCount,
+            effectivePlan.MaxDocsPerFolder);
     }
 
     public async Task ValidateDocumentCountAsync(
