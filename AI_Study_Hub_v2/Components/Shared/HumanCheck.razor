@@ -45,17 +45,22 @@
 
     private RecaptchaOptions RecaptchaOptions => RecaptchaOptionsAccessor.Value;
 
-    private bool UseRecaptcha => RecaptchaVerifier.IsEnabled && RecaptchaVerifier.IsConfigured;
+    private bool UseRecaptcha => RecaptchaVerifier.IsEnabled 
+        && RecaptchaVerifier.IsConfigured 
+        && !RecaptchaOptions.AllowDevelopmentFallback;
 
     public string? GetResponseToken() => _recaptchaToken;
 
-    public bool IsValid => UseRecaptcha
-        && _recaptchaPassed
-        && !string.IsNullOrWhiteSpace(_recaptchaToken);
+    public bool IsValid => !UseRecaptcha
+        || (_recaptchaPassed && !string.IsNullOrWhiteSpace(_recaptchaToken));
 
-    private string ModeLabel => UseRecaptcha
-        ? "Google reCAPTCHA."
-        : "reCAPTCHA configuration is required.";
+    private string ModeLabel => !RecaptchaVerifier.IsEnabled
+        ? "Human verification is disabled."
+        : RecaptchaOptions.AllowDevelopmentFallback
+            ? "Development mode — verification bypassed."
+            : !RecaptchaVerifier.IsConfigured
+                ? "reCAPTCHA configuration is required."
+                : "Google reCAPTCHA.";
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
