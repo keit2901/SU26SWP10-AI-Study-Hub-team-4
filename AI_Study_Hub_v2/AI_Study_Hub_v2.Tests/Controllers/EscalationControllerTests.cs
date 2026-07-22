@@ -142,7 +142,7 @@ public sealed class EscalationControllerTests
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
             new List<DocumentEscalationItemDto>());
 
-        escalationService.Setup(s => s.ResolveAsync(escalationId, resolveReq, It.IsAny<CancellationToken>()))
+        escalationService.Setup(s => s.ResolveAsync(escalationId, resolveReq, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolved);
 
         var result = await controller.Resolve(escalationId, resolveReq, CancellationToken.None);

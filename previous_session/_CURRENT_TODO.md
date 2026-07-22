@@ -1,17 +1,16 @@
-# List làm việc — Admin Sidebar (9 tabs)
+# List làm việc — Admin Sidebar (8 tabs)
 > Branch: feature/admin-upgrade
 
 | ID | Tab | Status |
 |----|-----|--------|
-| ADM-01 | Dashboard | 🔄 In Progress |
-| ADM-02 | Users & Permissions | ⏳ Ready |
-| ADM-03 | Document Moderation | ✅ Done |
-| ADM-04 | Community Reports | ✅ Done |
-| ADM-05 | Document Library | ✅ Done |
-| ADM-06 | Escalations | ⚪ Chưa check |
-| ADM-07 | AI System Settings | ✅ Done |
-| ADM-08 | Benchmark History | ✅ Done |
-| ADM-09 | Audit Logs | ✅ Done |
+| ADM-01 | Dashboard | ✅ Done |
+| ADM-02 | Users & Permissions | ✅ Done |
+| ADM-03 | Community Reports | ✅ Done |
+| ADM-04 | Document Library | ✅ Done |
+| ADM-05 | Escalations | ⚪ Chưa check |
+| ADM-06 | AI System Settings | ✅ Done |
+| ADM-07 | Benchmark History | ✅ Done |
+| ADM-08 | Audit Logs | ✅ Done |
 
 ---
 
