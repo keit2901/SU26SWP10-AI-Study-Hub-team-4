@@ -1,0 +1,37 @@
+@namespace AI_Study_Hub_v2.Components.Admin.Users
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
+                Quota updates are persisted and written to audit logs.
+            </MudAlert>
+            <MudTextField Value="@UserName" Label="User" Variant="Variant.Outlined" ReadOnly="true" />
+            <MudNumericField T="int" @bind-Value="DailyTokenQuota" Label="Daily token quota" Variant="Variant.Outlined" Min="1000" Step="1000" />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Current usage: @TokensUsedToday.ToString("N0") tokens today</MudText>
+            <MudProgressLinear Value="@UsagePercent" Color="@ProgressColor" Rounded="true" Size="Size.Large" />
+            @if (DailyTokenQuota < TokensUsedToday)
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">This user is approaching the proposed quota.</MudAlert>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" OnClick="Save">Save quota</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public string UserName { get; set; } = string.Empty;
+    [Parameter] public int DailyTokenQuota { get; set; }
+    [Parameter] public int TokensUsedToday { get; set; }
+    [Parameter] public double UsagePercent { get; set; }
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    Color ProgressColor => UsagePercent >= 100 ? Color.Error : UsagePercent >= 85 ? Color.Warning : Color.Success;
+
+    void Cancel() => MudDialog.Cancel();
+    void Save() => MudDialog.Close(DialogResult.Ok(DailyTokenQuota));
+}

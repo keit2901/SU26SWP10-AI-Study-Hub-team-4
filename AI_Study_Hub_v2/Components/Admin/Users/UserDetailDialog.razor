@@ -1,0 +1,80 @@
+@namespace AI_Study_Hub_v2.Components.Admin.Users
+@using AI_Study_Hub_v2.Dtos
+@using MudBlazor
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                <MudAvatar Size="Size.Medium" Color="Color.Primary">@(FullName?.FirstOrDefault() ?? '?')</MudAvatar>
+                <div>
+                    <MudText Typo="Typo.h6" Style="margin:0;">@FullName</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">@Email</MudText>
+                </div>
+            </MudStack>
+            <MudAlert Severity="@(IsActive ? Severity.Success : Severity.Error)" Variant="Variant.Outlined">
+                Status: @(IsActive ? "Active" : "Banned")
+            </MudAlert>
+            <MudGrid>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Role</MudText>
+                    <MudText Typo="Typo.body2" Style="font-weight:600;">@Role</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Documents</MudText>
+                    <MudText Typo="Typo.body2" Style="font-weight:600;">@DocumentCount</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Daily Quota</MudText>
+                    <MudText Typo="Typo.body2" Style="font-weight:600;">@DailyTokenQuota.ToString("N0")</MudText>
+                </MudItem>
+                <MudItem xs="6">
+                    <MudText Typo="Typo.caption">Used Today</MudText>
+                    <MudText Typo="Typo.body2" Style="font-weight:600;">@TokensUsedToday.ToString("N0") (@TokenUsagePercent:0%)</MudText>
+                </MudItem>
+            </MudGrid>
+            <MudDivider />
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Recent Activity</MudText>
+            @if (Activities is not null && Activities.Any())
+            {
+                <MudStack Spacing="1">
+                    @foreach (var log in Activities.Take(5))
+                    {
+                        <div style="font-size: 11px; color: #767586; padding: 4px 0; border-bottom: 1px solid #f1f5f9;">
+                            <span style="font-weight: 600; color: #191c1e;">@log.Action</span>
+                            <span> &middot; @log.CreatedAt.UtcDateTime.ToString("MMM dd HH:mm")</span>
+                        </div>
+                    }
+                </MudStack>
+            }
+            else
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">No recent activity recorded.</MudText>
+            }
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Close</MudButton>
+        <MudButton Color="Color.Primary" OnClick="OpenQuota">Quota</MudButton>
+        <MudButton Color="Color.Error" OnClick="ToggleActive">@(IsActive ? "Deactivate" : "Activate")</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="ViewFull">View Full</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [Parameter] public string FullName { get; set; } = string.Empty;
+    [Parameter] public string Email { get; set; } = string.Empty;
+    [Parameter] public string Role { get; set; } = string.Empty;
+    [Parameter] public bool IsActive { get; set; }
+    [Parameter] public int DocumentCount { get; set; }
+    [Parameter] public int DailyTokenQuota { get; set; }
+    [Parameter] public int TokensUsedToday { get; set; }
+    [Parameter] public double TokenUsagePercent { get; set; }
+    [Parameter] public IReadOnlyList<AuditLogDto> Activities { get; set; } = Array.Empty<AuditLogDto>();
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    void Cancel() => MudDialog.Cancel();
+    void OpenQuota() => MudDialog.Close(DialogResult.Ok("quota"));
+    void ToggleActive() => MudDialog.Close(DialogResult.Ok("toggle"));
+    void ViewFull() => MudDialog.Close(DialogResult.Ok("full"));
+}

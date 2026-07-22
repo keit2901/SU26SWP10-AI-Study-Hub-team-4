@@ -26,6 +26,7 @@ public sealed class AuditLogsController : ControllerBase
         [FromQuery] DateTimeOffset? from,
         [FromQuery] DateTimeOffset? to,
         [FromQuery] int limit = 200,
+        [FromQuery] Guid? actorUserId = null,
         CancellationToken cancellationToken = default)
-        => Ok(await _auditLogs.ListAsync(action, from, to, limit, cancellationToken));
+        => Ok(await _auditLogs.ListAsync(action, from, to, limit, actorUserId, cancellationToken));
 }

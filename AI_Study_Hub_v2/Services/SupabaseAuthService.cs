@@ -3,6 +3,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -34,17 +35,24 @@ public sealed class SupabaseAuthService : IAuthService
     private readonly IGoTrueClient _gotrue;
     private readonly IRegistrationCoordinator _registrationCoordinator;
     private readonly ILogger<SupabaseAuthService> _logger;
+    private readonly IAuditLogService _audit;
 
-    public SupabaseAuthService(AppDbContext db, IGoTrueClient gotrue, IRegistrationCoordinator registrationCoordinator, ILogger<SupabaseAuthService> logger)
+    public SupabaseAuthService(AppDbContext db, IGoTrueClient gotrue, IRegistrationCoordinator registrationCoordinator, ILogger<SupabaseAuthService> logger, IAuditLogService audit)
     {
         _db = db;
         _gotrue = gotrue;
         _registrationCoordinator = registrationCoordinator;
         _logger = logger;
+        _audit = audit;
     }
 
-    public Task<AuthResponse> RegisterAsync(RegisterRequest request, string? userAgent, string? ipAddress, CancellationToken cancellationToken = default) =>
-        _registrationCoordinator.RegisterAsync(request, cancellationToken);
+    public async Task<AuthResponse> RegisterAsync(RegisterRequest request, string? userAgent, string? ipAddress, CancellationToken cancellationToken = default)
+    {
+        var response = await _registrationCoordinator.RegisterAsync(request, cancellationToken);
+        _audit.Add(response.User.Id, "USER_REGISTERED", "User", response.User.Id.ToString(), "Low",
+            afterJson: JsonSerializer.Serialize(new { response.User.Username, response.User.Email }));
+        return response;
+    }
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request, string? userAgent, string? ipAddress, CancellationToken cancellationToken = default)
     {
@@ -109,6 +117,8 @@ public sealed class SupabaseAuthService : IAuthService
         }
         // Phase 1 mirrors the original "revoke ALL refresh tokens" behaviour.
         await _gotrue.SignOutAsync(accessToken, global: true, cancellationToken);
+
+        _audit.Add(null, "USER_LOGOUT", "User", null, "Low");
     }
 
     public async Task<UserDto> GetCurrentUserAsync(Guid supabaseUserId, string? email = null, CancellationToken cancellationToken = default)

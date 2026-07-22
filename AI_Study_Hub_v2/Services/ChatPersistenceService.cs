@@ -30,11 +30,13 @@ public sealed class ChatPersistenceService : IChatPersistenceService
 
     private readonly AppDbContext _db;
     private readonly ILogger<ChatPersistenceService> _logger;
+    private readonly IAuditLogService _audit;
 
-    public ChatPersistenceService(AppDbContext db, ILogger<ChatPersistenceService> logger)
+    public ChatPersistenceService(AppDbContext db, ILogger<ChatPersistenceService> logger, IAuditLogService audit)
     {
         _db = db;
         _logger = logger;
+        _audit = audit;
     }
 
     public async Task<IReadOnlyList<ChatSessionDto>> ListSessionsAsync(Guid supabaseUserId, Guid? folderId = null, CancellationToken ct = default)
@@ -83,6 +85,9 @@ public sealed class ChatPersistenceService : IChatPersistenceService
 
         _db.ChatSessions.Add(session);
         await _db.SaveChangesAsync(ct);
+
+        _audit.Add(supabaseUserId, "AI_CHAT_SESSION_CREATED", "ChatSession", session.Id.ToString(), "Low",
+            afterJson: JsonSerializer.Serialize(new { session.Title, session.FolderId }));
 
         return new ChatSessionDto
         {
@@ -189,6 +194,10 @@ public sealed class ChatPersistenceService : IChatPersistenceService
         }
 
         await _db.SaveChangesAsync(ct);
+
+        var truncatedQuestion = question.Length > 100 ? question[..100] : question;
+        _audit.Add(supabaseUserId, "AI_CHAT_EXCHANGE", "ChatExchange", sessionId.ToString(), "Low",
+            afterJson: JsonSerializer.Serialize(new { Question = truncatedQuestion, scopeLabel }));
     }
 
     public async Task SaveQuizExchangeAsync(Guid supabaseUserId, Guid sessionId, Guid? expectedFolderId, string scopeLabel, string userContent, Guid quizId, string quizTitle, string quizStatus, int? totalQuestions = null, int? score = null, CancellationToken ct = default)

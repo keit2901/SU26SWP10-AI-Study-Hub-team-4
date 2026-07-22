@@ -109,7 +109,7 @@
                                     </span>
                                 </td>
                                 <td>
-                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => OpenQuotaSheet(user))" Style="text-transform:none;font-size:11px;">
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => OpenQuotaDialogAsync(user))" Style="text-transform:none;font-size:11px;">
                                         Adjust quota
                                     </MudButton>
                                 </td>
@@ -211,6 +211,8 @@
                     <option value="">Status</option>
                     <option value="@ActiveStatus">Active</option>
                     <option value="@InactiveStatus">Inactive</option>
+                    <option value="Banned">Banned</option>
+                    <option value="PreviouslyBanned">Previously Banned</option>
                 </select>
 
                 @{
@@ -259,12 +261,12 @@
                                 <th>USER</th>
                                 <th>ROLE</th>
                                 <th>PERMISSIONS</th>
-                                <th>LAST ACTIVE</th>
-                                <th style="width: 50px;"></th>
+                                <th>CREATED</th>
+                                <th style="width: 60px;">ACTIONS</th>
                             </tr>
                         </thead>
                         <tbody>
-                            @foreach (var user in PagedFilteredUsers)
+                            @foreach (var user in PagedUsers)
                             {
                                 <tr>
                                     <td>
@@ -278,7 +280,7 @@
                                                 <span class="user-avatar-initials @(user.Role.ToLower())">@user.Initials</span>
                                             }
                                             <div>
-                                                <div class="user-name">
+                                                <div class="user-name" @onclick="@(() => OpenDetailPopupAsync(user))" style="cursor: pointer; color: #4648d4; text-decoration: underline; text-decoration-color: rgba(70,72,212,0.2);" title="Click to view details">
                                                     @user.FullName
                                                     @if (IsCurrentAdmin(user))
                                                     {
@@ -303,28 +305,26 @@
                                         </div>
                                     </td>
                                     <td>
-                                        <span class="last-active-text">@FormatLastActive(user.LastActiveAt)</span>
+                                        <span class="last-active-text">@user.CreatedAt.ToString("MMM dd, yyyy")</span>
                                     </td>
                                     <td>
                                         <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
                                             <ActivatorContent>
-                                                <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Style="color: #767586; padding: 4px;" />
+                                                <button class="filter-btn" style="border: none; background: transparent; width: 32px; height: 32px; margin: 0 auto;">
+                                                    <MudIcon Icon="@Icons.Material.Filled.MoreVert" Style="font-size: 20px; color: #575e72;" />
+                                                </button>
                                             </ActivatorContent>
                                             <ChildContent>
-                                                <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(user))">View details</MudMenuItem>
-                                                <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => OpenQuotaSheet(user))">Edit quota</MudMenuItem>
-                                                @foreach (var role in AvailableRoleNames.Where(role => !role.Equals(user.Role, StringComparison.OrdinalIgnoreCase)))
-                                                {
-                                                    <MudMenuItem Icon="@GetRoleIcon(role)" Disabled="@IsRoleChangeDisabled(user, role)" OnClick="@(() => ChangeRoleAsync(user, role))">Change role to @role</MudMenuItem>
-                                                }
-                                                @if (user.IsActive)
-                                                {
-                                                    <MudMenuItem Icon="@Icons.Material.Filled.Block" Disabled="@IsCurrentAdmin(user)" OnClick="@(() => ToggleActiveAsync(user))">Deactivate</MudMenuItem>
-                                                }
-                                                else
-                                                {
-                                                    <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" OnClick="@(() => ToggleActiveAsync(user))">Activate</MudMenuItem>
-                                                }
+                                                <MudMenuItem Icon="@Icons.Material.Outlined.AdminPanelSettings" OnClick="@(() => ChangeRoleAsync(user, AdminRole))" Disabled="@IsRoleChangeDisabled(user, AdminRole)">Make Admin</MudMenuItem>
+                                                <MudMenuItem Icon="@Icons.Material.Outlined.Gavel" OnClick="@(() => ChangeRoleAsync(user, ModeratorRole))" Disabled="@IsRoleChangeDisabled(user, ModeratorRole)">Make Moderator</MudMenuItem>
+                                                <MudMenuItem Icon="@Icons.Material.Outlined.School" OnClick="@(() => ChangeRoleAsync(user, StudentRole))" Disabled="@IsRoleChangeDisabled(user, StudentRole)">Make Student</MudMenuItem>
+                                                <MudDivider />
+                                                <MudMenuItem Icon="@Icons.Material.Filled.ToggleOn" OnClick="@(() => ToggleActiveAsync(user))">
+                                                    @(user.IsActive ? "Deactivate" : "Activate")
+                                                </MudMenuItem>
+                                                <MudMenuItem Icon="@Icons.Material.Filled.Speed" OnClick="@(() => OpenQuotaDialogAsync(user))">Adjust Quota</MudMenuItem>
+                                                <MudDivider />
+                                                <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetailPopupAsync(user))">View Details</MudMenuItem>
                                             </ChildContent>
                                         </MudMenu>
                                     </td>
@@ -332,33 +332,30 @@
                             }
                         </tbody>
                     </table>
-                    <div class="users-table-footer">
-                        <span class="footer-count">Total @FilteredUsersCount user@(FilteredUsersCount == 1 ? string.Empty : "s")</span>
-                        @if (TotalUserPages > 1)
-                        {
-                            <div class="footer-pagination">
-                                <button type="button" class="pag-btn" disabled="@(DisplayUserPage <= 1)" @onclick="() => GoToUserPage(DisplayUserPage - 1)">Prev</button>
-                                @foreach (var page in GetUserPageNumbers())
+                    <!-- Pagination -->
+                    <div class="pagination-bar-custom mt-3">
+                        <div class="pagination-info">Total @_users.Count user@(_users.Count == 1 ? string.Empty : "s")</div>
+                        <div class="pagination-buttons">
+                            <button class="pagination-btn" disabled="@(_currentPage <= 1)" @onclick="(() => GoToPage(_currentPage - 1))">Prev</button>
+                            @foreach (var pageNum in GetPageNumbers())
+                            {
+                                if (pageNum == -1)
                                 {
-                                    if (page == -1)
-                                    {
-                                        <span class="footer-page-ellipsis">...</span>
-                                    }
-                                    else
-                                    {
-                                        var current = page;
-                                        <button type="button" class="pag-btn @(current == DisplayUserPage ? "active" : "")" @onclick="() => GoToUserPage(current)">@current</button>
-                                    }
+                                    <span class="pagination-ellipsis">...</span>
                                 }
-                                <button type="button" class="pag-btn" disabled="@(DisplayUserPage >= TotalUserPages)" @onclick="() => GoToUserPage(DisplayUserPage + 1)">Next</button>
-                                <input type="text"
-                                       class="footer-page-jump-input"
-                                       placeholder="Page..."
-                                       value="@_pageJumpInput"
-                                       @oninput="HandlePageJumpInput"
-                                       @onkeydown="HandlePageJumpKeyDown" />
-                            </div>
-                        }
+                                else
+                                {
+                                    var current = pageNum;
+                                    <button class="pagination-btn @(current == _currentPage ? "active" : "")" @onclick="(() => GoToPage(current))">@current</button>
+                                }
+                            }
+                            <button class="pagination-btn" disabled="@(_currentPage >= _totalPages)" @onclick="(() => GoToPage(_currentPage + 1))">Next</button>
+                            <input type="text" class="pagination-jump-input" placeholder="Page..." value="@_pageJumpInput"
+                                   @oninput="HandlePageJumpInput" @onkeydown="HandlePageJumpKeyDown" />
+                        </div>
+                    </div>
+                    <div class="users-table-footer">
+                        <span class="footer-count">Showing @FilteredUsers.Count() of @TotalUsersCount users</span>
                     </div>
                 }
             </div>
@@ -378,41 +375,74 @@
         <!-- Widgets Column -->
         <MudItem xs="12" lg="4">
             <div class="d-flex flex-column" style="gap: 1.5rem;">
-                <!-- Widget 1: Permission Matrix -->
+                <!-- Widget 1: Role Distribution -->
                 <div class="widget-card">
-                    <div class="d-flex align-center justify-space-between mb-4">
-                        <div class="d-flex align-center" style="gap: 8px;">
-                            <MudIcon Icon="@Icons.Material.Outlined.Shield" Style="color: #4648d4; font-size: 20px;" />
-                            <span style="font-size: 16px; font-weight: 700; color: #191c1e;">Permission Matrix</span>
+                    <div class="d-flex align-center" style="gap: 8px; margin-bottom: 12px;">
+                        <MudIcon Icon="@Icons.Material.Outlined.Shield" Style="color: #4648d4; font-size: 20px;" />
+                        <span style="font-size: 16px; font-weight: 700; color: #191c1e;">Role Distribution</span>
+                    </div>
+                    <div class="d-flex flex-column" style="gap: 8px;">
+                        @foreach (var roleName in new[] { AdminRole, ModeratorRole, StudentRole })
+                        {
+                            var count = _users.Count(u => u.Role.Equals(roleName, StringComparison.OrdinalIgnoreCase));
+                            <div class="d-flex align-center justify-space-between widget-row @(_selectedRole == roleName ? "widget-row-active" : "")" 
+                                 @onclick="@(() => { _selectedRole = roleName; })" style="cursor: pointer; padding: 8px; border-radius: 6px; transition: background 0.15s;">
+                                <span style="font-size: 13px; color: #191c1e;">@roleName</span>
+                                <span class="subject-badge">@count</span>
+                            </div>
+                        }
+                    </div>
+                </div>
+
+                <!-- Widget 2: Account Status -->
+                <div class="widget-card dark">
+                    <div class="d-flex align-center" style="gap: 8px; margin-bottom: 12px;">
+                        <MudIcon Icon="@Icons.Material.Outlined.VerifiedUser" Style="color: #10b981; font-size: 20px;" />
+                        <span style="font-size: 16px; font-weight: 700; color: #ffffff;">Account Status</span>
+                    </div>
+                    <div class="d-flex flex-column" style="gap: 8px;">
+                        @{
+                            var activeCount = _users.Count(u => u.IsActive && !u.IsPreviouslyBanned);
+                            var inactiveCount = _users.Count(u => !u.IsActive && !u.IsPreviouslyBanned);
+                            var bannedCount = _users.Count(u => !u.IsActive && u.IsPreviouslyBanned);
+                            var prevBannedCount = _users.Count(u => u.IsActive && u.IsPreviouslyBanned);
+                        }
+                        <div class="d-flex align-center justify-space-between widget-row-dark @(_selectedStatus == ActiveStatus ? "widget-row-active" : "")" 
+                             @onclick="@(() => _selectedStatus = ActiveStatus)" style="cursor: pointer; padding: 8px; border-radius: 6px;">
+                            <span style="font-size: 13px; color: #6ee7b7;">Active</span>
+                            <span class="subject-badge" style="background: rgba(16,185,129,0.2); color: #6ee7b7;">@activeCount</span>
+                        </div>
+                        <div class="d-flex align-center justify-space-between widget-row-dark @(_selectedStatus == InactiveStatus && !_users.Any(u => u.IsPreviouslyBanned && u.IsActive) ? "widget-row-active" : "")" 
+                             @onclick="@(() => _selectedStatus = "Inactive")" style="cursor: pointer; padding: 8px; border-radius: 6px;">
+                            <span style="font-size: 13px; color: #9ca3af;">Inactive</span>
+                            <span class="subject-badge" style="background: rgba(156,163,175,0.2); color: #d1d5db;">@inactiveCount</span>
+                        </div>
+                        <div class="d-flex align-center justify-space-between widget-row-dark @(_selectedStatus == "Banned" ? "widget-row-active" : "")" 
+                             @onclick="@(() => _selectedStatus = "Banned")" style="cursor: pointer; padding: 8px; border-radius: 6px;">
+                            <span style="font-size: 13px; color: #fca5a5;">Banned</span>
+                            <span class="subject-badge" style="background: rgba(186,26,26,0.2); color: #fca5a5;">@bannedCount</span>
+                        </div>
+                        <div class="d-flex align-center justify-space-between widget-row-dark @(_selectedStatus == "PreviouslyBanned" ? "widget-row-active" : "")" 
+                             @onclick="@(() => _selectedStatus = "PreviouslyBanned")" style="cursor: pointer; padding: 8px; border-radius: 6px;">
+                            <span style="font-size: 13px; color: #fbbf24;">Previously Banned</span>
+                            <span class="subject-badge" style="background: rgba(251,191,36,0.2); color: #fde68a;">@prevBannedCount</span>
                         </div>
                     </div>
-                    <div class="d-flex flex-column align-center justify-center py-6" style="text-align: center; gap: 0.5rem;">
-                        <span style="font-size: 14px; color: #767586;">&mdash;</span>
-                        <span style="font-size: 12px; color: #9ca3af;">RBAC data is not available.</span>
-                    </div>
                 </div>
 
-                <!-- Widget 2: Automated Security Scans -->
-                <div class="widget-card dark">
-                    <div class="d-flex align-center" style="gap: 8px; margin-bottom: 16px;">
-                        <MudIcon Icon="@Icons.Material.Outlined.VerifiedUser" Style="color: #10b981; font-size: 20px;" />
-                        <span style="font-size: 16px; font-weight: 700; color: #ffffff;">Automated Security Scans</span>
-                    </div>
-                    <div class="d-flex flex-column align-center justify-center py-6" style="text-align: center; gap: 0.5rem;">
-                        <span style="font-size: 14px; color: #6b7280;">&mdash;</span>
-                        <span style="font-size: 12px; color: #6b7280;">Scan data is not available.</span>
-                    </div>
-                </div>
-
-                <!-- Widget 3: AI Permission Audit -->
+                <!-- Widget 3: Escalations Summary -->
                 <div class="widget-card blue">
                     <div class="d-flex align-center" style="gap: 8px; margin-bottom: 12px;">
-                        <MudIcon Icon="@Icons.Material.Filled.FlashOn" Style="color: #ffffff; font-size: 20px;" />
-                        <span style="font-size: 16px; font-weight: 700; color: #ffffff;">AI Permission Audit</span>
+                        <MudIcon Icon="@Icons.Material.Filled.Flag" Style="color: #ffffff; font-size: 20px;" />
+                        <span style="font-size: 16px; font-weight: 700; color: #ffffff;">Escalations</span>
                     </div>
-                    <div class="d-flex flex-column align-center justify-center py-4" style="text-align: center; gap: 0.5rem;">
-                        <span style="font-size: 14px; color: #c7d2fe;">&mdash;</span>
-                        <span style="font-size: 12px; color: #a5b4fc;">Audit data is not available.</span>
+                    <div class="d-flex flex-column" style="gap: 8px;">
+                        <div style="font-size: 13px; color: #c7d2fe;">Moderator disputes requiring admin review.</div>
+                        <MudButton Variant="Variant.Outlined" Size="Size.Small" FullWidth="true"
+                                   OnClick="@(() => Navigation.NavigateTo("/admin/escalations"))"
+                                   Style="color: #ffffff; border-color: rgba(255,255,255,0.3); text-transform: none; font-size: 12px; margin-top: 4px;">
+                            View Escalations
+                        </MudButton>
                     </div>
                 </div>
             </div>
@@ -425,44 +455,7 @@
                  OpenChanged="@(value => _inviteSheetOpen = value)"
                  InviteSubmitted="InviteUserAsync"
                  AvailableRoles="@AvailableRoleNames"
-                 IsSubmitting="@_isInviting" />
-
-<EntitySheet Open="@_quotaSheetOpen"
-             OpenChanged="@(value => _quotaSheetOpen = value)"
-             Title="Daily token quota"
-             Subtitle="Configure UC16 per-user daily token limits and warning state."
-             Width="520px">
-    <ChildContent>
-        <MudStack Spacing="3">
-            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                Quota updates should be persisted to user_quota_overrides or an equivalent Supabase table and written to audit_logs.
-            </MudAlert>
-            <MudTextField Value="@_quotaEdit.UserName" Label="User" Variant="Variant.Outlined" ReadOnly="true" />
-            <MudNumericField T="int" Value="@_quotaEdit.DailyTokenQuota" ValueChanged="OnQuotaValueChanged" Label="Daily token quota" Variant="Variant.Outlined" Min="1000" Step="1000" />
-            <MudText Typo="Typo.caption" Color="Color.Secondary">Current usage: @_quotaEdit.TokensUsedToday.ToString("N0") tokens today</MudText>
-            <MudProgressLinear Value="@_quotaEdit.UsagePercent" Color="@GetQuotaProgressColor(_quotaEdit.UsagePercent)" Rounded="true" Size="Size.Large" />
-            <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
-                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SetQuotaPreset(25000))">Student preset</MudButton>
-                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SetQuotaPreset(75000))">Admin preset</MudButton>
-                <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => SetQuotaPreset(150000))">Temporary boost</MudButton>
-            </MudStack>
-            @if (_quotaEdit.UsagePercent >= 100)
-            {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Filled">This user has exceeded the proposed quota and should be throttled or boosted.</MudAlert>
-            }
-            else if (_quotaEdit.UsagePercent >= 85)
-            {
-                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">This user is approaching the proposed quota.</MudAlert>
-            }
-        </MudStack>
-    </ChildContent>
-    <FooterContent>
-        <MudButton Variant="Variant.Text" OnClick="CloseQuotaSheetAsync">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" OnClick="SaveQuotaAsync">
-            Save quota
-        </MudButton>
-    </FooterContent>
-</EntitySheet>
+                  IsSubmitting="@_isInviting" />
 
 @code {
     private const string StudentRole = "Student";
@@ -473,13 +466,11 @@
     private const string QuotaNormal = "Normal";
     private const string QuotaWarning = "Warning";
     private const string QuotaExceeded = "Exceeded";
-    private const int UserPageSize = 10;
     private readonly List<UserRow> _users = new();
     private readonly List<RoleOption> _roles = new();
     private bool _showHighUsageTab;
     private bool _isLoading = true;
     private bool _inviteSheetOpen;
-    private bool _quotaSheetOpen;
     private bool _isInviting;
     private string? _searchText;
     private string? _selectedRole;
@@ -487,9 +478,6 @@
     private string? _selectedQuotaRisk;
     private string? _errorMessage;
     private Guid? _processingUserId;
-    private int _currentPage = 1;
-    private string _pageJumpInput = string.Empty;
-    private QuotaEditModel _quotaEdit = new();
 
     private IEnumerable<UserRow> FilteredUsers => _users
         .Where(MatchesRole)
@@ -500,6 +488,38 @@
         .ThenByDescending(user => user.TokenUsagePercent)
         .ThenBy(user => user.FullName);
 
+    private IEnumerable<UserRow> PagedUsers => FilteredUsers
+        .Skip((_currentPage - 1) * _pageSize)
+        .Take(_pageSize);
+
+    private int _currentPage = 1;
+    private int _pageSize = 10;
+    private string _pageJumpInput = string.Empty;
+    private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredUsers.Count() / _pageSize));
+
+    private void GoToPage(int page) => _currentPage = Math.Clamp(page, 1, _totalPages);
+    private List<int> GetPageNumbers() => BuildSlidingPageNumbers(_totalPages, _currentPage);
+
+    private static List<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+        if (total <= 4) { for (var i = 1; i <= total; i++) pages.Add(i); return pages; }
+        if (current <= 2) { for (var i = 1; i <= 3; i++) pages.Add(i); pages.Add(-1); pages.Add(total); return pages; }
+        if (current >= total - 1) { pages.Add(1); pages.Add(-1); for (var i = total - 2; i <= total; i++) pages.Add(i); return pages; }
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i); pages.Add(-1); pages.Add(total);
+        return pages;
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e) => _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            if (int.TryParse(_pageJumpInput, out var page)) GoToPage(page);
+            _pageJumpInput = string.Empty;
+        }
+    }
+
     private IReadOnlyList<string> AvailableRoleNames => _roles
         .Select(role => role.RoleName)
         .Where(role => !string.IsNullOrWhiteSpace(role))
@@ -507,16 +527,6 @@
         .OrderBy(role => role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
         .ThenBy(role => role)
         .ToList();
-
-    private int FilteredUsersCount => FilteredUsers.Count();
-
-    private int TotalUserPages => Math.Max(1, (int)Math.Ceiling(FilteredUsersCount / (double)UserPageSize));
-
-    private int DisplayUserPage => Math.Clamp(_currentPage, 1, TotalUserPages);
-
-    private IEnumerable<UserRow> PagedFilteredUsers => FilteredUsers
-        .Skip((DisplayUserPage - 1) * UserPageSize)
-        .Take(UserPageSize);
 
     private IEnumerable<string> ActiveFilters
     {
@@ -579,6 +589,7 @@
                 Email = dto.Username,
                 Role = dto.Role,
                 IsActive = dto.IsActive,
+                IsPreviouslyBanned = dto.IsPreviouslyBanned,
                 DailyTokenQuota = (int)dto.DailyTokenQuota,
                 TokensUsedToday = (int)dto.TokensUsedToday,
                 DocumentCount = dto.DocumentCount,
@@ -643,7 +654,6 @@
             _selectedQuotaRisk = null;
         }
 
-        _currentPage = 1;
         return Task.CompletedTask;
     }
 
@@ -653,71 +663,7 @@
         _selectedRole = null;
         _selectedStatus = null;
         _selectedQuotaRisk = null;
-        _currentPage = 1;
-        _pageJumpInput = string.Empty;
         return Task.CompletedTask;
-    }
-
-    private void GoToUserPage(int page)
-    {
-        _currentPage = Math.Clamp(page, 1, TotalUserPages);
-    }
-
-    private List<int> GetUserPageNumbers() => BuildSlidingPageNumbers(TotalUserPages, DisplayUserPage);
-
-    private static List<int> BuildSlidingPageNumbers(int total, int current)
-    {
-        var pages = new List<int>();
-
-        if (total <= 4)
-        {
-            for (var i = 1; i <= total; i++) pages.Add(i);
-            return pages;
-        }
-
-        if (current <= 2)
-        {
-            for (var i = 1; i <= 3; i++) pages.Add(i);
-            pages.Add(-1);
-            pages.Add(total);
-            return pages;
-        }
-
-        if (current >= total - 1)
-        {
-            pages.Add(1);
-            pages.Add(-1);
-            for (var i = total - 2; i <= total; i++) pages.Add(i);
-            return pages;
-        }
-
-        for (var i = current - 1; i <= current + 1; i++) pages.Add(i);
-        pages.Add(-1);
-        pages.Add(total);
-        return pages;
-    }
-
-    private void HandlePageJumpInput(ChangeEventArgs e)
-    {
-        _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
-    }
-
-    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
-    {
-        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
-        {
-            GoToPageJump();
-        }
-    }
-
-    private void GoToPageJump()
-    {
-        if (int.TryParse(_pageJumpInput, out var page))
-        {
-            GoToUserPage(page);
-        }
-
-        _pageJumpInput = string.Empty;
     }
 
     private void ApplyQuotaRiskFilter()
@@ -748,8 +694,10 @@
     {
         return _selectedStatus switch
         {
-            ActiveStatus => user.IsActive,
-            InactiveStatus => !user.IsActive,
+            ActiveStatus => user.IsActive && !user.IsPreviouslyBanned,
+            InactiveStatus => !user.IsActive && !user.IsPreviouslyBanned,
+            "Banned" => !user.IsActive && user.IsPreviouslyBanned,
+            "PreviouslyBanned" => user.IsActive && user.IsPreviouslyBanned,
             _ => true
         };
     }
@@ -808,6 +756,44 @@
     private void OpenDetails(UserRow user)
     {
         Navigation.NavigateTo($"/admin/users/{user.Id}");
+    }
+
+    private async Task OpenDetailPopupAsync(UserRow user)
+    {
+        var activities = new List<AuditLogDto>();
+        try
+        {
+            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                var logs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, limit: 5, actorUserId: user.Id);
+                activities = logs.ToList();
+            }
+        }
+        catch { }
+
+        var parameters = new DialogParameters
+        {
+            ["FullName"] = user.FullName,
+            ["Email"] = user.Email,
+            ["Role"] = user.Role,
+            ["IsActive"] = user.IsActive,
+            ["DocumentCount"] = user.DocumentCount,
+            ["DailyTokenQuota"] = user.DailyTokenQuota,
+            ["TokensUsedToday"] = user.TokensUsedToday,
+            ["TokenUsagePercent"] = user.TokenUsagePercent,
+            ["Activities"] = activities
+        };
+        var dialog = await DialogService.ShowAsync<UserDetailDialog>("User Detail", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: string action })
+        {
+            switch (action)
+            {
+                case "quota": await OpenQuotaDialogAsync(user); break;
+                case "toggle": await ToggleActiveAsync(user); break;
+                case "full": OpenDetails(user); break;
+            }
+        }
     }
 
     private void NavigateToAuditLogs()
@@ -940,90 +926,54 @@
         }
     }
 
-    private void OpenQuotaSheet(UserRow user)
+    private async Task OpenQuotaDialogAsync(UserRow user)
     {
-        _quotaEdit = QuotaEditModel.FromUser(user);
-        _quotaSheetOpen = true;
-    }
-
-    private Task CloseQuotaSheetAsync()
-    {
-        _quotaSheetOpen = false;
-        _quotaEdit = new QuotaEditModel();
-        return Task.CompletedTask;
-    }
-
-    private void OnQuotaValueChanged(int value)
-    {
-        _quotaEdit.DailyTokenQuota = value;
-    }
-
-    private void SetQuotaPreset(int value)
-    {
-        _quotaEdit.DailyTokenQuota = value;
-    }
-
-    private async Task SaveQuotaAsync()
-    {
-        if (_quotaEdit.DailyTokenQuota <= 0)
+        var parameters = new DialogParameters
         {
-            Snackbar.Add("Daily token quota must be greater than zero.", Severity.Error);
-            return;
-        }
-
-        var user = _users.FirstOrDefault(item => item.Id == _quotaEdit.UserId);
-        if (user is null)
+            ["UserName"] = user.FullName,
+            ["DailyTokenQuota"] = user.DailyTokenQuota,
+            ["TokensUsedToday"] = user.TokensUsedToday,
+            ["UsagePercent"] = user.TokenUsagePercent
+        };
+        var dialog = await DialogService.ShowAsync<QuotaEditDialog>("Daily Token Quota", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false, Data: int newQuota })
         {
-            Snackbar.Add("User no longer exists in the current result set.", Severity.Error);
-            return;
-        }
-
-        if (_quotaEdit.DailyTokenQuota < user.TokensUsedToday)
-        {
-            var parameters = new DialogParameters
+            if (newQuota < user.TokensUsedToday)
             {
-                ["Title"] = "Quota below current usage",
-                ["Message"] = $"The proposed quota is below today's usage for {user.FullName}. The user may be throttled immediately.",
-                ["ConfirmText"] = "Save quota",
-                ["ConfirmColor"] = Color.Warning,
-                ["IconColor"] = Color.Warning,
-                ["Icon"] = Icons.Material.Filled.DataUsage
-            };
-
-            var dialog = await DialogService.ShowAsync<ConfirmDialog>("Confirm quota change", parameters);
-            var result = await dialog.Result;
-            if (result is not { Canceled: false })
-            {
-                return;
-            }
-        }
-
-        _processingUserId = user.Id;
-        try
-        {
-            var token = Session.AccessToken;
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                Snackbar.Add("Authentication required. Please log in again.", Severity.Error);
-                return;
+                var confirmParams = new DialogParameters
+                {
+                    ["Title"] = "Quota below current usage",
+                    ["Message"] = $"The proposed quota is below today's usage for {user.FullName}. The user may be throttled immediately.",
+                    ["ConfirmText"] = "Save quota",
+                    ["ConfirmColor"] = Color.Warning
+                };
+                var confirm = await DialogService.ShowAsync<ConfirmDialog>("Confirm quota change", confirmParams);
+                var confirmResult = await confirm.Result;
+                if (confirmResult is not { Canceled: false }) return;
             }
 
-            await AdminApi.UpdateQuotaAsync(token, user.Id, _quotaEdit.DailyTokenQuota);
-            _quotaSheetOpen = false;
-            await LoadUsersAsync();
-            Snackbar.Add($"Daily token quota updated for {user.FullName}. Audit log entry queued.", Severity.Success);
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add($"Failed to update quota: {ex.Message}", Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Unexpected error: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _processingUserId = null;
+            _processingUserId = user.Id;
+            try
+            {
+                var token = Session.AccessToken;
+                if (string.IsNullOrWhiteSpace(token))
+                {
+                    Snackbar.Add("Authentication required.", Severity.Error);
+                    return;
+                }
+                await AdminApi.UpdateQuotaAsync(token, user.Id, newQuota);
+                await LoadUsersAsync();
+                Snackbar.Add($"Daily token quota updated for {user.FullName}.", Severity.Success);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed: {ex.Message}", Severity.Error);
+            }
+            finally
+            {
+                _processingUserId = null;
+            }
         }
     }
 
@@ -1071,26 +1021,11 @@
         };
     }
 
-    private static string FormatLastActive(DateTime value)
-    {
-        var diff = DateTime.UtcNow - value;
-        if (diff.TotalMinutes < 60)
-        {
-            return $"{(int)Math.Max(1, diff.TotalMinutes)} minutes ago";
-        }
-        if (diff.TotalHours < 24)
-        {
-            return $"{(int)diff.TotalHours} hours ago";
-        }
-        return $"{(int)diff.TotalDays} days ago";
-    }
-
     private int TotalUsersCount => _users.Count;
 
     private Task OnSearchInputChanged(ChangeEventArgs e)
     {
         _searchText = e.Value?.ToString();
-        _currentPage = 1;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -1098,7 +1033,6 @@
     private Task OnRoleSelectChanged(ChangeEventArgs e)
     {
         _selectedRole = e.Value?.ToString();
-        _currentPage = 1;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -1106,7 +1040,6 @@
     private Task OnStatusSelectChanged(ChangeEventArgs e)
     {
         _selectedStatus = e.Value?.ToString();
-        _currentPage = 1;
         StateHasChanged();
         return Task.CompletedTask;
     }
@@ -1124,6 +1057,7 @@
         public DateTime CreatedAt { get; set; }
         public DateTime LastActiveAt { get; set; }
         public bool IsActive { get; set; }
+        public bool IsPreviouslyBanned { get; set; }
         public int DailyTokenQuota { get; set; }
         public int TokensUsedToday { get; set; }
         public int DocumentCount { get; set; }
@@ -1469,15 +1403,6 @@
     .footer-pagination {
         display: flex;
         gap: 4px;
-        align-items: center;
-        flex-wrap: wrap;
-    }
-
-    .footer-page-ellipsis {
-        padding: 0 4px;
-        color: #767586;
-        font-size: 12px;
-        font-weight: 700;
     }
 
     .pag-btn {
@@ -1504,18 +1429,6 @@
     .pag-btn:disabled {
         opacity: 0.5;
         cursor: not-allowed;
-    }
-
-    .footer-page-jump-input {
-        width: 86px;
-        height: 32px;
-        border: 1px solid #c7c6d5;
-        border-radius: 4px;
-        background: #ffffff;
-        color: #191c1e;
-        padding: 0 10px;
-        font-size: 12px;
-        outline: none;
     }
 
     /* Widget Cards */
@@ -1663,6 +1576,16 @@
     .dark-theme .widget-badge.info {
         background: rgba(255, 255, 255, 0.05);
         color: #a3a3a3;
+    }
+
+    .widget-row:hover {
+        background: rgba(70, 72, 212, 0.06);
+    }
+    .widget-row-active {
+        background: rgba(70, 72, 212, 0.08);
+    }
+    .widget-row-dark:hover {
+        background: rgba(255, 255, 255, 0.06);
     }
 
     @@keyframes pageRise {
