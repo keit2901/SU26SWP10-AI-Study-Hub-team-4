@@ -27,8 +27,6 @@ public class AppDbContext : DbContext
 
     public DbSet<Quiz> Quizzes => Set<Quiz>();
 
-    public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
-
     public DbSet<FolderReaction> FolderReactions => Set<FolderReaction>();
 
     public DbSet<CommunityReport> CommunityReports => Set<CommunityReport>();

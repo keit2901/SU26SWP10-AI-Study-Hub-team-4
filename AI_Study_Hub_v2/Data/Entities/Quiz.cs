@@ -19,8 +19,6 @@ public sealed class Quiz
 
     public QuizStatus Status { get; set; } = QuizStatus.InProgress;
 
-    public string? ErrorCode { get; set; }
-
     public int CurrentQuestionIndex { get; set; }
 
     public int TotalQuestions { get; set; } = 8;
@@ -42,6 +40,4 @@ public sealed class Quiz
     public ChatSession Session { get; set; } = null!;
 
     public User User { get; set; } = null!;
-
-    public ICollection<QuizAttempt> Attempts { get; set; } = new List<QuizAttempt>();
 }

@@ -132,8 +132,19 @@ public sealed class EscalationControllerTests
     public async Task Resolve_ValidRequest_ReturnsUpdatedEscalation()
     {
         var escalationService = new Mock<IEscalationService>();
-        var db = Support.TestDb.CreateInMemoryWithDocuments();
+        var db = CreateInMemoryDbWithUser(out var localUserId, out var supabaseUserId);
         var controller = CreateController(escalationService.Object, db);
+
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
+                {
+                    new Claim(ClaimTypes.NameIdentifier, supabaseUserId.ToString())
+                }))
+            }
+        };
 
         var escalationId = Guid.NewGuid();
         var resolveReq = new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid escalation." };
@@ -142,7 +153,7 @@ public sealed class EscalationControllerTests
             DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
             new List<DocumentEscalationItemDto>());
 
-        escalationService.Setup(s => s.ResolveAsync(escalationId, resolveReq, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        escalationService.Setup(s => s.ResolveAsync(escalationId, resolveReq, localUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolved);
 
         var result = await controller.Resolve(escalationId, resolveReq, CancellationToken.None);
