@@ -101,10 +101,11 @@
                               Required="true"
                               RequiredError="Password is required"
                               Validation="@(new StringLengthAttribute(128) { MinimumLength = 8, ErrorMessage = "Minimum 8 characters" })"
-                              InputType="InputType.Password"
+                              InputType="@(_showPassword ? InputType.Text : InputType.Password)"
                               Variant="Variant.Outlined"
-                              Adornment="Adornment.Start"
-                              AdornmentIcon="@Icons.Material.Filled.Lock"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                              OnAdornmentClick="TogglePasswordVisibility"
                               Disabled="_busy" />
             </MudForm>
 
@@ -148,6 +149,7 @@
     private bool _isValid;
     private bool _humanCheckValid;
     private bool _busy;
+    private bool _showPassword;
     private string? _error;
     private readonly RegistrationAttemptState _attemptState = new();
     // Retained for transport retries of this form instance; a fresh page instance starts a new operation.
@@ -216,4 +218,6 @@
             StateHasChanged();
         }
     }
+
+    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
 }
