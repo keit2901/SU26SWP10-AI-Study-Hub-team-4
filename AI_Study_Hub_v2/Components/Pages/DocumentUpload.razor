@@ -236,7 +236,8 @@
                     <input class="field-input flex-1"
                            placeholder="e.g. SWP391 \u2013 Spring 2026"
                            @bind="_newFolderName"
-                           disabled="@(_busy || _foldersBusy)" />
+                           disabled="@(_busy || _foldersBusy)"
+                           maxlength="100" />
                     <MudButton Variant="Variant.Outlined"
                                Color="Color.Secondary"
                                OnClick="CreateFolderAsync"
@@ -482,13 +483,19 @@
     private async Task CreateFolderAsync()
     {
         if (string.IsNullOrWhiteSpace(Session.AccessToken) || string.IsNullOrWhiteSpace(_newFolderName)) return;
+        var trimmed = _newFolderName.Trim();
+        if (trimmed.Length > 100)
+        {
+            Snackbar.Add("Folder name must not exceed 100 characters.", Severity.Warning);
+            return;
+        }
         _foldersBusy = true;
         _error = null;
         try
         {
             var folder = await FoldersApi.CreateAsync(
                 Session.AccessToken!,
-                new CreateFolderRequest { Name = _newFolderName.Trim() });
+                new CreateFolderRequest { Name = trimmed });
 
             _folders.Add(folder);
             _folders = _folders.OrderBy(f => f.Name).ToList();
