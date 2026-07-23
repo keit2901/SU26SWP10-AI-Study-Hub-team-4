@@ -120,6 +120,21 @@
 - This prevents future clone-account recreation and avoids the local Supabase Storage `413 Payload too large` warning caused by trying to seed a fake 55 MB file into a bucket still capped at 50 MB.
 - Verification:
   - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/remove-demo-clone-build"` -> PASS (0 errors, 15 pre-existing warnings)
+
+### 2026-07-23T11:45:00.0000000Z - Session/payment-history/expired-plan follow-up fixes applied
+- Tightened idle-session logout behavior in `AI_Study_Hub_v2/wwwroot/idle-session.js`:
+  - now tracks `lastActivityAt`
+  - checks elapsed time when timers wake up late or when a background tab becomes visible again
+  - avoids granting a fresh 15-minute window after browser sleep / background throttling
+- Fixed payment-history resolution timestamps in `AI_Study_Hub_v2/Services/Payment/PaymentService.cs`:
+  - `failed` transactions now set `CompletedAt`
+  - stale `expired` transactions now set `CompletedAt`
+  - this makes the "Kết thúc lúc" column in `StudentPaymentHistoryDialog.razor` line up with the actual terminal status time instead of incorrectly falling back to `ExpiresAt`
+- Improved expired-paid-plan detection in `AI_Study_Hub_v2/Services/StorageQuotaService.cs`:
+  - the profile warning no longer waits for the hourly expiry hosted service to flip status to `expired`
+  - a paid plan that has already passed `ExpiresAt` is now recognized immediately for the downgrade warning flow
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/session-payment-expiry-fix-build"` -> PASS (0 errors, 15 pre-existing warnings)
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-restore -o .codex-build\\membership-fix-tests` -> PASS (0 errors, 0 warnings)
 - `dotnet vstest ".codex-build\\membership-fix-tests\\AI_Study_Hub_v2.Tests.dll" --TestCaseFilter:"FullyQualifiedName~SupabaseAuthServiceTests|FullyQualifiedName~StorageQuotaServiceTests|FullyQualifiedName~PlansControllerTests"` -> PASS
   - Result: Passed 39, Skipped 2, Failed 0
@@ -197,3 +212,16 @@ Patch `AuthPersistenceService`, plan snapshot DTO/state, upload limit enforcemen
 - Verification:
   - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o .codex-build\\payment-fix-build` -> PASS
   - normal in-place build was blocked by the already running app locking `bin\\Debug\\net8.0\\AI_Study_Hub_v2.dll`, so verification used an alternate output folder instead.
+
+### 2026-07-23T08:59:11.8205318+07:00 - Payment history retention + expired-plan profile wording
+- Addressed the remaining payment-history retention gap:
+  - `AI_Study_Hub_v2/Controllers/PlansController.cs` now trims each user's payment history to the newest 50 records via a shared helper before returning the list, and reads history with a stable `CreatedAt` + `Id` descending order.
+  - `AI_Study_Hub_v2/Services/Payment/PaymentService.cs` now trims payment history immediately after creating a new PayOS transaction so the 51st older record is removed from the database right away.
+  - `AI_Study_Hub_v2/Services/Payment/VnPayService.cs` received the same retention safeguard to keep legacy payment flow behavior aligned.
+- Fixed the remaining profile wording issue for downgrade/expired-plan storage warnings:
+  - `AI_Study_Hub_v2/Dtos/StorageQuotaSnapshotDto.cs` now carries `ExpiredPaidPlanDisplayName`.
+  - `AI_Study_Hub_v2/Services/StorageQuotaService.cs` now resolves the latest expired paid plan name for the signed-in user.
+  - `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor` now shows the real expired plan name and the real current plan name instead of hardcoded `Pro` / `Free`.
+  - `AI_Study_Hub_v2/Components/Shared/StudentPaymentHistoryDialog.razor` now requests 50 items to match backend retention.
+- Verification:
+  - `dotnet build "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.codex-build\\final-history-warning-fix-build-2"` -> PASS (0 errors, 15 pre-existing warnings)

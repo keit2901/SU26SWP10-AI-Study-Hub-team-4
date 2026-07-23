@@ -175,7 +175,7 @@
             Session.SetPlan(snapshot.PlanKey);
             _planExpiresAt = snapshot.ExpiresAt;
 
-            var payments = await PlanApi.GetMyPaymentTransactionsAsync(Session.AccessToken, 100);
+            var payments = await PlanApi.GetMyPaymentTransactionsAsync(Session.AccessToken, 50);
             _payments.AddRange(payments.OrderByDescending(item => item.CreatedAt));
         }
         catch (PlanApiException ex)

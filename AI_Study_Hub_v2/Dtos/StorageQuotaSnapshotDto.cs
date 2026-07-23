@@ -10,4 +10,5 @@ public sealed record StorageQuotaSnapshotDto(
     int? MaxDocumentCount = null,
     int? MaxFolderCount = null,
     int? MaxDocsPerFolder = null,
-    bool HasExpiredPaidPlan = false);
+    bool HasExpiredPaidPlan = false,
+    string? ExpiredPaidPlanDisplayName = null);

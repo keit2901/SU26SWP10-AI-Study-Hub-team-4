@@ -11,6 +11,7 @@ namespace AI_Study_Hub_v2.Services.Payment;
 
 public sealed class VnPayService : IVnPayService
 {
+    private const int MaxPaymentHistoryItems = 50;
     private readonly AppDbContext _db;
     private readonly VnPaySettings _settings;
     private readonly IPlanService _planService;
@@ -101,6 +102,7 @@ public sealed class VnPayService : IVnPayService
         };
         _db.PaymentTransactions.Add(txn);
         await _db.SaveChangesAsync(ct);
+        await TrimPaymentHistoryAsync(userId, ct);
 
         return BuildPaymentResponse(txn, userIpAddress);
     }
@@ -261,6 +263,26 @@ public sealed class VnPayService : IVnPayService
         }
         if (count > 0) await _db.SaveChangesAsync(ct);
         return count;
+    }
+
+    private async Task TrimPaymentHistoryAsync(Guid userId, CancellationToken ct)
+    {
+        var stalePaymentIds = await _db.PaymentTransactions
+            .Where(pt => pt.UserId == userId)
+            .OrderByDescending(pt => pt.CreatedAt)
+            .ThenByDescending(pt => pt.Id)
+            .Skip(MaxPaymentHistoryItems)
+            .Select(pt => pt.Id)
+            .ToListAsync(ct);
+
+        if (stalePaymentIds.Count == 0)
+        {
+            return;
+        }
+
+        await _db.PaymentTransactions
+            .Where(pt => stalePaymentIds.Contains(pt.Id))
+            .ExecuteDeleteAsync(ct);
     }
 
     private Dtos.PaymentUrlResponse BuildPaymentResponse(

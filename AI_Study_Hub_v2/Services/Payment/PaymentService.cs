@@ -16,6 +16,7 @@ namespace AI_Study_Hub_v2.Services.Payment;
 /// </summary>
 public sealed class PaymentService : IPaymentService
 {
+    private const int MaxPaymentHistoryItems = 50;
     private readonly IPaymentProvider _provider;
     private readonly AppDbContext _db;
     private readonly IPlanService _planService;
@@ -94,6 +95,7 @@ public sealed class PaymentService : IPaymentService
         };
         _db.PaymentTransactions.Add(txn);
         await _db.SaveChangesAsync(ct);
+        await TrimPaymentHistoryAsync(userId, ct);
 
         // Call provider to create payment link
         var paymentRequest = new PaymentRequest(
@@ -110,6 +112,7 @@ public sealed class PaymentService : IPaymentService
         {
             txn.Status = "failed";
             txn.ErrorMessage = result.ErrorMessage;
+            txn.CompletedAt = now;
             await _db.SaveChangesAsync(ct);
             _logger.LogWarning(
                 "Payment provider could not create link for user {UserId}, plan {PlanKey}, cycle {BillingCycle}: {ProviderMessage}",
@@ -194,6 +197,7 @@ public sealed class PaymentService : IPaymentService
             txn.Status = "failed";
             txn.ErrorMessage = $"Amount mismatch: expected {txn.AmountVnd}, got {verification.AmountVnd}";
             txn.VnpayResponseJson = rawBody;
+            txn.CompletedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
             return new WebhookResult(false, "Amount mismatch.");
         }
@@ -207,6 +211,7 @@ public sealed class PaymentService : IPaymentService
                 txn.Status = "failed";
                 txn.ErrorMessage = "Plan not found during webhook processing.";
                 txn.VnpayResponseJson = rawBody;
+                txn.CompletedAt = DateTimeOffset.UtcNow;
                 await _db.SaveChangesAsync(ct);
                 return new WebhookResult(false, "Plan not found.");
             }
@@ -223,6 +228,7 @@ public sealed class PaymentService : IPaymentService
             txn.Status = "failed";
             txn.ErrorMessage = $"Provider status: {verification.Status}";
             txn.VnpayResponseJson = rawBody;
+            txn.CompletedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
 
             _logger.LogInformation("Payment failed for txn {TxnRef}: status={Status}", txnRef, verification.Status);
@@ -391,11 +397,32 @@ public sealed class PaymentService : IPaymentService
         {
             txn.Status = "expired";
             txn.ErrorMessage = BuildExpiredMessage();
+            txn.CompletedAt = DateTimeOffset.UtcNow;
             count++;
         }
 
         if (count > 0) await _db.SaveChangesAsync(ct);
         return count;
+    }
+
+    private async Task TrimPaymentHistoryAsync(Guid userId, CancellationToken ct)
+    {
+        var stalePaymentIds = await _db.PaymentTransactions
+            .Where(pt => pt.UserId == userId)
+            .OrderByDescending(pt => pt.CreatedAt)
+            .ThenByDescending(pt => pt.Id)
+            .Skip(MaxPaymentHistoryItems)
+            .Select(pt => pt.Id)
+            .ToListAsync(ct);
+
+        if (stalePaymentIds.Count == 0)
+        {
+            return;
+        }
+
+        await _db.PaymentTransactions
+            .Where(pt => stalePaymentIds.Contains(pt.Id))
+            .ExecuteDeleteAsync(ct);
     }
 
     private static string? ExtractProviderTxnIdFromJson(string? json)

@@ -24,6 +24,8 @@ namespace AI_Study_Hub_v2.Controllers;
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public sealed class PlansController : ControllerBase
 {
+    private const int MaxPaymentHistoryItems = 50;
+
     private readonly IPlanService _planService;
     private readonly IStorageQuotaService _quotaService;
     private readonly IPaymentService _paymentService;
@@ -119,7 +121,7 @@ public sealed class PlansController : ControllerBase
         try
         {
             if (take < 1) take = 12;
-            if (take > 50) take = 50;
+            if (take > MaxPaymentHistoryItems) take = MaxPaymentHistoryItems;
 
             var supabaseUserId = GetSupabaseUserIdFromClaims();
             var user = await _db.Users
@@ -133,9 +135,12 @@ public sealed class PlansController : ControllerBase
                 });
             }
 
+            await TrimPaymentHistoryAsync(user.Id, ct);
+
             var payments = await _db.PaymentTransactions
                 .Where(pt => pt.UserId == user.Id)
                 .OrderByDescending(pt => pt.CreatedAt)
+                .ThenByDescending(pt => pt.Id)
                 .Take(take)
                 .Select(pt => new PaymentTransactionDto(
                     pt.Id,
@@ -358,6 +363,7 @@ public sealed class PlansController : ControllerBase
                 _db.PaymentTransactions.Add(paymentTransaction);
 
                 await _db.SaveChangesAsync(ct);
+                await TrimPaymentHistoryAsync(user.Id, ct);
 
                 // F5.1: audit logging on self-service purchases
                 try
@@ -534,6 +540,26 @@ public sealed class PlansController : ControllerBase
         var result = await _paymentService.CreatePaymentAsync(
             user.Id, oldTxn.PlanKey, oldTxn.BillingCycle, ct);
         return Ok(result);
+    }
+
+    private async Task TrimPaymentHistoryAsync(Guid userId, CancellationToken ct)
+    {
+        var stalePaymentIds = await _db.PaymentTransactions
+            .Where(pt => pt.UserId == userId)
+            .OrderByDescending(pt => pt.CreatedAt)
+            .ThenByDescending(pt => pt.Id)
+            .Skip(MaxPaymentHistoryItems)
+            .Select(pt => pt.Id)
+            .ToListAsync(ct);
+
+        if (stalePaymentIds.Count == 0)
+        {
+            return;
+        }
+
+        await _db.PaymentTransactions
+            .Where(pt => stalePaymentIds.Contains(pt.Id))
+            .ExecuteDeleteAsync(ct);
     }
 
     private Guid GetSupabaseUserIdFromClaims()

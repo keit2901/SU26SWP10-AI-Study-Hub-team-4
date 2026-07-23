@@ -294,12 +294,12 @@ else
             return "vượt quá dung lượng của gói hiện tại.";
         }
 
-        return $"{FormatBytes(snapshot.UsedBytes)} / {FormatBytes(quota)} của gói Free";
+        return $"{FormatBytes(snapshot.UsedBytes)} / {FormatBytes(quota)} của gói {snapshot.PlanDisplayName}";
     }
 
     private string BuildStorageWarningTitle()
-        => Session.CurrentPlanSnapshot?.HasExpiredPaidPlan == true
-            ? "Gói Pro của bạn đã hết hạn"
+        => !string.IsNullOrWhiteSpace(Session.CurrentPlanSnapshot?.ExpiredPaidPlanDisplayName)
+            ? $"Gói {Session.CurrentPlanSnapshot!.ExpiredPaidPlanDisplayName} của bạn đã hết hạn"
             : "Bạn đã vượt giới hạn dung lượng của gói hiện tại";
 
     private string BuildStorageWarningMessage()
