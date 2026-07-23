@@ -16,6 +16,7 @@ namespace AI_Study_Hub_v2.Services.Payment;
 /// </summary>
 public sealed class PaymentService : IPaymentService
 {
+    private const int MaxPaymentHistoryItems = 50;
     private readonly IPaymentProvider _provider;
     private readonly AppDbContext _db;
     private readonly IPlanService _planService;
@@ -49,11 +50,11 @@ public sealed class PaymentService : IPaymentService
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null)
-            throw new InvalidOperationException("User not found");
+            throw new KeyNotFoundException("User not found.");
 
         var plan = _planService.GetPlanByKey(planKey);
         if (plan is null)
-            throw new InvalidOperationException("Plan not found");
+            throw new KeyNotFoundException("Plan not found.");
 
         // FC-04: Expire any existing pending transactions so each purchase gets a fresh QR
         var existingPendings = await _db.PaymentTransactions
@@ -94,6 +95,7 @@ public sealed class PaymentService : IPaymentService
         };
         _db.PaymentTransactions.Add(txn);
         await _db.SaveChangesAsync(ct);
+        await TrimPaymentHistoryAsync(userId, ct);
 
         // Call provider to create payment link
         var paymentRequest = new PaymentRequest(
@@ -110,8 +112,17 @@ public sealed class PaymentService : IPaymentService
         {
             txn.Status = "failed";
             txn.ErrorMessage = result.ErrorMessage;
+            txn.CompletedAt = now;
             await _db.SaveChangesAsync(ct);
-            throw new InvalidOperationException($"Provider payment creation failed: {result.ErrorMessage}");
+            _logger.LogWarning(
+                "Payment provider could not create link for user {UserId}, plan {PlanKey}, cycle {BillingCycle}: {ProviderMessage}",
+                userId,
+                planKey,
+                billingCycle,
+                result.ErrorMessage);
+            throw new PaymentProviderException(
+                "The payment gateway is temporarily unavailable. Please try again in a moment.",
+                result.ErrorMessage);
         }
 
         // Store provider response in VnpayResponseJson (generic provider response storage)
@@ -186,6 +197,7 @@ public sealed class PaymentService : IPaymentService
             txn.Status = "failed";
             txn.ErrorMessage = $"Amount mismatch: expected {txn.AmountVnd}, got {verification.AmountVnd}";
             txn.VnpayResponseJson = rawBody;
+            txn.CompletedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
             return new WebhookResult(false, "Amount mismatch.");
         }
@@ -199,6 +211,7 @@ public sealed class PaymentService : IPaymentService
                 txn.Status = "failed";
                 txn.ErrorMessage = "Plan not found during webhook processing.";
                 txn.VnpayResponseJson = rawBody;
+                txn.CompletedAt = DateTimeOffset.UtcNow;
                 await _db.SaveChangesAsync(ct);
                 return new WebhookResult(false, "Plan not found.");
             }
@@ -215,6 +228,7 @@ public sealed class PaymentService : IPaymentService
             txn.Status = "failed";
             txn.ErrorMessage = $"Provider status: {verification.Status}";
             txn.VnpayResponseJson = rawBody;
+            txn.CompletedAt = DateTimeOffset.UtcNow;
             await _db.SaveChangesAsync(ct);
 
             _logger.LogInformation("Payment failed for txn {TxnRef}: status={Status}", txnRef, verification.Status);
@@ -255,6 +269,16 @@ public sealed class PaymentService : IPaymentService
 
         if (txn is null)
             return new ReturnUrlResult(true, "unknown", null, 0, "Transaction not found.");
+
+        if (txn.Status == "pending"
+            && txn.ExpiresAt.HasValue
+            && txn.ExpiresAt.Value <= DateTimeOffset.UtcNow)
+        {
+            txn.Status = "expired";
+            txn.CompletedAt = DateTimeOffset.UtcNow;
+            txn.ErrorMessage = BuildExpiredMessage();
+            await _db.SaveChangesAsync(ct);
+        }
 
         // If still pending, check live status with provider — webhook may be delayed
         if (txn.Status == "pending")
@@ -372,12 +396,33 @@ public sealed class PaymentService : IPaymentService
         foreach (var txn in expired)
         {
             txn.Status = "expired";
-            txn.ErrorMessage = $"Payment expired after {_settings.ExpireMinutes} minutes.";
+            txn.ErrorMessage = BuildExpiredMessage();
+            txn.CompletedAt = DateTimeOffset.UtcNow;
             count++;
         }
 
         if (count > 0) await _db.SaveChangesAsync(ct);
         return count;
+    }
+
+    private async Task TrimPaymentHistoryAsync(Guid userId, CancellationToken ct)
+    {
+        var stalePaymentIds = await _db.PaymentTransactions
+            .Where(pt => pt.UserId == userId)
+            .OrderByDescending(pt => pt.CreatedAt)
+            .ThenByDescending(pt => pt.Id)
+            .Skip(MaxPaymentHistoryItems)
+            .Select(pt => pt.Id)
+            .ToListAsync(ct);
+
+        if (stalePaymentIds.Count == 0)
+        {
+            return;
+        }
+
+        await _db.PaymentTransactions
+            .Where(pt => stalePaymentIds.Contains(pt.Id))
+            .ExecuteDeleteAsync(ct);
     }
 
     private static string? ExtractProviderTxnIdFromJson(string? json)
@@ -421,6 +466,8 @@ public sealed class PaymentService : IPaymentService
 
         return "http://localhost:5240";
     }
+
+    private string BuildExpiredMessage() => $"Payment expired after {_settings.ExpireMinutes} minutes.";
 }
 
 /// <summary>

@@ -55,19 +55,23 @@
                 {
                     <div class="payment-history-table">
                         <div class="payment-history-grid payment-history-grid-head">
-                            <span>Ngày</span>
+                            <span>Thời gian tạo</span>
+                            <span>Kết thúc lúc</span>
                             <span>Số tiền</span>
                             <span>Trạng thái</span>
+                            <span>Lý do</span>
                         </div>
 
                         @foreach (var payment in PagedPayments)
                         {
                             <div class="payment-history-grid">
-                                <span>@FormatDate(payment.CreatedAt)</span>
+                                <span>@FormatDateTime(payment.CreatedAt)</span>
+                                <span>@FormatResolvedAt(payment)</span>
                                 <span>@FormatAmount(payment.AmountVnd)</span>
                                 <span>
                                     <span class="payment-status-chip @GetStatusClass(payment.Status)">@FormatStatus(payment.Status)</span>
                                 </span>
+                                <span class="payment-status-reason">@BuildStatusReason(payment)</span>
                             </div>
                         }
                     </div>
@@ -171,7 +175,7 @@
             Session.SetPlan(snapshot.PlanKey);
             _planExpiresAt = snapshot.ExpiresAt;
 
-            var payments = await PlanApi.GetMyPaymentTransactionsAsync(Session.AccessToken, 100);
+            var payments = await PlanApi.GetMyPaymentTransactionsAsync(Session.AccessToken, 50);
             _payments.AddRange(payments.OrderByDescending(item => item.CreatedAt));
         }
         catch (PlanApiException ex)
@@ -197,8 +201,8 @@
 
     private string BuildExpiryText()
         => _planExpiresAt.HasValue
-            ? $"Expires on {_planExpiresAt.Value.ToLocalTime():dd/MM/yyyy}"
-            : "No expiration";
+            ? $"Hạn sử dụng đến {_planExpiresAt.Value.ToLocalTime():dd/MM/yyyy HH:mm}"
+            : "Không thời hạn";
 
     private string BuildPlanButtonLabel()
         => string.Equals(Session.CurrentPlan, "free", StringComparison.OrdinalIgnoreCase)
@@ -214,7 +218,7 @@
             "completed" => "Đã thanh toán",
             "pending" => "Đang chờ",
             "failed" => "Thất bại",
-            "expired" => "Expired",
+            "expired" => "Hết hạn",
             _ => status
         };
 
@@ -228,8 +232,31 @@
             _ => "info"
         };
 
-    private static string FormatDate(DateTimeOffset date)
-        => date.ToLocalTime().ToString("d 'thg' M, yyyy");
+    private static string FormatDateTime(DateTimeOffset date)
+        => date.ToLocalTime().ToString("dd/MM/yyyy HH:mm");
+
+    private static string FormatResolvedAt(PaymentTransactionDto payment)
+    {
+        var resolvedAt = payment.CompletedAt ?? payment.ExpiresAt;
+        return resolvedAt.HasValue ? FormatDateTime(resolvedAt.Value) : "--";
+    }
+
+    private static string BuildStatusReason(PaymentTransactionDto payment)
+    {
+        if (!string.IsNullOrWhiteSpace(payment.ErrorMessage))
+        {
+            return payment.ErrorMessage!;
+        }
+
+        return payment.Status.ToLowerInvariant() switch
+        {
+            "completed" => "Thanh toán thành công.",
+            "pending" => "Giao dịch đang chờ bạn hoàn tất thanh toán.",
+            "failed" => "Cổng thanh toán không thể hoàn tất giao dịch.",
+            "expired" => "Quá thời gian thanh toán cho phép.",
+            _ => "Không có thêm thông tin."
+        };
+    }
 
     private void GoToPage(int page)
     {
@@ -353,7 +380,7 @@
 
     .payment-history-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr) minmax(0, 1fr);
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 0.95fr) minmax(0, 1.5fr);
         gap: 0.75rem;
         align-items: center;
         padding: 0.95rem 1rem;
@@ -402,6 +429,12 @@
     .payment-status-chip.info {
         background: rgba(99, 102, 241, 0.1);
         color: #4f46d9;
+    }
+
+    .payment-status-reason {
+        color: #5b5476;
+        font-size: 0.84rem;
+        line-height: 1.45;
     }
 
     .payment-page-button {
@@ -456,6 +489,16 @@
     .payment-empty-state h4 {
         margin: 0;
         color: #19132f;
+    }
+
+    @@media (max-width: 900px) {
+        .payment-history-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .payment-status-reason {
+            grid-column: 1 / -1;
+        }
     }
 
     @@media (max-width: 720px) {
