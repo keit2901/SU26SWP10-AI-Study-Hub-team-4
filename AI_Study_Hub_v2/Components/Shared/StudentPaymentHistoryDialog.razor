@@ -55,23 +55,23 @@
                 {
                     <div class="payment-history-table">
                         <div class="payment-history-grid payment-history-grid-head">
-                            <span>Thời gian tạo</span>
-                            <span>Kết thúc lúc</span>
+                            <span>Thời gian</span>
+                            <span>Gói</span>
                             <span>Số tiền</span>
                             <span>Trạng thái</span>
-                            <span>Lý do</span>
+                            <span>Ghi chú</span>
                         </div>
 
                         @foreach (var payment in PagedPayments)
                         {
                             <div class="payment-history-grid">
                                 <span>@FormatDateTime(payment.CreatedAt)</span>
-                                <span>@FormatResolvedAt(payment)</span>
+                                <span class="payment-plan-cell">@FormatPlan(payment.PlanKey)</span>
                                 <span>@FormatAmount(payment.AmountVnd)</span>
                                 <span>
                                     <span class="payment-status-chip @GetStatusClass(payment.Status)">@FormatStatus(payment.Status)</span>
                                 </span>
-                                <span class="payment-status-reason">@BuildStatusReason(payment)</span>
+                                <span class="payment-status-reason">@BuildNotesText(payment)</span>
                             </div>
                         }
                     </div>
@@ -198,6 +198,33 @@
         => string.IsNullOrWhiteSpace(Session.CurrentPlan)
             ? "Free"
             : $"{char.ToUpper(Session.CurrentPlan[0])}{Session.CurrentPlan[1..].ToLowerInvariant()}";
+
+    private static string FormatPlan(string? planKey)
+    {
+        if (string.IsNullOrWhiteSpace(planKey)) return "Free";
+        return char.ToUpperInvariant(planKey[0]) + planKey[1..].ToLowerInvariant();
+    }
+
+    private static string BuildNotesText(PaymentTransactionDto payment)
+    {
+        if (payment.Status.Equals("completed", StringComparison.OrdinalIgnoreCase))
+        {
+            return payment.ExpiresAt is DateTimeOffset expiresAt
+                ? $"Hạn dùng đến: {expiresAt.ToLocalTime():dd/MM/yyyy HH:mm}"
+                : "Không giới hạn";
+        }
+        if (!string.IsNullOrWhiteSpace(payment.ErrorMessage))
+        {
+            return payment.ErrorMessage;
+        }
+        return payment.Status.ToLowerInvariant() switch
+        {
+            "pending" => "Giao dịch đang chờ hoàn tất.",
+            "failed" => "Giao dịch thất bại.",
+            "expired" => "Giao dịch đã hết hạn.",
+            _ => "Không có thông tin bổ sung."
+        };
+    }
 
     private string BuildExpiryText()
         => _planExpiresAt.HasValue
@@ -380,7 +407,7 @@
 
     .payment-history-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 0.95fr) minmax(0, 1.5fr);
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr);
         gap: 0.75rem;
         align-items: center;
         padding: 0.95rem 1rem;

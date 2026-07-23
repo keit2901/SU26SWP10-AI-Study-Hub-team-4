@@ -51,6 +51,6 @@ public sealed class SystemConfigSeederTests
         await SystemConfigSeeder.SeedAsync(db, NullLogger.Instance);
 
         (await db.SystemConfigs.SingleAsync(c => c.Key == "auth.allow_self_registration")).Value.Should().Be("false");
-        (await db.SystemConfigs.SingleAsync(c => c.Key == "ai.chat_model")).Value.Should().Be("gpt-4o-mini");
+        (await db.SystemConfigs.SingleAsync(c => c.Key == "ai.chat_model")).Value.Should().Be("custom-model");
     }
 }

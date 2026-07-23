@@ -134,6 +134,11 @@ public sealed class StorageQuotaService : IStorageQuotaService
             .Select(up => up.Plan.DisplayName)
             .FirstOrDefaultAsync(ct);
 
+        var docCount = await _db.Documents.CountAsync(d => d.UserId == user.Id, ct);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var tokensUsedToday = user.TokenUsageDate == today ? user.TokensUsedToday : 0;
+        var dailyTokenQuota = effectivePlan.DailyTokenQuota ?? user.DailyTokenQuota;
+
         return new StorageQuotaSnapshotDto(
             user.StorageUsedBytes,
             effectivePlan.StorageQuotaBytes,
@@ -145,7 +150,10 @@ public sealed class StorageQuotaService : IStorageQuotaService
             effectivePlan.MaxFolderCount,
             effectivePlan.MaxDocsPerFolder,
             latestExpiredPaidPlan is not null,
-            latestExpiredPaidPlan);
+            latestExpiredPaidPlan,
+            tokensUsedToday,
+            dailyTokenQuota,
+            docCount);
     }
 
     public async Task ValidateDocumentCountAsync(
