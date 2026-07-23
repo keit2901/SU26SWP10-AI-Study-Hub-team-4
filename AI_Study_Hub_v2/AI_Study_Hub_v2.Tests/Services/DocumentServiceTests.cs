@@ -28,6 +28,7 @@ public class DocumentServiceTests
         AppDbContext db,
         ISupabaseStorageClient storage,
         IPlanCapacityGuard? capacityGuard = null,
+        IStorageQuotaService? quota = null,
         IDocumentIngestionService? ingestion = null)
     {
         quota ??= DefaultQuotaMock().Object;
