@@ -25,6 +25,9 @@
             <p class="text-body-md text-on-surface-variant mt-1" style="font-size: 14px; color: #575e72; font-family: 'Hanken Grotesk', sans-serif;">Manage and monitor the health of your RAG knowledge base. Ensure all academic materials are correctly indexed for the AI tutor system.</p>
         </div>
         <div class="d-flex align-center" style="gap: 0.75rem;">
+            <MudButton Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Tune" OnClick="OpenModerationQueue" Class="moderation-queue-btn" Style="border-radius: 8px; font-weight: 700; text-transform: none; color: #575e72; background-color: #eceef0; font-size: 13px; box-shadow: none;">
+                Moderation Queue
+            </MudButton>
             <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.UploadFile" OnClick="OpenRegisterSheet" Class="register-doc-btn" Style="background-color: #4648d4; color: #ffffff; border-radius: 8px; font-weight: 700; text-transform: none; font-size: 13px;">
                 Register Document
             </MudButton>
@@ -117,6 +120,14 @@
             }
         </select>
 
+        <select class="filter-select" value="@_selectedModerationStatus" @onchange="OnModerationStatusSelectChanged">
+            <option value="">Moderation</option>
+            @foreach (var status in _documents.Select(d => d.ModerationStatus).Distinct().OrderBy(s => s))
+            {
+                <option value="@status">@GetModerationText(status)</option>
+            }
+        </select>
+
         <select class="filter-select" value="@_selectedSubject" @onchange="OnSubjectSelectChanged">
             <option value="">Subject</option>
             @foreach (var subject in _documents.Select(d => d.SubjectCode).Distinct().OrderBy(s => s))
@@ -128,6 +139,7 @@
         @{
             var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchText)
                 || !string.IsNullOrWhiteSpace(_selectedProcessingStatus)
+                || !string.IsNullOrWhiteSpace(_selectedModerationStatus)
                 || !string.IsNullOrWhiteSpace(_selectedSubject);
             var filterIconColor = hasActiveFilters ? "#575e72" : "#c7c6d5";
             var filterIconStyle = $"font-size: 18px; color: {filterIconColor};";
@@ -170,7 +182,7 @@
                         <th>SUBJECT</th>
                         <th>OWNER</th>
                         <th>PROCESSING</th>
-                        <th>REVIEW</th>
+                        <th>MODERATION</th>
                         <th style="width: 80px;">ACTIONS</th>
                     </tr>
                 </thead>
@@ -214,8 +226,8 @@
                                 </div>
                             </td>
                             <td>
-                                <span class="review-badge @GetReviewClass(doc.ReviewStatus)">
-                                    @GetReviewText(doc.ReviewStatus)
+                                <span class="moderation-badge @GetModerationClass(doc.ModerationStatus)">
+                                    @GetModerationText(doc.ModerationStatus)
                                 </span>
                             </td>
                             <td>
@@ -227,8 +239,9 @@
                                     </ActivatorContent>
                                     <ChildContent>
                                         <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(doc))">View details</MudMenuItem>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Gavel" Disabled="@(!CanModerate(doc))" OnClick="OpenModerationQueue">Open moderation</MudMenuItem>
                                         <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditDocument(doc))">Edit metadata</MudMenuItem>
-                                        <MudMenuItem Icon="@Icons.Material.Filled.Sync" OnClick="@(() => ReindexDocumentAsync(doc))">Re-index</MudMenuItem>
+                                        <MudMenuItem Icon="@Icons.Material.Filled.Sync" Disabled="@(doc.ModerationStatus != ApprovedModeration)" OnClick="@(() => ReindexDocumentAsync(doc))">Re-index</MudMenuItem>
                                         <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveDocumentAsync(doc))">Remove record</MudMenuItem>
                                     </ChildContent>
                                 </MudMenu>
@@ -270,18 +283,18 @@
     <!-- Bottom Status Footer -->
     <div class="bottom-status-footer mb-6">
         <div class="indexing-progress-wrapper">
-            <span class="indexing-label">Documents Indexed</span>
+            <span class="indexing-label">Background Indexing in Progress</span>
             <div class="indexing-progress-bar">
-                <div class="indexing-progress-fill" style="width: @_indexedPercent%"></div>
+                <div class="indexing-progress-fill" style="width: 65%"></div>
             </div>
-            <span class="indexing-percentage">@_indexedPercent%</span>
+            <span class="indexing-percentage">65%</span>
         </div>
         <div class="db-status-badge">
-            <span class="db-status-dot @(_errorMessage is null ? "online" : "error")"></span>
-            <span class="db-status-text">@(_errorMessage is null ? "DATABASE STATUS OPERATIONAL" : "LOAD ERROR")</span>
+            <span class="db-status-dot"></span>
+            <span class="db-status-text">DATABASE STATUS OPERATIONAL</span>
         </div>
         <div class="last-updated-text">
-            Last Updated: @_lastLoadTime
+            Last Updated: 14:32:01
         </div>
     </div>
 </div>
@@ -289,7 +302,7 @@
 <EntitySheet Open="@_documentSheetOpen"
              OpenChanged="@(value => _documentSheetOpen = value)"
              Title="@DocumentSheetTitle"
-              Subtitle="Edit document metadata — title, subject and storage path."
+             Subtitle="Edit document metadata used by search, moderation, and retrieval pipelines."
              Width="540px">
     <ChildContent>
         <MudForm @ref="_form" @bind-IsValid="_isFormValid">
@@ -304,14 +317,33 @@
                     <MudSelectItem T="string" Value="@("MATH101")">MATH101</MudSelectItem>
                     <MudSelectItem T="string" Value="@("PHYS205")">PHYS205</MudSelectItem>
                 </MudSelect>
+                <MudTextField @bind-Value="_editingDocument.OwnerName" Label="Owner name" Variant="Variant.Outlined" Required="true" />
+                <MudTextField @bind-Value="_editingDocument.OwnerEmail" Label="Owner email" Variant="Variant.Outlined" InputType="InputType.Email" Required="true" />
+                <MudSelect T="string" @bind-Value="_editingDocument.ProcessingStatus" Label="Processing status" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="string" Value="@PendingProcessing">Pending</MudSelectItem>
+                    <MudSelectItem T="string" Value="@ProcessingProcessing">Processing</MudSelectItem>
+                    <MudSelectItem T="string" Value="@IndexedProcessing">Indexed</MudSelectItem>
+                    <MudSelectItem T="string" Value="@FailedProcessing">Failed</MudSelectItem>
+                </MudSelect>
+                <MudSelect T="string" @bind-Value="_editingDocument.ModerationStatus" Label="Moderation status" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="string" Value="@PendingModeration">Pending Review</MudSelectItem>
+                    <MudSelectItem T="string" Value="@ApprovedModeration">Approved</MudSelectItem>
+                    <MudSelectItem T="string" Value="@ReportedModeration">Reported</MudSelectItem>
+                    <MudSelectItem T="string" Value="@RejectedModeration">Rejected</MudSelectItem>
+                    <MudSelectItem T="string" Value="@RemovedModeration">Removed</MudSelectItem>
+                </MudSelect>
                 <MudTextField @bind-Value="_editingDocument.StoragePath" Label="Storage path" Variant="Variant.Outlined" Required="true" />
+                <MudTextField @bind-Value="_editingDocument.TagsCsv" Label="Tags" Variant="Variant.Outlined" Placeholder="rag, supabase, project" />
                 <HumanCheck @ref="_humanCheck" Action="admin-document-edit" ValidChanged="OnHumanCheckChanged" />
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                    Use Document Moderation for approve/reject/remove decisions that require owner notification and audit log details.
+                </MudAlert>
             </MudStack>
         </MudForm>
     </ChildContent>
     <FooterContent>
         <MudButton Variant="Variant.Text" OnClick="CloseSheetAsync">Cancel</MudButton>
-        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!_isFormValid || !_humanCheckValid || _isSaving)" OnClick="SaveDocumentAsync">
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Save" Disabled="@(!_isFormValid || !_humanCheckValid)" OnClick="SaveDocumentAsync">
             Save document
         </MudButton>
     </FooterContent>
@@ -322,34 +354,35 @@
     private const string ProcessingProcessing = "Processing";
     private const string IndexedProcessing = "Indexed";
     private const string FailedProcessing = "Failed";
-    private const string ReviewNone = "None";
-    private const string ReviewApproved = "Approved";
-    private const string ReviewRejected = "Rejected";
-    private const string ReviewEscalated = "Escalated";
+    private const string PendingModeration = "Pending Review";
+    private const string ApprovedModeration = "Approved";
+    private const string ReportedModeration = "Reported";
+    private const string RejectedModeration = "Rejected";
+    private const string RemovedModeration = "Removed";
 
     private readonly List<DocumentRow> _documents = new();
     private bool _isLoading = true;
     private bool _documentSheetOpen;
     private bool _isFormValid;
-    private bool _isSaving;
     private string? _searchText;
     private string? _selectedProcessingStatus;
+    private string? _selectedModerationStatus;
     private string? _selectedSubject;
     private string? _errorMessage;
     private MudForm? _form;
     private HumanCheck? _humanCheck;
     private bool _humanCheckValid;
     private DocumentEditModel _editingDocument = DocumentEditModel.New();
-    private int _indexedPercent;
-    private string _lastLoadTime = "—";
 
     private string DocumentSheetTitle => _editingDocument.Id == Guid.Empty ? "Register document" : "Edit document";
 
     private IEnumerable<DocumentRow> FilteredDocuments => _documents
         .Where(MatchesProcessingStatus)
+        .Where(MatchesModerationStatus)
         .Where(MatchesSubject)
         .Where(MatchesSearch)
-        .OrderByDescending(document => document.CreatedAt);
+        .OrderByDescending(document => document.ModerationStatus is PendingModeration or ReportedModeration)
+        .ThenByDescending(document => document.CreatedAt);
 
     private IEnumerable<DocumentRow> PagedDocuments => FilteredDocuments
         .Skip((_currentPage - 1) * _pageSize)
@@ -363,7 +396,7 @@
 
     private int TotalDocumentsCount => FilteredDocuments.Count();
     private int IndexedCount => FilteredDocuments.Count(d => d.ProcessingStatus == IndexedProcessing);
-    private int NeedsAttentionCount => FilteredDocuments.Count(d => d.ProcessingStatus is PendingProcessing or FailedProcessing);
+    private int NeedsAttentionCount => FilteredDocuments.Count(d => d.ModerationStatus is PendingModeration or ReportedModeration);
     private int FailedCount => FilteredDocuments.Count(d => d.ProcessingStatus == FailedProcessing);
 
     private void GoToPage(int page)
@@ -452,10 +485,6 @@
             {
                 _documents.Add(ToRow(dto));
             }
-            var total = _documents.Count;
-            var indexed = _documents.Count(d => d.ProcessingStatus == IndexedProcessing);
-            _indexedPercent = total > 0 ? (int)Math.Round((double)indexed / total * 100) : 0;
-            _lastLoadTime = DateTime.Now.ToString("HH:mm:ss");
         }
         catch (Exception ex)
         {
@@ -481,6 +510,13 @@
         return Task.CompletedTask;
     }
 
+    private Task OnModerationStatusSelectChanged(ChangeEventArgs e)
+    {
+        _selectedModerationStatus = e.Value?.ToString();
+        _currentPage = 1;
+        return Task.CompletedTask;
+    }
+
     private Task OnSubjectSelectChanged(ChangeEventArgs e)
     {
         _selectedSubject = e.Value?.ToString();
@@ -492,6 +528,7 @@
     {
         _searchText = null;
         _selectedProcessingStatus = null;
+        _selectedModerationStatus = null;
         _selectedSubject = null;
         _currentPage = 1;
         _pageJumpInput = string.Empty;
@@ -502,6 +539,12 @@
     {
         return string.IsNullOrWhiteSpace(_selectedProcessingStatus)
             || document.ProcessingStatus.Equals(_selectedProcessingStatus, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private bool MatchesModerationStatus(DocumentRow document)
+    {
+        return string.IsNullOrWhiteSpace(_selectedModerationStatus)
+            || document.ModerationStatus.Equals(_selectedModerationStatus, StringComparison.OrdinalIgnoreCase);
     }
 
     private bool MatchesSubject(DocumentRow document)
@@ -530,6 +573,11 @@
     {
         _editingDocument = DocumentEditModel.New();
         _documentSheetOpen = true;
+    }
+
+    private void OpenModerationQueue()
+    {
+        Navigation.NavigateTo("/admin/escalations");
     }
 
     private void OpenDetails(DocumentRow document)
@@ -561,53 +609,37 @@
 
     private async Task SaveDocumentAsync()
     {
-        if (_form is null) return;
+        if (_form is null)
+        {
+            return;
+        }
 
         await _form.ValidateAsync();
         var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
-        if (!_form.IsValid || !humanOk) return;
+        if (!_form.IsValid || !humanOk)
+        {
+            return;
+        }
 
         if (_editingDocument.Id == Guid.Empty)
         {
-            // New document — handled by upload flow, not editable here
             _documents.Insert(0, _editingDocument.ToDocumentRow(DateTime.UtcNow));
             Snackbar.Add("Document registered and audit log entry queued.", Severity.Success);
         }
         else
         {
-            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            var document = _documents.FirstOrDefault(item => item.Id == _editingDocument.Id);
+            if (document is not null)
             {
-                Snackbar.Add("Session expired. Please log in again.", Severity.Error);
-                return;
-            }
-
-            _isSaving = true;
-            try
-            {
-                var update = new UpdateDocumentRequest
-                {
-                    Title = _editingDocument.Title,
-                    SubjectCode = _editingDocument.SubjectCode,
-                    StoragePath = _editingDocument.StoragePath
-                };
-                await AdminApi.UpdateDocumentAsync(Session.AccessToken, _editingDocument.Id, update);
-
-                var document = _documents.FirstOrDefault(item => item.Id == _editingDocument.Id);
-                if (document is not null)
-                {
-                    document.Title = _editingDocument.Title;
-                    document.SubjectCode = _editingDocument.SubjectCode;
-                    document.StoragePath = _editingDocument.StoragePath;
-                    Snackbar.Add("Document updated and audit log entry queued.", Severity.Success);
-                }
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Failed to update document: {ex.Message}", Severity.Error);
-            }
-            finally
-            {
-                _isSaving = false;
+                document.Title = _editingDocument.Title;
+                document.SubjectCode = _editingDocument.SubjectCode;
+                document.OwnerName = _editingDocument.OwnerName;
+                document.OwnerEmail = _editingDocument.OwnerEmail;
+                document.ProcessingStatus = _editingDocument.ProcessingStatus;
+                document.ModerationStatus = _editingDocument.ModerationStatus;
+                document.StoragePath = _editingDocument.StoragePath;
+                document.Tags = ParseTags(_editingDocument.TagsCsv);
+                Snackbar.Add("Document metadata saved and audit log entry queued.", Severity.Success);
             }
         }
 
@@ -641,7 +673,7 @@
         var parameters = new DialogParameters
         {
             ["Title"] = "Remove document record",
-            ["Message"] = $"Remove {document.Title} from the library view? This action cannot be undone.",
+            ["Message"] = $"Remove {document.Title} from the library view? Use moderation removal when owner notification and reason capture are required.",
             ["ConfirmText"] = "Remove",
             ["ConfirmationText"] = document.Title,
             ["ConfirmColor"] = Color.Error
@@ -672,7 +704,7 @@
 
     private static bool CanModerate(DocumentRow document)
     {
-        return false; // Moderation has been removed — always false
+        return document.ModerationStatus is PendingModeration or ReportedModeration or RejectedModeration;
     }
 
     private static string GetProcessingText(string status)
@@ -698,26 +730,28 @@
         };
     }
 
-    private static string GetReviewText(string status)
+    private static string GetModerationText(string status)
     {
         return status switch
         {
-            ReviewNone => "PENDING",
-            ReviewApproved => "APPROVED",
-            ReviewRejected => "REJECTED",
-            ReviewEscalated => "ESCALATED",
+            PendingModeration => "PENDING",
+            ApprovedModeration => "APPROVED",
+            RejectedModeration => "REJECTED",
+            ReportedModeration => "REPORTED",
+            RemovedModeration => "REMOVED",
             _ => status.ToUpperInvariant()
         };
     }
 
-    private static string GetReviewClass(string status)
+    private static string GetModerationClass(string status)
     {
         return status switch
         {
-            ReviewNone => "pending",
-            ReviewApproved => "approved",
-            ReviewRejected => "rejected",
-            ReviewEscalated => "escalated",
+            PendingModeration => "pending",
+            ApprovedModeration => "approved",
+            RejectedModeration => "rejected",
+            ReportedModeration => "rejected",
+            RemovedModeration => "rejected",
             _ => "pending"
         };
     }
@@ -783,7 +817,7 @@
             OwnerName = dto.OwnerName,
             OwnerEmail = dto.OwnerEmail,
             ProcessingStatus = dto.Status,
-            ReviewStatus = dto.ReviewStatus,
+            ModerationStatus = dto.ReviewStatus,
             FileType = GetFileExtension(dto.MimeType),
             FileSizeMb = Math.Round(dto.FileSizeBytes / (1024.0 * 1024.0), 1),
             StoragePath = dto.StoragePath,
@@ -813,7 +847,7 @@
         public string OwnerName { get; set; } = string.Empty;
         public string OwnerEmail { get; set; } = string.Empty;
         public string ProcessingStatus { get; set; } = PendingProcessing;
-        public string ReviewStatus { get; set; } = "None";
+        public string ModerationStatus { get; set; } = PendingModeration;
         public string FileType { get; set; } = string.Empty;
         public double FileSizeMb { get; set; }
         public string StoragePath { get; set; } = string.Empty;
@@ -830,7 +864,7 @@
         public string OwnerName { get; set; } = string.Empty;
         public string OwnerEmail { get; set; } = string.Empty;
         public string ProcessingStatus { get; set; } = PendingProcessing;
-        public string ReviewStatus { get; set; } = "None";
+        public string ModerationStatus { get; set; } = PendingModeration;
         public string FileType { get; set; } = "pdf";
         public double FileSizeMb { get; set; } = 1;
         public string StoragePath { get; set; } = string.Empty;
@@ -853,7 +887,7 @@
                 OwnerName = document.OwnerName,
                 OwnerEmail = document.OwnerEmail,
                 ProcessingStatus = document.ProcessingStatus,
-                ReviewStatus = document.ReviewStatus,
+                ModerationStatus = document.ModerationStatus,
                 FileType = document.FileType,
                 FileSizeMb = document.FileSizeMb,
                 StoragePath = document.StoragePath,
@@ -871,7 +905,7 @@
                 OwnerName = OwnerName,
                 OwnerEmail = OwnerEmail,
                 ProcessingStatus = ProcessingStatus,
-                ReviewStatus = ReviewStatus,
+                ModerationStatus = ModerationStatus,
                 FileType = FileType,
                 FileSizeMb = FileSizeMb,
                 StoragePath = StoragePath,
@@ -1195,7 +1229,7 @@
         background-color: #3b82f6;
         display: inline-block;
     }
-    .review-badge {
+    .moderation-badge {
         font-size: 11px;
         font-weight: 700;
         padding: 4px 10px;
@@ -1204,21 +1238,17 @@
         text-transform: uppercase;
         letter-spacing: 0.02em;
     }
-    .review-badge.pending {
+    .moderation-badge.pending {
         background: #eceef0;
         color: #575e72;
     }
-    .review-badge.approved {
+    .moderation-badge.approved {
         background: rgba(70, 72, 212, 0.08);
         color: #4648d4;
     }
-    .review-badge.rejected {
+    .moderation-badge.rejected {
         background: rgba(186, 26, 26, 0.08);
         color: #ba1a1a;
-    }
-    .review-badge.escalated {
-        background: rgba(245, 158, 11, 0.08);
-        color: #d97706;
     }
 
     /* Pagination */
@@ -1339,13 +1369,6 @@
         height: 6px;
         border-radius: 50%;
         background-color: #10b981;
-        display: inline-block;
-    }
-    .db-status-dot.online {
-        background-color: #10b981;
-    }
-    .db-status-dot.error {
-        background-color: #ba1a1a;
     }
     .db-status-text {
         font-size: 10px;

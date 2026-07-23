@@ -2,7 +2,6 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 
 namespace AI_Study_Hub_v2.Tests.Services;
 
@@ -273,7 +272,7 @@ public sealed class CommunityServiceTests
     }
 
     private static CommunityService BuildSut(Data.AppDbContext db) =>
-        new(db, NullLogger<CommunityService>.Instance, Mock.Of<IAuditLogService>());
+        new(db, NullLogger<CommunityService>.Instance);
 
     private static void EnsureModeratorRole(Data.AppDbContext db)
     {

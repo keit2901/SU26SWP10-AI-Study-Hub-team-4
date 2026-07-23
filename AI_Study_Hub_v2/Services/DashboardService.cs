@@ -8,7 +8,6 @@ using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Components.Pages.Dashboard;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -19,13 +18,11 @@ public class DashboardService : IDashboardService
 
     private readonly AppDbContext _context;
     private readonly ISupabaseStorageClient _storage;
-    private readonly IAuditLogService _audit;
 
-    public DashboardService(AppDbContext context, ISupabaseStorageClient storage, IAuditLogService audit)
+    public DashboardService(AppDbContext context, ISupabaseStorageClient storage)
     {
         _context = context;
         _storage = storage;
-        _audit = audit;
     }
 
     public async Task<AdminDashboardStatsDto> GetAdminStatsAsync(CancellationToken ct = default)
@@ -255,9 +252,6 @@ public class DashboardService : IDashboardService
         doc.ReviewStatus = DocumentReviewStatus.Approved;
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync(ct);
-
-        _audit.Add(null, "DOCUMENT_APPROVED", "Document", documentId.ToString(), "Low");
-
         return true;
     }
 
@@ -270,9 +264,6 @@ public class DashboardService : IDashboardService
         doc.ErrorMessage = "Rejected by administrator.";
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync(ct);
-
-        _audit.Add(null, "DOCUMENT_REJECTED", "Document", documentId.ToString(), "Medium");
-
         return true;
     }
 

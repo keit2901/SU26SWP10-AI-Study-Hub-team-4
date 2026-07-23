@@ -18,7 +18,7 @@ public class FolderServiceTests
         var storage = Mock.Of<ISupabaseStorageClient>();
         return new FolderService(db, NullLogger<FolderService>.Instance,
             new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance),
-            new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<ISharedFolderCopyCoordinator>(), Mock.Of<IAuditLogService>());
+            new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<ISharedFolderCopyCoordinator>());
     }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)

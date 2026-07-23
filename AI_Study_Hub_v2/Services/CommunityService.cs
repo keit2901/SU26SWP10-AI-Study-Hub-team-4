@@ -3,7 +3,6 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using Microsoft.EntityFrameworkCore;
 using Npgsql;
-using System.Text.Json;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -17,13 +16,11 @@ public sealed class CommunityService : ICommunityService
 
     private readonly AppDbContext _db;
     private readonly ILogger<CommunityService> _logger;
-    private readonly IAuditLogService _audit;
 
-    public CommunityService(AppDbContext db, ILogger<CommunityService> logger, IAuditLogService audit)
+    public CommunityService(AppDbContext db, ILogger<CommunityService> logger)
     {
         _db = db;
         _logger = logger;
-        _audit = audit;
     }
 
     public async Task<Guid> ReportFolderAsync(
@@ -102,9 +99,6 @@ public sealed class CommunityService : ICommunityService
 
         _logger.LogInformation("Community report created: id={Id} folder={FolderId} user={UserId}",
             report.Id, folderId, profile.Id);
-
-        _audit.Add(reportedByUserId, "FOLDER_REPORTED", "CommunityReport", report.Id.ToString(), "Medium",
-            afterJson: JsonSerializer.Serialize(new { folderId, reason = normalizedReason }));
 
         return report.Id;
     }
@@ -189,9 +183,6 @@ public sealed class CommunityService : ICommunityService
         report.ResolvedAt = DateTimeOffset.UtcNow;
 
         await _db.SaveChangesAsync(ct);
-
-        _audit.Add(resolvedByUserId, "REPORT_RESOLVED", "CommunityReport", reportId.ToString(), "Low",
-            afterJson: JsonSerializer.Serialize(new { status = normalizedStatus, resolution = normalizedResolution }));
 
         _logger.LogInformation("Community report resolved: id={Id} status={Status} by={UserId}",
             report.Id, normalizedStatus, profile.Id);
