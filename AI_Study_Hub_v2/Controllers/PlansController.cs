@@ -24,6 +24,8 @@ namespace AI_Study_Hub_v2.Controllers;
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public sealed class PlansController : ControllerBase
 {
+    private const int MaxPaymentHistoryItems = 50;
+
     private readonly IPlanService _planService;
     private readonly IStorageQuotaService _quotaService;
     private readonly IPaymentService _paymentService;
@@ -119,7 +121,7 @@ public sealed class PlansController : ControllerBase
         try
         {
             if (take < 1) take = 12;
-            if (take > 50) take = 50;
+            if (take > MaxPaymentHistoryItems) take = MaxPaymentHistoryItems;
 
             var supabaseUserId = GetSupabaseUserIdFromClaims();
             var user = await _db.Users
@@ -133,9 +135,12 @@ public sealed class PlansController : ControllerBase
                 });
             }
 
+            await TrimPaymentHistoryAsync(user.Id, ct);
+
             var payments = await _db.PaymentTransactions
                 .Where(pt => pt.UserId == user.Id)
                 .OrderByDescending(pt => pt.CreatedAt)
+                .ThenByDescending(pt => pt.Id)
                 .Take(take)
                 .Select(pt => new PaymentTransactionDto(
                     pt.Id,
@@ -146,8 +151,10 @@ public sealed class PlansController : ControllerBase
                     pt.AmountVnd,
                     pt.Status,
                     pt.CreatedAt,
-                    pt.CompletedAt))
-                .ToListAsync(ct);
+                    pt.CompletedAt,
+                    pt.ExpiresAt,
+                    pt.ErrorMessage))
+                 .ToListAsync(ct);
 
             return Ok(payments);
         }
@@ -172,6 +179,7 @@ public sealed class PlansController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status409Conflict)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status429TooManyRequests)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status503ServiceUnavailable)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status500InternalServerError)]
     public async Task<IActionResult> PurchasePlan(
         [FromBody] PurchasePlanRequest request,
@@ -355,6 +363,7 @@ public sealed class PlansController : ControllerBase
                 _db.PaymentTransactions.Add(paymentTransaction);
 
                 await _db.SaveChangesAsync(ct);
+                await TrimPaymentHistoryAsync(user.Id, ct);
 
                 // F5.1: audit logging on self-service purchases
                 try
@@ -443,15 +452,31 @@ public sealed class PlansController : ControllerBase
 
                 return Ok(paymentResult);
             }
-            catch (InvalidOperationException ex)
+            catch (PaymentProviderException ex)
             {
-                // FC-04: existing pending payment still valid
-                return Conflict(new ApiErrorResponse
+                _logger.LogWarning(ex, "Payment provider unavailable during purchase for user {UserId}", user.Id);
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new ApiErrorResponse
                 {
-                    Code = "payment_pending",
+                    Code = "payment_provider_unavailable",
                     Message = ex.Message
                 });
             }
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return NotFound(new ApiErrorResponse
+            {
+                Code = "purchase_target_not_found",
+                Message = ex.Message
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new ApiErrorResponse
+            {
+                Code = "invalid_purchase_request",
+                Message = ex.Message
+            });
         }
         // F2.2: handle concurrent purchase race condition
         catch (DbUpdateException)
@@ -515,6 +540,26 @@ public sealed class PlansController : ControllerBase
         var result = await _paymentService.CreatePaymentAsync(
             user.Id, oldTxn.PlanKey, oldTxn.BillingCycle, ct);
         return Ok(result);
+    }
+
+    private async Task TrimPaymentHistoryAsync(Guid userId, CancellationToken ct)
+    {
+        var stalePaymentIds = await _db.PaymentTransactions
+            .Where(pt => pt.UserId == userId)
+            .OrderByDescending(pt => pt.CreatedAt)
+            .ThenByDescending(pt => pt.Id)
+            .Skip(MaxPaymentHistoryItems)
+            .Select(pt => pt.Id)
+            .ToListAsync(ct);
+
+        if (stalePaymentIds.Count == 0)
+        {
+            return;
+        }
+
+        await _db.PaymentTransactions
+            .Where(pt => stalePaymentIds.Contains(pt.Id))
+            .ExecuteDeleteAsync(ct);
     }
 
     private Guid GetSupabaseUserIdFromClaims()

@@ -119,6 +119,8 @@ else if (_plans is { Count: > 0 })
     private List<PlanDto>? _plans;
     private bool _isLoading = true;
     private string? _error;
+    private string? _pendingPaymentNotice;
+    private bool _paymentNoticeShown;
 
     protected override async Task OnInitializedAsync()
     {
@@ -126,6 +128,20 @@ else if (_plans is { Count: > 0 })
         await RestoreSessionAsync();
         await LoadPlansAsync();
         await RefreshCurrentPlanAsync();
+        _pendingPaymentNotice = ReadPaymentNoticeFromQuery();
+    }
+
+    protected override Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_paymentNoticeShown || string.IsNullOrWhiteSpace(_pendingPaymentNotice))
+        {
+            return Task.CompletedTask;
+        }
+
+        _paymentNoticeShown = true;
+        Snackbar.Add(GetPaymentNoticeMessage(_pendingPaymentNotice), GetPaymentNoticeSeverity(_pendingPaymentNotice));
+        Nav.NavigateTo("/pricing", replace: true);
+        return Task.CompletedTask;
     }
 
     private async Task LoadPlansAsync()
@@ -200,6 +216,13 @@ else if (_plans is { Count: > 0 })
             return;
         }
 
+        await RefreshCurrentPlanAsync();
+        if (IsCurrentPlan(plan.PlanKey))
+        {
+            Snackbar.Add($"You are already on the {plan.DisplayName} plan.", Severity.Info);
+            return;
+        }
+
         if (plan.PlanKey == "free")
         {
             // Downgrade to free — show confirmation dialog first
@@ -230,18 +253,13 @@ else if (_plans is { Count: > 0 })
 
             try
             {
-                await PlanApi.PurchasePlanAsync(Session.AccessToken!, plan.PlanKey, "monthly");
-                Session.SetPlan(plan.PlanKey);
-                try
-                {
-                    await Session.LoadCurrentPlanAsync(PlanApi);
-                }
-                catch (Exception ex)
-                {
-                    Snackbar.Add($"Failed to refresh plan: {ex.Message}", Severity.Error);
-                    return;
-                }
+                await PlanApi.PurchaseFreePlanAsync(Session.AccessToken!, plan.PlanKey);
+                await Session.LoadCurrentPlanAsync(PlanApi);
                 Snackbar.Add("Plan downgraded to Free.", Severity.Success);
+            }
+            catch (PlanApiException ex)
+            {
+                Snackbar.Add(ex.Message, Severity.Error);
             }
             catch
             {
@@ -287,6 +305,33 @@ else if (_plans is { Count: > 0 })
     }
 
     // ── Helpers ──
+
+    private string? ReadPaymentNoticeFromQuery()
+    {
+        var uri = new Uri(Nav.Uri);
+        var queryParams = System.Web.HttpUtility.ParseQueryString(uri.Query);
+        return queryParams["paymentNotice"];
+    }
+
+    private static string GetPaymentNoticeMessage(string? notice)
+    {
+        return notice?.ToLowerInvariant() switch
+        {
+            "expired" => "The payment session has expired. Please start the purchase again.",
+            "failed" => "The payment session expired or was not completed successfully. Please start the purchase again.",
+            _ => "Please start the purchase again from the pricing page."
+        };
+    }
+
+    private static Severity GetPaymentNoticeSeverity(string? notice)
+    {
+        return notice?.ToLowerInvariant() switch
+        {
+            "expired" => Severity.Warning,
+            "failed" => Severity.Error,
+            _ => Severity.Info
+        };
+    }
 
     private static string GetCardClass(string planKey, bool isCurrent)
     {

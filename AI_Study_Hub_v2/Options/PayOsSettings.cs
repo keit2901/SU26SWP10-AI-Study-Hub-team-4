@@ -12,5 +12,5 @@ public sealed class PayOsSettings
     public string ApiKey { get; set; } = string.Empty;
     public string ChecksumKey { get; set; } = string.Empty;
     public string WebhookUrl { get; set; } = "/api/payment/webhook";
-    public int ExpireMinutes { get; set; } = 15;
+    public int ExpireMinutes { get; set; } = 2;
 }

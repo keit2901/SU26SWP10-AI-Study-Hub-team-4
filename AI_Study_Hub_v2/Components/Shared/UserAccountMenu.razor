@@ -1,5 +1,6 @@
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
+@inject AI_Study_Hub_v2.Services.PlanApiClient PlanApi
 @inject IDialogService DialogService
 @inject NavigationManager Nav
 @using AI_Study_Hub_v2.Components.Pages
@@ -17,8 +18,7 @@
                 <span class="user-avatar-initials">@GetInitials()</span>
             </div>
             <div class="uam-user-meta d-none d-md-flex flex-column">
-                <span class="uam-user-name text-truncate">@DisplayName</span>
-                <span class="uam-user-plan">Free</span>
+                <span class="uam-user-plan">@PlanLabel</span>
             </div>
         </button>
 
@@ -220,10 +220,34 @@
 
 @code {
     private bool _open;
+    private bool _planLoading;
 
     protected override void OnInitialized()
     {
         Session.OnChange += OnSessionChanged;
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_planLoading
+            || !Session.IsAuthenticated
+            || Session.CurrentPlanSnapshot is not null)
+        {
+            return;
+        }
+
+        _planLoading = true;
+        try
+        {
+            await Session.LoadCurrentPlanAsync(PlanApi);
+        }
+        catch
+        {
+        }
+        finally
+        {
+            _planLoading = false;
+        }
     }
 
     private string DisplayName =>
@@ -231,6 +255,8 @@
         ?? Session.CurrentUser?.Username
         ?? Session.CurrentUser?.Email
         ?? "Student";
+
+    private string PlanLabel => Session.CurrentPlanDisplayName;
 
     private string GetInitials()
     {

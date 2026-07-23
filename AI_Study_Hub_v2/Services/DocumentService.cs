@@ -17,8 +17,10 @@ namespace AI_Study_Hub_v2.Services;
 /// </summary>
 public sealed class DocumentService : IDocumentService
 {
-    /// <summary>50 MB cap (plan L5 + bucket config).</summary>
-    public const long MaxFileSizeBytes = 50L * 1024 * 1024;
+    /// <summary>
+    /// Absolute server cap for a single multipart upload. Effective per-plan limits can be lower.
+    /// </summary>
+    public const long MaxFileSizeBytes = 250L * 1024 * 1024;
 
     /// <summary>Maximum documents allowed in a single folder.</summary>
     public const int MaxDocumentsPerFolder = 30;
@@ -100,16 +102,19 @@ public sealed class DocumentService : IDocumentService
                 "User account is inactive and cannot upload documents.");
         }
 
+        var planSnapshot = await _quota.GetSnapshotAsync(supabaseUserId, cancellationToken);
+        var effectiveMaxFileSizeBytes = planSnapshot.MaxFileSizeBytes ?? MaxFileSizeBytes;
+
         // 2. Validate file size + MIME against the bucket policy.
         if (fileSizeBytes <= 0)
         {
             throw new DocumentException(400, "empty_file",
                 "Uploaded file is empty.");
         }
-        if (fileSizeBytes > MaxFileSizeBytes)
+        if (fileSizeBytes > effectiveMaxFileSizeBytes)
         {
             throw new DocumentException(413, "file_too_large",
-                $"File exceeds the {MaxFileSizeBytes / (1024 * 1024)} MB upload limit.");
+                $"File exceeds the {effectiveMaxFileSizeBytes / (1024 * 1024)} MB upload limit for your current plan.");
         }
 
         var canonicalContentType = ResolveCanonicalContentType(fileName, contentType);

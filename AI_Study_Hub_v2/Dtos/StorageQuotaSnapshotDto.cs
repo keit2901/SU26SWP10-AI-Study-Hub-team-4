@@ -5,4 +5,10 @@ public sealed record StorageQuotaSnapshotDto(
     long? QuotaBytes,
     string PlanKey,
     string PlanDisplayName,
-    DateTimeOffset? ExpiresAt = null);
+    DateTimeOffset? ExpiresAt = null,
+    long? MaxFileSizeBytes = null,
+    int? MaxDocumentCount = null,
+    int? MaxFolderCount = null,
+    int? MaxDocsPerFolder = null,
+    bool HasExpiredPaidPlan = false,
+    string? ExpiredPaidPlanDisplayName = null);

@@ -4,6 +4,7 @@
 @inject PlanApiClient PlanApi
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
+@using AI_Study_Hub_v2.Services
 
 <PageTitle>Payment Result — AI Study Hub</PageTitle>
 
@@ -28,7 +29,34 @@
             <p class="result-subtitle">The payment confirmation could not be verified. If you were charged, please contact support.</p>
             <div class="result-actions">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                           OnClick="@(() => GoToPricing("failed"))" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                    Back to Pricing
+                </MudButton>
+            </div>
+        </div>
+    }
+    else if (_result.Status == "expired")
+    {
+        <div class="result-card">
+            <div class="result-icon pending-bg">
+                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Large" Style="color:#F59E0B; font-size:3.5rem;" />
+            </div>
+            <h2 class="result-title pending-text">Payment Expired</h2>
+            <p class="result-subtitle">
+                @if (!string.IsNullOrWhiteSpace(_result.ErrorMessage))
+                {
+                    <span>@_result.ErrorMessage</span>
+                }
+                else
+                {
+                    <span>Your payment window has expired.</span>
+                }
+                <br />
+                <span>Redirecting you back to the pricing page...</span>
+            </p>
+            <div class="result-actions">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                           OnClick="@(() => GoToPricing("expired"))" Style="text-transform:none; font-weight:600; border-radius:12px;">
                     Back to Pricing
                 </MudButton>
             </div>
@@ -76,6 +104,10 @@
                            OnClick="CheckAgain" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
                     Check Again
                 </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Primary"
+                           OnClick="@(() => GoToPricing())" Style="text-transform:none; font-weight:600; border-radius:12px;">
+                    Back to Pricing
+                </MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Default"
                            OnClick="GoToDashboard" Style="text-transform:none; font-weight:600; border-radius:12px;">
                     Dashboard
@@ -99,10 +131,12 @@
                 {
                     <span>The payment was not completed. No charges were made.</span>
                 }
+                <br />
+                <span>Redirecting you back to the pricing page...</span>
             </p>
             <div class="result-actions">
                 <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="GoToPricing" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
+                           OnClick="@(() => GoToPricing(GetPricingNoticeForStatus()))" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
                     Try Again
                 </MudButton>
                 <MudButton Variant="Variant.Outlined" Color="Color.Default"
@@ -202,12 +236,27 @@
 
 @code {
     private bool _loading = true;
+    private bool _pricingRedirectScheduled;
     private ReturnUrlResult _result = new(false, "pending", null, 0, null);
 
     protected override async Task OnInitializedAsync()
     {
         await RestoreSessionAsync();
         await VerifyPayment();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (_loading
+            || _pricingRedirectScheduled
+            || !ShouldAutoReturnToPricing())
+        {
+            return;
+        }
+
+        _pricingRedirectScheduled = true;
+        await Task.Delay(2200);
+        GoToPricing(GetPricingNoticeForStatus());
     }
 
     private async Task VerifyPayment()
@@ -268,6 +317,42 @@
         Session.Set(restored);
     }
 
-    private void GoToPricing() => Navigation.NavigateTo("/pricing", forceLoad: true);
-    private void GoToDashboard() => Navigation.NavigateTo("/pricing", forceLoad: true);
+    private bool ShouldAutoReturnToPricing()
+    {
+        if (!_result.IsValid)
+        {
+            return true;
+        }
+
+        return !string.Equals(_result.Status, "completed", StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(_result.Status, "pending", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string GetPricingNoticeForStatus()
+    {
+        if (!_result.IsValid)
+        {
+            return "failed";
+        }
+
+        return _result.Status.ToLowerInvariant() switch
+        {
+            "expired" => "expired",
+            "failed" => "failed",
+            "unknown" => "failed",
+            _ => "failed"
+        };
+    }
+
+    private void GoToPricing(string? notice = null)
+    {
+        var target = string.IsNullOrWhiteSpace(notice)
+            ? "/pricing"
+            : $"/pricing?paymentNotice={Uri.EscapeDataString(notice)}";
+        Navigation.NavigateTo(target, forceLoad: true);
+    }
+
+    private void GoToDashboard() => Navigation.NavigateTo(
+        AdminAccessPolicy.GetAuthenticatedLandingPage(Session.CurrentUser?.Role),
+        forceLoad: true);
 }
