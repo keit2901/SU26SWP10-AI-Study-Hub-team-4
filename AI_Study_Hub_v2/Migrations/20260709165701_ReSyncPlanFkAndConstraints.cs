@@ -74,49 +74,6 @@ namespace AI_Study_Hub_v2.Migrations
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropForeignKey(
-                name: "FK_payment_transactions_plans_plan_key",
-                table: "payment_transactions");
-
-            migrationBuilder.DropForeignKey(
-                name: "FK_payment_transactions_users_user_id",
-                table: "payment_transactions");
-
-            migrationBuilder.DropIndex(
-                name: "IX_user_plans_user_id",
-                table: "user_plans");
-
-            migrationBuilder.DropCheckConstraint(
-                name: "ck_user_plans_status",
-                table: "user_plans");
-
-            migrationBuilder.DropUniqueConstraint(
-                name: "AK_plans_plan_key",
-                table: "plans");
-
-            migrationBuilder.DropIndex(
-                name: "IX_payment_transactions_plan_key",
-                table: "payment_transactions");
-
-            migrationBuilder.DropCheckConstraint(
-                name: "ck_payment_transactions_amount_non_negative",
-                table: "payment_transactions");
-
-            migrationBuilder.DropCheckConstraint(
-                name: "ck_payment_transactions_billing_cycle",
-                table: "payment_transactions");
-
-            migrationBuilder.DropCheckConstraint(
-                name: "ck_payment_transactions_status",
-                table: "payment_transactions");
-
-            migrationBuilder.AddForeignKey(
-                name: "FK_payment_transactions_users_user_id",
-                table: "payment_transactions",
-                column: "user_id",
-                principalTable: "users",
-                principalColumn: "id",
-                onDelete: ReferentialAction.Cascade);
         }
     }
 }

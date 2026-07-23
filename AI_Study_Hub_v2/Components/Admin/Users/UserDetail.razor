@@ -4,6 +4,7 @@
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
+@using AI_Study_Hub_v2.Dtos
 @inject NavigationManager Navigation
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
@@ -78,9 +79,15 @@ else
                             </MudList>
                         </MudItem>
                         <MudItem xs="12" md="6">
-                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                                Connect this page to Supabase to read profiles, auth metadata, and authorization claims.
-                            </MudAlert>
+                            <MudPaper Elevation="0" Class="pa-3" Style="border:1px solid rgba(199,196,215,0.3); border-radius:8px;">
+                                <MudAlert Severity="@(_user.IsActive ? Severity.Success : Severity.Error)" Variant="Variant.Outlined">
+                                    Status: @(_user.IsActive ? "Active" : "Inactive")
+                                </MudAlert>
+                                <MudText Typo="Typo.caption" Class="mt-3">Role</MudText>
+                                <MudText Typo="Typo.body2" Style="font-weight:600;">@_user.Role</MudText>
+                                <MudText Typo="Typo.caption" Class="mt-2">Student Code</MudText>
+                                <MudText Typo="Typo.body2" Style="color:#767586;">@(_user.StudentCode ?? "Not assigned")</MudText>
+                            </MudPaper>
                         </MudItem>
                     </MudGrid>
                 </MudTabPanel>
@@ -90,7 +97,29 @@ else
                 </MudTabPanel>
 
                 <MudTabPanel Text="Activity" Icon="@Icons.Material.Filled.History">
-                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Activity timeline is not yet available for individual users.</MudAlert>
+                    @if (_isActivityLoading)
+                    {
+                        <MudSkeleton Height="40px" Animation="Animation.Wave" />
+                        <MudSkeleton Height="40px" Animation="Animation.Wave" />
+                        <MudSkeleton Height="40px" Animation="Animation.Wave" />
+                    }
+                    else if (!_activities.Any())
+                    {
+                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">No activity recorded for this user.</MudAlert>
+                    }
+                    else
+                    {
+                        <MudTimeline Class="activity-timeline">
+                            @foreach (var activity in _activities)
+                            {
+                                <MudTimelineItem Color="@GetActivityColor(activity)" Icon="@GetActivityIcon(activity)">
+                                    <MudText Typo="Typo.subtitle2">@activity.Action</MudText>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">@activity.EntityType @activity.EntityId</MudText>
+                                    <MudText Typo="Typo.caption">@FormatDateTime(activity.CreatedAt.UtcDateTime)</MudText>
+                                </MudTimelineItem>
+                            }
+                        </MudTimeline>
+                    }
                 </MudTabPanel>
             </MudTabs>
         </MudPaper>
@@ -103,6 +132,8 @@ else
     private UserDetailRow? _user;
     private bool _isLoading = true;
     private string? _errorMessage;
+    private List<AuditLogDto> _activities = new();
+    private bool _isActivityLoading;
 
     protected override async Task OnInitializedAsync()
     {
@@ -132,6 +163,8 @@ else
                 CreatedAt = dto.CreatedAt.UtcDateTime,
                 IsActive = dto.IsActive
             };
+
+            await LoadActivityAsync();
         }
         catch (Exception ex)
         {
@@ -220,6 +253,33 @@ else
     private static string FormatDate(DateTime value) => value.ToString("MMM dd, yyyy");
 
     private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
+
+    private async Task LoadActivityAsync()
+    {
+        _isActivityLoading = true;
+        try
+        {
+            if (Session.IsAuthenticated && !string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                var logs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, actorUserId: Id, limit: 50);
+                _activities = logs.ToList();
+            }
+        }
+        catch { }
+        finally { _isActivityLoading = false; }
+    }
+
+    private static Color GetActivityColor(AuditLogDto log) => log.Severity == "High" ? Color.Error : log.Severity == "Medium" ? Color.Warning : Color.Info;
+
+    private static string GetActivityIcon(AuditLogDto log) => log.Action switch
+    {
+        "USER_REGISTERED" => Icons.Material.Filled.PersonAdd,
+        "USER_LOCK" or "USER_UNLOCK" => Icons.Material.Filled.Lock,
+        "ROLE_CHANGE" => Icons.Material.Filled.AdminPanelSettings,
+        "QUOTA_UPDATE" => Icons.Material.Filled.DataUsage,
+        "DOCUMENT_UPLOADED" => Icons.Material.Filled.UploadFile,
+        _ => Icons.Material.Filled.History
+    };
 
     private static Color GetDocumentColor(string status)
     {

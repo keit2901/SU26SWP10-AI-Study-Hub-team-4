@@ -3,6 +3,7 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using System.Text.Json;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -14,6 +15,7 @@ public sealed class FolderService : IFolderService
     private readonly IFolderShareAiModerator _shareAiModerator;
     private readonly IPlanCapacityGuard _capacityGuard;
     private readonly ISharedFolderCopyCoordinator _copyCoordinator;
+    private readonly IAuditLogService _audit;
 
     public FolderService(
         AppDbContext db,
@@ -21,7 +23,8 @@ public sealed class FolderService : IFolderService
         IStorageDeletionCoordinator deletionCoordinator,
         IFolderShareAiModerator shareAiModerator,
         IPlanCapacityGuard capacityGuard,
-        ISharedFolderCopyCoordinator copyCoordinator)
+        ISharedFolderCopyCoordinator copyCoordinator,
+        IAuditLogService audit)
     {
         _db = db;
         _logger = logger;
@@ -29,6 +32,7 @@ public sealed class FolderService : IFolderService
         _shareAiModerator = shareAiModerator;
         _capacityGuard = capacityGuard;
         _copyCoordinator = copyCoordinator;
+        _audit = audit;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -387,6 +391,9 @@ public sealed class FolderService : IFolderService
 
         await _db.SaveChangesAsync(cancellationToken);
 
+        _audit.Add(supabaseUserId, "FOLDER_SHARE_REQUESTED", "Folder", folder.Id.ToString(), "Low",
+            afterJson: JsonSerializer.Serialize(new { folder.Name, folder.ShareStatus }));
+
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
     }
@@ -454,6 +461,9 @@ public sealed class FolderService : IFolderService
 
         await _db.SaveChangesAsync(cancellationToken);
 
+        _audit.Add(null, "FOLDER_SHARE_APPROVED", "Folder", folderId.ToString(), "Medium",
+            afterJson: JsonSerializer.Serialize(new { folder.Name, folder.ShareStatus }));
+
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
     }
@@ -484,6 +494,9 @@ public sealed class FolderService : IFolderService
         folder.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
+
+        _audit.Add(null, "FOLDER_SHARE_REJECTED", "Folder", folderId.ToString(), "Medium",
+            afterJson: JsonSerializer.Serialize(new { folder.Name, folder.ShareStatus }));
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
@@ -638,8 +651,15 @@ public sealed class FolderService : IFolderService
         };
     }
 
-    public Task<FolderDto> CopySharedFolderAsync(Guid supabaseUserId, Guid sharedFolderId, CancellationToken cancellationToken = default)
-        => _copyCoordinator.CopyAsync(supabaseUserId, sharedFolderId, cancellationToken);
+    public async Task<FolderDto> CopySharedFolderAsync(Guid supabaseUserId, Guid sharedFolderId, CancellationToken cancellationToken = default)
+    {
+        var result = await _copyCoordinator.CopyAsync(supabaseUserId, sharedFolderId, cancellationToken);
+
+        _audit.Add(supabaseUserId, "FOLDER_COPIED", "Folder", sharedFolderId.ToString(), "Low",
+            afterJson: JsonSerializer.Serialize(new { result.Name, SourceFolderId = sharedFolderId }));
+
+        return result;
+    }
 
     private async Task<User> ResolveProfileAsync(Guid supabaseUserId, CancellationToken cancellationToken)
     {

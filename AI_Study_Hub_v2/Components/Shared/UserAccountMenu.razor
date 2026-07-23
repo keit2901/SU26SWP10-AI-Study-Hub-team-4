@@ -18,7 +18,7 @@
             </div>
             <div class="uam-user-meta d-none d-md-flex flex-column">
                 <span class="uam-user-name text-truncate">@DisplayName</span>
-                <span class="uam-user-plan">Free</span>
+                <span class="uam-user-plan">@FormatPlan(Session.CurrentPlan)</span>
             </div>
         </button>
 
@@ -246,6 +246,11 @@
     private void CloseMenu() => _open = false;
 
     private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+
+    private static string FormatPlan(string? plan)
+        => string.IsNullOrWhiteSpace(plan)
+            ? "Free"
+            : $"{char.ToUpperInvariant(plan[0])}{plan[1..].ToLowerInvariant()}";
 
     private async Task OpenProfileDialogAsync()
     {

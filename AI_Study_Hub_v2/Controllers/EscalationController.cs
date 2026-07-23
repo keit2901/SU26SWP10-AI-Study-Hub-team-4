@@ -87,7 +87,11 @@ public sealed class EscalationController : ControllerBase
     {
         try
         {
-            var result = await _escalation.ResolveAsync(id, request, cancellationToken);
+            var userId = await GetLocalUserIdAsync();
+            if (userId is null)
+                return Unauthorized();
+
+            var result = await _escalation.ResolveAsync(id, request, userId.Value, cancellationToken);
             return Ok(result);
         }
         catch (AdminException ex)

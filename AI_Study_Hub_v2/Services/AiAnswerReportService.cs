@@ -11,10 +11,12 @@ public sealed class AiAnswerReportService : IAiAnswerReportService
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
     private readonly AppDbContext _db;
+    private readonly IAuditLogService _audit;
 
-    public AiAnswerReportService(AppDbContext db)
+    public AiAnswerReportService(AppDbContext db, IAuditLogService audit)
     {
         _db = db;
+        _audit = audit;
     }
 
     public async Task<AiAnswerReportResponse> ReportAsync(
@@ -51,6 +53,9 @@ public sealed class AiAnswerReportService : IAiAnswerReportService
 
         _db.AiAnswerReports.Add(report);
         await _db.SaveChangesAsync(cancellationToken);
+
+        _audit.Add(user.Id, "AI_ANSWER_REPORTED", "AiAnswerReport", report.Id.ToString(), "Low",
+            afterJson: JsonSerializer.Serialize(new { request.Question, request.Answer, request.Reason, request.Details }));
 
         return new AiAnswerReportResponse(report.Id, report.Status, report.CreatedAt);
     }

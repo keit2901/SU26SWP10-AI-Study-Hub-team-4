@@ -565,7 +565,7 @@ public sealed class PublicHubServiceTests
             NullLogger<SharedFolderCopyCoordinator>.Instance);
         return new FolderService(db, NullLogger<FolderService>.Instance,
             Mock.Of<IStorageDeletionCoordinator>(), new FolderShareAiModerator(),
-            guard.Object, coordinator);
+            guard.Object, coordinator, Mock.Of<IAuditLogService>());
     }
 
     private static Data.AppDbContext CreateDbWithChunks()
