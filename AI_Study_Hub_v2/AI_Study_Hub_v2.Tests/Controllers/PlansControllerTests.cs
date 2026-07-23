@@ -220,10 +220,10 @@ public class PlansControllerTests
     }
 
     [Test]
-    public async Task PurchasePlan_Unauthenticated_ReturnsInternalServerError()
+    public async Task PurchasePlan_Unauthenticated_ReturnsBadRequest_InvalidPurchaseRequest()
     {
         // Without a ClaimsPrincipal, GetSupabaseUserIdFromClaims throws
-        // InvalidOperationException, which is caught by the catch-all and returns 500.
+        // InvalidOperationException, which is caught by the controller and returns 400.
         // In production, [Authorize] at the middleware level returns 401 before
         // the controller method runs. This test validates the fallback behavior.
         var sut = BuildSut(); // no ClaimsPrincipal
@@ -232,8 +232,10 @@ public class PlansControllerTests
         var ct = CancellationToken.None;
         var result = await sut.PurchasePlan(request, ct);
 
-        var statusResult = result.Should().BeOfType<ObjectResult>().Subject;
-        statusResult.StatusCode.Should().Be(500);
+        var statusResult = result.Should().BeOfType<BadRequestObjectResult>().Subject;
+        statusResult.StatusCode.Should().Be(400);
+        var err = statusResult.Value.Should().BeOfType<ApiErrorResponse>().Subject;
+        err.Code.Should().Be("invalid_purchase_request");
     }
 
     [Test]

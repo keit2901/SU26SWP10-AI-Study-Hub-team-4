@@ -29,13 +29,26 @@ public class DocumentServiceTests
         ISupabaseStorageClient storage,
         IPlanCapacityGuard? capacityGuard = null,
         IStorageQuotaService? quota = null,
-        IDocumentIngestionService? ingestion = null) =>
-        new(db, storage, quota ?? Mock.Of<IStorageQuotaService>(), NullLogger<DocumentService>.Instance, ingestion,
+        IDocumentIngestionService? ingestion = null)
+    {
+        quota ??= DefaultQuotaMock().Object;
+        return new(db, storage, quota, NullLogger<DocumentService>.Instance, ingestion,
             new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<IAuditLogService>());
+    }
+
+    private static Mock<IStorageQuotaService> DefaultQuotaMock()
+    {
+        var q = new Mock<IStorageQuotaService>(MockBehavior.Loose);
+        q.Setup(x => x.GetSnapshotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StorageQuotaSnapshotDto(0, null, "free", "Free", null, DocumentService.MaxFileSizeBytes, null, null, null, false, null));
+        return q;
+    }
 
     private static Mock<IStorageQuotaService> CreateQuota(StorageReservation reservation)
     {
         var quota = new Mock<IStorageQuotaService>(MockBehavior.Strict);
+        quota.Setup(q => q.GetSnapshotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StorageQuotaSnapshotDto(0, null, "free", "Free", null, DocumentService.MaxFileSizeBytes, null, null, null, false, null));
         quota.Setup(q => q.ReserveUploadAsync(It.IsAny<Guid>(), reservation.ReservedBytes, It.IsAny<CancellationToken>()))
             .ReturnsAsync(reservation);
         quota.Setup(q => q.ValidateDocumentCountAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
@@ -599,6 +612,8 @@ public class DocumentServiceTests
         var profile = SeedActiveStudent(db);
         var expected = new PlanException(402, "document_count_exceeded", "limit");
         var quota = new Mock<IStorageQuotaService>(MockBehavior.Strict);
+        quota.Setup(q => q.GetSnapshotAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new StorageQuotaSnapshotDto(0, null, "free", "Free", null, DocumentService.MaxFileSizeBytes, null, null, null, false, null));
         quota.Setup(q => q.ValidateDocumentCountAsync(profile.SupabaseUserId, It.IsAny<CancellationToken>()))
             .ThrowsAsync(expected);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
