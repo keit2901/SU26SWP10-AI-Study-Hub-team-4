@@ -6,6 +6,7 @@ using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 
 namespace AI_Study_Hub_v2.Services;
@@ -57,6 +58,7 @@ public sealed class DocumentService : IDocumentService
     private readonly ILogger<DocumentService> _logger;
     private readonly IStorageDeletionCoordinator _deletionCoordinator;
     private readonly IPlanCapacityGuard _capacityGuard;
+    private readonly IAuditLogService _audit;
 
     public DocumentService(
         AppDbContext db,
@@ -65,7 +67,8 @@ public sealed class DocumentService : IDocumentService
         ILogger<DocumentService> logger,
         IDocumentIngestionService? ingestion,
         IStorageDeletionCoordinator deletionCoordinator,
-        IPlanCapacityGuard capacityGuard)
+        IPlanCapacityGuard capacityGuard,
+        IAuditLogService audit)
     {
         _db = db;
         _storage = storage;
@@ -74,6 +77,7 @@ public sealed class DocumentService : IDocumentService
         _logger = logger;
         _deletionCoordinator = deletionCoordinator;
         _capacityGuard = capacityGuard;
+        _audit = audit;
     }
 
     public async Task<DocumentDto> UploadAsync(
@@ -261,6 +265,9 @@ public sealed class DocumentService : IDocumentService
             _logger.LogInformation(
                 "Document uploaded: id={Id} user={UserId} subject={Subject} semester={Semester} size={Size}B path={Path}",
                 doc.Id, profile.Id, doc.SubjectCode, doc.Semester, doc.FileSizeBytes, doc.StoragePath);
+
+            _audit.Add(profile.Id, "DOCUMENT_UPLOADED", "Document", doc.Id.ToString(), "Low",
+                afterJson: JsonSerializer.Serialize(new { doc.FileName, doc.FileSizeBytes, doc.MimeType }));
 
             if (_ingestion is not null && IsIngestionCandidate(canonicalContentType))
             {
@@ -481,10 +488,15 @@ public sealed class DocumentService : IDocumentService
             ?? throw new DocumentException(404, "user_not_found",
                 "Authenticated user has no profile in public.users.");
 
+        var docInfo = await _db.Documents.AsNoTracking().FirstOrDefaultAsync(d => d.Id == documentId, cancellationToken);
+
         if (!await _deletionCoordinator.DeleteOwnedDocumentAsync(documentId, profile.Id, cancellationToken))
         {
             throw new DocumentException(404, "document_not_found", "Document does not exist or does not belong to the caller.");
         }
+
+        _audit.Add(profile.Id, "DOCUMENT_DELETED", "Document", documentId.ToString(), "Medium",
+            beforeJson: docInfo is not null ? JsonSerializer.Serialize(new { docInfo.FileName, docInfo.FileSizeBytes }) : null);
     }
 
     public async Task<DocumentContentDto> GetContentAsync(

@@ -35,6 +35,7 @@ public sealed class QuizService : IQuizService
     private readonly IChatPersistenceService _chatPersistence;
     private readonly IAiQuotaService _quotaService;
     private readonly ILogger<QuizService> _logger;
+    private readonly IAuditLogService _audit;
 
     public QuizService(
         AppDbContext db,
@@ -44,7 +45,8 @@ public sealed class QuizService : IQuizService
         IOptions<GeminiOptions> geminiOptions,
         IChatPersistenceService chatPersistence,
         IAiQuotaService quotaService,
-        ILogger<QuizService> logger)
+        ILogger<QuizService> logger,
+        IAuditLogService audit)
     {
         _db = db;
         _ragSearch = ragSearch;
@@ -54,6 +56,7 @@ public sealed class QuizService : IQuizService
         _chatPersistence = chatPersistence;
         _quotaService = quotaService;
         _logger = logger;
+        _audit = audit;
     }
 
     public async Task<QuizDto> GenerateAsync(Guid supabaseUserId, GenerateQuizRequest request, CancellationToken ct = default)
@@ -1060,6 +1063,9 @@ Output exactly this JSON structure (no extra text):
         _db.Quizzes.Add(quiz);
         await _db.SaveChangesAsync(cancellationToken);
 
+        _audit.Add(supabaseUserId, "QUIZ_GENERATED", "Quiz", quiz.Id.ToString(), "Low",
+            afterJson: JsonSerializer.Serialize(new { Title = quiz.Title, QuestionCount = storedQuestions.Count }));
+
         return new QuizGenerateResponse(
             quiz.Id,
             quiz.Title,
@@ -1121,6 +1127,9 @@ Output exactly this JSON structure (no extra text):
         quiz.Status = QuizStatus.Completed;
         quiz.UpdatedAt = now;
         await _db.SaveChangesAsync(cancellationToken);
+
+        _audit.Add(supabaseUserId, "QUIZ_SUBMITTED", "Quiz", quizId.ToString(), "Low",
+            afterJson: JsonSerializer.Serialize(new { Score = score, TotalQuestions = questions.Count }));
 
         return new QuizSubmitResponse(
             Guid.NewGuid(), quiz.Id, score, questions.Count, results, now);
