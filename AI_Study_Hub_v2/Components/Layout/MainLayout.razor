@@ -1,6 +1,11 @@
 @inherits LayoutComponentBase
-@implements IDisposable
+@implements IAsyncDisposable
 @inject NavigationManager Nav
+@inject IJSRuntime JS
+@inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
+@inject AuthApiClient AuthApi
+@inject ISnackbar Snackbar
 
 <MudThemeProvider Theme="@_theme" IsDarkMode="false" />
 
@@ -24,9 +29,160 @@
 </div>
 
 @code {
+    private const int IdleTimeoutMs = 15 * 60 * 1000;
+    private static readonly TimeSpan SessionRefreshInterval = TimeSpan.FromMinutes(1);
+    private static readonly TimeSpan SessionRefreshWindow = TimeSpan.FromMinutes(1);
+
+    private readonly CancellationTokenSource _sessionLoopCts = new();
+    private DotNetObjectReference<MainLayout>? _idleDotNetRef;
+    private Task? _sessionMaintenanceTask;
+    private bool _idleMonitorStarted;
+    private bool _signOutInProgress;
+
     protected override void OnInitialized()
     {
         Nav.LocationChanged += OnLocationChanged;
+        Session.OnChange += OnSessionChanged;
+        _sessionMaintenanceTask = RunSessionMaintenanceLoopAsync(_sessionLoopCts.Token);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        _idleDotNetRef ??= DotNetObjectReference.Create(this);
+        await SyncIdleMonitorAsync();
+    }
+
+    private async Task RunSessionMaintenanceLoopAsync(CancellationToken ct)
+    {
+        using var timer = new PeriodicTimer(SessionRefreshInterval);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(ct))
+            {
+                await EnsureSessionFreshAsync(ct);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task EnsureSessionFreshAsync(CancellationToken ct)
+    {
+        var currentSession = Session.Session;
+        if (currentSession is null || string.IsNullOrWhiteSpace(currentSession.RefreshToken))
+        {
+            return;
+        }
+
+        if (currentSession.ExpiresAt > DateTimeOffset.UtcNow.Add(SessionRefreshWindow))
+        {
+            return;
+        }
+
+        AuthResponse? restored = null;
+        await InvokeAsync(async () => restored = await AuthPersistence.TryRestoreAsync());
+        if (restored is not null && !string.IsNullOrWhiteSpace(restored.AccessToken))
+        {
+            await InvokeAsync(() =>
+            {
+                Session.Set(restored);
+                StateHasChanged();
+            });
+            return;
+        }
+
+        if (currentSession.ExpiresAt <= DateTimeOffset.UtcNow)
+        {
+            await InvokeAsync(() => SignOutAsync("Your session has expired. Please sign in again."));
+        }
+    }
+
+    private async Task SyncIdleMonitorAsync()
+    {
+        try
+        {
+            if (Session.IsAuthenticated)
+            {
+                await JS.InvokeVoidAsync("idleSessionMonitor.start", _idleDotNetRef, IdleTimeoutMs);
+                _idleMonitorStarted = true;
+            }
+            else if (_idleMonitorStarted)
+            {
+                await JS.InvokeVoidAsync("idleSessionMonitor.stop");
+                _idleMonitorStarted = false;
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
+
+    [JSInvokable]
+    public async Task HandleIdleTimeout()
+    {
+        await SignOutAsync("You were signed out after 15 minutes of inactivity.");
+    }
+
+    private async Task SignOutAsync(string? message = null)
+    {
+        if (_signOutInProgress)
+        {
+            return;
+        }
+
+        var hadSession = Session.Session is not null;
+        if (!hadSession && !Session.IsAuthenticated)
+        {
+            return;
+        }
+
+        _signOutInProgress = true;
+        try
+        {
+            var accessToken = Session.AccessToken;
+            if (!string.IsNullOrWhiteSpace(accessToken))
+            {
+                try
+                {
+                    await AuthApi.LogoutAsync(accessToken);
+                }
+                catch
+                {
+                }
+            }
+
+            await AuthPersistence.ClearAsync();
+            Session.Clear();
+
+            try
+            {
+                await JS.InvokeVoidAsync("idleSessionMonitor.stop");
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+            catch (InvalidOperationException)
+            {
+            }
+
+            _idleMonitorStarted = false;
+
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                Snackbar.Add(message, Severity.Warning);
+            }
+
+            Nav.NavigateTo("/login", replace: true);
+        }
+        finally
+        {
+            _signOutInProgress = false;
+        }
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
@@ -34,9 +190,45 @@
         InvokeAsync(StateHasChanged);
     }
 
-    public void Dispose()
+    private void OnSessionChanged()
+    {
+        InvokeAsync(StateHasChanged);
+    }
+
+    public async ValueTask DisposeAsync()
     {
         Nav.LocationChanged -= OnLocationChanged;
+        Session.OnChange -= OnSessionChanged;
+
+        _sessionLoopCts.Cancel();
+
+        if (_sessionMaintenanceTask is not null)
+        {
+            try
+            {
+                await _sessionMaintenanceTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+
+        try
+        {
+            if (_idleMonitorStarted)
+            {
+                await JS.InvokeVoidAsync("idleSessionMonitor.dispose");
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+        }
+        catch (InvalidOperationException)
+        {
+        }
+
+        _idleDotNetRef?.Dispose();
+        _sessionLoopCts.Dispose();
     }
 
     private bool IsFullBleed

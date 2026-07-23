@@ -443,6 +443,7 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync();
         startupLogger.LogInformation("Database migrations applied.");
         await EnsurePhase3SchemaAsync(db, startupLogger);
+        await CleanupDeprecatedSeedAccountsAsync(db, goTrue, startupLogger);
 
         await SeedDefaultAdminAsync(db, goTrue, seedOptions, startupLogger);
         await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
@@ -982,4 +983,32 @@ static async Task SeedDefaultProStudentAsync(AppDbContext db, IGoTrueClient gotr
 
     await db.SaveChangesAsync();
     logger.LogInformation("Default Pro student plan assigned to {SupabaseUserId}.", supabaseUserId);
+}
+
+static async Task CleanupDeprecatedSeedAccountsAsync(AppDbContext db, IGoTrueClient gotrue, ILogger logger)
+{
+    const string deprecatedEmail = "student.expiredpro@aistudyhub.local";
+    const string deprecatedUsername = "studentexpired";
+
+    try
+    {
+        var deprecatedIdentity = await gotrue.AdminGetUserByEmailAsync(deprecatedEmail);
+        if (deprecatedIdentity is not null)
+        {
+            await gotrue.AdminDeleteUserAsync(deprecatedIdentity.Id);
+            logger.LogInformation("Removed deprecated demo auth account {Email}.", deprecatedEmail);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to remove deprecated demo auth account {Email}.", deprecatedEmail);
+    }
+
+    var deprecatedProfile = await db.Users.FirstOrDefaultAsync(user => user.Username == deprecatedUsername);
+    if (deprecatedProfile is not null)
+    {
+        db.Users.Remove(deprecatedProfile);
+        await db.SaveChangesAsync();
+        logger.LogInformation("Removed deprecated demo profile {Username}.", deprecatedUsername);
+    }
 }

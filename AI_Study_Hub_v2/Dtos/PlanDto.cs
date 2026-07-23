@@ -68,4 +68,6 @@ public sealed record PaymentTransactionDto(
     long AmountVnd,
     string Status,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? CompletedAt);
+    DateTimeOffset? CompletedAt,
+    DateTimeOffset? ExpiresAt,
+    string? ErrorMessage);

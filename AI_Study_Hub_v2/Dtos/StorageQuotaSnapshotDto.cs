@@ -9,4 +9,5 @@ public sealed record StorageQuotaSnapshotDto(
     long? MaxFileSizeBytes = null,
     int? MaxDocumentCount = null,
     int? MaxFolderCount = null,
-    int? MaxDocsPerFolder = null);
+    int? MaxDocsPerFolder = null,
+    bool HasExpiredPaidPlan = false);

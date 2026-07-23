@@ -78,6 +78,48 @@
 
 ### 2026-07-21T13:10:00.0000000Z - Verification completed
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false` -> PASS (0 errors, 0 warnings)
+
+### 2026-07-22T09:40:00.0000000Z - Expired Pro over-quota demo state added
+- Added a dedicated seeded student scenario for local/demo testing:
+  - `AI_Study_Hub_v2/Options/SeedOptions.cs`
+  - `AI_Study_Hub_v2/appsettings.Development.json`
+  - `AI_Study_Hub_v2/Program.cs`
+- Startup now seeds `DefaultExpiredProStudent` as:
+  - previous Pro plan marked `expired`
+  - current Free plan marked `active`
+  - `storage_used_bytes` forced to about `7.2 GB`
+  - password reuses `Seed:DefaultProStudent:Password` when no dedicated expired-student password is provided
+- Extended `AI_Study_Hub_v2/Dtos/StorageQuotaSnapshotDto.cs` and `AI_Study_Hub_v2/Services/StorageQuotaService.cs` with `HasExpiredPaidPlan` so the profile UI can distinguish “expired paid plan + over Free quota” from a generic quota overflow.
+- Updated `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor` warning copy to show the intended student-facing message:
+  - title: `Gói Pro của bạn đã hết hạn`
+  - body: `Bạn đang dùng 7.2 GB / 2 GB của gói Free...` (value is dynamic from actual usage)
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/expired-pro-demo-build"` -> PASS (0 errors, 15 pre-existing warnings)
+
+### 2026-07-23T10:20:00.0000000Z - Legacy oversized Pro-era file seeded for downgrade scenario
+- Extended `AI_Study_Hub_v2/Program.cs` startup seeding so `DefaultExpiredProStudent` now also receives:
+  - folder `Legacy Pro Archive`
+  - document `legacy-pro-oversize-demo.pdf`
+  - file size `55 MB` (valid under Pro 100 MB, above Free 50 MB)
+- The seed attempts to upload a real placeholder PDF object to Supabase Storage; if local storage is unavailable it still creates metadata so Library/Profile/quota UX can be tested.
+- This gives a concrete downgrade test case:
+  - current plan is `Free`
+  - profile warning still shows expired Pro / over Free quota
+  - Library contains a historical Pro-era file larger than the Free per-file upload limit
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/legacy-pro-file-demo-build"` -> PASS (0 errors, 15 pre-existing warnings)
+
+### 2026-07-23T11:05:00.0000000Z - Demo clone seed removed and deprecated account cleanup added
+- Removed the extra expired-Pro demo seed from:
+  - `AI_Study_Hub_v2/Options/SeedOptions.cs`
+  - `AI_Study_Hub_v2/appsettings.Development.json`
+  - `AI_Study_Hub_v2/Program.cs`
+- Added startup cleanup logic in `AI_Study_Hub_v2/Program.cs` to delete the deprecated local demo account:
+  - auth email `student.expiredpro@aistudyhub.local`
+  - profile username `studentexpired`
+- This prevents future clone-account recreation and avoids the local Supabase Storage `413 Payload too large` warning caused by trying to seed a fake 55 MB file into a bucket still capped at 50 MB.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/remove-demo-clone-build"` -> PASS (0 errors, 15 pre-existing warnings)
 - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-restore -o .codex-build\\membership-fix-tests` -> PASS (0 errors, 0 warnings)
 - `dotnet vstest ".codex-build\\membership-fix-tests\\AI_Study_Hub_v2.Tests.dll" --TestCaseFilter:"FullyQualifiedName~SupabaseAuthServiceTests|FullyQualifiedName~StorageQuotaServiceTests|FullyQualifiedName~PlansControllerTests"` -> PASS
   - Result: Passed 39, Skipped 2, Failed 0

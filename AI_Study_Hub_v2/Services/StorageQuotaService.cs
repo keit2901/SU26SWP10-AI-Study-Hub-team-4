@@ -121,6 +121,12 @@ public sealed class StorageQuotaService : IStorageQuotaService
             .FirstOrDefaultAsync(ct);
 
         var effectivePlan = activeUserPlan?.Plan ?? _planService.GetFreePlan();
+        var hasExpiredPaidPlan = await _db.UserPlans
+            .AsNoTracking()
+            .Include(up => up.Plan)
+            .AnyAsync(up => up.UserId == user.Id
+                && up.Status == "expired"
+                && up.Plan.PlanKey != "free", ct);
 
         return new StorageQuotaSnapshotDto(
             user.StorageUsedBytes,
@@ -131,7 +137,8 @@ public sealed class StorageQuotaService : IStorageQuotaService
             effectivePlan.MaxFileSizeBytes,
             effectivePlan.MaxDocumentCount,
             effectivePlan.MaxFolderCount,
-            effectivePlan.MaxDocsPerFolder);
+            effectivePlan.MaxDocsPerFolder,
+            hasExpiredPaidPlan);
     }
 
     public async Task ValidateDocumentCountAsync(

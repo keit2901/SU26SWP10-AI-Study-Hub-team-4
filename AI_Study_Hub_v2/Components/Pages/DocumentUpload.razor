@@ -760,6 +760,9 @@
     private static string MapError(DocumentApiException ex) => (ex.StatusCode, ex.Code) switch
     {
         (401, _) => "Your session has expired. Please sign in again.",
+        (402, "storage_quota_exceeded") => "You cannot upload more files until you delete some documents or renew your plan.",
+        (402, "document_count_exceeded") => "You have reached the document limit for your current plan.",
+        (402, "folder_count_exceeded") => "You have reached the folder limit for your current plan.",
         (409, "folder_full") => ex.Message,
         (409, "duplicate_file") => ex.Message,
         (409, _) => "A folder with that name already exists.",

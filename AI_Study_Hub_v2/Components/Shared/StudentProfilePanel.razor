@@ -44,10 +44,32 @@ else
                 <strong>@FormatPlanLabel()</strong>
             </div>
             <div class="summary-item">
-                <span class="summary-label">Token expires</span>
-                <strong>@Session.Session.ExpiresAt.ToLocalTime().ToString("dd/MM HH:mm")</strong>
+                <span class="summary-label">Plan expires</span>
+                <strong>@BuildPlanExpiryText()</strong>
             </div>
         </div>
+
+        @if (ShouldShowStorageWarning())
+        {
+            <div class="profile-plan-warning">
+                <div class="profile-plan-warning-icon">
+                    <MudIcon Icon="@Icons.Material.Filled.WarningAmber" />
+                </div>
+                <div class="profile-plan-warning-body">
+                    <div class="profile-plan-warning-title">@BuildStorageWarningTitle()</div>
+                    <p>
+                        @BuildStorageWarningMessage()
+                    </p>
+                </div>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Warning"
+                           Size="Size.Small"
+                           Class="profile-plan-warning-action"
+                           OnClick="GoToPricing">
+                    Gia hạn gói
+                </MudButton>
+            </div>
+        }
 
         <div class="student-profile-fields">
             @RenderEditableRow(
@@ -253,6 +275,45 @@ else
 
     private string FormatPlanLabel()
         => Session.CurrentPlanDisplayName;
+
+    private string BuildPlanExpiryText()
+        => Session.CurrentPlanSnapshot?.ExpiresAt is DateTimeOffset expiresAt
+            ? expiresAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+            : "No expiration";
+
+    private bool ShouldShowStorageWarning()
+        => Session.CurrentPlanSnapshot?.QuotaBytes is long quota
+            && quota > 0
+            && Session.CurrentPlanSnapshot.UsedBytes > quota;
+
+    private string BuildStorageUsageText()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot?.QuotaBytes is not long quota || quota <= 0)
+        {
+            return "vượt quá dung lượng của gói hiện tại.";
+        }
+
+        return $"{FormatBytes(snapshot.UsedBytes)} / {FormatBytes(quota)} của gói Free";
+    }
+
+    private string BuildStorageWarningTitle()
+        => Session.CurrentPlanSnapshot?.HasExpiredPaidPlan == true
+            ? "Gói Pro của bạn đã hết hạn"
+            : "Bạn đã vượt giới hạn dung lượng của gói hiện tại";
+
+    private string BuildStorageWarningMessage()
+        => $"Bạn đang dùng {BuildStorageUsageText()}. Bạn không thể upload thêm cho đến khi xóa bớt tài liệu hoặc gia hạn gói. Các file cũ vẫn có thể xem, tải xuống và xóa bình thường.";
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024.0:0.#} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):0.#} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
+    }
+
+    private void GoToPricing() => Nav.NavigateTo("/pricing");
 
     private void TogglePassword() => _showPassword = !_showPassword;
 
@@ -510,6 +571,51 @@ else
         gap: 0.75rem;
     }
 
+    .profile-plan-warning {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 0.9rem;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 1rem 1.1rem;
+        border-radius: 20px;
+        border: 1px solid rgba(245, 158, 11, 0.28);
+        background: linear-gradient(135deg, rgba(255, 248, 235, 0.96), rgba(255, 243, 214, 0.92));
+    }
+
+    .profile-plan-warning-icon {
+        width: 2.6rem;
+        height: 2.6rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        background: rgba(245, 158, 11, 0.14);
+        color: #c47c00;
+        font-size: 1.35rem;
+    }
+
+    .profile-plan-warning-title {
+        color: #8f4f00;
+        font-size: 0.96rem;
+        font-weight: 800;
+        margin-bottom: 0.2rem;
+    }
+
+    .profile-plan-warning-body p {
+        margin: 0;
+        color: #7a5a16;
+        font-size: 0.88rem;
+        line-height: 1.55;
+    }
+
+    .profile-plan-warning-action {
+        white-space: nowrap;
+        border-radius: 999px !important;
+        text-transform: none !important;
+        font-weight: 700 !important;
+    }
+
     .profile-row {
         display: flex;
         align-items: flex-start;
@@ -647,6 +753,11 @@ else
     @@media (max-width: 800px) {
         .student-profile-summary {
             grid-template-columns: 1fr;
+        }
+
+        .profile-plan-warning {
+            grid-template-columns: 1fr;
+            align-items: flex-start;
         }
     }
 

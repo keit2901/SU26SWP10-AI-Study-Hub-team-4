@@ -146,8 +146,10 @@ public sealed class PlansController : ControllerBase
                     pt.AmountVnd,
                     pt.Status,
                     pt.CreatedAt,
-                    pt.CompletedAt))
-                .ToListAsync(ct);
+                    pt.CompletedAt,
+                    pt.ExpiresAt,
+                    pt.ErrorMessage))
+                 .ToListAsync(ct);
 
             return Ok(payments);
         }
