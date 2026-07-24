@@ -190,7 +190,7 @@ public sealed class PlanApiClient
 
         try
         {
-            var err = JsonSerializer.Deserialize<ApiErrorResponse>(raw);
+            var err = JsonSerializer.Deserialize<ApiErrorResponse>(raw, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
             if (err is not null && (!string.IsNullOrEmpty(err.Code) || !string.IsNullOrEmpty(err.Message)))
             {
                 var message = !string.IsNullOrWhiteSpace(err.Message)

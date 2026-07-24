@@ -144,7 +144,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
             }
             catch (Exception ex)
             {
-                if (_groqOptions.UseLocalDemoFallback && sources.Count > 0)
+                if (_groqOptions.UseLocalDemoFallback)
                 {
                     _logger.LogWarning(ex,
                         "AI chat provider failed; using local demo fallback answer because Groq:UseLocalDemoFallback is enabled.");
@@ -372,12 +372,16 @@ public sealed class SemanticKernelRagChatService : IAiChatService
 
     private static string BuildLocalDemoFallbackAnswer(string question, IReadOnlyList<AiChatSourceDto> sources)
     {
+        if (sources == null || sources.Count == 0)
+        {
+            return "Chào bạn! Đây là câu trả lời thử nghiệm từ chế độ Demo ngoại tuyến (Offline Demo Mode) của AI Study Hub. Do hệ thống chưa được cấu hình API Key cho mô hình ngôn ngữ (LLM) hoặc đang chạy ở chế độ offline, hệ thống sẽ trả về phản hồi mẫu này để demo tính năng. Hãy thử tải lên tài liệu học tập trong thư viện để kiểm tra tính năng truy xuất nguồn RAG nhé!";
+        }
         var firstSource = sources[0];
         var excerpt = firstSource.Excerpt.Length <= 260
             ? firstSource.Excerpt
             : firstSource.Excerpt[..260].TrimEnd() + "...";
-
-        return $"Local demo fallback answer: based on the retrieved source, the relevant information is: {excerpt} [{firstSource.Label}]";
+ 
+        return $"[Demo Fallback] Dựa trên tài liệu '{firstSource.Label}': {excerpt}";
     }
 
     private int NormalizeTopK(int topK)

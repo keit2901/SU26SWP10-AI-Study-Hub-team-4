@@ -259,7 +259,10 @@ else if (_plans is { Count: > 0 })
             }
             catch (PlanApiException ex)
             {
-                Snackbar.Add(ex.Message, Severity.Error);
+                var errorMsg = !string.IsNullOrWhiteSpace(ex.Message) && !ex.Message.Contains("status 400")
+                    ? ex.Message
+                    : "Failed to downgrade plan. Please try again.";
+                Snackbar.Add(errorMsg, Severity.Error);
             }
             catch
             {
