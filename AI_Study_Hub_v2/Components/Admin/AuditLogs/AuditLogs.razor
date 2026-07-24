@@ -23,9 +23,9 @@
                 <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
                 <span>REFRESH</span>
             </button>
-            <button class="header-filled-btn" disabled title="Export not available">
+            <button class="header-filled-btn" @onclick="ExportLogs">
                 <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" />
-                <span>EXPORT NOT AVAILABLE</span>
+                <span>EXPORT VISIBLE LOGS</span>
             </button>
         </div>
     </div>
@@ -57,33 +57,12 @@
             <option value="@MediumSeverity">Medium</option>
             <option value="@LowSeverity">Low</option>
         </select>
-        <select class="filter-select" value="@_selectedEntityType" @onchange="OnEntityTypeChanged">
-            <option value="">Entity Type</option>
-            <option value="User">User</option>
-            <option value="Document">Document</option>
-            <option value="Folder">Folder</option>
-            <option value="Chat">Chat</option>
-            <option value="Config">Config</option>
-            <option value="Escalation">Escalation</option>
-            <option value="Payment">Payment</option>
-        </select>
-        <div class="date-range-wrapper">
-            <div class="date-presets">
-                <button class="preset-btn @(_selectedDateFrom is null ? "preset-active" : "")" @onclick="() => SetDatePreset(null, null)">All time</button>
-                <button class="preset-btn @(IsPresetActive(7) ? "preset-active" : "")" @onclick="() => SetDatePreset(DateTime.UtcNow.AddDays(-7), null)">Last 7 days</button>
-                <button class="preset-btn @(IsPresetActive(30) ? "preset-active" : "")" @onclick="() => SetDatePreset(DateTime.UtcNow.AddDays(-30), null)">Last 30 days</button>
-            </div>
-            <div class="date-inputs">
-                <input type="date" class="custom-date-picker" value="@(_selectedDateFrom?.ToString("yyyy-MM-dd"))" @onchange="OnDateFromChanged" placeholder="From" />
-                <span class="date-separator">→</span>
-                <input type="date" class="custom-date-picker" value="@(_selectedDateTo?.ToString("yyyy-MM-dd"))" @onchange="OnDateToChanged" placeholder="To" />
-            </div>
-        </div>
+        <input type="date" class="custom-date-picker" value="@_selectedDateString" @onchange="OnDateInputChanged" />
         @{
             var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchText)
                 || !string.IsNullOrWhiteSpace(_selectedAction)
                 || !string.IsNullOrWhiteSpace(_selectedActor)
-                || !string.IsNullOrWhiteSpace(_selectedSeverity) || !string.IsNullOrWhiteSpace(_selectedEntityType) || _selectedDateFrom is not null || _selectedDateTo is not null;
+                || !string.IsNullOrWhiteSpace(_selectedSeverity);
             var filterIconColor = hasActiveFilters ? "#575e72" : "#c7c6d5";
             var filterIconStyle = $"font-size: 18px; color: {filterIconColor};";
         }
@@ -104,55 +83,6 @@
                 </span>
             }
             <button class="clear-all-btn" @onclick="ClearFiltersAsync">Clear all filters</button>
-        </div>
-    }
-
-    <div class="total-events-badge mb-6">
-        <span class="total-label">@(_selectedCategory == "All" ? "TOTAL EVENTS" : _categories.First(c => c.Key == _selectedCategory).Label.ToUpper())</span>
-        <span class="total-value">@_logs.Count</span>
-    </div>
-
-    <div class="category-tab-bar mb-6">
-        @foreach (var cat in _categories)
-        {
-            <button class="category-tab @(cat.Key == _selectedCategory ? "cat-active" : "")" @onclick="() => { _selectedCategory = cat.Key; }">
-                <span class="cat-icon">@cat.Icon</span>
-                <span class="cat-label">@cat.Label</span>
-                <span class="cat-count">@cat.Count</span>
-            </button>
-        }
-    </div>
-
-    @{
-        var actorGroups = _logs
-            .GroupBy(log => log.ActorEmail)
-            .Select(g => new { Actor = g.Key, Count = g.Count(), HighCount = g.Count(l => l.Severity == HighSeverity), LastAt = g.Max(l => l.CreatedAt) })
-            .OrderByDescending(g => g.Count)
-            .Take(6)
-            .ToList();
-    }
-    @if (actorGroups.Any())
-    {
-        <div class="actor-summary-section mb-6" style="background: #ffffff; border: 1px solid rgba(199, 196, 215, 0.3); border-radius: 12px; padding: 1.25rem;">
-            <div class="d-flex align-center justify-space-between mb-4">
-                <span style="font-size: 14px; font-weight: 700; color: #191c1e;">Actor Activity</span>
-                <span style="font-size: 11px; color: #767586;">Top @actorGroups.Count actors</span>
-            </div>
-            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
-                @foreach (var group in actorGroups)
-                {
-                    <div class="actor-card @(_selectedActor == group.Actor ? "actor-active" : "")" @onclick="@(() => { _selectedActor = group.Actor; })" style="cursor: pointer; padding: 0.75rem; border: 1px solid rgba(199, 196, 215, 0.2); border-radius: 8px; transition: all 0.2s; background: @(_selectedActor == group.Actor ? "rgba(70, 72, 212, 0.04)" : "#fafbfc");">
-                        <div style="font-size: 13px; font-weight: 600; color: #191c1e; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@group.Actor</div>
-                        <div style="font-size: 20px; font-weight: 800; color: #191c1e; line-height: 1;">@group.Count</div>
-                        <div style="font-size: 10px; color: #767586; margin-top: 2px;">actions</div>
-                        @if (group.HighCount > 0)
-                        {
-                            <div style="font-size: 10px; color: #ba1a1a; font-weight: 600; margin-top: 4px;">⚠ @group.HighCount HIGH</div>
-                        }
-                        <div style="font-size: 10px; color: #9ca3af; margin-top: 2px;">Last: @group.LastAt.ToString("HH:mm")</div>
-                    </div>
-                }
-            </div>
         </div>
     }
 
@@ -210,7 +140,7 @@
     {
         <div class="empty-state mb-6" style="background: #ffffff; border: 1px solid rgba(199, 196, 215, 0.3); border-radius: 12px; padding: 3rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px;">
             <MudIcon Icon="@Icons.Material.Filled.ManageSearch" Size="Size.Large" Color="Color.Secondary" Style="font-size: 48px; color: #767586;" />
-            <h3 style="font-size: 18px; font-weight: 800; margin-top: 1rem; color: #191c1e;">No @(_selectedCategory == "All" ? "audit events" : _categories.First(c => c.Key == _selectedCategory).Label.ToLower()) events found</h3>
+            <h3 style="font-size: 18px; font-weight: 800; margin-top: 1rem; color: #191c1e;">No audit events found</h3>
             <p style="font-size: 14px; color: #575e72; margin-top: 0.5rem;">Adjust filters to inspect a wider time range.</p>
         </div>
     }
@@ -218,10 +148,10 @@
     {
         <div class="audit-list-card mb-6">
             <div class="audit-rows-container">
-                @foreach (var log in FilteredLogs)
+                @foreach (var log in PagedFilteredLogs)
                 {
                     <div class="audit-row-custom">
-                        <div class="audit-row-summary" @onclick="@(() => ToggleExpand(log.Id))">
+                        <div class="audit-row-summary" @onclick="@(() => ToggleExpand(log.RequestId))">
                             <!-- Col 1: Action Badge & Date -->
                             <div>
                                 <span class="action-badge-custom @GetActionClass(log.Action)">@log.Action</span>
@@ -250,11 +180,11 @@
                             <div class="req-wrapper">
                                 <span class="col-meta-label">REQUEST</span>
                                 <span class="req-value">@log.RequestId</span>
-                                <MudIcon Icon="@(IsExpanded(log.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" Size="Size.Small" Style="color: #767586; margin-left: auto;" />
+                                <MudIcon Icon="@(IsExpanded(log.RequestId) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" Size="Size.Small" Style="color: #767586; margin-left: auto;" />
                             </div>
                         </div>
 
-                        @if (IsExpanded(log.Id))
+                        @if (IsExpanded(log.RequestId))
                         {
                             <div class="audit-row-details">
                                 <div class="details-grid">
@@ -279,7 +209,31 @@
 
             <!-- Pagination Footer -->
             <div class="pagination-row-custom">
-                <span class="pagination-info">Showing @FilteredLogs.Count() events</span>
+                <span class="pagination-info">Total @FilteredLogsCount event@(FilteredLogsCount == 1 ? string.Empty : "s")</span>
+                @if (TotalAuditPages > 1)
+                {
+                    <div class="pagination-controls">
+                        <button class="pag-btn" disabled="@(DisplayAuditPage <= 1)" @onclick="() => GoToAuditPage(DisplayAuditPage - 1)"><MudIcon Icon="@Icons.Material.Filled.ChevronLeft" Size="Size.Small" /></button>
+                        @foreach (var pageNumber in GetAuditPageNumbers())
+                        {
+                            if (pageNumber == -1)
+                            {
+                                <span class="footer-page-ellipsis">...</span>
+                            }
+                            else if (pageNumber == DisplayAuditPage)
+                            {
+                                <span class="pag-active">@pageNumber</span>
+                            }
+                            else
+                            {
+                                var current = pageNumber;
+                                <button class="pag-btn" @onclick="() => GoToAuditPage(current)">@current</button>
+                            }
+                        }
+                        <button class="pag-btn" disabled="@(DisplayAuditPage >= TotalAuditPages)" @onclick="() => GoToAuditPage(DisplayAuditPage + 1)"><MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" /></button>
+                        <input type="text" class="footer-page-jump-input" placeholder="Page..." value="@_pageJumpInput" @oninput="HandlePageJumpInput" @onkeydown="HandlePageJumpKeyDown" />
+                    </div>
+                }
             </div>
         </div>
     }
@@ -377,129 +331,7 @@
         background-color: #3b3dbb;
     }
 
-    /* Category Tab Bar */
-    .category-tab-bar {
-        display: flex;
-        gap: 0.5rem;
-        flex-wrap: wrap;
-        overflow-x: auto;
-    }
-
-    .category-tab {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.5rem 1rem;
-        border: 1px solid #e0e3e5;
-        border-radius: 8px;
-        background: #ffffff;
-        cursor: pointer;
-        font-family: 'Hanken Grotesk', sans-serif;
-        font-size: 12px;
-        color: #575e72;
-        white-space: nowrap;
-        transition: all 0.2s;
-    }
-
-    .category-tab:hover {
-        background: #f8fafc;
-        border-color: rgba(70, 72, 212, 0.3);
-    }
-
-    .cat-active {
-        background: rgba(70, 72, 212, 0.08);
-        color: #4648d4;
-        border-color: rgba(70, 72, 212, 0.4);
-        font-weight: 700;
-    }
-
-    .cat-icon {
-        font-size: 14px;
-    }
-
-    .cat-label {
-        font-weight: 600;
-    }
-
-    .cat-count {
-        font-size: 11px;
-        font-weight: 700;
-        padding: 1px 6px;
-        border-radius: 9999px;
-        background: #f1f5f9;
-        color: #767586;
-        min-width: 20px;
-        text-align: center;
-    }
-
-    .cat-active .cat-count {
-        background: rgba(70, 72, 212, 0.15);
-        color: #4648d4;
-    }
-
-    .dark-theme .category-tab {
-        background: #1e2124;
-        border-color: rgba(255, 255, 255, 0.08);
-        color: #94a3b8;
-    }
-
-    .dark-theme .cat-active {
-        background: rgba(129, 140, 248, 0.12);
-        color: #818cf8;
-        border-color: rgba(129, 140, 248, 0.25);
-    }
-
-    .dark-theme .cat-count {
-        background: #25282c;
-        color: #94a3b8;
-    }
-
-    .dark-theme .cat-active .cat-count {
-        background: rgba(129, 140, 248, 0.2);
-        color: #818cf8;
-    }
-
     /* KPI Grid */
-    /* Total Events Badge */
-    .total-events-badge {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        background: #ffffff;
-        border: 1px solid rgba(70, 72, 212, 0.2);
-        border-radius: 10px;
-        padding: 0.75rem 1.25rem;
-        margin-bottom: 1.5rem;
-        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
-    }
-
-    .total-label {
-        font-size: 11px;
-        font-weight: 700;
-        color: #767586;
-        letter-spacing: 0.05em;
-        text-transform: uppercase;
-    }
-
-    .total-value {
-        font-size: 22px;
-        font-weight: 800;
-        color: #4648d4;
-    }
-
-    .dark-theme .total-events-badge {
-        background-color: #1e2124 !important;
-        border-color: rgba(255, 255, 255, 0.08) !important;
-    }
-
-    .dark-theme .total-label {
-        color: #94a3b8 !important;
-    }
-
-    .dark-theme .total-value {
-        color: #818cf8 !important;
-    }
-
     .kpi-grid-container {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -899,6 +731,7 @@
         display: flex;
         align-items: center;
         gap: 6px;
+        flex-wrap: wrap;
     }
 
     .pag-btn {
@@ -927,6 +760,25 @@
         justify-content: center;
         color: #4648d4;
         font-weight: 700;
+    }
+
+    .footer-page-ellipsis {
+        padding: 0 4px;
+        color: #767586;
+        font-size: 12px;
+        font-weight: 700;
+    }
+
+    .footer-page-jump-input {
+        width: 86px;
+        height: 32px;
+        border-radius: 6px;
+        border: 1px solid #c7c6d5;
+        background: #ffffff;
+        color: #575e72;
+        padding: 0 10px;
+        font-size: 12px;
+        outline: none;
     }
 
     /* Dark theme overrides */
@@ -982,79 +834,6 @@
         color: #94a3b8;
     }
 
-    .date-range-wrapper {
-        display: flex;
-        align-items: center;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-    }
-
-    .date-presets {
-        display: flex;
-        gap: 0.25rem;
-    }
-
-    .preset-btn {
-        padding: 6px 12px;
-        border: 1px solid #e0e3e5;
-        border-radius: 6px;
-        background: #ffffff;
-        font-size: 11px;
-        font-weight: 600;
-        color: #575e72;
-        cursor: pointer;
-        transition: all 0.2s;
-        font-family: 'Hanken Grotesk', sans-serif;
-    }
-
-    .preset-btn:hover {
-        background: #f8fafc;
-    }
-
-    .preset-active {
-        background: rgba(70, 72, 212, 0.08);
-        color: #4648d4;
-        border-color: rgba(70, 72, 212, 0.3);
-    }
-
-    .date-inputs {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-    }
-
-    .date-separator {
-        font-size: 13px;
-        color: #9ca3af;
-    }
-
-    .actor-card:hover {
-        border-color: rgba(70, 72, 212, 0.3) !important;
-        background: rgba(70, 72, 212, 0.02) !important;
-    }
-
-    .actor-active {
-        border-color: rgba(70, 72, 212, 0.4) !important;
-        background: rgba(70, 72, 212, 0.06) !important;
-    }
-
-    .dark-theme .preset-btn {
-        background: #1e2124;
-        border-color: rgba(255, 255, 255, 0.08);
-        color: #94a3b8;
-    }
-
-    .dark-theme .preset-active {
-        background: rgba(129, 140, 248, 0.12);
-        color: #818cf8;
-        border-color: rgba(129, 140, 248, 0.25);
-    }
-
-    .dark-theme .actor-card {
-        border-color: rgba(255, 255, 255, 0.06);
-        background: #1e2124;
-    }
-
     @@keyframes pageRise {
         from {
             opacity: 0;
@@ -1072,6 +851,7 @@
     private const string MediumSeverity = "Medium";
     private const string LowSeverity = "Low";
     private const string ConfigChangeAction = "CONFIG_CHANGE";
+    private const int AuditPageSize = 10;
 
     private readonly List<AuditLogRow> _logs = new();
     private readonly HashSet<string> _expandedRequests = new();
@@ -1080,90 +860,30 @@
     private string? _selectedAction;
     private string? _selectedActor;
     private string? _selectedSeverity;
-    private string? _selectedEntityType;
-    private DateTime? _selectedDateFrom;
-    private DateTime? _selectedDateTo;
     private DateTime? _selectedDate;
     private string? _selectedDateString;
     private string? _errorMessage;
     private bool _loadStarted;
-
-    private string _selectedCategory = "All";
-
-    private static readonly Dictionary<string, string[]> _categoryActions = new()
-    {
-        ["Documents"] = new[] { "DOCUMENT_UPLOADED", "DOCUMENT_DELETED", "DOCUMENT_APPROVED", "DOCUMENT_REJECTED" },
-        ["Users_Auth"] = new[] { "ROLE_CHANGE", "QUOTA_UPDATE", "USER_REGISTERED", "USER_LOGOUT", "USER_LOCK", "USER_UNLOCK", "FORCE_LOGOUT_FAILED" },
-        ["AI_Chat"] = new[] { "AI_CHAT_SESSION_CREATED", "AI_CHAT_EXCHANGE", "AI_ANSWER_REPORTED", "AI_QUOTA_BLOCKED" },
-        ["Folders_Share"] = new[] { "FOLDER_SHARE_REQUESTED", "FOLDER_SHARE_APPROVED", "FOLDER_SHARE_REJECTED", "FOLDER_COPIED" },
-        ["Community"] = new[] { "FOLDER_REPORTED", "REPORT_RESOLVED" },
-        ["System"] = new[] { "CONFIG_UPDATE", "CONFIG_CHANGE", "QUIZ_GENERATED", "QUIZ_SUBMITTED", "ESCALATION_CREATED", "ESCALATION_RESOLVED", "PlanPaymentCompleted" },
-    };
-
-    private IEnumerable<(string Key, string Label, string Icon, int Count)> _categories =>
-        new[]
-        {
-            ("All", "All", "📋", _logs.Count),
-            ("Documents", "Documents", "📄", _logs.Count(l => _categoryActions["Documents"].Contains(l.Action))),
-            ("Users_Auth", "Users", "👤", _logs.Count(l => _categoryActions["Users_Auth"].Contains(l.Action))),
-            ("AI_Chat", "AI", "🤖", _logs.Count(l => _categoryActions["AI_Chat"].Contains(l.Action))),
-            ("Folders_Share", "Folders", "📁", _logs.Count(l => _categoryActions["Folders_Share"].Contains(l.Action))),
-            ("Community", "Reports", "🚩", _logs.Count(l => _categoryActions["Community"].Contains(l.Action))),
-            ("System", "System", "⚙️", _logs.Count(l => _categoryActions["System"].Contains(l.Action))),
-        };
+    private int _currentPage = 1;
+    private string _pageJumpInput = string.Empty;
 
     private IEnumerable<AuditLogRow> FilteredLogs => _logs
-        .Where(log => _selectedCategory == "All" || _categoryActions[_selectedCategory].Contains(log.Action))
         .Where(MatchesAction)
         .Where(MatchesActor)
         .Where(MatchesSeverity)
-        .Where(MatchesEntityType)
-        .Where(MatchesDateRangeNew)
+        .Where(MatchesDateRange)
         .Where(MatchesSearch)
         .OrderByDescending(log => log.CreatedAt);
 
-    private void OnEntityTypeChanged(ChangeEventArgs e) => _selectedEntityType = e.Value?.ToString();
+    private int FilteredLogsCount => FilteredLogs.Count();
 
-    private void OnDateFromChanged(ChangeEventArgs e)
-    {
-        if (DateTime.TryParse(e.Value?.ToString(), out var date))
-            _selectedDateFrom = date;
-        else
-            _selectedDateFrom = null;
-    }
+    private int TotalAuditPages => Math.Max(1, (int)Math.Ceiling(FilteredLogsCount / (double)AuditPageSize));
 
-    private void OnDateToChanged(ChangeEventArgs e)
-    {
-        if (DateTime.TryParse(e.Value?.ToString(), out var date))
-            _selectedDateTo = date.Date.AddDays(1); // inclusive end
-        else
-            _selectedDateTo = null;
-    }
+    private int DisplayAuditPage => Math.Clamp(_currentPage, 1, TotalAuditPages);
 
-    private void SetDatePreset(DateTime? from, DateTime? to)
-    {
-        _selectedDateFrom = from;
-        _selectedDateTo = to;
-    }
-
-    private bool IsPresetActive(int days)
-    {
-        var expected = DateTime.UtcNow.AddDays(-days).Date;
-        return _selectedDateFrom?.Date == expected && _selectedDateTo is null;
-    }
-
-    private bool MatchesEntityType(AuditLogRow log)
-    {
-        if (string.IsNullOrWhiteSpace(_selectedEntityType)) return true;
-        return log.EntityName.Contains(_selectedEntityType, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private bool MatchesDateRangeNew(AuditLogRow log)
-    {
-        if (_selectedDateFrom is not null && log.CreatedAt.Date < _selectedDateFrom.Value.Date) return false;
-        if (_selectedDateTo is not null && log.CreatedAt >= _selectedDateTo.Value) return false;
-        return true;
-    }
+    private IEnumerable<AuditLogRow> PagedFilteredLogs => FilteredLogs
+        .Skip((DisplayAuditPage - 1) * AuditPageSize)
+        .Take(AuditPageSize);
 
     private IEnumerable<string> ActiveFilters
     {
@@ -1182,19 +902,6 @@
             if (!string.IsNullOrWhiteSpace(_selectedSeverity))
             {
                 yield return $"Severity: {_selectedSeverity}";
-            }
-
-            if (!string.IsNullOrWhiteSpace(_selectedEntityType))
-            {
-                yield return $"Type: {_selectedEntityType}";
-            }
-            if (_selectedDateFrom is not null)
-            {
-                yield return $"From: {_selectedDateFrom.Value:MMM dd, yyyy}";
-            }
-            if (_selectedDateTo is not null)
-            {
-                yield return $"To: {_selectedDateTo.Value.AddDays(-1):MMM dd, yyyy}";
             }
 
             if (_selectedDate is not null)
@@ -1237,7 +944,6 @@
             var rows = await AdminApi.ListAuditLogsAsync(Session.AccessToken);
             _logs.Clear();
             _logs.AddRange(rows.Select(log => new AuditLogRow(
-                log.Id.ToString(),
                 log.Action,
                 log.ActorName,
                 log.EntityType,
@@ -1278,24 +984,28 @@
     private void OnSearchInput(ChangeEventArgs args)
     {
         _searchText = args.Value?.ToString() ?? "";
+        _currentPage = 1;
     }
 
     private void OnActionChanged(ChangeEventArgs args)
     {
         _selectedAction = args.Value?.ToString();
         if (_selectedAction == "") _selectedAction = null;
+        _currentPage = 1;
     }
 
     private void OnActorChanged(ChangeEventArgs args)
     {
         _selectedActor = args.Value?.ToString();
         if (_selectedActor == "") _selectedActor = null;
+        _currentPage = 1;
     }
 
     private void OnSeverityChanged(ChangeEventArgs args)
     {
         _selectedSeverity = args.Value?.ToString();
         if (_selectedSeverity == "") _selectedSeverity = null;
+        _currentPage = 1;
     }
 
     private void OnDateInputChanged(ChangeEventArgs args)
@@ -1310,6 +1020,8 @@
             _selectedDate = null;
             _selectedDateString = null;
         }
+
+        _currentPage = 1;
     }
 
     private Task RemoveFilterAsync(string filter)
@@ -1331,35 +1043,84 @@
             _selectedDate = null;
             _selectedDateString = null;
         }
-        else if (filter.StartsWith("Type:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedEntityType = null;
-        }
-        else if (filter.StartsWith("From:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedDateFrom = null;
-        }
-        else if (filter.StartsWith("To:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedDateTo = null;
-        }
 
+        _currentPage = 1;
         return Task.CompletedTask;
     }
 
     private Task ClearFiltersAsync()
     {
-        _selectedCategory = "All";
         _searchText = null;
         _selectedAction = null;
         _selectedActor = null;
         _selectedSeverity = null;
-        _selectedEntityType = null;
-        _selectedDateFrom = null;
-        _selectedDateTo = null;
         _selectedDate = null;
         _selectedDateString = null;
+        _currentPage = 1;
+        _pageJumpInput = string.Empty;
         return Task.CompletedTask;
+    }
+
+    private void GoToAuditPage(int page)
+    {
+        _currentPage = Math.Clamp(page, 1, TotalAuditPages);
+    }
+
+    private List<int> GetAuditPageNumbers() => BuildSlidingPageNumbers(TotalAuditPages, DisplayAuditPage);
+
+    private static List<int> BuildSlidingPageNumbers(int total, int current)
+    {
+        var pages = new List<int>();
+
+        if (total <= 4)
+        {
+            for (var i = 1; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        if (current <= 2)
+        {
+            for (var i = 1; i <= 3; i++) pages.Add(i);
+            pages.Add(-1);
+            pages.Add(total);
+            return pages;
+        }
+
+        if (current >= total - 1)
+        {
+            pages.Add(1);
+            pages.Add(-1);
+            for (var i = total - 2; i <= total; i++) pages.Add(i);
+            return pages;
+        }
+
+        for (var i = current - 1; i <= current + 1; i++) pages.Add(i);
+        pages.Add(-1);
+        pages.Add(total);
+        return pages;
+    }
+
+    private void HandlePageJumpInput(ChangeEventArgs e)
+    {
+        _pageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPageJump();
+        }
+    }
+
+    private void GoToPageJump()
+    {
+        if (int.TryParse(_pageJumpInput, out var page))
+        {
+            GoToAuditPage(page);
+        }
+
+        _pageJumpInput = string.Empty;
     }
 
     private bool MatchesAction(AuditLogRow log)
@@ -1430,7 +1191,6 @@
     }
 
     private sealed record AuditLogRow(
-        string Id,
         string Action,
         string ActorEmail,
         string EntityName,

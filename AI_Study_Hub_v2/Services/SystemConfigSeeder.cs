@@ -8,35 +8,17 @@ public static class SystemConfigSeeder
 {
     public static async Task SeedAsync(AppDbContext db, ILogger logger, CancellationToken cancellationToken = default)
     {
-        var existingMap = await db.SystemConfigs.ToDictionaryAsync(config => config.Key, cancellationToken);
-        var defaults = Defaults();
-
-        var inserted = 0;
-        var updated = 0;
-
-        foreach (var def in defaults)
+        var existing = (await db.SystemConfigs.Select(config => config.Key).ToListAsync(cancellationToken))
+            .ToHashSet(StringComparer.Ordinal);
+        var missing = Defaults().Where(config => !existing.Contains(config.Key)).ToArray();
+        if (missing.Length == 0)
         {
-            if (existingMap.TryGetValue(def.Key, out var existing))
-            {
-                // Update existing config's value to match the current default
-                if (existing.Value != def.Value)
-                {
-                    existing.Value = def.Value;
-                    updated++;
-                }
-            }
-            else
-            {
-                db.SystemConfigs.Add(def);
-                inserted++;
-            }
+            return;
         }
 
-        if (inserted > 0 || updated > 0)
-        {
-            await db.SaveChangesAsync(cancellationToken);
-            logger.LogInformation("Seeded system configs: {Inserted} inserted, {Updated} updated.", inserted, updated);
-        }
+        db.SystemConfigs.AddRange(missing);
+        await db.SaveChangesAsync(cancellationToken);
+        logger.LogInformation("Seeded {Count} missing system configs.", missing.Length);
     }
 
     private static SystemConfig[] Defaults() =>
@@ -55,7 +37,7 @@ public static class SystemConfigSeeder
         new() { Key = "generation.system_prompt", Value = "You are AI Study Hub.", DefaultValue = "You are AI Study Hub.", Category = "Generation", DisplayName = "System prompt", Description = "Instruction block applied to every RAG chat response.", ConfigType = "Text", IsCritical = true },
         new() { Key = "quota.default_student_daily_tokens", Value = "25000", DefaultValue = "25000", Category = "Quota", DisplayName = "Student daily quota", Description = "Default daily token quota assigned to new student profiles.", ConfigType = "Number", IsCritical = false },
         new() { Key = "quota.default_admin_daily_tokens", Value = "75000", DefaultValue = "75000", Category = "Quota", DisplayName = "Admin daily quota", Description = "Default daily token quota assigned to administrator profiles.", ConfigType = "Number", IsCritical = false },
-        new() { Key = "auth.allow_self_registration", Value = "true", DefaultValue = "true", Category = "Security", DisplayName = "Allow self registration", Description = "Controls whether new users can create accounts without an invitation.", ConfigType = "Boolean", IsCritical = true },
+        new() { Key = "auth.allow_self_registration", Value = "false", DefaultValue = "false", Category = "Security", DisplayName = "Allow self registration", Description = "Controls whether new users can create accounts without an invitation.", ConfigType = "Boolean", IsCritical = true },
         new() { Key = "documents.allowed_extensions", Value = "[\".pdf\", \".docx\"]", DefaultValue = "[\".pdf\", \".docx\"]", Category = "Documents", DisplayName = "Allowed document extensions", Description = "JSON array of file extensions accepted by upload validation.", ConfigType = "Json", IsCritical = false },
         new() { Key = "moderation.report_reasons", Value = "[\"Wrong subject\"]", DefaultValue = "[\"Wrong subject\"]", Category = "Moderation", DisplayName = "Report reasons", Description = "JSON options shown when a user reports a document.", ConfigType = "Json", IsCritical = false },
         new() { Key = "audit.retention_days", Value = "365", DefaultValue = "365", Category = "Governance", DisplayName = "Audit retention days", Description = "Number of days audit_logs remain visible before archival.", ConfigType = "Number", IsCritical = false },

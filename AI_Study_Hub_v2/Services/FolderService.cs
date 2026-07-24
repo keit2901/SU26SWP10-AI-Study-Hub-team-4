@@ -3,7 +3,6 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using Microsoft.EntityFrameworkCore;
 using System.Data;
-using System.Text.Json;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -15,7 +14,6 @@ public sealed class FolderService : IFolderService
     private readonly IFolderShareAiModerator _shareAiModerator;
     private readonly IPlanCapacityGuard _capacityGuard;
     private readonly ISharedFolderCopyCoordinator _copyCoordinator;
-    private readonly IAuditLogService _audit;
 
     public FolderService(
         AppDbContext db,
@@ -23,8 +21,7 @@ public sealed class FolderService : IFolderService
         IStorageDeletionCoordinator deletionCoordinator,
         IFolderShareAiModerator shareAiModerator,
         IPlanCapacityGuard capacityGuard,
-        ISharedFolderCopyCoordinator copyCoordinator,
-        IAuditLogService audit)
+        ISharedFolderCopyCoordinator copyCoordinator)
     {
         _db = db;
         _logger = logger;
@@ -32,7 +29,6 @@ public sealed class FolderService : IFolderService
         _shareAiModerator = shareAiModerator;
         _capacityGuard = capacityGuard;
         _copyCoordinator = copyCoordinator;
-        _audit = audit;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -66,10 +62,13 @@ public sealed class FolderService : IFolderService
                 Icon = f.Icon,
                 CreatedAt = f.CreatedAt,
                 UpdatedAt = f.UpdatedAt,
-                Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                Status = f.Documents.Count == 0 ? "Empty" :
+                         f.ShareStatus == FolderStatus.Rejected ? "Rejected" :
+                         f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Failed" :
                          f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
-                         "Empty"
+                         f.ShareStatus == FolderStatus.PendingShare ? "Pending Share" :
+                         f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                         "Private"
             })
             .ToListAsync(cancellationToken);
 
@@ -237,10 +236,13 @@ public sealed class FolderService : IFolderService
                         .Select(reaction => (bool?)reaction.IsLike)
                         .FirstOrDefault()
                     : null,
-                Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                Status = f.Documents.Count == 0 ? "Empty" :
+                         f.ShareStatus == FolderStatus.Rejected ? "Rejected" :
+                         f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Failed" :
                          f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
-                         "Empty"
+                         f.ShareStatus == FolderStatus.PendingShare ? "Pending Share" :
+                         f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                         "Private"
             })
             .ToListAsync(cancellationToken);
 
@@ -281,10 +283,13 @@ public sealed class FolderService : IFolderService
                 UpdatedAt = f.UpdatedAt,
                 LikeCount = f.Reactions.Count(r => r.IsLike),
                 DislikeCount = f.Reactions.Count(r => !r.IsLike),
-                Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                Status = f.Documents.Count == 0 ? "Empty" :
+                         f.ShareStatus == FolderStatus.Rejected ? "Rejected" :
+                         f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Failed" :
                          f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
-                         "Empty"
+                         f.ShareStatus == FolderStatus.PendingShare ? "Pending Share" :
+                         f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                         "Private"
             })
             .ToListAsync(cancellationToken);
 
@@ -307,6 +312,24 @@ public sealed class FolderService : IFolderService
         {
             throw new DocumentException(400, "invalid_share_status",
                 "Only folders with status None or Rejected can be requested for sharing.");
+        }
+
+        if (!folder.Documents.Any())
+        {
+            throw new DocumentException(400, "empty_folder",
+                "Folder has no documents, so it cannot be shared to the community yet.");
+        }
+
+        if (folder.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing))
+        {
+            throw new DocumentException(400, "folder_has_processing_documents",
+                "Cannot share this folder because some documents are still processing or uploading. Please wait until they are finished.");
+        }
+
+        if (folder.Documents.Any(d => d.Status == DocumentStatus.Failed))
+        {
+            throw new DocumentException(400, "folder_has_failed_documents",
+                "Cannot share this folder because it contains documents that failed to process. Please remove or re-upload the failed documents before sharing.");
         }
 
         var documentIds = folder.Documents.Select(document => document.Id).ToList();
@@ -363,9 +386,6 @@ public sealed class FolderService : IFolderService
         folder.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
-
-        _audit.Add(supabaseUserId, "FOLDER_SHARE_REQUESTED", "Folder", folder.Id.ToString(), "Low",
-            afterJson: JsonSerializer.Serialize(new { folder.Name, folder.ShareStatus }));
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
@@ -434,9 +454,6 @@ public sealed class FolderService : IFolderService
 
         await _db.SaveChangesAsync(cancellationToken);
 
-        _audit.Add(null, "FOLDER_SHARE_APPROVED", "Folder", folderId.ToString(), "Medium",
-            afterJson: JsonSerializer.Serialize(new { folder.Name, folder.ShareStatus }));
-
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
     }
@@ -467,9 +484,6 @@ public sealed class FolderService : IFolderService
         folder.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
-
-        _audit.Add(null, "FOLDER_SHARE_REJECTED", "Folder", folderId.ToString(), "Medium",
-            afterJson: JsonSerializer.Serialize(new { folder.Name, folder.ShareStatus }));
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
@@ -547,22 +561,85 @@ public sealed class FolderService : IFolderService
             LikeCount = likeCount,
             DislikeCount = dislikeCount,
             CurrentUserVote = currentVote,
-            Status = folder.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
-                     folder.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                     folder.Documents.Any() && folder.Documents.All(d => d.Status == DocumentStatus.Ready) ? (folder.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
-                     "Empty"
+            Status = MapFolderStatus(folder.ShareStatus, folder.Documents)
         };
     }
 
-    public async Task<FolderDto> CopySharedFolderAsync(Guid supabaseUserId, Guid sharedFolderId, CancellationToken cancellationToken = default)
+    public async Task<FolderDto> GetFolderAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        CancellationToken cancellationToken = default)
     {
-        var result = await _copyCoordinator.CopyAsync(supabaseUserId, sharedFolderId, cancellationToken);
+        var profile = await _db.Users
+            .AsNoTracking()
+            .Include(u => u.Role)
+            .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, cancellationToken)
+            ?? throw new DocumentException(404, "user_not_found",
+                "Authenticated user has no profile in public.users.");
 
-        _audit.Add(supabaseUserId, "FOLDER_COPIED", "Folder", sharedFolderId.ToString(), "Low",
-            afterJson: JsonSerializer.Serialize(new { result.Name, SourceFolderId = sharedFolderId }));
+        if (!profile.IsActive)
+        {
+            throw new DocumentException(403, "user_inactive",
+                "User account is inactive.");
+        }
 
-        return result;
+        var folder = await _db.Folders
+            .AsNoTracking()
+            .Include(f => f.User)
+            .Include(f => f.Documents)
+            .Include(f => f.Reactions)
+            .FirstOrDefaultAsync(f => f.Id == folderId, cancellationToken)
+            ?? throw new DocumentException(404, "folder_not_found", "Folder not found.");
+
+        var isOwner = folder.UserId == profile.Id;
+        var isApproved = folder.ShareStatus == FolderStatus.Approved;
+        var roleName = profile.Role?.RoleName ?? string.Empty;
+        var isPrivileged = roleName.Equals(Role.AdminRoleName, StringComparison.OrdinalIgnoreCase)
+                        || roleName.Equals(Role.ModeratorRoleName, StringComparison.OrdinalIgnoreCase);
+
+        if (!isOwner && !isApproved && !isPrivileged)
+        {
+            throw new DocumentException(403, "folder_access_denied",
+                "You do not have permission to access this folder.");
+        }
+
+        var likeCount = folder.Reactions.Count(r => r.IsLike);
+        var dislikeCount = folder.Reactions.Count(r => !r.IsLike);
+        var currentVote = folder.Reactions
+            .Where(r => r.UserId == profile.Id)
+            .Select(r => (bool?)r.IsLike)
+            .FirstOrDefault();
+
+        return new FolderDto
+        {
+            Id = folder.Id,
+            Name = folder.Name,
+            Description = folder.Description,
+            DocumentCount = folder.Documents.Count,
+            IsFavorite = folder.IsFavorite,
+            ShareStatus = folder.ShareStatus,
+            SharedAt = folder.SharedAt,
+            ShareReviewSource = folder.ShareReviewSource,
+            AiReviewReason = folder.AiReviewReason,
+            AiReviewConfidence = folder.AiReviewConfidence,
+            AiReviewFailureCount = folder.AiReviewFailureCount,
+            HumanReviewReason = folder.HumanReviewReason,
+            RequiresHumanReview = folder.RequiresHumanReview,
+            AppealRequestedAt = folder.AppealRequestedAt,
+            AppealMessage = folder.AppealMessage,
+            Icon = folder.Icon,
+            OwnerName = folder.User.FullName ?? folder.User.Username,
+            CreatedAt = folder.CreatedAt,
+            UpdatedAt = folder.UpdatedAt,
+            LikeCount = likeCount,
+            DislikeCount = dislikeCount,
+            CurrentUserVote = currentVote,
+            Status = MapFolderStatus(folder.ShareStatus, folder.Documents)
+        };
     }
+
+    public Task<FolderDto> CopySharedFolderAsync(Guid supabaseUserId, Guid sharedFolderId, CancellationToken cancellationToken = default)
+        => _copyCoordinator.CopyAsync(supabaseUserId, sharedFolderId, cancellationToken);
 
     private async Task<User> ResolveProfileAsync(Guid supabaseUserId, CancellationToken cancellationToken)
     {
@@ -634,6 +711,36 @@ public sealed class FolderService : IFolderService
             : normalized[..2000];
     }
 
+    private static string MapFolderStatus(FolderStatus shareStatus, ICollection<Document>? documents)
+    {
+        if (documents == null || documents.Count == 0)
+        {
+            return "Empty";
+        }
+
+        if (shareStatus == FolderStatus.Rejected)
+        {
+            return "Rejected";
+        }
+
+        if (documents.Any(d => d.Status == DocumentStatus.Failed))
+        {
+            return "Failed";
+        }
+
+        if (documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing))
+        {
+            return "Processing";
+        }
+
+        return shareStatus switch
+        {
+            FolderStatus.PendingShare => "Pending Share",
+            FolderStatus.Approved => "Shared",
+            _ => "Private"
+        };
+    }
+
     private static FolderDto ToDto(Folder folder, int documentCount) => new()
     {
         Id = folder.Id,
@@ -654,11 +761,7 @@ public sealed class FolderService : IFolderService
         Icon = folder.Icon,
         CreatedAt = folder.CreatedAt,
         UpdatedAt = folder.UpdatedAt,
-        Status = folder.Documents == null ? "Empty" :
-                 folder.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
-                 folder.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                 folder.Documents.Any() && folder.Documents.All(d => d.Status == DocumentStatus.Ready) ? (folder.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
-                 "Empty"
+        Status = MapFolderStatus(folder.ShareStatus, folder.Documents)
     };
 }
 

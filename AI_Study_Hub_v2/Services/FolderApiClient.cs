@@ -30,6 +30,23 @@ public sealed class FolderApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public async Task<FolderDto> GetAsync(string accessToken, Guid id, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/folders/{id}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<FolderDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     public async Task<FolderDto> CreateAsync(
         string accessToken,
         CreateFolderRequest request,

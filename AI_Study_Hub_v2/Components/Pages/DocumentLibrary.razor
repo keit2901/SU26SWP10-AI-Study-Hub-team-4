@@ -656,10 +656,10 @@ else
                             <MudTd Class="table-cell">
                                 <MudChip T="string"
                                          Size="Size.Small"
-                                         Color="@GetStatusColor(context.Status)"
+                                         Color="@GetStatusColor(context)"
                                          Variant="Variant.Filled"
-                                         Icon="@GetStatusIcon(context.Status)">
-                                    @GetStatusText(context.Status)
+                                         Icon="@GetStatusIcon(context)">
+                                    @GetStatusText(context)
                                 </MudChip>
                             </MudTd>
                             <MudTd Class="table-cell">
@@ -844,7 +844,7 @@ else
         .ToList();
 
     private List<string> _statusOptions => _documents
-        .Select(d => GetStatusText(d.Status))
+        .Select(d => GetStatusText(d))
         .Where(value => !string.IsNullOrWhiteSpace(value))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
@@ -883,7 +883,7 @@ else
 
             if (!string.IsNullOrWhiteSpace(_filterStatusQuery))
             {
-                query = query.Where(d => GetStatusText(d.Status).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
+                query = query.Where(d => GetStatusText(d).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
             }
 
             var createdFrom = ParseDocumentLocalDateTimeFilter(_filterCreatedFrom);
@@ -910,6 +910,8 @@ else
                 "folder-desc" => query.OrderByDescending(d => GetFolderName(d.FolderId), StringComparer.OrdinalIgnoreCase),
                 "size-asc" => query.OrderBy(d => d.FileSizeBytes),
                 "size-desc" => query.OrderByDescending(d => d.FileSizeBytes),
+                "status-asc" => query.OrderBy(d => GetStatusText(d), StringComparer.OrdinalIgnoreCase),
+                "status-desc" => query.OrderByDescending(d => GetStatusText(d), StringComparer.OrdinalIgnoreCase),
                 "created-asc" => query.OrderBy(d => d.CreatedAt),
                 _ => query.OrderByDescending(d => d.CreatedAt),
             };
@@ -1474,7 +1476,7 @@ else
         return _folders.FirstOrDefault(f => f.Id == folderId.Value)?.Name ?? "—";
     }
 
-    private static Color GetStatusColor(DocumentStatus status) => status switch
+    private static Color GetStatusColor(DocumentDto doc) => doc.Status switch
     {
         DocumentStatus.Ready => Color.Success,
         DocumentStatus.Uploading => Color.Info,
@@ -1483,7 +1485,7 @@ else
         _ => Color.Default,
     };
 
-    private static string GetStatusIcon(DocumentStatus status) => status switch
+    private static string GetStatusIcon(DocumentDto doc) => doc.Status switch
     {
         DocumentStatus.Ready => Icons.Material.Filled.CheckCircle,
         DocumentStatus.Uploading => Icons.Material.Filled.CloudUpload,
@@ -1492,13 +1494,13 @@ else
         _ => Icons.Material.Filled.Help,
     };
 
-    private static string GetStatusText(DocumentStatus status) => status switch
+    private static string GetStatusText(DocumentDto doc) => doc.Status switch
     {
         DocumentStatus.Ready => "Ready",
         DocumentStatus.Uploading => "Uploading",
         DocumentStatus.Processing => "Processing",
         DocumentStatus.Failed => "Failed",
-        _ => status.ToString(),
+        _ => doc.Status.ToString(),
     };
 
     private static string GetShortFileName(string fileName, int maxLength)

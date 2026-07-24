@@ -32,4 +32,4 @@ volumes:
 networks:
   aistudy-net:
     external: true
-    name: supabase_network  # share network với Supabase stack
+    name: aistudyhub-supabase_default  # share network với Supabase stack

@@ -78,11 +78,10 @@
                               @bind-Value="_model.Password"
                               Required="true"
                               RequiredError="Password is required"
-                              InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                              InputType="InputType.Password"
                               Variant="Variant.Outlined"
-                              Adornment="Adornment.End"
-                              AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
-                              OnAdornmentClick="TogglePasswordVisibility"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Lock"
                               Disabled="_busy" />
             </MudForm>
 
@@ -127,7 +126,6 @@
     private bool _humanCheckValid;
     private bool _busy;
     private string? _error;
-    private bool _showPassword;
     private readonly LoginRequest _model = new();
 
     protected override void OnInitialized()
@@ -192,6 +190,4 @@
     {
         Nav.NavigateTo(AdminAccessPolicy.GetAuthenticatedLandingPage(role), replace: true);
     }
-
-    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
 }

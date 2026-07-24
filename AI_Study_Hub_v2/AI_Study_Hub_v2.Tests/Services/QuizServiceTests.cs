@@ -224,8 +224,7 @@ public sealed class QuizServiceTests
             Microsoft.Extensions.Options.Options.Create(new GeminiOptions { ApiKey = "test-key", Model = "configured-gemini" }),
             persistence.Object,
             quota.Object,
-            Mock.Of<ILogger<QuizService>>(),
-            Mock.Of<IAuditLogService>());
+            Mock.Of<ILogger<QuizService>>());
 
         var act = () => sut.GenerateAsync(user.SupabaseUserId, new GenerateQuizRequest(
             session.Id,
@@ -278,8 +277,7 @@ public sealed class QuizServiceTests
             Microsoft.Extensions.Options.Options.Create(new GeminiOptions { Model = "configured-gemini" }),
             Mock.Of<IChatPersistenceService>(),
             quota.Object,
-            Mock.Of<ILogger<QuizService>>(),
-            Mock.Of<IAuditLogService>());
+            Mock.Of<ILogger<QuizService>>());
 
         var quiz = await sut.GenerateAsync(user.SupabaseUserId, new GenerateQuizRequest(session.Id, FolderId: folderId, Count: 3));
 
@@ -524,7 +522,7 @@ public sealed class QuizServiceTests
             db, rag.Object, factory.Object,
             Microsoft.Extensions.Options.Options.Create(new GroqOptions { Model = "primary" }),
             Microsoft.Extensions.Options.Options.Create(new GeminiOptions { Model = "alternate" }),
-            persistence.Object, quota.Object, Mock.Of<ILogger<QuizService>>(), Mock.Of<IAuditLogService>());
+            persistence.Object, quota.Object, Mock.Of<ILogger<QuizService>>());
 
         var act = () => sut.GenerateAsync(user.SupabaseUserId, new GenerateQuizRequest(session.Id, FolderId: folderId, Count: 3, Model: "primary"));
 
@@ -559,7 +557,7 @@ public sealed class QuizServiceTests
             db, rag.Object, factory.Object,
             Microsoft.Extensions.Options.Options.Create(new GroqOptions { Model = "primary" }),
             Microsoft.Extensions.Options.Options.Create(new GeminiOptions { Model = "alternate" }),
-            persistence.Object, quota.Object, Mock.Of<ILogger<QuizService>>(), Mock.Of<IAuditLogService>());
+            persistence.Object, quota.Object, Mock.Of<ILogger<QuizService>>());
 
         var act = () => sut.GenerateAsync(user.SupabaseUserId, new GenerateQuizRequest(session.Id, FolderId: folderId, Count: 3, Model: "primary"), cts.Token);
 
@@ -610,8 +608,7 @@ public sealed class QuizServiceTests
             Microsoft.Extensions.Options.Options.Create(new GeminiOptions()),
             Mock.Of<IChatPersistenceService>(),
             Mock.Of<IAiQuotaService>(),
-            Mock.Of<ILogger<QuizService>>(),
-            Mock.Of<IAuditLogService>());
+            Mock.Of<ILogger<QuizService>>());
     }
 
     private static (QuizService Sut, List<AiChatCompletionRequest> Requests) CreateGenerationSut(
@@ -639,8 +636,7 @@ public sealed class QuizServiceTests
             Microsoft.Extensions.Options.Options.Create(new GeminiOptions { ApiKey = "test-key", Model = "configured-gemini" }),
             Mock.Of<IChatPersistenceService>(),
             quota.Object,
-            Mock.Of<ILogger<QuizService>>(),
-            Mock.Of<IAuditLogService>()), requests);
+            Mock.Of<ILogger<QuizService>>()), requests);
     }
 
     private static Mock<IRagSearchService> CreateRag(Guid supabaseUserId)

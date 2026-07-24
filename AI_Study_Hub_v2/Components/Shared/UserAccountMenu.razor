@@ -18,8 +18,7 @@
                 <span class="user-avatar-initials">@GetInitials()</span>
             </div>
             <div class="uam-user-meta d-none d-md-flex flex-column">
-                <span class="uam-user-name text-truncate">@DisplayName</span>
-                <span class="uam-user-plan">@PlanLabel</span>
+                <span class="uam-user-plan @FormatPlanClass()">@PlanLabel</span>
             </div>
         </button>
 
@@ -34,7 +33,7 @@
 
                 <button class="uam-item" @onclick="OpenPaymentHistoryDialogAsync">
                     <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small" />
-                    <span>Payment</span>
+                    <span>Payment History</span>
                 </button>
 
                 <button class="uam-item" @onclick="GoToPricing">
@@ -118,10 +117,26 @@
     }
 
     .uam-user-plan {
-        font-size: 0.75rem;
-        font-weight: 500;
-        color: inherit;
-        opacity: 0.7;
+        font-size: 0.72rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+
+    .uam-user-plan.plan-pro {
+        color: #d97706 !important;
+        background: rgba(245, 158, 11, 0.12);
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(245, 158, 11, 0.2);
+    }
+
+    .uam-user-plan.plan-free {
+        color: #5e5ce6 !important;
+        background: rgba(94, 92, 230, 0.1);
+        padding: 2px 8px;
+        border-radius: 999px;
+        border: 1px solid rgba(94, 92, 230, 0.18);
     }
 
     .uam-backdrop {
@@ -258,6 +273,12 @@
         ?? "Student";
 
     private string PlanLabel => Session.CurrentPlanDisplayName;
+
+    private string FormatPlanClass()
+    {
+        var plan = Session.CurrentPlan?.ToLowerInvariant() ?? "free";
+        return plan == "pro" ? "plan-pro" : "plan-free";
+    }
 
     private string GetInitials()
     {

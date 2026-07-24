@@ -117,7 +117,7 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task RequestShareAsync_DocumentsNotReady_ButBenignMetadata_StillAutoApproves()
+    public async Task RequestShareAsync_DocumentsNotReady_ThrowsBadRequest()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
@@ -131,13 +131,47 @@ public sealed class PublicHubServiceTests
         db.SaveChanges();
         var sut = BuildSut(db);
 
-        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var act = () => sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
 
-        result.ShareStatus.Should().Be(FolderStatus.Approved);
-        result.AiReviewFailureCount.Should().Be(0);
-        result.RequiresHumanReview.Should().BeFalse();
-        result.AiReviewReason.Should().Contain("approved");
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(400);
+        exception.Which.Code.Should().Be("folder_has_processing_documents");
     }
+
+    [Test]
+    public async Task RequestShareAsync_EmptyFolder_ThrowsBadRequest()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        var sut = BuildSut(db);
+
+        var act = () => sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(400);
+        exception.Which.Code.Should().Be("empty_folder");
+    }
+
+    [Test]
+    public async Task RequestShareAsync_FailedDocuments_ThrowsBadRequest()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedUser(db, "Owner");
+        var folder = SeedFolder(db, owner.Id, isShared: false);
+        folder.Description = "Folder with failed document";
+        var document = CreateDocument(owner.Id, folder.Id, "failed.pdf", DocumentStatus.Failed);
+        db.Documents.Add(document);
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var act = () => sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(400);
+        exception.Which.Code.Should().Be("folder_has_failed_documents");
+    }
+
 
     [Test]
     public async Task RequestShareAsync_ShortDescription_ButBenignContent_StillAutoApproves()
@@ -531,7 +565,7 @@ public sealed class PublicHubServiceTests
             NullLogger<SharedFolderCopyCoordinator>.Instance);
         return new FolderService(db, NullLogger<FolderService>.Instance,
             Mock.Of<IStorageDeletionCoordinator>(), new FolderShareAiModerator(),
-            guard.Object, coordinator, Mock.Of<IAuditLogService>());
+            guard.Object, coordinator);
     }
 
     private static Data.AppDbContext CreateDbWithChunks()

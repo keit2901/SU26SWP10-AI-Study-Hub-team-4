@@ -18,7 +18,7 @@ public class FolderServiceTests
         var storage = Mock.Of<ISupabaseStorageClient>();
         return new FolderService(db, NullLogger<FolderService>.Instance,
             new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance),
-            new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<ISharedFolderCopyCoordinator>(), Mock.Of<IAuditLogService>());
+            new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<ISharedFolderCopyCoordinator>());
     }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
@@ -289,11 +289,10 @@ public class FolderServiceTests
         db.SaveChanges();
         SeedDocumentWithStatus(db, me.Id, folderProc.Id, DocumentStatus.Processing);
 
-        // 3. Rejected folder (contains a failed document)
+        // 3. Rejected folder (ShareStatus is Rejected)
         var folderRej = SeedFolder(db, me.Id, "Rejected Folder");
-        folderRej.ShareStatus = FolderStatus.PendingShare;
+        folderRej.ShareStatus = FolderStatus.Rejected;
         db.SaveChanges();
-        SeedDocumentWithStatus(db, me.Id, folderRej.Id, DocumentStatus.Failed);
         SeedDocumentWithStatus(db, me.Id, folderRej.Id, DocumentStatus.Ready);
 
         // 4. Pending Share folder (contains ready documents, but folder is not shared)

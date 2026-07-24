@@ -807,10 +807,9 @@
                 {
                     try
                     {
-                        var sharedFolders = await FoldersApi.ListSharedAsync(Session.AccessToken!, scopeCts.Token);
+                        var sharedFolder = await FoldersApi.GetAsync(Session.AccessToken!, queryFolderId.Value, scopeCts.Token);
                         if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
 
-                        var sharedFolder = sharedFolders.FirstOrDefault(f => f.Id == queryFolderId.Value);
                         if (sharedFolder != null)
                         {
                             var sharedDocs = await DocumentsApi.ListAsync(
