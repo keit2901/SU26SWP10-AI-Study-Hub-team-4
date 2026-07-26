@@ -5,6 +5,7 @@
 @using AI_Study_Hub_v2.Dtos
 @inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
+@inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
@@ -676,13 +677,22 @@
         ?? [];
 
     private IReadOnlyList<string> StatusOptions =>
-        ["Approved", "Pending", "Rejected"];
+        ["AI Review", "Approved", "Manual Review", "Pending", "Rejected"];
 
     protected override async Task OnInitializedAsync()
     {
+        if (!Session.IsAuthenticated)
+        {
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+            {
+                Session.Set(restored);
+            }
+        }
+
         if (!Session.IsAuthenticated || Session.CurrentUser == null)
         {
-            Nav.NavigateTo("/login");
+            Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
             return;
         }
 
@@ -755,9 +765,7 @@
 
         if (!string.IsNullOrWhiteSpace(FilterReviewStatus))
         {
-            query = query.Where(item => GetReviewStatusLabel(item).Contains(
-                FilterReviewStatus,
-                StringComparison.OrdinalIgnoreCase));
+            query = query.Where(item => MatchesReviewStatusFilter(item, FilterReviewStatus));
         }
 
         if (!string.IsNullOrWhiteSpace(FilterSubjectQuery))
@@ -1775,6 +1783,34 @@
         }
 
         return null;
+    }
+
+    private bool MatchesReviewStatusFilter(DocumentDto item, string filterValue)
+    {
+        if (string.IsNullOrWhiteSpace(filterValue))
+        {
+            return true;
+        }
+
+        var normalizedFilter = filterValue.Trim();
+        var reviewStatusLabel = GetReviewStatusLabel(item);
+        var reviewSource = GetResolvedReviewSource(item);
+
+        return normalizedFilter.Equals("AI Review", StringComparison.OrdinalIgnoreCase)
+            ? string.Equals(reviewSource, "AI", StringComparison.OrdinalIgnoreCase)
+            : normalizedFilter.Equals("Manual Review", StringComparison.OrdinalIgnoreCase)
+                ? string.Equals(reviewSource, "Manual", StringComparison.OrdinalIgnoreCase)
+                : reviewStatusLabel.Contains(normalizedFilter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/dashboard/documents"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
     }
 
     private bool ShouldShowResolvedAction(DocumentDto item) =>

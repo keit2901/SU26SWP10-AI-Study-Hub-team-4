@@ -328,7 +328,7 @@ else if (_authorized)
         _authorized = false;
         _checkingAccess = false;
         await InvokeAsync(StateHasChanged);
-        Navigation.NavigateTo("/login", replace: true);
+        Navigation.NavigateTo(BuildLoginReturnUrl(), replace: true);
     }
 
     private async Task SignOutAsync()
@@ -344,6 +344,16 @@ else if (_authorized)
         Session.Clear();
         await AuthPersistence.ClearAsync();
         Navigation.NavigateTo("/login", forceLoad: true);
+    }
+
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/admin"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
     }
 
     private void NavigateToProfile() { _profileOpen = false; Navigation.NavigateTo("/profile"); }

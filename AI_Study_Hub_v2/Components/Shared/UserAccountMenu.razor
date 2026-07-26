@@ -257,7 +257,24 @@
         ?? Session.CurrentUser?.Email
         ?? "Student";
 
-    private string PlanLabel => Session.CurrentPlanDisplayName;
+    private string PlanLabel
+    {
+        get
+        {
+            var role = Session.CurrentUser?.Role;
+            if (string.Equals(role, "Moderator", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Moderator";
+            }
+
+            if (string.Equals(role, "Admin", StringComparison.OrdinalIgnoreCase))
+            {
+                return "Admin";
+            }
+
+            return Session.CurrentPlanDisplayName;
+        }
+    }
 
     private string GetInitials()
     {

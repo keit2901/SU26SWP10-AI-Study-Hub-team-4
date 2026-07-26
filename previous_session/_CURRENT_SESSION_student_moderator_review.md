@@ -116,3 +116,21 @@
 - Verification:
   - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.tmp-build-community"` -> success.
   - Build still reports pre-existing warnings in unrelated files (`QuizDialog`, `DocumentDetail`, `Admin/Dashboard`, `DocumentLibrary`, `AiChat`), but no new compile errors from the AI/manual moderator review changes.
+
+### 2026-07-26T02:14:00+07:00 - Document dashboard keeps page path on refresh and can filter AI review status
+- Updated `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor` to restore auth from `AuthPersistenceService` before redirecting, which prevents the moderator/student document dashboard from bouncing away on browser refresh when a valid saved session exists.
+- Added `AI Review` and `Manual Review` to the document status suggestion list and changed the status filter logic so `AI Review` matches documents resolved by AI while the existing `Approved/Pending/Rejected` filters keep working.
+- Added a `BuildLoginReturnUrl()` helper in the document dashboard so if authentication is truly required, the redirect now includes the current page path (for example `/dashboard/documents` or `/dashboard/documents?folderId=...`).
+- Updated `AI_Study_Hub_v2/Components/Pages/Login.razor` to accept `returnUrl` and redirect authenticated users back to that local path after restore/login instead of always sending them to the default dashboard landing page.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.tmp-build-community"` -> success.
+  - Build still shows only the same unrelated pre-existing warnings in `QuizDialog`, `Admin/Dashboard`, `DocumentDetail`, `DocumentLibrary`, `AiChat`, and `DashboardService`.
+
+### 2026-07-26T02:37:00+07:00 - Global auth restore/returnUrl expanded and folder share now closes after document moderation
+- Extended the refresh-safe auth pattern to the remaining protected moderator/student pages that still redirected too early: `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`, `SubjectsDashboard.razor`, `SemestersDashboard.razor`, `ShareReviewQueue.razor`, and `AI_Study_Hub_v2/Components/Pages/AiChat.razor`. Each page now restores from `AuthPersistenceService` first and redirects with a page-specific `returnUrl` when login is actually required.
+- Updated `AI_Study_Hub_v2/Components/Layout/MainLayout.razor`, `DashboardLayout.razor`, and `Components/Admin/Shared/AdminLayout.razor` so forced auth redirects caused by expired/invalid sessions preserve the current route instead of dropping users onto the default dashboard landing page.
+- Fixed the moderation workflow in `AI_Study_Hub_v2/Services/DashboardService.cs`: document-level AI/manual review now also re-evaluates the parent folder while it is in `PendingShare`. If any moderated document is rejected, the folder share is rejected; if all documents are approved, the folder is marked `Approved` and gets a `SharedAt` timestamp. This makes the folder disappear from the student's `Moderator Queue` and show as shared on the next load.
+- Updated `AI_Study_Hub_v2/Components/Shared/UserAccountMenu.razor` so moderators/admins show `Moderator` or `Admin` under the account avatar instead of the plan label like `Free`.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.tmp-build-community"` -> success.
+  - Build still reports only pre-existing warnings in unrelated files (`QuizDialog`, `Admin/Dashboard`, `DocumentLibrary`, `DocumentDetail`, `AiChat`, `DashboardService`).

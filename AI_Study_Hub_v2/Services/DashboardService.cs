@@ -268,6 +268,13 @@ public class DashboardService : IDashboardService
         doc.ErrorMessage = isApproved ? null : decision.Reason;
         doc.UpdatedAt = DateTimeOffset.UtcNow;
 
+        await UpdateFolderShareStatusFromDocumentModerationAsync(
+            doc.FolderId,
+            reviewSource: "AI_ASSIST",
+            moderationReason: decision.Reason,
+            confidence: decision.Confidence,
+            ct);
+
         await _context.SaveChangesAsync(ct);
 
         _audit.Add(
@@ -293,6 +300,14 @@ public class DashboardService : IDashboardService
         doc.ReviewStatus = DocumentReviewStatus.Approved;
         doc.ErrorMessage = null;
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
+
+        await UpdateFolderShareStatusFromDocumentModerationAsync(
+            doc.FolderId,
+            reviewSource: "HUMAN",
+            moderationReason: "Approved after moderator document review.",
+            confidence: null,
+            ct);
+
         await _context.SaveChangesAsync(ct);
 
         _audit.Add(null, "DOCUMENT_APPROVED", "Document", documentId.ToString(), "Low");
@@ -308,11 +323,84 @@ public class DashboardService : IDashboardService
         doc.ReviewStatus = DocumentReviewStatus.Rejected;
         doc.ErrorMessage = "Rejected by moderator.";
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
+
+        await UpdateFolderShareStatusFromDocumentModerationAsync(
+            doc.FolderId,
+            reviewSource: "HUMAN",
+            moderationReason: "Rejected after moderator document review.",
+            confidence: null,
+            ct);
+
         await _context.SaveChangesAsync(ct);
 
         _audit.Add(null, "DOCUMENT_REJECTED", "Document", documentId.ToString(), "Medium");
 
         return true;
+    }
+
+    private async Task UpdateFolderShareStatusFromDocumentModerationAsync(
+        Guid? folderId,
+        string reviewSource,
+        string? moderationReason,
+        double? confidence,
+        CancellationToken ct)
+    {
+        if (!folderId.HasValue)
+        {
+            return;
+        }
+
+        var folder = await _context.Folders
+            .Include(f => f.Documents)
+            .FirstOrDefaultAsync(f => f.Id == folderId.Value, ct);
+        if (folder == null || folder.ShareStatus != FolderStatus.PendingShare)
+        {
+            return;
+        }
+
+        var documents = folder.Documents.ToList();
+        if (documents.Count == 0)
+        {
+            return;
+        }
+
+        var hasRejectedDocument = documents.Any(document => document.ReviewStatus == DocumentReviewStatus.Rejected);
+        var allDocumentsApproved = documents.All(document => document.ReviewStatus == DocumentReviewStatus.Approved);
+        if (!hasRejectedDocument && !allDocumentsApproved)
+        {
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        folder.ShareReviewSource = reviewSource;
+        folder.RequiresHumanReview = false;
+        folder.AppealRequestedAt = null;
+        folder.AppealMessage = null;
+        folder.UpdatedAt = now;
+
+        if (string.Equals(reviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase))
+        {
+            folder.AiReviewReason = moderationReason;
+            folder.AiReviewConfidence = confidence;
+            folder.HumanReviewReason = null;
+        }
+        else
+        {
+            folder.HumanReviewReason = moderationReason;
+            folder.AiReviewReason = null;
+            folder.AiReviewConfidence = null;
+        }
+
+        if (hasRejectedDocument)
+        {
+            folder.ShareStatus = FolderStatus.Rejected;
+            folder.SharedAt = null;
+        }
+        else if (allDocumentsApproved)
+        {
+            folder.ShareStatus = FolderStatus.Approved;
+            folder.SharedAt = now;
+        }
     }
 
     public async Task<UserAnalyticsDto> GetUserAnalyticsAsync(System.Guid userId, System.Guid? folderId = null, CancellationToken ct = default)

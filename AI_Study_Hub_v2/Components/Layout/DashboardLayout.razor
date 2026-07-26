@@ -70,7 +70,7 @@
 
         if (!Session.IsAuthenticated || Session.CurrentUser is null)
         {
-            Nav.NavigateTo("/login", replace: true);
+            Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
             return;
         }
 
@@ -129,8 +129,28 @@
         return "US";
     }
 
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/dashboard"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
+    }
+
     private string FormatAccountSubtitle()
     {
+        if (string.Equals(Session.CurrentUser?.Role, "Moderator", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Moderator";
+        }
+
+        if (string.Equals(Session.CurrentUser?.Role, "Admin", StringComparison.OrdinalIgnoreCase))
+        {
+            return "Admin";
+        }
+
         if (string.IsNullOrWhiteSpace(Session.CurrentPlan))
         {
             return "Free";

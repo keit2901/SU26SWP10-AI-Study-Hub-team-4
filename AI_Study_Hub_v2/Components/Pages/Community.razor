@@ -1,6 +1,7 @@
 @page "/community"
 @implements IDisposable
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 @inject FolderApiClient FoldersApi
 @inject CommunityApiClient CommunityApi
 @inject NavigationManager Nav
@@ -677,6 +678,16 @@
     protected override async Task OnInitializedAsync()
     {
         Session.OnChange += HandleSessionChanged;
+
+        if (!Session.IsAuthenticated)
+        {
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+            {
+                Session.Set(restored);
+            }
+        }
+
         await LoadAsync();
     }
 

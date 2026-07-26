@@ -6,6 +6,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 @inject FolderApiClient FolderApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -176,9 +177,18 @@
         _isRefreshing = true;
         try
         {
+            if (!Session.IsAuthenticated)
+            {
+                var restored = await AuthPersistence.TryRestoreAsync();
+                if (restored is not null)
+                {
+                    Session.Set(restored);
+                }
+            }
+
             if (!Session.IsAuthenticated || Session.CurrentUser is null)
             {
-                Nav.NavigateTo("/login", replace: true);
+                Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
                 return;
             }
 
@@ -222,6 +232,16 @@
             _loading = false;
             _isRefreshing = false;
         }
+    }
+
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/dashboard/share-reviews"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
     }
 
     private void OpenFolder(Guid folderId)

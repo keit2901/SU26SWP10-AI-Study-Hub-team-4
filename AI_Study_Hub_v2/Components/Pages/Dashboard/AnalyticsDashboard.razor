@@ -6,6 +6,7 @@
 @using Microsoft.EntityFrameworkCore
 @inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
+@inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
 @inject AI_Study_Hub_v2.Services.FolderApiClient FolderApi
 @inject NavigationManager Nav
 @inject AppDbContext DbContext
@@ -667,9 +668,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (!Session.IsAuthenticated)
+        {
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+            {
+                Session.Set(restored);
+            }
+        }
+
         if (!Session.IsAuthenticated || Session.CurrentUser == null)
         {
-            Nav.NavigateTo("/login");
+            Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
             return;
         }
 
@@ -1350,6 +1360,16 @@
     {
         _currentPage = Math.Clamp(page, 1, _totalPages);
         await LoadAnalyticsAsync();
+    }
+
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/dashboard/analytics"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
     }
 
     private void HandlePageJumpInput(ChangeEventArgs e)

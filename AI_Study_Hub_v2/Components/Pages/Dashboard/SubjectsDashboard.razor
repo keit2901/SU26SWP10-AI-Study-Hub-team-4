@@ -4,6 +4,7 @@
 @using AI_Study_Hub_v2.Dtos
 @inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
+@inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
 @inject IJSRuntime JS
 
@@ -305,9 +306,18 @@
 
     protected override async Task OnInitializedAsync()
     {
+        if (!Session.IsAuthenticated)
+        {
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+            {
+                Session.Set(restored);
+            }
+        }
+
         if (!Session.IsAuthenticated || Session.CurrentUser == null)
         {
-            Nav.NavigateTo("/login");
+            Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
             return;
         }
 
@@ -319,6 +329,16 @@
         {
             isLoading = false;
         }
+    }
+
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/dashboard/subjects"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
     }
 
     private IReadOnlyList<DashboardSubjectDto> GetVisibleSubjects()
