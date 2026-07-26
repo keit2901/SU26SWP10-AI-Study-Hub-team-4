@@ -70,6 +70,13 @@ public sealed class DocumentDto
     public string? ShareReviewSource { get; set; }
 }
 
+public sealed record DocumentAiReviewResultDto(
+    Guid DocumentId,
+    DocumentReviewStatus ReviewStatus,
+    string ReviewSource,
+    string Message,
+    double Confidence);
+
 /// <summary>
 /// Optional filter set for listing documents. All fields are optional.
 /// Pagination is done client-side for Sprint 1 (small corpora); add cursor pagination later.

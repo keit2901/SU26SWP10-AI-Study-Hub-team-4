@@ -107,3 +107,12 @@
 - Verification:
   - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.tmp-build-community"` -> success.
   - Build still shows only pre-existing warnings in unrelated files.
+
+### 2026-07-26T01:58:00+07:00 - Moderator documents support AI review and manual review side-by-side
+- Added a new `AI review` action button to `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor` so moderators can let the system review an individual document directly from the documents table, while keeping the existing `Approve` and `Reject` manual actions.
+- Updated the same Razor page to track the review source per document in-session and render the resolved action badge as `AI Review` or `Manual Review` after a moderator decision.
+- Extended `AI_Study_Hub_v2/Services/IDashboardService.cs` and `AI_Study_Hub_v2/Services/DashboardService.cs` with `AiReviewDocumentAsync`, reusing `IFolderShareAiModerator` plus extracted `DocumentChunk` content to auto-approve or auto-reject a document and save the moderation reason.
+- Added `DocumentAiReviewResultDto` in `AI_Study_Hub_v2/Dtos/DocumentDtos.cs` for the AI-review response payload, and cleaned manual approval/rejection so approve clears prior error text while reject stores `Rejected by moderator.`.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.tmp-build-community"` -> success.
+  - Build still reports pre-existing warnings in unrelated files (`QuizDialog`, `DocumentDetail`, `Admin/Dashboard`, `DocumentLibrary`, `AiChat`), but no new compile errors from the AI/manual moderator review changes.

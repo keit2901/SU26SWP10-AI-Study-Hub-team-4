@@ -486,6 +486,10 @@
                                                 else
                                                 {
                                                     <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; flex-wrap: wrap;">
+                                                        <button @onclick="() => AiReviewDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(94,92,230,0.22); background: rgba(94,92,230,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
+                                                            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size: 0.75rem; color: #5e5ce6;" />
+                                                            <span style="font-size: 0.75rem; font-weight: 500; color: #5e5ce6;">AI review</span>
+                                                        </button>
                                                         <button @onclick="() => ApproveDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(52,199,89,0.2); background: rgba(52,199,89,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
                                                             <MudIcon Icon="@Icons.Material.Filled.Check" Style="font-size: 0.75rem; color: #34C759;" />
                                                             <span style="font-size: 0.75rem; font-weight: 500; color: #34c759;">Approve</span>
@@ -574,6 +578,7 @@
     private bool isLoading = true;
     private List<DocumentDto>? pendingDocuments;
     private readonly Dictionary<Guid, string> _resolvedStatuses = new();
+    private readonly Dictionary<Guid, string> _resolvedReviewSources = new();
     private int CurrentPage = 1;
     private string _pageJumpInput = string.Empty;
     private string? OpenSortMenuColumn;
@@ -1562,6 +1567,7 @@
             {
                 Snackbar.Add($"Document '{fileName}' approved successfully.", Severity.Success);
                 _resolvedStatuses[docId] = "Approved";
+                _resolvedReviewSources[docId] = "Manual";
             }
             else
             {
@@ -1583,11 +1589,45 @@
             {
                 Snackbar.Add($"Document '{fileName}' rejected.", Severity.Warning);
                 _resolvedStatuses[docId] = "Rejected";
+                _resolvedReviewSources[docId] = "Manual";
             }
             else
             {
                 Snackbar.Add("Failed to reject document.", Severity.Error);
             }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task AiReviewDocumentAsync(Guid docId, string fileName)
+    {
+        try
+        {
+            var result = await DashboardService.AiReviewDocumentAsync(docId);
+            if (result is null)
+            {
+                Snackbar.Add("Document not found for AI review.", Severity.Error);
+                return;
+            }
+
+            _resolvedStatuses[docId] = result.ReviewStatus == DocumentReviewStatus.Approved
+                ? "Approved"
+                : "Rejected";
+            _resolvedReviewSources[docId] = "AI";
+
+            var severity = result.ReviewStatus == DocumentReviewStatus.Approved
+                ? Severity.Success
+                : Severity.Warning;
+            var statusLabel = result.ReviewStatus == DocumentReviewStatus.Approved
+                ? "approved"
+                : "rejected";
+
+            Snackbar.Add(
+                $"AI review {statusLabel} '{fileName}' ({result.Confidence:P0}). {result.Message}",
+                severity);
         }
         catch (Exception ex)
         {
@@ -1717,19 +1757,41 @@
         IsFolderReviewFinalized(item)
         && string.Equals(item.ShareReviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase);
 
+    private string? GetResolvedReviewSource(DocumentDto item)
+    {
+        if (_resolvedReviewSources.TryGetValue(item.Id, out var reviewSource))
+        {
+            return reviewSource;
+        }
+
+        if (IsAiReviewed(item))
+        {
+            return "AI";
+        }
+
+        if (IsFolderReviewFinalized(item))
+        {
+            return "Manual";
+        }
+
+        return null;
+    }
+
     private bool ShouldShowResolvedAction(DocumentDto item) =>
         GetReviewStatusKey(item) != "pending" || IsFolderReviewFinalized(item);
 
     private string GetActionLabel(DocumentDto item)
     {
-        if (IsAiReviewed(item))
+        var reviewSource = GetResolvedReviewSource(item);
+
+        if (string.Equals(reviewSource, "AI", StringComparison.OrdinalIgnoreCase))
         {
-            return "Review By AI";
+            return "AI Review";
         }
 
-        if (IsFolderReviewFinalized(item))
+        if (string.Equals(reviewSource, "Manual", StringComparison.OrdinalIgnoreCase))
         {
-            return "Moderator Review";
+            return "Manual Review";
         }
 
         return GetReviewStatusLabel(item);
@@ -1737,12 +1799,14 @@
 
     private string GetActionBackground(DocumentDto item)
     {
-        if (IsAiReviewed(item))
+        var reviewSource = GetResolvedReviewSource(item);
+
+        if (string.Equals(reviewSource, "AI", StringComparison.OrdinalIgnoreCase))
         {
             return "rgba(94,92,230,0.12)";
         }
 
-        if (IsFolderReviewFinalized(item))
+        if (string.Equals(reviewSource, "Manual", StringComparison.OrdinalIgnoreCase))
         {
             return "rgba(14,165,233,0.12)";
         }
@@ -1752,12 +1816,14 @@
 
     private string GetActionColor(DocumentDto item)
     {
-        if (IsAiReviewed(item))
+        var reviewSource = GetResolvedReviewSource(item);
+
+        if (string.Equals(reviewSource, "AI", StringComparison.OrdinalIgnoreCase))
         {
             return "#4f46e5";
         }
 
-        if (IsFolderReviewFinalized(item))
+        if (string.Equals(reviewSource, "Manual", StringComparison.OrdinalIgnoreCase))
         {
             return "#0369a1";
         }

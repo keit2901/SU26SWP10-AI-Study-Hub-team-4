@@ -12,6 +12,7 @@ public interface IDashboardService
     Task<List<DashboardSubjectDto>> GetSubjectsStatsAsync(CancellationToken ct = default);
     Task<List<DashboardSemesterDto>> GetSemestersStatsAsync(CancellationToken ct = default);
     Task<List<DocumentDto>> GetPendingDocumentsAsync(Guid? folderId = null, CancellationToken ct = default);
+    Task<DocumentAiReviewResultDto?> AiReviewDocumentAsync(Guid documentId, CancellationToken ct = default);
     Task<bool> ApproveDocumentAsync(Guid documentId, CancellationToken ct = default);
     Task<bool> RejectDocumentAsync(Guid documentId, CancellationToken ct = default);
     Task<UserAnalyticsDto> GetUserAnalyticsAsync(Guid userId, Guid? folderId = null, CancellationToken ct = default);

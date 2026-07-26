@@ -20,12 +20,18 @@ public class DashboardService : IDashboardService
     private readonly AppDbContext _context;
     private readonly ISupabaseStorageClient _storage;
     private readonly IAuditLogService _audit;
+    private readonly IFolderShareAiModerator _shareAiModerator;
 
-    public DashboardService(AppDbContext context, ISupabaseStorageClient storage, IAuditLogService audit)
+    public DashboardService(
+        AppDbContext context,
+        ISupabaseStorageClient storage,
+        IAuditLogService audit,
+        IFolderShareAiModerator shareAiModerator)
     {
         _context = context;
         _storage = storage;
         _audit = audit;
+        _shareAiModerator = shareAiModerator;
     }
 
     public async Task<AdminDashboardStatsDto> GetAdminStatsAsync(CancellationToken ct = default)
@@ -229,12 +235,63 @@ public class DashboardService : IDashboardService
         }).ToList();
     }
 
+    public async Task<DocumentAiReviewResultDto?> AiReviewDocumentAsync(Guid documentId, CancellationToken ct = default)
+    {
+        var doc = await _context.Documents
+            .Include(d => d.Folder)
+            .Include(d => d.Chunks)
+            .FirstOrDefaultAsync(d => d.Id == documentId, ct);
+        if (doc == null)
+        {
+            return null;
+        }
+
+        var reviewFolder = doc.Folder ?? new Folder
+        {
+            Id = doc.FolderId ?? Guid.Empty,
+            Name = "Single Document Review",
+            Description = $"AI moderation review for {doc.FileName}."
+        };
+
+        var extractedTexts = doc.Chunks
+            .OrderBy(chunk => chunk.ChunkIndex)
+            .Select(chunk => chunk.Content)
+            .Where(content => !string.IsNullOrWhiteSpace(content))
+            .ToList();
+
+        var decision = _shareAiModerator.Evaluate(reviewFolder, [doc], extractedTexts);
+        var isApproved = decision.Outcome == FolderShareModerationOutcome.AutoApproved;
+
+        doc.ReviewStatus = isApproved
+            ? DocumentReviewStatus.Approved
+            : DocumentReviewStatus.Rejected;
+        doc.ErrorMessage = isApproved ? null : decision.Reason;
+        doc.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _context.SaveChangesAsync(ct);
+
+        _audit.Add(
+            null,
+            isApproved ? "DOCUMENT_AI_APPROVED" : "DOCUMENT_AI_REJECTED",
+            "Document",
+            documentId.ToString(),
+            isApproved ? "Low" : "Medium");
+
+        return new DocumentAiReviewResultDto(
+            doc.Id,
+            doc.ReviewStatus,
+            "AI",
+            decision.Reason,
+            decision.Confidence);
+    }
+
     public async Task<bool> ApproveDocumentAsync(System.Guid documentId, CancellationToken ct = default)
     {
         var doc = await _context.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc == null) return false;
 
         doc.ReviewStatus = DocumentReviewStatus.Approved;
+        doc.ErrorMessage = null;
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync(ct);
 
@@ -249,7 +306,7 @@ public class DashboardService : IDashboardService
         if (doc == null) return false;
 
         doc.ReviewStatus = DocumentReviewStatus.Rejected;
-        doc.ErrorMessage = "Rejected by administrator.";
+        doc.ErrorMessage = "Rejected by moderator.";
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
         await _context.SaveChangesAsync(ct);
 
