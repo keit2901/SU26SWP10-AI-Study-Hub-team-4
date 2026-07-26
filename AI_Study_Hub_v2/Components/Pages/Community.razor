@@ -177,6 +177,138 @@
                         </div>
                     </div>
 
+                    @if (_personalPendingModeratorFolders.Count > 0)
+                    {
+                        <div class="review-board-section personal-pending-panel">
+                            <div class="moderator-queue-heading">
+                                <h3 class="moderator-queue-title">Moderator Queue</h3>
+                                <p class="moderator-queue-subtitle">Waiting for moderator review</p>
+                            </div>
+
+                            <div class="review-board-toolbar-panel">
+                                <div class="review-board-toolbar">
+                                    <div class="review-board-search-row">
+                                        <div class="search-wrapper review-board-search-wrapper">
+                                            <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
+                                            <input type="text"
+                                                   class="search-input"
+                                                   placeholder="Search folder..."
+                                                   value="@_pendingModeratorFolderSearch"
+                                                   @oninput="HandlePendingModeratorFolderSearchInput" />
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="review-board-panel success moderator-queue-panel">
+                                @if (_filteredPendingModeratorFolders.Count == 0)
+                                {
+                                    <MudPaper Class="empty-table-card moderator-queue-empty-card" Elevation="0" Outlined="false">
+                                        <MudStack AlignItems="AlignItems.Center" Spacing="2">
+                                            <div class="empty-table-icon">
+                                                <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Large" Color="Color.Primary" />
+                                            </div>
+                                            <MudText Typo="Typo.h6">No queue items match your filters</MudText>
+                                            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                                Try adjusting the search field.
+                                            </MudText>
+                                        </MudStack>
+                                    </MudPaper>
+                                }
+                                else
+                                {
+                                    <MudTable Items="@_pagedPendingModeratorFolders"
+                                              Hover="true"
+                                              Elevation="0"
+                                              Outlined="false"
+                                              Class="moderator-queue-document-table"
+                                              Dense="true">
+                                        <ColGroup>
+                                            <col style="width: 31%" />
+                                            <col style="width: 18%" />
+                                            <col style="width: 37%" />
+                                            <col style="width: 14%" />
+                                        </ColGroup>
+                                        <HeaderContent>
+                                            <MudTh Class="table-header-cell moderator-queue-folder-header">
+                                                <button type="button" class="@GetPendingModeratorHeaderButtonClass("folder")" @onclick='() => TogglePendingModeratorSort("folder")'>
+                                                    <span>FOLDER</span>
+                                                    <MudIcon Icon="@GetPendingModeratorSortIcon("folder")" Size="Size.Small" />
+                                                </button>
+                                            </MudTh>
+                                            <MudTh Class="table-header-cell">
+                                                <button type="button" class="@GetPendingModeratorHeaderButtonClass("submitted")" @onclick='() => TogglePendingModeratorSort("submitted")'>
+                                                    <span>SUBMITTED</span>
+                                                    <MudIcon Icon="@GetPendingModeratorSortIcon("submitted")" Size="Size.Small" />
+                                                </button>
+                                            </MudTh>
+                                            <MudTh Class="table-header-cell">
+                                                <span class="document-static-header">MODERATOR NOTE</span>
+                                            </MudTh>
+                                            <MudTh Class="table-header-cell">ACTIONS</MudTh>
+                                        </HeaderContent>
+                                        <RowTemplate>
+                                            <MudTd Class="table-cell">
+                                                <div class="moderator-queue-folder-cell">
+                                                    <span class="doc-name" title="@context.Name">@context.Name</span>
+                                                    <div class="moderator-queue-folder-meta">
+                                                        @context.DocumentCount source@(context.DocumentCount == 1 ? string.Empty : "s")
+                                                    </div>
+                                                </div>
+                                            </MudTd>
+                                            <MudTd Class="table-cell">
+                                                <div class="moderator-queue-submitted-cell">@GetPendingSubmittedText(context)</div>
+                                            </MudTd>
+                                            <MudTd Class="table-cell">
+                                                <div class="moderator-queue-note-cell">@GetPendingModeratorMessage(context)</div>
+                                            </MudTd>
+                                            <MudTd Class="table-cell">
+                                                <div class="table-actions">
+                                                    <MudIconButton Icon="@Icons.Material.Filled.Visibility"
+                                                                   Size="Size.Small"
+                                                                   Color="Color.Primary"
+                                                                   OnClick="@(() => GoToFolder(context.Id))"
+                                                                   title="Open folder" />
+                                                </div>
+                                            </MudTd>
+                                        </RowTemplate>
+                                    </MudTable>
+                                }
+                            </div>
+
+                            @if (_pendingModeratorTotalPages > 1)
+                            {
+                                <div class="review-board-pagination">
+                                    <div class="pagination-actions review-board-pagination-actions">
+                                        <div class="pagination-controls review-board-pagination-controls">
+                                            <button class="pagination-btn" disabled="@(_pendingModeratorDisplayPage <= 1)" @onclick="() => GoToPendingModeratorPage(_pendingModeratorDisplayPage - 1)">Prev</button>
+                                            @foreach (var p in GetPendingModeratorPageNumbers())
+                                            {
+                                                if (p == -1)
+                                                {
+                                                    <span class="pagination-ellipsis">...</span>
+                                                }
+                                                else
+                                                {
+                                                    <button class="pagination-btn @(p == _pendingModeratorDisplayPage ? "active" : "")" @onclick="() => GoToPendingModeratorPage(p)">@p</button>
+                                                }
+                                            }
+                                            <button class="pagination-btn" disabled="@(_pendingModeratorDisplayPage >= _pendingModeratorTotalPages)" @onclick="() => GoToPendingModeratorPage(_pendingModeratorDisplayPage + 1)">Next</button>
+                                        </div>
+                                        <div class="pagination-jump">
+                                            <input type="text"
+                                                   class="pagination-jump-input"
+                                                   placeholder="Page..."
+                                                   value="@_pendingModeratorPageJumpInput"
+                                                   @oninput="HandlePendingModeratorPageJumpInput"
+                                                   @onkeydown="HandlePendingModeratorPageJumpKeyDown" />
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        </div>
+                    }
+
                     @if (_personalFailedFolders.Count > 0)
                     {
                         <div class="review-board-panel failed personal-failed-panel">
@@ -211,12 +343,6 @@
                                                 </td>
                                                 <td class="review-board-action-cell">
                                                     <div class="review-board-actions" @onclick:stopPropagation>
-                                                        @if (CanRequestHumanReview(folder))
-                                                        {
-                                                            <button type="button" class="review-board-action-btn info" @onclick="() => ShowHumanReviewDialogAsync(folder)">
-                                                                Review by human
-                                                            </button>
-                                                        }
                                                         <button type="button" class="review-board-action-btn primary" @onclick="() => RequestShareAsync(folder)">
                                                             Share Again
                                                         </button>
@@ -248,44 +374,13 @@
                                     <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
                                         <option value="">All Status</option>
                                         <option value="Shared">Shared</option>
-                                        <option value="Pending Share">Pending Share</option>
-                                        <option value="Review by human">Review by human</option>
+                                        <option value="Pending Moderator Review">Pending Moderator Review</option>
                                         <option value="Rejected">Rejected</option>
                                     </select>
                                 </div>
                             }
                         </div>
 
-                        @if (_filteredFolders.Count > 0 && _totalPages > 1)
-                        {
-                            <div class="search-filter-pagination">
-                                <div class="pagination-actions">
-                                    <div class="pagination-controls">
-                                        <button class="pagination-btn" disabled="@(_displayPage <= 1)" @onclick="() => GoToPage(_displayPage - 1)">Prev</button>
-                                        @foreach (var p in GetPageNumbers())
-                                        {
-                                            if (p == -1)
-                                            {
-                                                <span class="pagination-ellipsis">...</span>
-                                            }
-                                            else
-                                            {
-                                                <button class="pagination-btn @(p == _displayPage ? "active" : "")" @onclick="() => GoToPage(p)">@p</button>
-                                            }
-                                        }
-                                        <button class="pagination-btn" disabled="@(_displayPage >= _totalPages)" @onclick="() => GoToPage(_displayPage + 1)">Next</button>
-                                    </div>
-                                    <div class="pagination-jump">
-                                        <input type="text"
-                                               class="pagination-jump-input"
-                                               placeholder="Page..."
-                                               value="@_pageJumpInput"
-                                               @oninput="HandlePageJumpInput"
-                                               @onkeydown="HandlePageJumpKeyDown" />
-                                    </div>
-                                </div>
-                            </div>
-                        }
                     </div>
                 </div>
 
@@ -406,6 +501,38 @@
                             }
                         }
                     </div>
+
+                    @if (_totalPages > 1)
+                    {
+                        <div class="search-filter-pagination folder-pagination-bottom">
+                            <div class="pagination-actions">
+                                <div class="pagination-controls">
+                                    <button class="pagination-btn" disabled="@(_displayPage <= 1)" @onclick="() => GoToPage(_displayPage - 1)">Prev</button>
+                                    @foreach (var p in GetPageNumbers())
+                                    {
+                                        if (p == -1)
+                                        {
+                                            <span class="pagination-ellipsis">...</span>
+                                        }
+                                        else
+                                        {
+                                            <button class="pagination-btn @(p == _displayPage ? "active" : "")" @onclick="() => GoToPage(p)">@p</button>
+                                        }
+                                    }
+                                    <button class="pagination-btn" disabled="@(_displayPage >= _totalPages)" @onclick="() => GoToPage(_displayPage + 1)">Next</button>
+                                </div>
+                                <div class="pagination-jump">
+                                    <input type="text"
+                                           class="pagination-jump-input"
+                                           placeholder="Page..."
+                                           value="@_pageJumpInput"
+                                           @oninput="HandlePageJumpInput"
+                                           @onkeydown="HandlePageJumpKeyDown" />
+                                </div>
+                            </div>
+                        </div>
+                    }
+
                 }
                 else
                 {
@@ -427,9 +554,16 @@
     private string? _statusFilter;
     private bool _loading = true;
     private string _pageJumpInput = string.Empty;
+    private string _pendingModeratorPageJumpInput = string.Empty;
+    private string _pendingModeratorFolderSearch = string.Empty;
+    private string _pendingModeratorSubmittedSearch = string.Empty;
+    private string _pendingModeratorSortBy = "submitted";
+    private bool _pendingModeratorSortDescending = true;
 
     private const int PageSize = 9;
+    private const int PendingModeratorPageSize = 10;
     private int _currentPage = 1;
+    private int _pendingModeratorPage = 1;
 
     private List<FolderDto> _allCommunityFolders = new();
     private List<FolderDto> _personalFolders = new();
@@ -451,6 +585,10 @@
     private List<FolderDto> _personalFailedFolders => _personalFolders
         .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Rejected)
         .OrderByDescending(folder => folder.UpdatedAt)
+        .ToList();
+
+    private List<FolderDto> _personalPendingModeratorFolders => _personalFolders
+        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare)
         .ToList();
 
     private int _pendingPersonalShareCount => _personalFolders.Count(folder => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare);
@@ -494,6 +632,47 @@
             .ToList();
 
     private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredFolders.Count / PageSize));
+
+    private int _pendingModeratorDisplayPage => Math.Clamp(_pendingModeratorPage, 1, _pendingModeratorTotalPages);
+
+    private List<FolderDto> _filteredPendingModeratorFolders
+    {
+        get
+        {
+            IEnumerable<FolderDto> source = _personalPendingModeratorFolders;
+
+            if (!string.IsNullOrWhiteSpace(_pendingModeratorFolderSearch))
+            {
+                source = source.Where(folder =>
+                    folder.Name.Contains(_pendingModeratorFolderSearch, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_pendingModeratorSubmittedSearch))
+            {
+                source = source.Where(folder =>
+                    GetPendingSubmittedText(folder).Contains(_pendingModeratorSubmittedSearch, StringComparison.OrdinalIgnoreCase));
+            }
+
+            source = (_pendingModeratorSortBy, _pendingModeratorSortDescending) switch
+            {
+                ("folder", true) => source.OrderByDescending(folder => folder.Name),
+                ("folder", false) => source.OrderBy(folder => folder.Name),
+                ("submitted", true) => source.OrderByDescending(GetPersonalActivityTimestamp),
+                ("submitted", false) => source.OrderBy(GetPersonalActivityTimestamp),
+                _ => source.OrderByDescending(GetPersonalActivityTimestamp)
+            };
+
+            return source.ToList();
+        }
+    }
+
+    private List<FolderDto> _pagedPendingModeratorFolders =>
+        _filteredPendingModeratorFolders
+            .Skip((_pendingModeratorDisplayPage - 1) * PendingModeratorPageSize)
+            .Take(PendingModeratorPageSize)
+            .ToList();
+
+    private int _pendingModeratorTotalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredPendingModeratorFolders.Count / PendingModeratorPageSize));
 
     protected override async Task OnInitializedAsync()
     {
@@ -550,6 +729,7 @@
         _searchQuery = "";
         _statusFilter = null;
         _currentPage = 1;
+        _pendingModeratorPage = 1;
         _openMenuFolderId = null;
     }
 
@@ -559,6 +739,7 @@
         _searchQuery = "";
         _statusFilter = null;
         _currentPage = 1;
+        _pendingModeratorPage = 1;
         _openMenuFolderId = null;
     }
 
@@ -633,6 +814,7 @@
     {
         _searchQuery = e.Value?.ToString() ?? "";
         _currentPage = 1;
+        _pendingModeratorPage = 1;
     }
 
     private void HandleStatusFilterChange(ChangeEventArgs e)
@@ -641,6 +823,7 @@
         if (string.IsNullOrWhiteSpace(_statusFilter))
             _statusFilter = null;
         _currentPage = 1;
+        _pendingModeratorPage = 1;
     }
 
     private void GoToPage(int page)
@@ -655,6 +838,93 @@
         var current = _displayPage;
         return BuildSlidingPageNumbers(total, current);
     }
+
+    private void GoToPendingModeratorPage(int page)
+    {
+        if (page < 1 || page > _pendingModeratorTotalPages) return;
+        _pendingModeratorPage = page;
+    }
+
+    private List<int> GetPendingModeratorPageNumbers()
+    {
+        var total = _pendingModeratorTotalPages;
+        var current = _pendingModeratorDisplayPage;
+        return BuildSlidingPageNumbers(total, current);
+    }
+
+    private void HandlePendingModeratorPageJumpInput(ChangeEventArgs e)
+    {
+        _pendingModeratorPageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandlePendingModeratorPageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToPendingModeratorPageJump();
+        }
+    }
+
+    private void GoToPendingModeratorPageJump()
+    {
+        if (int.TryParse(_pendingModeratorPageJumpInput, out var page))
+        {
+            GoToPendingModeratorPage(page);
+        }
+
+        _pendingModeratorPageJumpInput = string.Empty;
+    }
+
+    private void HandlePendingModeratorFolderSearchInput(ChangeEventArgs e)
+    {
+        _pendingModeratorFolderSearch = e.Value?.ToString()?.Trim() ?? string.Empty;
+        _pendingModeratorPage = 1;
+    }
+
+    private void HandlePendingModeratorSubmittedSearchInput(ChangeEventArgs e)
+    {
+        _pendingModeratorSubmittedSearch = e.Value?.ToString()?.Trim() ?? string.Empty;
+        _pendingModeratorPage = 1;
+    }
+
+    private void TogglePendingModeratorSort(string sortBy)
+    {
+        if (string.Equals(_pendingModeratorSortBy, sortBy, StringComparison.OrdinalIgnoreCase))
+        {
+            _pendingModeratorSortDescending = !_pendingModeratorSortDescending;
+        }
+        else
+        {
+            _pendingModeratorSortBy = sortBy;
+            _pendingModeratorSortDescending = sortBy == "submitted";
+        }
+
+        _pendingModeratorPage = 1;
+    }
+
+    private string GetPendingModeratorSortIcon(string sortBy)
+    {
+        if (!string.Equals(_pendingModeratorSortBy, sortBy, StringComparison.OrdinalIgnoreCase))
+        {
+            return Icons.Material.Filled.UnfoldMore;
+        }
+
+        return _pendingModeratorSortDescending
+            ? Icons.Material.Filled.KeyboardArrowDown
+            : Icons.Material.Filled.KeyboardArrowUp;
+    }
+
+    private string GetPendingModeratorHeaderButtonClass(string sortBy)
+    {
+        var activeClass = IsPendingModeratorSortActive(sortBy)
+            ? " table-header-button-active"
+            : string.Empty;
+
+        return $"table-header-button{activeClass}";
+    }
+
+    private bool IsPendingModeratorSortActive(string sortBy) =>
+        string.Equals(_pendingModeratorSortBy, sortBy, StringComparison.OrdinalIgnoreCase);
 
     private static List<int> BuildSlidingPageNumbers(int total, int current)
     {
@@ -905,15 +1175,10 @@
 
     private static string GetPersonalShareStatusText(FolderDto folder)
     {
-        if (IsHumanReviewPending(folder))
-        {
-            return "Review by human";
-        }
-
         return folder.ShareStatus switch
         {
             Data.Entities.FolderStatus.Approved => "Shared",
-            Data.Entities.FolderStatus.PendingShare => "Pending Share",
+            Data.Entities.FolderStatus.PendingShare => "Pending Moderator Review",
             Data.Entities.FolderStatus.Rejected => "Rejected",
             _ => "Private"
         };
@@ -935,10 +1200,7 @@
         };
     }
 
-    private static bool CanRequestHumanReview(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-        && folder.AiReviewFailureCount >= 2
-        && !string.Equals(folder.ShareReviewSource, "HUMAN", StringComparison.OrdinalIgnoreCase);
+    private static bool CanRequestHumanReview(FolderDto folder) => false;
 
     private static bool IsHumanReviewPending(FolderDto folder) =>
         folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
@@ -948,8 +1210,7 @@
     {
         return statusFilter switch
         {
-            "Pending Share" => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare && !folder.AppealRequestedAt.HasValue,
-            "Review by human" => IsHumanReviewPending(folder),
+            "Pending Moderator Review" => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare,
             _ => GetPersonalShareStatusText(folder) == statusFilter
         };
     }
@@ -960,9 +1221,19 @@
         ?? folder.UpdatedAt;
 
     private static string GetShareFailureReason(FolderDto folder) =>
-        string.IsNullOrWhiteSpace(folder.AiReviewReason)
-            ? "AI did not approve this folder."
-            : folder.AiReviewReason;
+        !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
+            ? folder.HumanReviewReason
+            : !string.IsNullOrWhiteSpace(folder.AiReviewReason)
+                ? folder.AiReviewReason
+                : "This folder was not approved for community sharing.";
+
+    private static string GetPendingModeratorMessage(FolderDto folder) =>
+        string.IsNullOrWhiteSpace(folder.AppealMessage)
+            ? "Your request has been sent to the moderator queue."
+            : $"Moderator note received: {folder.AppealMessage}";
+
+    private static string GetPendingSubmittedText(FolderDto folder)
+        => GetPersonalActivityTimestamp(folder).LocalDateTime.ToString("dd/MM/yyyy HH:mm");
 
     private static string GetPersonalShareSupportMessage(FolderDto folder)
     {
@@ -970,13 +1241,11 @@
 
         return folder.ShareStatus switch
         {
-            Data.Entities.FolderStatus.Rejected when folder.AiReviewFailureCount >= 2
-                => $"AI rejected this folder after {folder.AiReviewFailureCount} attempts. Reason: {reason}",
             Data.Entities.FolderStatus.Rejected
-                => $"AI rejected this folder. Reason: {reason}",
-            Data.Entities.FolderStatus.PendingShare when folder.AppealRequestedAt.HasValue
+                => $"This folder was not approved. Reason: {reason}",
+            Data.Entities.FolderStatus.PendingShare
                 => string.IsNullOrWhiteSpace(folder.AppealMessage)
-                    ? $"Your review request has been sent to the moderator. AI reason: {reason}"
+                    ? "Your folder is waiting for moderator review."
                     : $"Moderator will review this folder. Your note: {folder.AppealMessage}",
             _ => reason
         };
@@ -984,17 +1253,16 @@
 
     private static string GetShareDecisionMessage(FolderDto folder)
     {
-        var reason = string.IsNullOrWhiteSpace(folder.AiReviewReason)
+        var reason = string.IsNullOrWhiteSpace(GetShareFailureReason(folder))
             ? string.Empty
-            : $" Reason: {folder.AiReviewReason}";
+            : $" Reason: {GetShareFailureReason(folder)}";
 
         return folder.ShareStatus switch
         {
-            Data.Entities.FolderStatus.Approved => $"AI approved this folder for community sharing.{reason}",
-            Data.Entities.FolderStatus.Rejected when folder.AiReviewFailureCount >= 2 => $"AI did not approve this folder after {folder.AiReviewFailureCount} review attempts. Human review is now available.{reason}",
-            Data.Entities.FolderStatus.Rejected => $"AI did not approve this folder. You can try sharing again.{reason}",
-            Data.Entities.FolderStatus.PendingShare => $"Human review requested. Your folder is waiting in the moderator queue.{reason}",
-            _ => $"Share request submitted.{reason}"
+            Data.Entities.FolderStatus.Approved => "Folder approved for community sharing.",
+            Data.Entities.FolderStatus.Rejected => $"Folder was not approved for community sharing.{reason}",
+            Data.Entities.FolderStatus.PendingShare => "Share request submitted. Your folder is waiting for moderator review.",
+            _ => "Share request submitted."
         };
     }
 

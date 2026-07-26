@@ -74,7 +74,7 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task ToggleShareAsync_OwnerPublishesFolder_ReturnsPublishedFolder()
+    public async Task RequestShareAsync_OwnerQueuesFolderForModeratorReview()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
@@ -86,14 +86,14 @@ public sealed class PublicHubServiceTests
 
         var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
 
-        result.ShareStatus.Should().Be(FolderStatus.Approved);
-        result.ShareReviewSource.Should().Be("AI");
-        result.RequiresHumanReview.Should().BeFalse();
-        result.AiReviewReason.Should().Contain("approved");
+        result.ShareStatus.Should().Be(FolderStatus.PendingShare);
+        result.ShareReviewSource.Should().Be("STUDENT");
+        result.RequiresHumanReview.Should().BeTrue();
+        result.AiReviewReason.Should().BeNull();
     }
 
     [Test]
-    public async Task RequestShareAsync_SoftwareRequirementsSpecification_IsAutoApproved()
+    public async Task AutoCheckFolderShareAsync_SoftwareRequirementsSpecification_IsApproved()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
@@ -108,7 +108,8 @@ public sealed class PublicHubServiceTests
         db.SaveChanges();
         var sut = BuildSut(db);
 
-        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var result = await sut.AutoCheckFolderShareAsync(folder.Id);
 
         result.ShareStatus.Should().Be(FolderStatus.Approved);
         result.AiReviewFailureCount.Should().Be(0);
@@ -117,7 +118,7 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task RequestShareAsync_DocumentsNotReady_ButBenignMetadata_StillAutoApproves()
+    public async Task AutoCheckFolderShareAsync_DocumentsNotReady_ButBenignMetadata_StillApproves()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
@@ -131,7 +132,8 @@ public sealed class PublicHubServiceTests
         db.SaveChanges();
         var sut = BuildSut(db);
 
-        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var result = await sut.AutoCheckFolderShareAsync(folder.Id);
 
         result.ShareStatus.Should().Be(FolderStatus.Approved);
         result.AiReviewFailureCount.Should().Be(0);
@@ -140,7 +142,7 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task RequestShareAsync_ShortDescription_ButBenignContent_StillAutoApproves()
+    public async Task AutoCheckFolderShareAsync_ShortDescription_ButBenignContent_StillApproves()
     {
         await using var db = CreateDbWithChunks();
         var owner = SeedUser(db, "Owner");
@@ -153,16 +155,17 @@ public sealed class PublicHubServiceTests
         db.SaveChanges();
         var sut = BuildSut(db);
 
-        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var result = await sut.AutoCheckFolderShareAsync(folder.Id);
 
         result.ShareStatus.Should().Be(FolderStatus.Approved);
-        result.ShareReviewSource.Should().Be("AI");
+        result.ShareReviewSource.Should().Be("AI_ASSIST");
         result.RequiresHumanReview.Should().BeFalse();
         result.AiReviewReason.Should().Contain("approved");
     }
 
     [Test]
-    public async Task RequestShareAsync_ExtractedDangerousLink_IsRejected()
+    public async Task AutoCheckFolderShareAsync_ExtractedDangerousLink_IsRejected()
     {
         await using var db = CreateDbWithChunks();
         var owner = SeedUser(db, "Owner");
@@ -187,7 +190,8 @@ public sealed class PublicHubServiceTests
         db.SaveChanges();
         var sut = BuildSut(db);
 
-        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var result = await sut.AutoCheckFolderShareAsync(folder.Id);
 
         result.ShareStatus.Should().Be(FolderStatus.Rejected);
         result.AiReviewFailureCount.Should().Be(1);
@@ -196,7 +200,7 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task RequestShareAsync_HarmAwarenessContent_IsAutoApproved()
+    public async Task AutoCheckFolderShareAsync_HarmAwarenessContent_IsApproved()
     {
         await using var db = CreateDbWithChunks();
         var owner = SeedUser(db, "Owner");
@@ -221,7 +225,8 @@ public sealed class PublicHubServiceTests
         db.SaveChanges();
         var sut = BuildSut(db);
 
-        var result = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var result = await sut.AutoCheckFolderShareAsync(folder.Id);
 
         result.ShareStatus.Should().Be(FolderStatus.Approved);
         result.AiReviewFailureCount.Should().Be(0);
@@ -230,7 +235,7 @@ public sealed class PublicHubServiceTests
     }
 
     [Test]
-    public async Task RequestShareAsync_SecondAiFailure_UnlocksHumanReview()
+    public async Task AutoCheckFolderShareAsync_SecondAiFailureAcrossResubmissions_UnlocksHumanReview()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var owner = SeedUser(db, "Owner");
@@ -243,8 +248,10 @@ public sealed class PublicHubServiceTests
         db.SaveChanges();
         var sut = BuildSut(db);
 
-        var first = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
-        var second = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var first = await sut.AutoCheckFolderShareAsync(folder.Id);
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var second = await sut.AutoCheckFolderShareAsync(folder.Id);
 
         first.ShareStatus.Should().Be(FolderStatus.Rejected);
         first.AiReviewFailureCount.Should().Be(1);
@@ -266,7 +273,9 @@ public sealed class PublicHubServiceTests
         var sut = BuildSut(db);
 
         await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
-        var rejected = await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        await sut.AutoCheckFolderShareAsync(folder.Id);
+        await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        var rejected = await sut.AutoCheckFolderShareAsync(folder.Id);
         rejected.ShareStatus.Should().Be(FolderStatus.Rejected);
         rejected.AiReviewFailureCount.Should().Be(2);
 
@@ -293,6 +302,7 @@ public sealed class PublicHubServiceTests
         var sut = BuildSut(db);
 
         await sut.RequestShareAsync(owner.SupabaseUserId, folder.Id);
+        await sut.AutoCheckFolderShareAsync(folder.Id);
 
         var act = () => sut.AppealShareReviewAsync(
             owner.SupabaseUserId,

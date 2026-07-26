@@ -223,7 +223,9 @@ public class DashboardService : IDashboardService
             ErrorMessage = d.ErrorMessage,
             CreatedAt = d.CreatedAt,
             UpdatedAt = d.UpdatedAt,
-            FolderName = d.Folder?.Name
+            FolderName = d.Folder?.Name,
+            FolderShareStatus = d.Folder?.ShareStatus ?? FolderStatus.None,
+            ShareReviewSource = d.Folder?.ShareReviewSource
         }).ToList();
     }
 

@@ -468,15 +468,18 @@
                                             </td>
                                             <td style="padding: 0.9rem 1rem 0.9rem 0.75rem; vertical-align: top;">
                                                 @{
-                                                    var actionStatusKey = GetReviewStatusKey(item);
+                                                    var showResolvedAction = ShouldShowResolvedAction(item);
+                                                    var actionLabel = GetActionLabel(item);
+                                                    var actionBackground = GetActionBackground(item);
+                                                    var actionColor = GetActionColor(item);
                                                 }
 
-                                                @if (actionStatusKey != "pending")
+                                                @if (showResolvedAction)
                                                 {
                                                     <div style="display: flex; justify-content: center;">
-                                                        <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: @reviewStatusBackground; color: @reviewStatusColor; font-size: 0.8125rem; font-weight: 600;">
-                                                            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: @reviewStatusColor; flex-shrink: 0;"></span>
-                                                            @reviewStatusLabel
+                                                        <div style="display: inline-flex; align-items: center; gap: 0.375rem; border-radius: 9999px; padding: 0.375rem 0.875rem; background: @actionBackground; color: @actionColor; font-size: 0.8125rem; font-weight: 600;">
+                                                            <span style="width: 0.5rem; height: 0.5rem; border-radius: 9999px; background: @actionColor; flex-shrink: 0;"></span>
+                                                            @actionLabel
                                                         </div>
                                                     </div>
                                                 }
@@ -1701,8 +1704,65 @@
         {
             DocumentReviewStatus.Approved => "approved",
             DocumentReviewStatus.Rejected => "rejected",
+            _ when item.FolderShareStatus == FolderStatus.Approved => "approved",
+            _ when item.FolderShareStatus == FolderStatus.Rejected => "rejected",
             _ => "pending"
         };
+    }
+
+    private bool IsFolderReviewFinalized(DocumentDto item) =>
+        item.FolderShareStatus is FolderStatus.Approved or FolderStatus.Rejected;
+
+    private bool IsAiReviewed(DocumentDto item) =>
+        IsFolderReviewFinalized(item)
+        && string.Equals(item.ShareReviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase);
+
+    private bool ShouldShowResolvedAction(DocumentDto item) =>
+        GetReviewStatusKey(item) != "pending" || IsFolderReviewFinalized(item);
+
+    private string GetActionLabel(DocumentDto item)
+    {
+        if (IsAiReviewed(item))
+        {
+            return "Review By AI";
+        }
+
+        if (IsFolderReviewFinalized(item))
+        {
+            return "Moderator Review";
+        }
+
+        return GetReviewStatusLabel(item);
+    }
+
+    private string GetActionBackground(DocumentDto item)
+    {
+        if (IsAiReviewed(item))
+        {
+            return "rgba(94,92,230,0.12)";
+        }
+
+        if (IsFolderReviewFinalized(item))
+        {
+            return "rgba(14,165,233,0.12)";
+        }
+
+        return GetReviewStatusBackground(item);
+    }
+
+    private string GetActionColor(DocumentDto item)
+    {
+        if (IsAiReviewed(item))
+        {
+            return "#4f46e5";
+        }
+
+        if (IsFolderReviewFinalized(item))
+        {
+            return "#0369a1";
+        }
+
+        return GetReviewStatusColor(item);
     }
 
     private string GetReviewStatusBackground(DocumentDto item) =>

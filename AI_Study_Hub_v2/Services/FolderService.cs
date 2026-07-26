@@ -309,63 +309,87 @@ public sealed class FolderService : IFolderService
                 "Only folders with status None or Rejected can be requested for sharing.");
         }
 
-        var documentIds = folder.Documents.Select(document => document.Id).ToList();
-        IReadOnlyList<string> extractedTexts = Array.Empty<string>();
-        if (documentIds.Count > 0)
-        {
-            try
-            {
-                var chunkRows = await _db.DocumentChunks
-                    .Where(chunk => documentIds.Contains(chunk.DocumentId))
-                    .OrderBy(chunk => chunk.DocumentId)
-                    .ThenBy(chunk => chunk.ChunkIndex)
-                    .Select(chunk => new { chunk.DocumentId, chunk.Content })
-                    .ToListAsync(cancellationToken);
-
-                extractedTexts = chunkRows
-                    .Select(row => row.Content)
-                    .Take(24)
-                    .ToList();
-            }
-            catch (InvalidOperationException)
-            {
-                extractedTexts = Array.Empty<string>();
-            }
-        }
-
-        var decision = _shareAiModerator.Evaluate(folder, folder.Documents.ToList(), extractedTexts);
-
         var now = DateTimeOffset.UtcNow;
-
-        folder.ShareReviewSource = "AI";
-        folder.AiReviewReason = decision.Reason;
-        folder.AiReviewConfidence = decision.Confidence;
+        folder.ShareStatus = FolderStatus.PendingShare;
+        folder.ShareReviewSource = "STUDENT";
+        folder.AiReviewReason = null;
+        folder.AiReviewConfidence = null;
         folder.HumanReviewReason = null;
+        folder.RequiresHumanReview = true;
+        folder.SharedAt = null;
         folder.AppealRequestedAt = null;
         folder.AppealMessage = null;
-
-        switch (decision.Outcome)
-        {
-            case FolderShareModerationOutcome.AutoApproved:
-                folder.ShareStatus = FolderStatus.Approved;
-                folder.SharedAt = now;
-                folder.AiReviewFailureCount = 0;
-                folder.RequiresHumanReview = false;
-                break;
-            default:
-                folder.ShareStatus = FolderStatus.Rejected;
-                folder.SharedAt = null;
-                folder.AiReviewFailureCount += 1;
-                folder.RequiresHumanReview = folder.AiReviewFailureCount >= 2;
-                break;
-        }
-
         folder.UpdatedAt = now;
 
         await _db.SaveChangesAsync(cancellationToken);
 
         _audit.Add(supabaseUserId, "FOLDER_SHARE_REQUESTED", "Folder", folder.Id.ToString(), "Low",
             afterJson: JsonSerializer.Serialize(new { folder.Name, folder.ShareStatus }));
+
+        var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
+        return ToDto(folder, count);
+    }
+
+    public async Task<FolderDto> AutoCheckFolderShareAsync(
+        Guid folderId,
+        CancellationToken cancellationToken = default)
+    {
+        var folder = await _db.Folders
+            .Include(f => f.Documents)
+            .FirstOrDefaultAsync(f => f.Id == folderId, cancellationToken)
+            ?? throw new DocumentException(404, "folder_not_found",
+                "Folder does not exist.");
+
+        if (folder.ShareStatus != FolderStatus.PendingShare)
+        {
+            throw new DocumentException(400, "invalid_share_status",
+                "Only folders with status Pending Share can be auto-checked.");
+        }
+
+        var decision = _shareAiModerator.Evaluate(
+            folder,
+            folder.Documents.ToList(),
+            await ExtractFolderTextsAsync(folder.Documents, cancellationToken));
+
+        var now = DateTimeOffset.UtcNow;
+        folder.ShareReviewSource = "AI_ASSIST";
+        folder.AiReviewReason = decision.Reason;
+        folder.AiReviewConfidence = decision.Confidence;
+        folder.HumanReviewReason = null;
+        folder.AppealRequestedAt = null;
+        folder.AppealMessage = null;
+        folder.UpdatedAt = now;
+
+        switch (decision.Outcome)
+        {
+            case FolderShareModerationOutcome.AutoApproved:
+                folder.ShareStatus = FolderStatus.Approved;
+                folder.SharedAt = now;
+                folder.RequiresHumanReview = false;
+                break;
+            case FolderShareModerationOutcome.AutoRejected:
+                folder.ShareStatus = FolderStatus.Rejected;
+                folder.SharedAt = null;
+                folder.AiReviewFailureCount += 1;
+                folder.RequiresHumanReview = false;
+                break;
+            default:
+                folder.ShareStatus = FolderStatus.PendingShare;
+                folder.SharedAt = null;
+                folder.RequiresHumanReview = true;
+                break;
+        }
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        _audit.Add(null, "FOLDER_SHARE_AUTO_CHECKED", "Folder", folderId.ToString(), "Medium",
+            afterJson: JsonSerializer.Serialize(new
+            {
+                folder.Name,
+                folder.ShareStatus,
+                decision.Reason,
+                decision.Confidence,
+            }));
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
@@ -473,6 +497,34 @@ public sealed class FolderService : IFolderService
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
+    }
+
+    private async Task<IReadOnlyList<string>> ExtractFolderTextsAsync(
+        IEnumerable<Document> documents,
+        CancellationToken cancellationToken)
+    {
+        var documentIds = documents.Select(document => document.Id).ToList();
+        if (documentIds.Count == 0)
+        {
+            return Array.Empty<string>();
+        }
+
+        try
+        {
+            var chunkRows = await _db.DocumentChunks
+                .Where(chunk => documentIds.Contains(chunk.DocumentId))
+                .OrderBy(chunk => chunk.DocumentId)
+                .ThenBy(chunk => chunk.ChunkIndex)
+                .Select(chunk => chunk.Content)
+                .Take(24)
+                .ToListAsync(cancellationToken);
+
+            return chunkRows;
+        }
+        catch (InvalidOperationException)
+        {
+            return Array.Empty<string>();
+        }
     }
 
     public async Task<FolderDto> VoteAsync(

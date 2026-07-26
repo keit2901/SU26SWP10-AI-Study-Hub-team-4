@@ -36,9 +36,9 @@
                 {
                     <StatCard
                         Icon="@Icons.Material.Filled.SupportAgent"
-                        Title="Human Review"
+                        Title="Reviewing"
                         Count="@humanReviewCount.ToString()"
-                        Description="Folders that need manual review or moderator handling"
+                        Description="Folders waiting for moderator approval"
                         BgColor="rgba(238,242,255,0.8)"
                         IconColor="#4f46e5" />
                     <StatCard
@@ -50,7 +50,7 @@
                         IconColor="#059669" />
                     <StatCard
                         Icon="@Icons.Material.Filled.ErrorOutline"
-                        Title="Rejected"
+                        Title="Reject"
                         Count="@rejectedCount.ToString()"
                         Description="Folders not approved after review"
                         BgColor="#fef2f2"
@@ -94,10 +94,10 @@
 </style>
 
 @code {
-    private const string HumanReviewStatus = "Human Review";
+    private const string ReviewingStatus = "Reviewing";
     private const string SharedStatus = "Shared";
     private const string ProcessingStatus = "Processing";
-    private const string RejectedStatus = "Rejected";
+    private const string RejectedStatus = "Reject";
     private const string FailedStatus = "Failed";
     private const string ReadyStatus = "Ready";
     private const string EmptyStatus = "Empty";
@@ -227,7 +227,7 @@
     {
         if (NeedsHumanReview(folder))
         {
-            return HumanReviewStatus;
+            return ReviewingStatus;
         }
 
         if (folder.ShareStatus == FolderStatus.Approved)
@@ -254,7 +254,7 @@
         {
             return folder.ShareStatus switch
             {
-                FolderStatus.PendingShare => HumanReviewStatus,
+                FolderStatus.PendingShare => ReviewingStatus,
                 FolderStatus.Approved => SharedStatus,
                 FolderStatus.Rejected => RejectedStatus,
                 _ => EmptyStatus

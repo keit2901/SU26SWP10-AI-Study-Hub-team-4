@@ -63,6 +63,11 @@ public sealed class DocumentDto
 
     /// <summary>Folder display name (populated by admin dashboard queries).</summary>
     public string? FolderName { get; set; }
+
+    /// <summary>Folder share status/source (populated by moderator dashboard queries).</summary>
+    public FolderStatus FolderShareStatus { get; set; }
+
+    public string? ShareReviewSource { get; set; }
 }
 
 /// <summary>

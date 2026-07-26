@@ -56,6 +56,10 @@ public interface IFolderService
         Guid folderId,
         CancellationToken cancellationToken = default);
 
+    Task<FolderDto> AutoCheckFolderShareAsync(
+        Guid folderId,
+        CancellationToken cancellationToken = default);
+
     Task<FolderDto> VoteAsync(
         Guid supabaseUserId,
         Guid folderId,

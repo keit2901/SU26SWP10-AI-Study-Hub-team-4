@@ -1184,22 +1184,16 @@
     {
         var bg = status switch
         {
-            "Human Review" => "#eff6ff",
+            "Reviewing" => "#eff6ff",
             "Shared" => "#eef2ff",
-            "Ready" => "#ecfdf5",
-            "Processing" => "rgba(243,232,255,0.8)",
-            "Rejected" => "#fef2f2",
-            "Failed" => "#fef2f2",
+            "Reject" => "#fef2f2",
             _ => "rgba(243,244,246,0.8)"
         };
         var color = status switch
         {
-            "Human Review" => "#1d4ed8",
+            "Reviewing" => "#1d4ed8",
             "Shared" => "#4338ca",
-            "Ready" => "#047857",
-            "Processing" => "#7e22ce",
-            "Rejected" => "#b91c1c",
-            "Failed" => "#b91c1c",
+            "Reject" => "#b91c1c",
             _ => "#4b5563"
         };
         return $"display: inline-flex; align-items: center; padding: 0.125rem 0.5rem; border-radius: 0.375rem; font-size: 0.6875rem; font-weight: 600; background: {bg}; color: {color};";
@@ -1209,12 +1203,9 @@
     {
         var (bg, color) = status switch
         {
-            "Human Review" => ("#eff6ff", "#1d4ed8"),
+            "Reviewing" => ("#eff6ff", "#1d4ed8"),
             "Shared" => ("#eef2ff", "#4338ca"),
-            "Ready" => ("#ecfdf5", "#047857"),
-            "Processing" => ("rgba(243,232,255,0.8)", "#7e22ce"),
-            "Rejected" => ("#fef2f2", "#b91c1c"),
-            "Failed" => ("#fef2f2", "#b91c1c"),
+            "Reject" => ("#fef2f2", "#b91c1c"),
             _ => ("#f9fafb", "#6b7280")
         };
         return $"display: inline-flex; align-items: center; padding: 0.25rem 0.625rem; border-radius: 9999px; font-size: 0.6875rem; font-weight: 600; background: {bg}; color: {color};";
@@ -1224,12 +1215,9 @@
     {
         var dotColor = status switch
         {
-            "Human Review" => "#3b82f6",
+            "Reviewing" => "#3b82f6",
             "Shared" => "#4f46e5",
-            "Ready" => "#059669",
-            "Processing" => "#9333ea",
-            "Rejected" => "#ef4444",
-            "Failed" => "#ef4444",
+            "Reject" => "#ef4444",
             _ => "#9ca3af"
         };
         return $"display: inline-block; width: 0.375rem; height: 0.375rem; border-radius: 9999px; margin-right: 0.375rem; background: {dotColor};";

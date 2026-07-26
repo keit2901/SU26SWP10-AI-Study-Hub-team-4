@@ -132,6 +132,36 @@ public sealed class FoldersController : ControllerBase
             request ?? new AppealFolderShareRequest(),
             cancellationToken));
 
+    [HttpPatch("{id:guid}/share/approve")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> ApproveShare(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.ApproveFolderShareAsync(id, cancellationToken));
+
+    [HttpPatch("{id:guid}/share/reject")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> RejectShare(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.RejectFolderShareAsync(id, cancellationToken));
+
+    [HttpPatch("{id:guid}/share/auto-check")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> AutoCheckShare(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.AutoCheckFolderShareAsync(id, cancellationToken));
+
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]

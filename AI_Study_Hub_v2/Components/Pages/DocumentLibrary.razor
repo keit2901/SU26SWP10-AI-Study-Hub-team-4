@@ -399,13 +399,6 @@ else
                                                     <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" Color="@(folder.ShareStatus == Data.Entities.FolderStatus.Approved ? Color.Primary : folder.ShareStatus == Data.Entities.FolderStatus.PendingShare ? Color.Warning : Color.Default)" />
                                                     <span>@GetShareButtonText(folder)</span>
                                                 </div>
-                                                @if (CanRequestHumanReview(folder))
-                                                {
-                                                    <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowHumanReviewDialogAsync(folder); })">
-                                                        <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" Color="Color.Info" />
-                                                        <span>Review by human</span>
-                                                    </div>
-                                                }
                                                 <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ConfirmDeleteFolderAsync(folder); })">
                                                     <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" />
                                                     <span>Delete</span>
@@ -1751,21 +1744,18 @@ else
         }
     }
 
-    private static bool CanRequestHumanReview(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-        && folder.AiReviewFailureCount >= 2
-        && !string.Equals(folder.ShareReviewSource, "HUMAN", StringComparison.OrdinalIgnoreCase);
+    private static bool CanRequestHumanReview(FolderDto folder) => false;
 
     private static string GetShareButtonText(FolderDto folder)
     {
         if (folder.ShareStatus == Data.Entities.FolderStatus.PendingShare && folder.AppealRequestedAt.HasValue)
         {
-            return "Human Review Pending";
+            return "Pending Moderator Review";
         }
 
         return folder.ShareStatus switch
         {
-            Data.Entities.FolderStatus.PendingShare => "Human Review Pending",
+            Data.Entities.FolderStatus.PendingShare => "Pending Moderator Review",
             Data.Entities.FolderStatus.Approved => "Shared",
             Data.Entities.FolderStatus.Rejected => "Share Again",
             _ => "Share"
@@ -1774,17 +1764,19 @@ else
 
     private static string GetShareDecisionMessage(FolderDto folder)
     {
-        var reason = string.IsNullOrWhiteSpace(folder.AiReviewReason)
+        var reasonSource = !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
+            ? folder.HumanReviewReason
+            : folder.AiReviewReason;
+        var reason = string.IsNullOrWhiteSpace(reasonSource)
             ? string.Empty
-            : $" Reason: {folder.AiReviewReason}";
+            : $" Reason: {reasonSource}";
 
         return folder.ShareStatus switch
         {
-            Data.Entities.FolderStatus.Approved => $"AI approved this folder for community sharing.{reason}",
-            Data.Entities.FolderStatus.Rejected when folder.AiReviewFailureCount >= 2 => $"AI did not approve this folder after {folder.AiReviewFailureCount} review attempts. Human review is now available.{reason}",
-            Data.Entities.FolderStatus.Rejected => $"AI did not approve this folder. You can try sharing again.{reason}",
-            Data.Entities.FolderStatus.PendingShare => $"Human review requested. Your folder is waiting in the moderator queue.{reason}",
-            _ => $"Share request submitted.{reason}"
+            Data.Entities.FolderStatus.Approved => "Folder approved for community sharing.",
+            Data.Entities.FolderStatus.Rejected => $"Folder was not approved for community sharing.{reason}",
+            Data.Entities.FolderStatus.PendingShare => "Share request submitted. Your folder is waiting for moderator review.",
+            _ => "Share request submitted."
         };
     }
 
