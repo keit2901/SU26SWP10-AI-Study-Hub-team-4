@@ -486,18 +486,18 @@
                                                 }
                                                 else
                                                 {
-                                                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 0.4rem; flex-wrap: wrap;">
-                                                        <button @onclick="() => AiReviewDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(94,92,230,0.22); background: rgba(94,92,230,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
-                                                            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size: 0.75rem; color: #5e5ce6;" />
-                                                            <span style="font-size: 0.75rem; font-weight: 500; color: #5e5ce6;">AI review</span>
+                                                    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.45rem; width: min(100%, 13.5rem); margin-left: auto;">
+                                                        <button @onclick="() => ApproveDocumentAsync(item.Id, item.FileName)" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 2.35rem; border-radius: 0.5rem; border: 1px solid rgba(52,199,89,0.22); background: rgba(52,199,89,0.1); padding: 0.45rem 0.65rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Check" Style="font-size: 0.78rem; color: #34C759;" />
+                                                            <span style="font-size: 0.75rem; font-weight: 600; color: #34c759;">Approve</span>
                                                         </button>
-                                                        <button @onclick="() => ApproveDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(52,199,89,0.2); background: rgba(52,199,89,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
-                                                            <MudIcon Icon="@Icons.Material.Filled.Check" Style="font-size: 0.75rem; color: #34C759;" />
-                                                            <span style="font-size: 0.75rem; font-weight: 500; color: #34c759;">Approve</span>
+                                                        <button @onclick="() => RejectDocumentAsync(item.Id, item.FileName)" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 2.35rem; border-radius: 0.5rem; border: 1px solid rgba(255,59,48,0.22); background: rgba(255,59,48,0.1); padding: 0.45rem 0.65rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
+                                                            <MudIcon Icon="@Icons.Material.Filled.Close" Style="font-size: 0.78rem; color: #FF3B30;" />
+                                                            <span style="font-size: 0.75rem; font-weight: 600; color: #ff3b30;">Reject</span>
                                                         </button>
-                                                        <button @onclick="() => RejectDocumentAsync(item.Id, item.FileName)" style="display: flex; align-items: center; gap: 0.25rem; border-radius: 0.375rem; border: 1px solid rgba(255,59,48,0.2); background: rgba(255,59,48,0.1); padding: 0.4rem 0.7rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
-                                                            <MudIcon Icon="@Icons.Material.Filled.Close" Style="font-size: 0.75rem; color: #FF3B30;" />
-                                                            <span style="font-size: 0.75rem; font-weight: 500; color: #ff3b30;">Reject</span>
+                                                        <button @onclick="() => AiReviewDocumentAsync(item.Id, item.FileName)" style="grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 2.35rem; border-radius: 0.5rem; border: 1px solid rgba(94,92,230,0.24); background: linear-gradient(135deg, rgba(94,92,230,0.12), rgba(129,140,248,0.16)); padding: 0.45rem 0.65rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
+                                                            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size: 0.78rem; color: #5e5ce6;" />
+                                                            <span style="font-size: 0.75rem; font-weight: 600; color: #5e5ce6;">AI Review</span>
                                                         </button>
                                                     </div>
                                                 }

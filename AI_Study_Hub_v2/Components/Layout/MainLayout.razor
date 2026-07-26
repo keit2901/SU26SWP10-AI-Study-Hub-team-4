@@ -38,7 +38,6 @@
     private Task? _sessionMaintenanceTask;
     private bool _idleMonitorStarted;
     private bool _signOutInProgress;
-    private bool _initialRestoreAttempted;
 
     protected override void OnInitialized()
     {
@@ -49,24 +48,6 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (firstRender && !_initialRestoreAttempted && !Session.IsAuthenticated)
-        {
-            _initialRestoreAttempted = true;
-
-            try
-            {
-                var restored = await AuthPersistence.TryRestoreAsync();
-                if (restored is not null && !string.IsNullOrWhiteSpace(restored.AccessToken))
-                {
-                    Session.Set(restored);
-                    await InvokeAsync(StateHasChanged);
-                }
-            }
-            catch
-            {
-            }
-        }
-
         _idleDotNetRef ??= DotNetObjectReference.Create(this);
         await SyncIdleMonitorAsync();
     }
