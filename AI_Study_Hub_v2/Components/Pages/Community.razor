@@ -189,35 +189,26 @@
                     </div>
                 }
 
-                <div class="community-search">
-                    <div class="search-filter-row">
-                        <div class="search-filter-main">
-                            <div class="search-wrapper">
-                                <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
-                                <input type="text"
-                                       class="search-input"
-                                       placeholder="Search folders..."
-                                       value="@_searchQuery"
-                                       @oninput="HandleSearchInput" />
-                            </div>
-                            @if (_activeTab == "personal")
-                            {
-                                <div class="filter-wrapper">
-                                    <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
-                                        <option value="">All Status</option>
-                                        <option value="Shared">Shared</option>
-                                        <option value="Pending Review">Pending Review</option>
-                                        <option value="AI Failed">AI Failed</option>
-                                        <option value="Moderator Rejected">Moderator Rejected</option>
-                                    </select>
+                @if (_activeTab == "community")
+                {
+                    <div class="community-search">
+                        <div class="search-filter-row">
+                            <div class="search-filter-main">
+                                <div class="search-wrapper">
+                                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
+                                    <input type="text"
+                                           class="search-input"
+                                           placeholder="Search folders..."
+                                           value="@_searchQuery"
+                                           @oninput="HandleSearchInput" />
                                 </div>
-                            }
+                            </div>
                         </div>
-
                     </div>
-                </div>
+                }
 
-                @if (_filteredFolders.Count > 0)
+                @if ((_activeTab == "community" && _filteredFolders.Count > 0)
+                    || (_activeTab == "personal" && _filteredShareActivityFolders.Count > 0))
                 {
                     <div class="community-grid">
                         @if (_activeTab == "community")
@@ -284,9 +275,32 @@
                                     <h3 class="moderator-queue-title">Share Activity</h3>
                                     <p class="moderator-queue-subtitle">Latest sharing status and review feedback for your folders</p>
                                 </div>
+                                <div class="community-search" style="margin-top: 0.9rem;">
+                                    <div class="search-filter-row">
+                                        <div class="search-filter-main">
+                                            <div class="search-wrapper">
+                                                <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Class="search-icon" />
+                                                <input type="text"
+                                                       class="search-input"
+                                                       placeholder="Search folder, status, latest activity..."
+                                                       value="@_searchQuery"
+                                                       @oninput="HandleSearchInput" />
+                                            </div>
+                                            <div class="filter-wrapper">
+                                                <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
+                                                    <option value="">All Status</option>
+                                                    <option value="Shared">Shared</option>
+                                                    <option value="Pending Review">Pending Review</option>
+                                                    <option value="AI Failed">AI Failed</option>
+                                                    <option value="Moderator Rejected">Moderator Rejected</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
 
                                 <div class="review-board-panel success moderator-queue-panel">
-                                    <MudTable Items="@_pagedFolders"
+                                    <MudTable Items="@_pagedShareActivityFolders"
                                               Hover="true"
                                               Elevation="0"
                                               Outlined="false"
@@ -300,11 +314,31 @@
                                             <col style="width: 17%" />
                                         </ColGroup>
                                         <HeaderContent>
-                                            <MudTh Class="table-header-cell moderator-queue-folder-header">FOLDER</MudTh>
-                                            <MudTh Class="table-header-cell">CURRENT STATUS</MudTh>
-                                            <MudTh Class="table-header-cell">LATEST ACTIVITY</MudTh>
-                                            <MudTh Class="table-header-cell">LATEST REASON</MudTh>
-                                            <MudTh Class="table-header-cell">ACTION</MudTh>
+                                            <MudTh Class="table-header-cell moderator-queue-folder-header">
+                                                <button type="button" class="@(GetShareActivityHeaderButtonClass("folder"))" @onclick='() => ToggleShareActivitySort("folder")'>
+                                                    <span>FOLDER</span>
+                                                    <MudIcon Icon="@(GetShareActivitySortIcon("folder"))" Size="Size.Small" />
+                                                </button>
+                                            </MudTh>
+                                            <MudTh Class="table-header-cell">
+                                                <button type="button" class="@(GetShareActivityHeaderButtonClass("status"))" @onclick='() => ToggleShareActivitySort("status")'>
+                                                    <span>CURRENT STATUS</span>
+                                                    <MudIcon Icon="@(GetShareActivitySortIcon("status"))" Size="Size.Small" />
+                                                </button>
+                                            </MudTh>
+                                            <MudTh Class="table-header-cell">
+                                                <button type="button" class="@(GetShareActivityHeaderButtonClass("activity"))" @onclick='() => ToggleShareActivitySort("activity")'>
+                                                    <span>LATEST ACTIVITY</span>
+                                                    <MudIcon Icon="@(GetShareActivitySortIcon("activity"))" Size="Size.Small" />
+                                                </button>
+                                            </MudTh>
+                                            <MudTh Class="table-header-cell">
+                                                <button type="button" class="@(GetShareActivityHeaderButtonClass("reason"))" @onclick='() => ToggleShareActivitySort("reason")'>
+                                                    <span>LATEST REASON</span>
+                                                    <MudIcon Icon="@(GetShareActivitySortIcon("reason"))" Size="Size.Small" />
+                                                </button>
+                                            </MudTh>
+                                            <MudTh Class="table-header-cell" Style="text-align: center;">ACTION</MudTh>
                                         </HeaderContent>
                                         <RowTemplate>
                                             <MudTd Class="table-cell">
@@ -359,11 +393,42 @@
                                         </RowTemplate>
                                     </MudTable>
                                 </div>
+
+                                @if (_shareActivityTotalPages > 1)
+                                {
+                                    <div class="search-filter-pagination folder-pagination-bottom">
+                                        <div class="pagination-actions">
+                                            <div class="pagination-controls">
+                                                <button class="pagination-btn" disabled="@(_shareActivityDisplayPage <= 1)" @onclick="() => GoToShareActivityPage(_shareActivityDisplayPage - 1)">Prev</button>
+                                                @foreach (var p in GetShareActivityPageNumbers())
+                                                {
+                                                    if (p == -1)
+                                                    {
+                                                        <span class="pagination-ellipsis">...</span>
+                                                    }
+                                                    else
+                                                    {
+                                                        <button class="pagination-btn @(p == _shareActivityDisplayPage ? "active" : "")" @onclick="() => GoToShareActivityPage(p)">@p</button>
+                                                    }
+                                                }
+                                                <button class="pagination-btn" disabled="@(_shareActivityDisplayPage >= _shareActivityTotalPages)" @onclick="() => GoToShareActivityPage(_shareActivityDisplayPage + 1)">Next</button>
+                                            </div>
+                                            <div class="pagination-jump">
+                                                <input type="text"
+                                                       class="pagination-jump-input"
+                                                       placeholder="Page..."
+                                                       value="@_shareActivityPageJumpInput"
+                                                       @oninput="HandleShareActivityPageJumpInput"
+                                                       @onkeydown="HandleShareActivityPageJumpKeyDown" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                }
                             </div>
                         }
                     </div>
 
-                    @if (_totalPages > 1)
+                    @if (_activeTab == "community" && _totalPages > 1)
                     {
                         <div class="search-filter-pagination folder-pagination-bottom">
                             <div class="pagination-actions">
@@ -415,15 +480,20 @@
     private string? _statusFilter;
     private bool _loading = true;
     private string _pageJumpInput = string.Empty;
+    private string _shareActivityPageJumpInput = string.Empty;
     private string _pendingModeratorPageJumpInput = string.Empty;
     private string _pendingModeratorFolderSearch = string.Empty;
     private string _pendingModeratorSubmittedSearch = string.Empty;
+    private string _shareActivitySortBy = "activity";
+    private bool _shareActivitySortDescending = true;
     private string _pendingModeratorSortBy = "submitted";
     private bool _pendingModeratorSortDescending = true;
 
     private const int PageSize = 10;
+    private const int ShareActivityPageSize = 10;
     private const int PendingModeratorPageSize = 10;
     private int _currentPage = 1;
+    private int _shareActivityPage = 1;
     private int _pendingModeratorPage = 1;
 
     private List<FolderDto> _allCommunityFolders = new();
@@ -496,6 +566,42 @@
         }
     }
 
+    private List<FolderDto> _filteredShareActivityFolders
+    {
+        get
+        {
+            IEnumerable<FolderDto> source = _personalFolders;
+
+            if (!string.IsNullOrWhiteSpace(_searchQuery))
+            {
+                var q = _searchQuery.Trim();
+                source = source.Where(folder =>
+                    folder.Name.Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || GetPersonalShareStatusText(folder).Contains(q, StringComparison.OrdinalIgnoreCase)
+                    || GetLatestActivityText(folder).Contains(q, StringComparison.OrdinalIgnoreCase));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_statusFilter))
+            {
+                source = source.Where(folder => MatchesPersonalStatusFilter(folder, _statusFilter));
+            }
+
+            source = (_shareActivitySortBy, _shareActivitySortDescending) switch
+            {
+                ("folder", true) => source.OrderByDescending(folder => folder.Name),
+                ("folder", false) => source.OrderBy(folder => folder.Name),
+                ("status", true) => source.OrderByDescending(GetPersonalShareStatusText).ThenByDescending(GetPersonalActivityTimestamp),
+                ("status", false) => source.OrderBy(GetPersonalShareStatusText).ThenByDescending(GetPersonalActivityTimestamp),
+                ("reason", true) => source.OrderByDescending(GetLatestReasonPreview).ThenByDescending(GetPersonalActivityTimestamp),
+                ("reason", false) => source.OrderBy(GetLatestReasonPreview).ThenByDescending(GetPersonalActivityTimestamp),
+                ("activity", false) => source.OrderBy(GetPersonalActivityTimestamp),
+                _ => source.OrderByDescending(GetPersonalActivityTimestamp)
+            };
+
+            return source.ToList();
+        }
+    }
+
     private int _displayPage => Math.Clamp(_currentPage, 1, _totalPages);
 
     private List<FolderDto> _pagedFolders =>
@@ -505,6 +611,16 @@
             .ToList();
 
     private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredFolders.Count / PageSize));
+
+    private int _shareActivityDisplayPage => Math.Clamp(_shareActivityPage, 1, _shareActivityTotalPages);
+
+    private List<FolderDto> _pagedShareActivityFolders =>
+        _filteredShareActivityFolders
+            .Skip((_shareActivityDisplayPage - 1) * ShareActivityPageSize)
+            .Take(ShareActivityPageSize)
+            .ToList();
+
+    private int _shareActivityTotalPages => Math.Max(1, (int)Math.Ceiling((double)_filteredShareActivityFolders.Count / ShareActivityPageSize));
 
     private int _pendingModeratorDisplayPage => Math.Clamp(_pendingModeratorPage, 1, _pendingModeratorTotalPages);
 
@@ -612,6 +728,7 @@
         _searchQuery = "";
         _statusFilter = null;
         _currentPage = 1;
+        _shareActivityPage = 1;
         _pendingModeratorPage = 1;
         _openMenuFolderId = null;
     }
@@ -622,6 +739,7 @@
         _searchQuery = "";
         _statusFilter = null;
         _currentPage = 1;
+        _shareActivityPage = 1;
         _pendingModeratorPage = 1;
         _openMenuFolderId = null;
     }
@@ -704,6 +822,7 @@
     {
         _searchQuery = e.Value?.ToString() ?? "";
         _currentPage = 1;
+        _shareActivityPage = 1;
         _pendingModeratorPage = 1;
     }
 
@@ -713,6 +832,7 @@
         if (string.IsNullOrWhiteSpace(_statusFilter))
             _statusFilter = null;
         _currentPage = 1;
+        _shareActivityPage = 1;
         _pendingModeratorPage = 1;
     }
 
@@ -726,6 +846,19 @@
     {
         var total = _totalPages;
         var current = _displayPage;
+        return BuildSlidingPageNumbers(total, current);
+    }
+
+    private void GoToShareActivityPage(int page)
+    {
+        if (page < 1 || page > _shareActivityTotalPages) return;
+        _shareActivityPage = page;
+    }
+
+    private List<int> GetShareActivityPageNumbers()
+    {
+        var total = _shareActivityTotalPages;
+        var current = _shareActivityDisplayPage;
         return BuildSlidingPageNumbers(total, current);
     }
 
@@ -745,6 +878,29 @@
     private void HandlePendingModeratorPageJumpInput(ChangeEventArgs e)
     {
         _pendingModeratorPageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandleShareActivityPageJumpInput(ChangeEventArgs e)
+    {
+        _shareActivityPageJumpInput = e.Value?.ToString()?.Trim() ?? string.Empty;
+    }
+
+    private void HandleShareActivityPageJumpKeyDown(KeyboardEventArgs e)
+    {
+        if (string.Equals(e.Key, "Enter", StringComparison.OrdinalIgnoreCase))
+        {
+            GoToShareActivityPageJump();
+        }
+    }
+
+    private void GoToShareActivityPageJump()
+    {
+        if (int.TryParse(_shareActivityPageJumpInput, out var page))
+        {
+            GoToShareActivityPage(page);
+        }
+
+        _shareActivityPageJumpInput = string.Empty;
     }
 
     private void HandlePendingModeratorPageJumpKeyDown(KeyboardEventArgs e)
@@ -790,6 +946,42 @@
         }
 
         _pendingModeratorPage = 1;
+    }
+
+    private void ToggleShareActivitySort(string sortBy)
+    {
+        if (string.Equals(_shareActivitySortBy, sortBy, StringComparison.OrdinalIgnoreCase))
+        {
+            _shareActivitySortDescending = !_shareActivitySortDescending;
+        }
+        else
+        {
+            _shareActivitySortBy = sortBy;
+            _shareActivitySortDescending = sortBy is "activity" or "reason";
+        }
+
+        _shareActivityPage = 1;
+    }
+
+    private string GetShareActivitySortIcon(string sortBy)
+    {
+        if (!string.Equals(_shareActivitySortBy, sortBy, StringComparison.OrdinalIgnoreCase))
+        {
+            return Icons.Material.Filled.UnfoldMore;
+        }
+
+        return _shareActivitySortDescending
+            ? Icons.Material.Filled.KeyboardArrowDown
+            : Icons.Material.Filled.KeyboardArrowUp;
+    }
+
+    private string GetShareActivityHeaderButtonClass(string sortBy)
+    {
+        var activeClass = string.Equals(_shareActivitySortBy, sortBy, StringComparison.OrdinalIgnoreCase)
+            ? " table-header-button-active"
+            : string.Empty;
+
+        return $"table-header-button{activeClass}";
     }
 
     private string GetPendingModeratorSortIcon(string sortBy)
