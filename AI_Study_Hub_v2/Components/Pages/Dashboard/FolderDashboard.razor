@@ -137,10 +137,19 @@
     private async Task LoadModeratorDashboardAsync(Guid currentUserId)
     {
         var studentFolders = await DbContext.Folders
-            .Include(folder => folder.Documents)
-            .Include(folder => folder.User)
+            .AsNoTracking()
             .Where(folder => folder.UserId != currentUserId)
             .OrderByDescending(folder => folder.UpdatedAt)
+            .Select(folder => new DashboardFolderRow(
+                folder.Id,
+                folder.Name,
+                folder.ShareStatus,
+                folder.Documents.Any(document => document.Status == DocumentStatus.Failed),
+                folder.Documents.Any(document => document.Status == DocumentStatus.Uploading || document.Status == DocumentStatus.Processing),
+                folder.Documents.Any() && folder.Documents.All(document => document.Status == DocumentStatus.Ready),
+                folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
+                folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
+                folder.User != null ? (folder.User.FullName ?? folder.User.Username) : "Unknown"))
             .ToListAsync();
 
         humanReviewCount = studentFolders.Count(NeedsHumanReview);
@@ -155,15 +164,14 @@
                 continue;
             }
 
-            var firstDoc = folder.Documents.FirstOrDefault();
             viewModels.Add(new FolderViewModel
             {
                 Id = folder.Id,
                 Name = folder.Name,
-                SubjectCode = firstDoc?.SubjectCode ?? "N/A",
-                Semester = firstDoc?.Semester ?? "N/A",
+                SubjectCode = folder.SubjectCode,
+                Semester = folder.Semester,
                 Status = status,
-                OwnerName = folder.User?.FullName ?? folder.User?.Username ?? "Unknown",
+                OwnerName = folder.OwnerName,
             });
         }
     }
@@ -171,14 +179,23 @@
     private async Task LoadStudentDashboardAsync(Guid currentUserId)
     {
         var myFolders = await DbContext.Folders
-            .Include(folder => folder.Documents)
+            .AsNoTracking()
             .Where(folder => folder.UserId == currentUserId)
             .OrderByDescending(folder => folder.UpdatedAt)
+            .Select(folder => new DashboardFolderRow(
+                folder.Id,
+                folder.Name,
+                folder.ShareStatus,
+                folder.Documents.Any(document => document.Status == DocumentStatus.Failed),
+                folder.Documents.Any(document => document.Status == DocumentStatus.Uploading || document.Status == DocumentStatus.Processing),
+                folder.Documents.Any() && folder.Documents.All(document => document.Status == DocumentStatus.Ready),
+                folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
+                folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
+                "Me"))
             .ToListAsync();
 
         foreach (var folder in myFolders)
         {
-            var firstDoc = folder.Documents.FirstOrDefault();
             var status = GetStudentFolderStatus(folder);
 
             if (status == SharedStatus)
@@ -198,32 +215,20 @@
             {
                 Id = folder.Id,
                 Name = folder.Name,
-                SubjectCode = firstDoc?.SubjectCode ?? "N/A",
-                Semester = firstDoc?.Semester ?? "N/A",
+                SubjectCode = folder.SubjectCode,
+                Semester = folder.Semester,
                 Status = status,
                 OwnerName = "Me",
             });
         }
     }
 
-    private static bool HasAiProcessing(Folder folder) =>
-        folder.Documents.Any(document => document.Status is DocumentStatus.Uploading or DocumentStatus.Processing);
+    private static bool HasAiProcessing(DashboardFolderRow folder) => folder.HasProcessingDocuments;
 
-    private static bool IsHumanReviewQueue(Folder folder) =>
-        folder.ShareStatus == FolderStatus.PendingShare
-        && (folder.RequiresHumanReview || folder.AppealRequestedAt.HasValue);
+    private static bool NeedsHumanReview(DashboardFolderRow folder) =>
+        folder.ShareStatus == FolderStatus.PendingShare || HasAiProcessing(folder);
 
-    private static bool IsReadyForReview(Folder folder) =>
-        folder.ShareStatus == FolderStatus.PendingShare
-        && !folder.RequiresHumanReview
-        && !folder.AppealRequestedAt.HasValue;
-
-    private static bool NeedsHumanReview(Folder folder) =>
-        IsHumanReviewQueue(folder)
-        || IsReadyForReview(folder)
-        || HasAiProcessing(folder);
-
-    private static string? GetModeratorFolderStatus(Folder folder)
+    private static string? GetModeratorFolderStatus(DashboardFolderRow folder)
     {
         if (NeedsHumanReview(folder))
         {
@@ -248,7 +253,7 @@
         return null;
     }
 
-    private static string GetStudentFolderStatus(Folder folder)
+    private static string GetStudentFolderStatus(DashboardFolderRow folder)
     {
         if (folder.ShareStatus != FolderStatus.None)
         {
@@ -261,7 +266,7 @@
             };
         }
 
-        if (folder.Documents.Any(document => document.Status == DocumentStatus.Failed))
+        if (folder.HasFailedDocuments)
         {
             return FailedStatus;
         }
@@ -271,11 +276,22 @@
             return ProcessingStatus;
         }
 
-        if (folder.Documents.Any() && folder.Documents.All(document => document.Status == DocumentStatus.Ready))
+        if (folder.AllDocumentsReady)
         {
             return ReadyStatus;
         }
 
         return EmptyStatus;
     }
+
+    private sealed record DashboardFolderRow(
+        Guid Id,
+        string Name,
+        FolderStatus ShareStatus,
+        bool HasFailedDocuments,
+        bool HasProcessingDocuments,
+        bool AllDocumentsReady,
+        string SubjectCode,
+        string Semester,
+        string OwnerName);
 }

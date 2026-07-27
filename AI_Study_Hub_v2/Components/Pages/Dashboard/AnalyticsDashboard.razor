@@ -12,6 +12,7 @@
 @inject AppDbContext DbContext
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject IDialogService DialogService
 @using AI_Study_Hub_v2.Data.Entities
 
 <PageTitle>Analytics - AI Study Hub</PageTitle>
@@ -703,7 +704,11 @@
         {
             if (FolderId.HasValue)
             {
-                var folder = await DbContext.Folders.AsNoTracking().FirstOrDefaultAsync(f => f.Id == FolderId.Value);
+                var folder = await DbContext.Folders
+                    .AsNoTracking()
+                    .Where(f => f.Id == FolderId.Value)
+                    .Select(f => new { f.Name, f.ShareStatus })
+                    .FirstOrDefaultAsync();
                 FolderName = folder?.Name ?? string.Empty;
                 _folderShareStatus = folder?.ShareStatus ?? FolderStatus.None;
             }
@@ -1456,10 +1461,27 @@
     private async Task RejectFolderShare()
     {
         if (!FolderId.HasValue || string.IsNullOrWhiteSpace(Session.AccessToken) || _isShareActionBusy) return;
+
+        var dialog = await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Shared.ModeratorRejectReasonDialog>(
+            "Reject Folder Share",
+            new DialogParameters
+            {
+                ["ItemName"] = string.IsNullOrWhiteSpace(FolderName) ? "Selected folder" : FolderName
+            },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string reason)
+        {
+            return;
+        }
+
         try
         {
             _isShareActionBusy = true;
-            var folder = await FolderApi.RejectShareAsync(Session.AccessToken!, FolderId.Value);
+            var folder = await FolderApi.RejectShareAsync(
+                Session.AccessToken!,
+                FolderId.Value,
+                new RejectFolderShareRequest { Reason = reason });
             _folderShareStatus = folder.ShareStatus;
             Snackbar.Add("Folder share request rejected.", Severity.Warning);
             await LoadAnalyticsAsync();

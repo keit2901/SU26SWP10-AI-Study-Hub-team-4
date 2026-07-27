@@ -229,11 +229,19 @@ public sealed class FolderApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
-    public async Task<FolderDto> RejectShareAsync(string accessToken, Guid id, CancellationToken ct = default)
+    public async Task<FolderDto> RejectShareAsync(
+        string accessToken,
+        Guid id,
+        RejectFolderShareRequest request,
+        CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentNullException.ThrowIfNull(request);
 
-        using var req = new HttpRequestMessage(HttpMethod.Patch, $"api/folders/{id}/share/reject");
+        using var req = new HttpRequestMessage(HttpMethod.Patch, $"api/folders/{id}/share/reject")
+        {
+            Content = JsonContent.Create(request)
+        };
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
         using var resp = await _http.SendAsync(req, ct);

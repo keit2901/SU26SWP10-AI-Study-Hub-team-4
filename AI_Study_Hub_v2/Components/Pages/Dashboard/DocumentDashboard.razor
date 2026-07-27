@@ -495,9 +495,15 @@
                                                             <MudIcon Icon="@Icons.Material.Filled.Close" Style="font-size: 0.78rem; color: #FF3B30;" />
                                                             <span style="font-size: 0.75rem; font-weight: 600; color: #ff3b30;">Reject</span>
                                                         </button>
-                                                        <button @onclick="() => AiReviewDocumentAsync(item.Id, item.FileName)" style="grid-column: 1 / -1; display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 2.35rem; border-radius: 0.5rem; border: 1px solid rgba(94,92,230,0.24); background: linear-gradient(135deg, rgba(94,92,230,0.12), rgba(129,140,248,0.16)); padding: 0.45rem 0.65rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
+                                                        <button @onclick="() => AiReviewDocumentAsync(item.Id, item.FileName)" style="display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 2.35rem; border-radius: 0.5rem; border: 1px solid rgba(94,92,230,0.24); background: linear-gradient(135deg, rgba(94,92,230,0.12), rgba(129,140,248,0.16)); padding: 0.45rem 0.65rem; cursor: pointer; transition: background 0.2s; white-space: nowrap;">
                                                             <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size: 0.78rem; color: #5e5ce6;" />
                                                             <span style="font-size: 0.75rem; font-weight: 600; color: #5e5ce6;">AI Review</span>
+                                                        </button>
+                                                        <button @onclick="() => OpenFolderFeedbackAsync(item)"
+                                                                disabled="@(!HasDocumentFeedback(item))"
+                                                                style="@GetFeedbackButtonStyle(item)">
+                                                            <MudIcon Icon="@Icons.Material.Filled.FactCheck" Style="@GetFeedbackIconStyle(item)" />
+                                                            <span style="@GetFeedbackTextStyle(item)">Feedback</span>
                                                         </button>
                                                     </div>
                                                 }
@@ -677,7 +683,7 @@
         ?? [];
 
     private IReadOnlyList<string> StatusOptions =>
-        ["AI Review", "Approved", "Manual Review", "Pending", "Rejected"];
+        ["AI Review", "Approved", "Pending", "Rejected"];
 
     protected override async Task OnInitializedAsync()
     {
@@ -1576,6 +1582,7 @@
                 Snackbar.Add($"Document '{fileName}' approved successfully.", Severity.Success);
                 _resolvedStatuses[docId] = "Approved";
                 _resolvedReviewSources[docId] = "Manual";
+                await LoadPendingDocumentsAsync();
             }
             else
             {
@@ -1590,14 +1597,28 @@
 
     private async Task RejectDocumentAsync(Guid docId, string fileName)
     {
+        var dialog = await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Shared.ModeratorRejectReasonDialog>(
+            "Reject Document",
+            new DialogParameters
+            {
+                ["ItemName"] = fileName
+            },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string reason)
+        {
+            return;
+        }
+
         try
         {
-            var success = await DashboardService.RejectDocumentAsync(docId);
+            var success = await DashboardService.RejectDocumentAsync(docId, reason);
             if (success)
             {
                 Snackbar.Add($"Document '{fileName}' rejected.", Severity.Warning);
                 _resolvedStatuses[docId] = "Rejected";
                 _resolvedReviewSources[docId] = "Manual";
+                await LoadPendingDocumentsAsync();
             }
             else
             {
@@ -1636,6 +1657,7 @@
             Snackbar.Add(
                 $"AI review {statusLabel} '{fileName}' ({result.Confidence:P0}). {result.Message}",
                 severity);
+            await LoadPendingDocumentsAsync();
         }
         catch (Exception ex)
         {
@@ -1712,6 +1734,47 @@
         }
     }
 
+    private static bool HasDocumentFeedback(DocumentDto item) =>
+        !string.IsNullOrWhiteSpace(item.StudentFeedbackReason)
+        || !string.IsNullOrWhiteSpace(item.AppealMessage);
+
+    private static string GetFeedbackButtonStyle(DocumentDto item)
+    {
+        var hasFeedback = HasDocumentFeedback(item);
+        return $"display: inline-flex; align-items: center; justify-content: center; gap: 0.3rem; min-height: 2.35rem; border-radius: 0.5rem; border: 1px solid {(hasFeedback ? "rgba(251,146,60,0.38)" : "rgba(148,163,184,0.25)")}; background: {(hasFeedback ? "rgba(255,237,213,0.78)" : "rgba(241,245,249,0.7)")}; padding: 0.45rem 0.65rem; cursor: {(hasFeedback ? "pointer" : "not-allowed")}; transition: background 0.2s; white-space: nowrap;";
+    }
+
+    private static string GetFeedbackIconStyle(DocumentDto item) =>
+        $"font-size: 0.78rem; color: {(HasDocumentFeedback(item) ? "#c2410c" : "#94a3b8")};";
+
+    private static string GetFeedbackTextStyle(DocumentDto item) =>
+        $"font-size: 0.75rem; font-weight: 600; color: {(HasDocumentFeedback(item) ? "#c2410c" : "#94a3b8")};";
+
+    private async Task OpenFolderFeedbackAsync(DocumentDto item)
+    {
+        if (!HasDocumentFeedback(item))
+        {
+            Snackbar.Add("Student has not sent feedback yet.", Severity.Info);
+            return;
+        }
+
+        var folder = new FolderDto
+        {
+            Id = item.FolderId ?? Guid.Empty,
+            Name = item.FolderName ?? "Selected folder",
+            ShareStatus = item.FolderShareStatus,
+            ShareFailureCount = item.ShareFailureCount,
+            StudentFeedbackReason = item.StudentFeedbackReason,
+            AppealMessage = item.AppealMessage,
+            UpdatedAt = item.UpdatedAt
+        };
+
+        await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Shared.FolderReviewFeedbackDialog>(
+            "Review Feedback",
+            new DialogParameters { ["Folder"] = folder },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+    }
+
     private void NavigateBackToAnalytics()
     {
         if (FolderId.HasValue)
@@ -1769,17 +1832,14 @@
     {
         if (_resolvedReviewSources.TryGetValue(item.Id, out var reviewSource))
         {
-            return reviewSource;
+            return string.Equals(reviewSource, "AI", StringComparison.OrdinalIgnoreCase)
+                ? "AI"
+                : null;
         }
 
         if (IsAiReviewed(item))
         {
             return "AI";
-        }
-
-        if (IsFolderReviewFinalized(item))
-        {
-            return "Manual";
         }
 
         return null;
@@ -1798,9 +1858,7 @@
 
         return normalizedFilter.Equals("AI Review", StringComparison.OrdinalIgnoreCase)
             ? string.Equals(reviewSource, "AI", StringComparison.OrdinalIgnoreCase)
-            : normalizedFilter.Equals("Manual Review", StringComparison.OrdinalIgnoreCase)
-                ? string.Equals(reviewSource, "Manual", StringComparison.OrdinalIgnoreCase)
-                : reviewStatusLabel.Contains(normalizedFilter, StringComparison.OrdinalIgnoreCase);
+            : reviewStatusLabel.Contains(normalizedFilter, StringComparison.OrdinalIgnoreCase);
     }
 
     private string BuildLoginReturnUrl()
@@ -1825,11 +1883,6 @@
             return "AI Review";
         }
 
-        if (string.Equals(reviewSource, "Manual", StringComparison.OrdinalIgnoreCase))
-        {
-            return "Manual Review";
-        }
-
         return GetReviewStatusLabel(item);
     }
 
@@ -1842,11 +1895,6 @@
             return "rgba(94,92,230,0.12)";
         }
 
-        if (string.Equals(reviewSource, "Manual", StringComparison.OrdinalIgnoreCase))
-        {
-            return "rgba(14,165,233,0.12)";
-        }
-
         return GetReviewStatusBackground(item);
     }
 
@@ -1857,11 +1905,6 @@
         if (string.Equals(reviewSource, "AI", StringComparison.OrdinalIgnoreCase))
         {
             return "#4f46e5";
-        }
-
-        if (string.Equals(reviewSource, "Manual", StringComparison.OrdinalIgnoreCase))
-        {
-            return "#0369a1";
         }
 
         return GetReviewStatusColor(item);

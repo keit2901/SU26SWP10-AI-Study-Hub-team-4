@@ -28,7 +28,13 @@ public sealed class Folder
 
     public int AiReviewFailureCount { get; set; }
 
+    public int ShareSubmissionCount { get; set; }
+
+    public int ShareFailureCount { get; set; }
+
     public string? HumanReviewReason { get; set; }
+
+    public string? StudentFeedbackReason { get; set; }
 
     public bool RequiresHumanReview { get; set; }
 

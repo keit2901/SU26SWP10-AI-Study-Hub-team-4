@@ -639,6 +639,21 @@ static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
 
     await db.Database.ExecuteSqlRawAsync("""
         ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_submission_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_failure_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS student_feedback_reason character varying(200);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
         ADD COLUMN IF NOT EXISTS share_review_source character varying(32);
         """);
 

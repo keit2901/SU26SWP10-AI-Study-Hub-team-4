@@ -1708,17 +1708,22 @@ else
         var parameters = new DialogParameters
         {
             ["FolderName"] = folder.Name,
-            ["AiReason"] = folder.AiReviewReason,
+            ["FailCount"] = folder.ShareFailureCount,
+            ["LatestReason"] = !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
+                ? folder.HumanReviewReason
+                : folder.AiReviewReason,
         };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialogRef = await Dialogs.ShowAsync<AppealFolderShareDialog>("Review by human", parameters, options);
+        var dialogRef = await Dialogs.ShowAsync<AppealFolderShareDialog>("Send Feedback", parameters, options);
         var result = await dialogRef.Result;
         if (result is null || result.Canceled) return;
-        var message = result.Data as string;
-        await RequestHumanReviewAsync(folder, message);
+        if (result.Data is AppealFolderShareDialog.AppealFolderShareDialogResult feedback)
+        {
+            await RequestHumanReviewAsync(folder, feedback);
+        }
     }
 
-    private async Task RequestHumanReviewAsync(FolderDto folder, string? message)
+    private async Task RequestHumanReviewAsync(FolderDto folder, AppealFolderShareDialog.AppealFolderShareDialogResult feedback)
     {
         if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
 
@@ -1727,7 +1732,11 @@ else
             var updated = await FoldersApi.AppealShareReviewAsync(
                 Session.AccessToken!,
                 folder.Id,
-                new AppealFolderShareRequest { Message = message });
+                new AppealFolderShareRequest
+                {
+                    Reason = feedback.Reason,
+                    Description = feedback.Description
+                });
             var idx = _folders.FindIndex(f => f.Id == folder.Id);
             if (idx >= 0)
             {
@@ -1736,7 +1745,7 @@ else
                 StateHasChanged();
             }
 
-            Snackbar.Add("Human review requested. Your folder is now waiting for moderator review.", Severity.Info);
+            Snackbar.Add("Feedback sent. Your folder is back in the moderator queue.", Severity.Info);
         }
         catch (DocumentApiException ex)
         {
@@ -1744,7 +1753,9 @@ else
         }
     }
 
-    private static bool CanRequestHumanReview(FolderDto folder) => false;
+    private static bool CanRequestHumanReview(FolderDto folder) =>
+        folder.ShareStatus == Data.Entities.FolderStatus.Rejected
+        && folder.ShareFailureCount >= 2;
 
     private static string GetShareButtonText(FolderDto folder)
     {

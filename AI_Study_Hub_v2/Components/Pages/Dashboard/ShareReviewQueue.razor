@@ -3,13 +3,16 @@
 @using AI_Study_Hub_v2.Components.Layout
 @using AI_Study_Hub_v2.Data
 @using AI_Study_Hub_v2.Data.Entities
+@using AI_Study_Hub_v2.Dtos
 @using Microsoft.EntityFrameworkCore
+@using System.Data
 @inject AppDbContext DbContext
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
 @inject FolderApiClient FolderApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
+@inject IDialogService DialogService
 
 <PageTitle>Share Review Queue - AI Study Hub</PageTitle>
 
@@ -98,7 +101,7 @@
                                 var isBusy = _busyFolderId == item.Id;
                                 <tr style="border-top: 1px solid #e2e8f0;">
                                     <td style="@BodyCellStyle">
-                                        <div style="font-weight: 700; color: #0f172a;">@item.Name</div>
+                                        <div style="font-weight: 700; color: #0f172a;">@GetFolderDisplayName(item)</div>
                                         <div style="margin-top: 0.25rem; color: #64748b; font-size: 0.8rem;">@item.DocumentCount source@(item.DocumentCount == 1 ? string.Empty : "s")</div>
                                     </td>
                                     <td style="@BodyCellStyle">
@@ -116,27 +119,27 @@
                                         <div style="color: #475569; line-height: 1.45; font-size: 0.84rem;">
                                             @(!string.IsNullOrWhiteSpace(item.AppealMessage)
                                                 ? item.AppealMessage
-                                                : "Waiting for moderator review. Open the folder if you want to inspect documents first.")
+                                                : "Waiting for moderator review. Student feedback will appear here when it is submitted.")
                                         </div>
                                     </td>
                                     <td style="@BodyCellStyle">
                                         <div style="display: flex; gap: 0.45rem; flex-wrap: wrap;">
-                                            <button @onclick="() => OpenFolder(item.Id)"
-                                                    disabled="@isBusy"
-                                                    style="@GetActionStyle(isBusy, "#ffffff", "#334155", "#cbd5e1")">
-                                                Open
+                                            <button @onclick="() => OpenFeedbackAsync(item)"
+                                                    disabled="@(isBusy || !HasStudentFeedback(item))"
+                                                    style="@GetFeedbackActionStyle(isBusy, HasStudentFeedback(item))">
+                                                View Feedback
                                             </button>
                                             <button @onclick="() => AutoCheckAsync(item.Id)"
                                                     disabled="@isBusy"
                                                     style="@GetActionStyle(isBusy, "#eef2ff", "#4338ca", "#c7d2fe")">
-                                                Auto Check
+                                                AI Review
                                             </button>
                                             <button @onclick="() => ApproveAsync(item.Id)"
                                                     disabled="@isBusy"
                                                     style="@GetActionStyle(isBusy, "#ecfdf5", "#047857", "#a7f3d0")">
                                                 Approve
                                             </button>
-                                            <button @onclick="() => RejectAsync(item.Id)"
+                                            <button @onclick="() => RejectAsync(item)"
                                                     disabled="@isBusy"
                                                     style="@GetActionStyle(isBusy, "#fef2f2", "#b91c1c", "#fecaca")">
                                                 Reject
@@ -159,6 +162,7 @@
     private bool _isAuthorized = true;
     private bool _isRefreshing;
     private Guid? _busyFolderId;
+    private bool _hasFeedbackColumns;
 
     private static string HeaderCellStyle =>
         "padding: 0.85rem 1rem; text-align: left; color: #64748b; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; white-space: nowrap;";
@@ -204,22 +208,47 @@
             var currentUserId = Session.CurrentUser.Id;
             _pendingFolders.Clear();
 
-            var rows = await DbContext.Folders
-                .AsNoTracking()
-                .Include(folder => folder.Documents)
-                .Include(folder => folder.User)
-                .Where(folder => folder.ShareStatus == FolderStatus.PendingShare && folder.UserId != currentUserId)
-                .OrderByDescending(folder => folder.UpdatedAt)
-                .Select(folder => new PendingShareQueueItem(
-                    folder.Id,
-                    folder.Name,
-                    folder.User.FullName ?? folder.User.Username,
-                    folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
-                    folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
-                    folder.Documents.Count,
-                    folder.AppealRequestedAt ?? folder.UpdatedAt,
-                    folder.AppealMessage))
-                .ToListAsync();
+            _hasFeedbackColumns = await HasFeedbackColumnsAsync();
+
+            List<PendingShareQueueItem> rows;
+            if (_hasFeedbackColumns)
+            {
+                rows = await DbContext.Folders
+                    .AsNoTracking()
+                    .Where(folder => folder.ShareStatus == FolderStatus.PendingShare && folder.UserId != currentUserId)
+                    .OrderByDescending(folder => folder.UpdatedAt)
+                    .Select(folder => new PendingShareQueueItem(
+                        folder.Id,
+                        folder.Name,
+                        folder.User != null ? (folder.User.FullName ?? folder.User.Username) : "Unknown",
+                        folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
+                        folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
+                        folder.Documents.Count,
+                        folder.UpdatedAt,
+                        folder.AppealMessage,
+                        folder.StudentFeedbackReason,
+                        folder.ShareFailureCount))
+                    .ToListAsync();
+            }
+            else
+            {
+                rows = await DbContext.Folders
+                    .AsNoTracking()
+                    .Where(folder => folder.ShareStatus == FolderStatus.PendingShare && folder.UserId != currentUserId)
+                    .OrderByDescending(folder => folder.UpdatedAt)
+                    .Select(folder => new PendingShareQueueItem(
+                        folder.Id,
+                        folder.Name,
+                        folder.User != null ? (folder.User.FullName ?? folder.User.Username) : "Unknown",
+                        folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
+                        folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
+                        folder.Documents.Count,
+                        folder.UpdatedAt,
+                        null,
+                        null,
+                        0))
+                    .ToListAsync();
+            }
 
             _pendingFolders.AddRange(rows);
         }
@@ -242,11 +271,6 @@
             : "/" + relativePath;
 
         return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
-    }
-
-    private void OpenFolder(Guid folderId)
-    {
-        Nav.NavigateTo($"/dashboard/analytics?folderId={folderId}");
     }
 
     private async Task AutoCheckAsync(Guid folderId)
@@ -292,9 +316,22 @@
         });
     }
 
-    private async Task RejectAsync(Guid folderId)
+    private async Task RejectAsync(PendingShareQueueItem item)
     {
-        await RunActionAsync(folderId, async () =>
+        var dialog = await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Shared.ModeratorRejectReasonDialog>(
+            "Reject Folder Share",
+            new DialogParameters
+            {
+                ["ItemName"] = item.Name
+            },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string reason)
+        {
+            return;
+        }
+
+        await RunActionAsync(item.Id, async () =>
         {
             if (string.IsNullOrWhiteSpace(Session.AccessToken))
             {
@@ -302,7 +339,10 @@
                 return;
             }
 
-            await FolderApi.RejectShareAsync(Session.AccessToken, folderId);
+            await FolderApi.RejectShareAsync(
+                Session.AccessToken,
+                item.Id,
+                new RejectFolderShareRequest { Reason = reason });
             Snackbar.Add("Folder rejected from community sharing.", Severity.Warning);
         });
     }
@@ -333,6 +373,91 @@
     private static string GetActionStyle(bool isBusy, string background, string color, string borderColor) =>
         $"display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid {(isBusy ? "#d1d5db" : borderColor)}; background: {(isBusy ? "#f3f4f6" : background)}; color: {(isBusy ? "#9ca3af" : color)}; padding: 0.45rem 0.8rem; font-size: 0.78rem; font-weight: 700; cursor: {(isBusy ? "not-allowed" : "pointer")};";
 
+    private static string GetFeedbackActionStyle(bool isBusy, bool hasStudentFeedback)
+    {
+        if (isBusy)
+        {
+            return GetActionStyle(true, "#f3f4f6", "#9ca3af", "#d1d5db");
+        }
+
+        return hasStudentFeedback
+            ? GetActionStyle(false, "#fff7ed", "#c2410c", "#fdba74")
+            : GetActionStyle(false, "#ffffff", "#94a3b8", "#e2e8f0");
+    }
+
+    private static bool HasStudentFeedback(PendingShareQueueItem item) =>
+        !string.IsNullOrWhiteSpace(item.StudentFeedbackReason)
+        || !string.IsNullOrWhiteSpace(item.AppealMessage);
+
+    private static string GetFolderDisplayName(PendingShareQueueItem item) =>
+        $"{item.Name} (Fail {item.ShareFailureCount} times)";
+
+    private async Task OpenFeedbackAsync(PendingShareQueueItem item)
+    {
+        if (!HasStudentFeedback(item))
+        {
+            Snackbar.Add("Student has not sent feedback yet.", Severity.Info);
+            return;
+        }
+
+        var folder = new FolderDto
+        {
+            Id = item.Id,
+            Name = item.Name,
+            ShareStatus = FolderStatus.PendingShare,
+            ShareFailureCount = item.ShareFailureCount,
+            StudentFeedbackReason = item.StudentFeedbackReason,
+            AppealMessage = item.AppealMessage,
+            UpdatedAt = item.SubmittedAt
+        };
+
+        await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Shared.FolderReviewFeedbackDialog>(
+            "Review Feedback",
+            new DialogParameters { ["Folder"] = folder },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+    }
+
+    private async Task<bool> HasFeedbackColumnsAsync()
+    {
+        var connection = DbContext.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync();
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = @"
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'folders';
+                ";
+
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var reader = await command.ExecuteReaderAsync();
+            while (await reader.ReadAsync())
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    columns.Add(reader.GetString(0));
+                }
+            }
+
+            return columns.Contains("appeal_message")
+                && columns.Contains("student_feedback_reason")
+                && columns.Contains("share_failure_count");
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
     private sealed record PendingShareQueueItem(
         Guid Id,
         string Name,
@@ -341,5 +466,7 @@
         string Semester,
         int DocumentCount,
         DateTimeOffset SubmittedAt,
-        string? AppealMessage);
+        string? AppealMessage,
+        string? StudentFeedbackReason,
+        int ShareFailureCount);
 }

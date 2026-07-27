@@ -149,8 +149,14 @@ public sealed class FoldersController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<FolderDto>> RejectShare(Guid id, CancellationToken cancellationToken)
-        => await ExecuteAsync(() => _service.RejectFolderShareAsync(id, cancellationToken));
+    public async Task<ActionResult<FolderDto>> RejectShare(
+        Guid id,
+        [FromBody] RejectFolderShareRequest? request,
+        CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.RejectFolderShareAsync(
+            id,
+            request ?? new RejectFolderShareRequest { Reason = "Rejected after moderator review." },
+            cancellationToken));
 
     [HttpPatch("{id:guid}/share/auto-check")]
     [Authorize(Roles = "Admin,Moderator")]

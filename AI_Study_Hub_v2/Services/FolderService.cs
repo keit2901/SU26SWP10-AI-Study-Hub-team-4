@@ -40,38 +40,99 @@ public sealed class FolderService : IFolderService
         CancellationToken cancellationToken = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
 
-        var rows = await _db.Folders
+        var query = _db.Folders
             .AsNoTracking()
             .Where(f => f.UserId == profile.Id)
             .OrderByDescending(f => f.IsFavorite)
-            .ThenByDescending(f => f.UpdatedAt)
-            .Select(f => new FolderDto
+            .ThenByDescending(f => f.UpdatedAt);
+
+        List<FolderDto> rows;
+        if (schema.HasFullModernShareFlowColumns)
+        {
+            rows = await query
+                .Select(f => new FolderDto
+                {
+                    Id = f.Id,
+                    Name = f.Name,
+                    Description = f.Description,
+                    DocumentCount = f.Documents.Count,
+                    IsFavorite = f.IsFavorite,
+                    ShareStatus = f.ShareStatus,
+                    SharedAt = f.SharedAt,
+                    ShareReviewSource = f.ShareReviewSource,
+                    AiReviewReason = f.AiReviewReason,
+                    AiReviewConfidence = f.AiReviewConfidence,
+                    AiReviewFailureCount = f.AiReviewFailureCount,
+                    ShareSubmissionCount = f.ShareSubmissionCount,
+                    ShareFailureCount = f.ShareFailureCount,
+                    HumanReviewReason = f.HumanReviewReason,
+                    StudentFeedbackReason = f.StudentFeedbackReason,
+                    RequiresHumanReview = f.RequiresHumanReview,
+                    AppealRequestedAt = f.AppealRequestedAt,
+                    AppealMessage = f.AppealMessage,
+                    Icon = f.Icon,
+                    CreatedAt = f.CreatedAt,
+                    UpdatedAt = f.UpdatedAt,
+                    Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                             f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                             f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                             "Empty"
+                })
+                .ToListAsync(cancellationToken);
+        }
+        else
+        {
+            if (schema.HasShareSubmissionCountColumn)
             {
-                Id = f.Id,
-                Name = f.Name,
-                Description = f.Description,
-                DocumentCount = f.Documents.Count,
-                IsFavorite = f.IsFavorite,
-                ShareStatus = f.ShareStatus,
-                SharedAt = f.SharedAt,
-                ShareReviewSource = f.ShareReviewSource,
-                AiReviewReason = f.AiReviewReason,
-                AiReviewConfidence = f.AiReviewConfidence,
-                AiReviewFailureCount = f.AiReviewFailureCount,
-                HumanReviewReason = f.HumanReviewReason,
-                RequiresHumanReview = f.RequiresHumanReview,
-                AppealRequestedAt = f.AppealRequestedAt,
-                AppealMessage = f.AppealMessage,
-                Icon = f.Icon,
-                CreatedAt = f.CreatedAt,
-                UpdatedAt = f.UpdatedAt,
-                Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
-                         f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
-                         "Empty"
-            })
-            .ToListAsync(cancellationToken);
+                rows = await query
+                    .Select(f => new FolderDto
+                    {
+                        Id = f.Id,
+                        Name = f.Name,
+                        Description = f.Description,
+                        DocumentCount = f.Documents.Count,
+                        IsFavorite = f.IsFavorite,
+                        ShareStatus = f.ShareStatus,
+                        SharedAt = f.SharedAt,
+                        ShareSubmissionCount = f.ShareSubmissionCount,
+                        ShareFailureCount = f.ShareFailureCount,
+                        Icon = f.Icon,
+                        CreatedAt = f.CreatedAt,
+                        UpdatedAt = f.UpdatedAt,
+                        Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                                 f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                                 "Empty"
+                    })
+                    .ToListAsync(cancellationToken);
+            }
+            else
+            {
+                rows = await query
+                    .Select(f => new FolderDto
+                    {
+                        Id = f.Id,
+                        Name = f.Name,
+                        Description = f.Description,
+                        DocumentCount = f.Documents.Count,
+                        IsFavorite = f.IsFavorite,
+                        ShareStatus = f.ShareStatus,
+                        SharedAt = f.SharedAt,
+                        Icon = f.Icon,
+                        CreatedAt = f.CreatedAt,
+                        UpdatedAt = f.UpdatedAt,
+                        Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                                 f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                                 "Empty"
+                    })
+                    .ToListAsync(cancellationToken);
+            }
+
+            _logger.LogWarning("Folder share-review columns are not fully available in the current database schema. Falling back to compatibility mode for ListAsync.");
+        }
 
         return rows;
     }
@@ -83,6 +144,7 @@ public sealed class FolderService : IFolderService
     {
         ArgumentNullException.ThrowIfNull(request);
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
         var name = NormalizeName(request.Name);
         var description = NormalizeDescription(request.Description);
 
@@ -102,8 +164,24 @@ public sealed class FolderService : IFolderService
         {
             await _capacityGuard.LockAndValidateAsync(_db, profile.Id, new PlanCapacityRequest(0, 1, null, 0), cancellationToken);
             await EnsureUniqueNameAsync(profile.Id, name, excludeFolderId: null, cancellationToken);
-            _db.Folders.Add(folder);
-            await _db.SaveChangesAsync(cancellationToken);
+
+            if (schema.HasFullModernShareFlowColumns)
+            {
+                _db.Folders.Add(folder);
+                await _db.SaveChangesAsync(cancellationToken);
+            }
+            else
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($"""
+                    INSERT INTO folders (id, user_id, name, description, is_favorite, share_status, created_at, updated_at)
+                    VALUES ({folder.Id}, {folder.UserId}, {folder.Name}, {folder.Description}, {false}, {(int)FolderStatus.None}, {folder.CreatedAt}, {folder.UpdatedAt})
+                    """, cancellationToken);
+
+                folder.IsFavorite = false;
+                folder.ShareStatus = FolderStatus.None;
+                _logger.LogWarning("Folder share-review columns are not available in the current database schema. Using compatibility insert mode for folder creation.");
+            }
+
             await tx.CommitAsync(cancellationToken);
         }
         catch
@@ -131,6 +209,76 @@ public sealed class FolderService : IFolderService
     {
         ArgumentNullException.ThrowIfNull(request);
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            var basicFolder = await _db.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == folderId && f.UserId == profile.Id)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.UserId,
+                    f.Name,
+                    f.Description,
+                    f.Icon,
+                    f.IsFavorite,
+                    f.ShareStatus,
+                    f.SharedAt,
+                    f.CreatedAt,
+                    f.UpdatedAt
+                })
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? throw new DocumentException(404, "folder_not_found",
+                    "Folder does not exist or does not belong to the caller.");
+
+            var updatedName = request.Name is not null ? NormalizeName(request.Name) : basicFolder.Name;
+            if (request.Name is not null)
+            {
+                await EnsureUniqueNameAsync(profile.Id, updatedName, excludeFolderId: folderId, cancellationToken);
+            }
+
+            var updatedDescription = request.Description is not null
+                ? NormalizeDescription(request.Description)
+                : basicFolder.Description;
+
+            var updatedIcon = request.Icon is not null
+                ? (string.IsNullOrWhiteSpace(request.Icon) ? null : request.Icon.Trim())
+                : basicFolder.Icon;
+
+            var updatedFavorite = request.IsFavorite ?? basicFolder.IsFavorite;
+            var updatedAt = DateTimeOffset.UtcNow;
+
+            await _db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE folders
+                SET name = {updatedName},
+                    description = {updatedDescription},
+                    icon = {updatedIcon},
+                    is_favorite = {updatedFavorite},
+                    updated_at = {updatedAt}
+                WHERE id = {folderId} AND user_id = {profile.Id}
+                """, cancellationToken);
+
+            _logger.LogWarning("Folder share-review columns are not available in the current database schema. Using compatibility update mode for folder edits.");
+
+            var countCompat = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
+            return new FolderDto
+            {
+                Id = basicFolder.Id,
+                Name = updatedName,
+                Description = updatedDescription,
+                Icon = updatedIcon,
+                IsFavorite = updatedFavorite,
+                ShareStatus = basicFolder.ShareStatus,
+                SharedAt = basicFolder.SharedAt,
+                CreatedAt = basicFolder.CreatedAt,
+                UpdatedAt = updatedAt,
+                DocumentCount = countCompat,
+                Status = "Empty"
+            };
+        }
+
         var folder = await _db.Folders
             .Include(f => f.Documents)
             .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
@@ -179,6 +327,57 @@ public sealed class FolderService : IFolderService
         CancellationToken cancellationToken = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            var compatibilityFolder = await _db.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == folderId && f.UserId == profile.Id)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.Name,
+                    f.Description,
+                    f.Icon,
+                    f.IsFavorite,
+                    f.ShareStatus,
+                    f.SharedAt,
+                    f.CreatedAt,
+                    f.UpdatedAt
+                })
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? throw new DocumentException(404, "folder_not_found",
+                    "Folder does not exist or does not belong to the caller.");
+
+            var newFavorite = !compatibilityFolder.IsFavorite;
+            var updatedAt = DateTimeOffset.UtcNow;
+            await _db.Database.ExecuteSqlInterpolatedAsync($"""
+                UPDATE folders
+                SET is_favorite = {newFavorite},
+                    updated_at = {updatedAt}
+                WHERE id = {folderId} AND user_id = {profile.Id}
+                """, cancellationToken);
+
+            _logger.LogWarning("Folder share-review columns are not available in the current database schema. Using compatibility toggle-favorite mode.");
+
+            var countCompat = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
+            return new FolderDto
+            {
+                Id = compatibilityFolder.Id,
+                Name = compatibilityFolder.Name,
+                Description = compatibilityFolder.Description,
+                Icon = compatibilityFolder.Icon,
+                IsFavorite = newFavorite,
+                ShareStatus = compatibilityFolder.ShareStatus,
+                SharedAt = compatibilityFolder.SharedAt,
+                CreatedAt = compatibilityFolder.CreatedAt,
+                UpdatedAt = updatedAt,
+                DocumentCount = countCompat,
+                Status = "Empty"
+            };
+        }
+
         var folder = await _db.Folders
             .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
             ?? throw new DocumentException(404, "folder_not_found",
@@ -203,46 +402,122 @@ public sealed class FolderService : IFolderService
                 cancellationToken)).Id;
         }
 
-        var rows = await _db.Folders
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        var query = _db.Folders
             .AsNoTracking()
             .Where(f => f.ShareStatus == FolderStatus.Approved)
             .OrderByDescending(f => f.SharedAt)
-            .ThenBy(f => f.Name)
-            .Select(f => new FolderDto
+            .ThenBy(f => f.Name);
+
+        List<FolderDto> rows;
+        if (schema.HasFullModernShareFlowColumns)
+        {
+            rows = await query
+                .Select(f => new FolderDto
+                {
+                    Id = f.Id,
+                    Name = f.Name,
+                    Description = f.Description,
+                    DocumentCount = f.Documents.Count,
+                    IsFavorite = f.IsFavorite,
+                    ShareStatus = f.ShareStatus,
+                    SharedAt = f.SharedAt,
+                    ShareReviewSource = f.ShareReviewSource,
+                    AiReviewReason = f.AiReviewReason,
+                    AiReviewConfidence = f.AiReviewConfidence,
+                    AiReviewFailureCount = f.AiReviewFailureCount,
+                    HumanReviewReason = f.HumanReviewReason,
+                    RequiresHumanReview = f.RequiresHumanReview,
+                    AppealRequestedAt = f.AppealRequestedAt,
+                    AppealMessage = f.AppealMessage,
+                    Icon = f.Icon,
+                    OwnerName = f.User.FullName ?? f.User.Username,
+                    CreatedAt = f.CreatedAt,
+                    UpdatedAt = f.UpdatedAt,
+                    LikeCount = f.Reactions.Count(r => r.IsLike),
+                    DislikeCount = f.Reactions.Count(r => !r.IsLike),
+                    CurrentUserVote = currentProfileId.HasValue
+                        ? f.Reactions
+                            .Where(reaction => reaction.UserId == currentProfileId.Value)
+                            .Select(reaction => (bool?)reaction.IsLike)
+                            .FirstOrDefault()
+                        : null,
+                    Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                             f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                             f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                             "Empty"
+                })
+                .ToListAsync(cancellationToken);
+        }
+        else
+        {
+            if (schema.HasShareSubmissionCountColumn)
             {
-                Id = f.Id,
-                Name = f.Name,
-                Description = f.Description,
-                DocumentCount = f.Documents.Count,
-                IsFavorite = f.IsFavorite,
-                ShareStatus = f.ShareStatus,
-                SharedAt = f.SharedAt,
-                ShareReviewSource = f.ShareReviewSource,
-                AiReviewReason = f.AiReviewReason,
-                AiReviewConfidence = f.AiReviewConfidence,
-                AiReviewFailureCount = f.AiReviewFailureCount,
-                HumanReviewReason = f.HumanReviewReason,
-                RequiresHumanReview = f.RequiresHumanReview,
-                AppealRequestedAt = f.AppealRequestedAt,
-                AppealMessage = f.AppealMessage,
-                Icon = f.Icon,
-                OwnerName = f.User.FullName ?? f.User.Username,
-                CreatedAt = f.CreatedAt,
-                UpdatedAt = f.UpdatedAt,
-                LikeCount = f.Reactions.Count(r => r.IsLike),
-                DislikeCount = f.Reactions.Count(r => !r.IsLike),
-                CurrentUserVote = currentProfileId.HasValue
-                    ? f.Reactions
-                        .Where(reaction => reaction.UserId == currentProfileId.Value)
-                        .Select(reaction => (bool?)reaction.IsLike)
-                        .FirstOrDefault()
-                    : null,
-                Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
-                         f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
-                         "Empty"
-            })
-            .ToListAsync(cancellationToken);
+                rows = await query
+                    .Select(f => new FolderDto
+                    {
+                        Id = f.Id,
+                        Name = f.Name,
+                        Description = f.Description,
+                        DocumentCount = f.Documents.Count,
+                        IsFavorite = f.IsFavorite,
+                        ShareStatus = f.ShareStatus,
+                        SharedAt = f.SharedAt,
+                        ShareSubmissionCount = f.ShareSubmissionCount,
+                        ShareFailureCount = f.ShareFailureCount,
+                        Icon = f.Icon,
+                        OwnerName = f.User.FullName ?? f.User.Username,
+                        CreatedAt = f.CreatedAt,
+                        UpdatedAt = f.UpdatedAt,
+                        LikeCount = f.Reactions.Count(r => r.IsLike),
+                        DislikeCount = f.Reactions.Count(r => !r.IsLike),
+                        CurrentUserVote = currentProfileId.HasValue
+                            ? f.Reactions
+                                .Where(reaction => reaction.UserId == currentProfileId.Value)
+                                .Select(reaction => (bool?)reaction.IsLike)
+                                .FirstOrDefault()
+                            : null,
+                        Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                                 f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                                 "Empty"
+                    })
+                    .ToListAsync(cancellationToken);
+            }
+            else
+            {
+                rows = await query
+                    .Select(f => new FolderDto
+                    {
+                        Id = f.Id,
+                        Name = f.Name,
+                        Description = f.Description,
+                        DocumentCount = f.Documents.Count,
+                        IsFavorite = f.IsFavorite,
+                        ShareStatus = f.ShareStatus,
+                        SharedAt = f.SharedAt,
+                        Icon = f.Icon,
+                        OwnerName = f.User.FullName ?? f.User.Username,
+                        CreatedAt = f.CreatedAt,
+                        UpdatedAt = f.UpdatedAt,
+                        LikeCount = f.Reactions.Count(r => r.IsLike),
+                        DislikeCount = f.Reactions.Count(r => !r.IsLike),
+                        CurrentUserVote = currentProfileId.HasValue
+                            ? f.Reactions
+                                .Where(reaction => reaction.UserId == currentProfileId.Value)
+                                .Select(reaction => (bool?)reaction.IsLike)
+                                .FirstOrDefault()
+                            : null,
+                        Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                                 f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                                 "Empty"
+                    })
+                    .ToListAsync(cancellationToken);
+            }
+
+            _logger.LogWarning("Folder share-review columns are not fully available in the current database schema. Falling back to compatibility mode for ListSharedAsync.");
+        }
 
         return rows;
     }
@@ -252,41 +527,107 @@ public sealed class FolderService : IFolderService
         CancellationToken cancellationToken = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
-
-        var rows = await _db.Folders
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        var query = _db.Folders
             .AsNoTracking()
             .Where(f => f.UserId == profile.Id && f.ShareStatus != FolderStatus.None)
-            .OrderByDescending(f => f.SharedAt)
-            .ThenBy(f => f.Name)
-            .Select(f => new FolderDto
+            .OrderByDescending(f => f.UpdatedAt)
+            .ThenBy(f => f.Name);
+
+        List<FolderDto> rows;
+        if (schema.HasFullModernShareFlowColumns)
+        {
+            rows = await query
+                .Select(f => new FolderDto
+                {
+                    Id = f.Id,
+                    Name = f.Name,
+                    Description = f.Description,
+                    DocumentCount = f.Documents.Count,
+                    IsFavorite = f.IsFavorite,
+                    ShareStatus = f.ShareStatus,
+                    SharedAt = f.SharedAt,
+                    ShareReviewSource = f.ShareReviewSource,
+                    AiReviewReason = f.AiReviewReason,
+                    AiReviewConfidence = f.AiReviewConfidence,
+                    AiReviewFailureCount = f.AiReviewFailureCount,
+                    ShareSubmissionCount = f.ShareSubmissionCount,
+                    ShareFailureCount = f.ShareFailureCount,
+                    HumanReviewReason = f.HumanReviewReason,
+                    StudentFeedbackReason = f.StudentFeedbackReason,
+                    RequiresHumanReview = f.RequiresHumanReview,
+                    AppealRequestedAt = f.AppealRequestedAt,
+                    AppealMessage = f.AppealMessage,
+                    Icon = f.Icon,
+                    OwnerName = f.User.FullName ?? f.User.Username,
+                    CreatedAt = f.CreatedAt,
+                    UpdatedAt = f.UpdatedAt,
+                    LikeCount = f.Reactions.Count(r => r.IsLike),
+                    DislikeCount = f.Reactions.Count(r => !r.IsLike),
+                    Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                             f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                             f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                             "Empty"
+                })
+                .ToListAsync(cancellationToken);
+        }
+        else
+        {
+            if (schema.HasShareSubmissionCountColumn)
             {
-                Id = f.Id,
-                Name = f.Name,
-                Description = f.Description,
-                DocumentCount = f.Documents.Count,
-                IsFavorite = f.IsFavorite,
-                ShareStatus = f.ShareStatus,
-                SharedAt = f.SharedAt,
-                ShareReviewSource = f.ShareReviewSource,
-                AiReviewReason = f.AiReviewReason,
-                AiReviewConfidence = f.AiReviewConfidence,
-                AiReviewFailureCount = f.AiReviewFailureCount,
-                HumanReviewReason = f.HumanReviewReason,
-                RequiresHumanReview = f.RequiresHumanReview,
-                AppealRequestedAt = f.AppealRequestedAt,
-                AppealMessage = f.AppealMessage,
-                Icon = f.Icon,
-                OwnerName = f.User.FullName ?? f.User.Username,
-                CreatedAt = f.CreatedAt,
-                UpdatedAt = f.UpdatedAt,
-                LikeCount = f.Reactions.Count(r => r.IsLike),
-                DislikeCount = f.Reactions.Count(r => !r.IsLike),
-                Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
-                         f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                         f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
-                         "Empty"
-            })
-            .ToListAsync(cancellationToken);
+                rows = await query
+                    .Select(f => new FolderDto
+                    {
+                        Id = f.Id,
+                        Name = f.Name,
+                        Description = f.Description,
+                        DocumentCount = f.Documents.Count,
+                        IsFavorite = f.IsFavorite,
+                        ShareStatus = f.ShareStatus,
+                        SharedAt = f.SharedAt,
+                        ShareSubmissionCount = f.ShareSubmissionCount,
+                        ShareFailureCount = f.ShareFailureCount,
+                        Icon = f.Icon,
+                        OwnerName = f.User.FullName ?? f.User.Username,
+                        CreatedAt = f.CreatedAt,
+                        UpdatedAt = f.UpdatedAt,
+                        LikeCount = f.Reactions.Count(r => r.IsLike),
+                        DislikeCount = f.Reactions.Count(r => !r.IsLike),
+                        Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                                 f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                                 "Empty"
+                    })
+                    .ToListAsync(cancellationToken);
+            }
+            else
+            {
+                rows = await query
+                    .Select(f => new FolderDto
+                    {
+                        Id = f.Id,
+                        Name = f.Name,
+                        Description = f.Description,
+                        DocumentCount = f.Documents.Count,
+                        IsFavorite = f.IsFavorite,
+                        ShareStatus = f.ShareStatus,
+                        SharedAt = f.SharedAt,
+                        Icon = f.Icon,
+                        OwnerName = f.User.FullName ?? f.User.Username,
+                        CreatedAt = f.CreatedAt,
+                        UpdatedAt = f.UpdatedAt,
+                        LikeCount = f.Reactions.Count(r => r.IsLike),
+                        DislikeCount = f.Reactions.Count(r => !r.IsLike),
+                        Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
+                                 f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
+                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                                 "Empty"
+                    })
+                    .ToListAsync(cancellationToken);
+            }
+
+            _logger.LogWarning("Folder share-review columns are not fully available in the current database schema. Falling back to compatibility mode for ListPersonalSharedAsync.");
+        }
 
         return rows;
     }
@@ -297,6 +638,89 @@ public sealed class FolderService : IFolderService
         CancellationToken cancellationToken = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        var now = DateTimeOffset.UtcNow;
+
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            var folderInfo = await _db.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == folderId && f.UserId == profile.Id)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.Name,
+                    f.Description,
+                    f.IsFavorite,
+                    f.ShareStatus,
+                    f.SharedAt,
+                    ShareSubmissionCount = schema.HasShareSubmissionCountColumn ? f.ShareSubmissionCount : 0,
+                    ShareFailureCount = schema.HasShareFailureCountColumn ? f.ShareFailureCount : 0,
+                    f.Icon,
+                    f.CreatedAt,
+                    f.UpdatedAt,
+                    DocumentCount = f.Documents.Count
+                })
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? throw new DocumentException(404, "folder_not_found",
+                    "Folder does not exist or does not belong to the caller.");
+
+            if (folderInfo.ShareStatus != FolderStatus.None && folderInfo.ShareStatus != FolderStatus.Rejected)
+            {
+                throw new DocumentException(400, "invalid_share_status",
+                    "Only folders with status None or Rejected can be requested for sharing.");
+            }
+
+            if (schema.HasShareSubmissionCountColumn)
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)FolderStatus.PendingShare},
+    shared_at = NULL,
+    share_submission_count = share_submission_count + 1,
+    updated_at = {now}
+WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
+            }
+            else
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)FolderStatus.PendingShare},
+    shared_at = NULL,
+    updated_at = {now}
+WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
+            }
+
+            await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE documents
+SET review_status = {(int)DocumentReviewStatus.None},
+    error_message = NULL,
+    updated_at = {now}
+WHERE folder_id = {folderId}", cancellationToken);
+
+            _logger.LogWarning("Folder share-review columns are not fully available in the current database schema. RequestShareAsync is using compatibility updates.");
+
+            _audit.Add(supabaseUserId, "FOLDER_SHARE_REQUESTED", "Folder", folderId.ToString(), "Low",
+                afterJson: JsonSerializer.Serialize(new { folderInfo.Name, ShareStatus = FolderStatus.PendingShare }));
+
+            return new FolderDto
+            {
+                Id = folderInfo.Id,
+                Name = folderInfo.Name,
+                Description = folderInfo.Description,
+                DocumentCount = folderInfo.DocumentCount,
+                IsFavorite = folderInfo.IsFavorite,
+                ShareStatus = FolderStatus.PendingShare,
+                SharedAt = null,
+                ShareSubmissionCount = schema.HasShareSubmissionCountColumn ? folderInfo.ShareSubmissionCount + 1 : 0,
+                ShareFailureCount = folderInfo.ShareFailureCount,
+                Icon = folderInfo.Icon,
+                CreatedAt = folderInfo.CreatedAt,
+                UpdatedAt = now,
+                Status = folderInfo.DocumentCount > 0 ? "Pending Share" : "Empty"
+            };
+        }
+
         var folder = await _db.Folders
             .Include(f => f.Documents)
             .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
@@ -309,17 +733,24 @@ public sealed class FolderService : IFolderService
                 "Only folders with status None or Rejected can be requested for sharing.");
         }
 
-        var now = DateTimeOffset.UtcNow;
         folder.ShareStatus = FolderStatus.PendingShare;
+        folder.SharedAt = null;
+        folder.UpdatedAt = now;
         folder.ShareReviewSource = "STUDENT";
         folder.AiReviewReason = null;
         folder.AiReviewConfidence = null;
         folder.HumanReviewReason = null;
         folder.RequiresHumanReview = true;
-        folder.SharedAt = null;
         folder.AppealRequestedAt = null;
         folder.AppealMessage = null;
-        folder.UpdatedAt = now;
+        folder.StudentFeedbackReason = null;
+        folder.ShareSubmissionCount += 1;
+        foreach (var document in folder.Documents)
+        {
+            document.ReviewStatus = DocumentReviewStatus.None;
+            document.ErrorMessage = null;
+            document.UpdatedAt = now;
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -334,6 +765,113 @@ public sealed class FolderService : IFolderService
         Guid folderId,
         CancellationToken cancellationToken = default)
     {
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            var folderInfo = await _db.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == folderId)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.Name,
+                    f.Description,
+                    f.UserId,
+                    f.IsFavorite,
+                    f.ShareStatus,
+                    f.SharedAt,
+                    ShareSubmissionCount = schema.HasShareSubmissionCountColumn ? f.ShareSubmissionCount : 0,
+                    ShareFailureCount = schema.HasShareFailureCountColumn ? f.ShareFailureCount : 0,
+                    f.Icon,
+                    f.CreatedAt,
+                    f.UpdatedAt
+                })
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? throw new DocumentException(404, "folder_not_found",
+                    "Folder does not exist.");
+
+            if (folderInfo.ShareStatus != FolderStatus.PendingShare)
+            {
+                throw new DocumentException(400, "invalid_share_status",
+                    "Only folders with status Pending Share can be auto-checked.");
+            }
+
+            var documents = await _db.Documents
+                .AsNoTracking()
+                .Where(d => d.FolderId == folderId)
+                .ToListAsync(cancellationToken);
+
+            var reviewFolder = new Folder
+            {
+                Id = folderInfo.Id,
+                UserId = folderInfo.UserId,
+                Name = folderInfo.Name,
+                Description = folderInfo.Description,
+                IsFavorite = folderInfo.IsFavorite,
+                ShareStatus = folderInfo.ShareStatus,
+                SharedAt = folderInfo.SharedAt,
+                ShareSubmissionCount = folderInfo.ShareSubmissionCount,
+                ShareFailureCount = folderInfo.ShareFailureCount,
+                Icon = folderInfo.Icon,
+                CreatedAt = folderInfo.CreatedAt,
+                UpdatedAt = folderInfo.UpdatedAt
+            };
+
+            var decisionCompatibility = _shareAiModerator.Evaluate(
+                reviewFolder,
+                documents,
+                await ExtractFolderTextsAsync(documents, cancellationToken));
+
+            var nowCompatibility = DateTimeOffset.UtcNow;
+            var nextShareStatus = decisionCompatibility.Outcome switch
+            {
+                FolderShareModerationOutcome.AutoApproved => FolderStatus.Approved,
+                FolderShareModerationOutcome.AutoRejected => FolderStatus.Rejected,
+                _ => FolderStatus.PendingShare
+            };
+
+            if (schema.HasShareFailureCountColumn && nextShareStatus == FolderStatus.Rejected)
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)nextShareStatus},
+    shared_at = {(nextShareStatus == FolderStatus.Approved ? nowCompatibility : (DateTimeOffset?)null)},
+    share_failure_count = share_failure_count + 1,
+    updated_at = {nowCompatibility}
+WHERE id = {folderId}", cancellationToken);
+            }
+            else
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)nextShareStatus},
+    shared_at = {(nextShareStatus == FolderStatus.Approved ? nowCompatibility : (DateTimeOffset?)null)},
+    updated_at = {nowCompatibility}
+WHERE id = {folderId}", cancellationToken);
+            }
+
+            var updatedDocumentCount = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
+            return new FolderDto
+            {
+                Id = folderInfo.Id,
+                Name = folderInfo.Name,
+                Description = folderInfo.Description,
+                DocumentCount = updatedDocumentCount,
+                IsFavorite = folderInfo.IsFavorite,
+                ShareStatus = nextShareStatus,
+                SharedAt = nextShareStatus == FolderStatus.Approved ? nowCompatibility : null,
+                ShareFailureCount = schema.HasShareFailureCountColumn && nextShareStatus == FolderStatus.Rejected
+                    ? folderInfo.ShareFailureCount + 1
+                    : folderInfo.ShareFailureCount,
+                Icon = folderInfo.Icon,
+                CreatedAt = folderInfo.CreatedAt,
+                UpdatedAt = nowCompatibility,
+                Status = updatedDocumentCount > 0
+                    ? (nextShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share")
+                    : "Empty"
+            };
+        }
+
         var folder = await _db.Folders
             .Include(f => f.Documents)
             .FirstOrDefaultAsync(f => f.Id == folderId, cancellationToken)
@@ -352,31 +890,50 @@ public sealed class FolderService : IFolderService
             await ExtractFolderTextsAsync(folder.Documents, cancellationToken));
 
         var now = DateTimeOffset.UtcNow;
-        folder.ShareReviewSource = "AI_ASSIST";
-        folder.AiReviewReason = decision.Reason;
-        folder.AiReviewConfidence = decision.Confidence;
-        folder.HumanReviewReason = null;
-        folder.AppealRequestedAt = null;
-        folder.AppealMessage = null;
         folder.UpdatedAt = now;
+
+        if (schema.HasFullModernShareFlowColumns)
+        {
+            folder.ShareReviewSource = "AI_ASSIST";
+            folder.AiReviewReason = decision.Reason;
+            folder.AiReviewConfidence = decision.Confidence;
+            folder.HumanReviewReason = null;
+            folder.AppealRequestedAt = null;
+            folder.AppealMessage = null;
+        }
 
         switch (decision.Outcome)
         {
             case FolderShareModerationOutcome.AutoApproved:
                 folder.ShareStatus = FolderStatus.Approved;
                 folder.SharedAt = now;
-                folder.RequiresHumanReview = false;
+                if (schema.HasFullModernShareFlowColumns)
+                {
+                    folder.AiReviewReason = null;
+                    folder.AiReviewConfidence = null;
+                    folder.RequiresHumanReview = false;
+                    folder.AppealRequestedAt = null;
+                    folder.AppealMessage = null;
+                    folder.StudentFeedbackReason = null;
+                }
                 break;
             case FolderShareModerationOutcome.AutoRejected:
                 folder.ShareStatus = FolderStatus.Rejected;
                 folder.SharedAt = null;
-                folder.AiReviewFailureCount += 1;
-                folder.RequiresHumanReview = false;
+                if (schema.HasFullModernShareFlowColumns)
+                {
+                    folder.AiReviewFailureCount += 1;
+                    folder.ShareFailureCount += 1;
+                    folder.RequiresHumanReview = false;
+                }
                 break;
             default:
                 folder.ShareStatus = FolderStatus.PendingShare;
                 folder.SharedAt = null;
-                folder.RequiresHumanReview = true;
+                if (schema.HasFullModernShareFlowColumns)
+                {
+                    folder.RequiresHumanReview = true;
+                }
                 break;
         }
 
@@ -402,28 +959,155 @@ public sealed class FolderService : IFolderService
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
 
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
+        var feedbackReason = NormalizeRequiredShortText(
+            request.Reason ?? request.Message,
+            "feedback_reason_required",
+            "Feedback reason is required.");
+        var feedbackDescription = NormalizeRequiredLongText(
+            request.Description ?? request.Message,
+            "feedback_description_required",
+            "Feedback description is required.");
+
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            if (!schema.HasStudentFeedbackWorkflowColumns)
+            {
+                throw new DocumentException(503, "migration_required",
+                    "Folder feedback is temporarily unavailable while the local database schema updates. Restart the app and try again.");
+            }
+
+            var folderInfo = await _db.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == folderId && f.UserId == profile.Id)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.Name,
+                    f.Description,
+                    f.IsFavorite,
+                    f.ShareStatus,
+                    ShareFailureCount = schema.HasShareFailureCountColumn ? f.ShareFailureCount : 0,
+                    f.Icon,
+                    f.CreatedAt
+                })
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? throw new DocumentException(404, "folder_not_found",
+                    "Folder does not exist or does not belong to the caller.");
+
+            if (folderInfo.ShareStatus != FolderStatus.Rejected || folderInfo.ShareFailureCount < 2)
+            {
+                throw new DocumentException(400, "appeal_not_allowed",
+                    "Feedback is available only after two failed review attempts.");
+            }
+
+            var nowCompatibility = DateTimeOffset.UtcNow;
+            var setClauses = new List<string>
+            {
+                "share_status = {0}",
+                "shared_at = {1}",
+                "updated_at = {2}",
+                "student_feedback_reason = {3}",
+                "appeal_message = {4}"
+            };
+            var sqlParameters = new List<object>
+            {
+                (int)FolderStatus.PendingShare,
+                DBNull.Value,
+                nowCompatibility,
+                feedbackReason,
+                feedbackDescription
+            };
+
+            if (schema.HasRequiresHumanReviewColumn)
+            {
+                setClauses.Add($"requires_human_review = {{{sqlParameters.Count}}}");
+                sqlParameters.Add(true);
+            }
+
+            if (schema.HasAppealRequestedAtColumn)
+            {
+                setClauses.Add($"appeal_requested_at = {{{sqlParameters.Count}}}");
+                sqlParameters.Add(nowCompatibility);
+            }
+
+            if (schema.HasShareReviewSourceColumn)
+            {
+                setClauses.Add($"share_review_source = {{{sqlParameters.Count}}}");
+                sqlParameters.Add("STUDENT_FEEDBACK");
+            }
+
+            var folderIdParameterIndex = sqlParameters.Count;
+            sqlParameters.Add(folderId);
+            var profileIdParameterIndex = sqlParameters.Count;
+            sqlParameters.Add(profile.Id);
+
+            var updateSql = "UPDATE folders\nSET "
+                + string.Join(",\n    ", setClauses)
+                + $"\nWHERE id = {{{folderIdParameterIndex}}} AND user_id = {{{profileIdParameterIndex}}}";
+
+            await _db.Database.ExecuteSqlRawAsync(updateSql,
+                sqlParameters,
+                cancellationToken);
+
+            await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE documents
+SET review_status = {(int)DocumentReviewStatus.None},
+    error_message = NULL,
+    updated_at = {nowCompatibility}
+WHERE folder_id = {folderId}", cancellationToken);
+
+            var countCompatibility = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
+            return new FolderDto
+            {
+                Id = folderInfo.Id,
+                Name = folderInfo.Name,
+                Description = folderInfo.Description,
+                DocumentCount = countCompatibility,
+                IsFavorite = folderInfo.IsFavorite,
+                ShareStatus = FolderStatus.PendingShare,
+                SharedAt = null,
+                ShareReviewSource = schema.HasShareReviewSourceColumn ? "STUDENT_FEEDBACK" : null,
+                ShareFailureCount = folderInfo.ShareFailureCount,
+                StudentFeedbackReason = feedbackReason,
+                AppealRequestedAt = schema.HasAppealRequestedAtColumn ? nowCompatibility : null,
+                AppealMessage = feedbackDescription,
+                RequiresHumanReview = schema.HasRequiresHumanReviewColumn,
+                Icon = folderInfo.Icon,
+                CreatedAt = folderInfo.CreatedAt,
+                UpdatedAt = nowCompatibility,
+                Status = countCompatibility > 0 ? "Pending Share" : "Empty"
+            };
+        }
+
         var folder = await _db.Folders
             .Include(f => f.Documents)
             .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
             ?? throw new DocumentException(404, "folder_not_found",
                 "Folder does not exist or does not belong to the caller.");
 
-        if (folder.ShareStatus != FolderStatus.Rejected || folder.AiReviewFailureCount < 2)
+        if (folder.ShareStatus != FolderStatus.Rejected || folder.ShareFailureCount < 2)
         {
             throw new DocumentException(400, "appeal_not_allowed",
-                "Human review is available only after two unsuccessful AI reviews.");
+                "Feedback is available only after two failed review attempts.");
         }
 
         folder.ShareStatus = FolderStatus.PendingShare;
         folder.RequiresHumanReview = true;
         folder.AppealRequestedAt = DateTimeOffset.UtcNow;
-        folder.AppealMessage = NormalizeModerationNote(request.Message);
-        folder.ShareReviewSource = "HUMAN_REQUEST";
-        folder.HumanReviewReason = null;
+        folder.AppealMessage = feedbackDescription;
+        folder.StudentFeedbackReason = feedbackReason;
+        folder.ShareReviewSource = "STUDENT_FEEDBACK";
         folder.SharedAt = null;
         folder.UpdatedAt = DateTimeOffset.UtcNow;
+        foreach (var document in folder.Documents)
+        {
+            document.ReviewStatus = DocumentReviewStatus.None;
+            document.ErrorMessage = null;
+            document.UpdatedAt = folder.UpdatedAt;
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -435,6 +1119,57 @@ public sealed class FolderService : IFolderService
         Guid folderId,
         CancellationToken cancellationToken = default)
     {
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            var folderInfo = await _db.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == folderId)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.Name,
+                    f.Description,
+                    f.IsFavorite,
+                    f.ShareStatus,
+                    f.Icon,
+                    f.CreatedAt
+                })
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? throw new DocumentException(404, "folder_not_found",
+                    "Folder does not exist.");
+
+            if (folderInfo.ShareStatus != FolderStatus.PendingShare)
+            {
+                throw new DocumentException(400, "invalid_share_status",
+                    "Only folders with status Pending Share can be approved.");
+            }
+
+            var nowCompatibility = DateTimeOffset.UtcNow;
+            await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)FolderStatus.Approved},
+    shared_at = {nowCompatibility},
+    updated_at = {nowCompatibility}
+WHERE id = {folderId}", cancellationToken);
+
+            var countCompatibility = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
+            return new FolderDto
+            {
+                Id = folderInfo.Id,
+                Name = folderInfo.Name,
+                Description = folderInfo.Description,
+                DocumentCount = countCompatibility,
+                IsFavorite = folderInfo.IsFavorite,
+                ShareStatus = FolderStatus.Approved,
+                SharedAt = nowCompatibility,
+                Icon = folderInfo.Icon,
+                CreatedAt = folderInfo.CreatedAt,
+                UpdatedAt = nowCompatibility,
+                Status = countCompatibility > 0 ? "Shared" : "Empty"
+            };
+        }
+
         var folder = await _db.Folders
             .FirstOrDefaultAsync(f => f.Id == folderId, cancellationToken)
             ?? throw new DocumentException(404, "folder_not_found",
@@ -449,12 +1184,19 @@ public sealed class FolderService : IFolderService
         var now = DateTimeOffset.UtcNow;
         folder.ShareStatus = FolderStatus.Approved;
         folder.SharedAt = now;
-        folder.ShareReviewSource = "HUMAN";
-        folder.HumanReviewReason = "Approved after moderator review.";
-        folder.RequiresHumanReview = false;
-        folder.AppealRequestedAt = null;
-        folder.AppealMessage = null;
         folder.UpdatedAt = now;
+
+        if (schema.HasFullModernShareFlowColumns)
+        {
+            folder.ShareReviewSource = "HUMAN";
+            folder.HumanReviewReason = null;
+            folder.AiReviewReason = null;
+            folder.AiReviewConfidence = null;
+            folder.RequiresHumanReview = false;
+            folder.AppealRequestedAt = null;
+            folder.AppealMessage = null;
+            folder.StudentFeedbackReason = null;
+        }
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -467,8 +1209,77 @@ public sealed class FolderService : IFolderService
 
     public async Task<FolderDto> RejectFolderShareAsync(
         Guid folderId,
+        RejectFolderShareRequest request,
         CancellationToken cancellationToken = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            var folderInfo = await _db.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == folderId)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.Name,
+                    f.Description,
+                    f.IsFavorite,
+                    f.ShareStatus,
+                    ShareFailureCount = schema.HasShareFailureCountColumn ? f.ShareFailureCount : 0,
+                    f.Icon,
+                    f.CreatedAt
+                })
+                .FirstOrDefaultAsync(cancellationToken)
+                ?? throw new DocumentException(404, "folder_not_found",
+                    "Folder does not exist.");
+
+            if (folderInfo.ShareStatus != FolderStatus.PendingShare)
+            {
+                throw new DocumentException(400, "invalid_share_status",
+                    "Only folders with status Pending Share can be rejected.");
+            }
+
+            var nowCompatibility = DateTimeOffset.UtcNow;
+            if (schema.HasShareFailureCountColumn)
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)FolderStatus.Rejected},
+    shared_at = NULL,
+    share_failure_count = share_failure_count + 1,
+    updated_at = {nowCompatibility}
+WHERE id = {folderId}", cancellationToken);
+            }
+            else
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)FolderStatus.Rejected},
+    shared_at = NULL,
+    updated_at = {nowCompatibility}
+WHERE id = {folderId}", cancellationToken);
+            }
+
+            var countCompatibility = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
+            return new FolderDto
+            {
+                Id = folderInfo.Id,
+                Name = folderInfo.Name,
+                Description = folderInfo.Description,
+                DocumentCount = countCompatibility,
+                IsFavorite = folderInfo.IsFavorite,
+                ShareStatus = FolderStatus.Rejected,
+                SharedAt = null,
+                ShareFailureCount = schema.HasShareFailureCountColumn ? folderInfo.ShareFailureCount + 1 : 0,
+                HumanReviewReason = request.Reason?.Trim(),
+                Icon = folderInfo.Icon,
+                CreatedAt = folderInfo.CreatedAt,
+                UpdatedAt = nowCompatibility,
+                Status = countCompatibility > 0 ? "Rejected" : "Empty"
+            };
+        }
+
         var folder = await _db.Folders
             .FirstOrDefaultAsync(f => f.Id == folderId, cancellationToken)
             ?? throw new DocumentException(404, "folder_not_found",
@@ -484,11 +1295,16 @@ public sealed class FolderService : IFolderService
         folder.ShareStatus = FolderStatus.Rejected;
         folder.SharedAt = null;
         folder.ShareReviewSource = "HUMAN";
-        folder.HumanReviewReason = "Rejected after moderator review.";
+        folder.HumanReviewReason = NormalizeRequiredLongText(
+            request.Reason,
+            "reject_reason_required",
+            "Reject reason is required.");
         folder.RequiresHumanReview = false;
         folder.AppealRequestedAt = null;
         folder.AppealMessage = null;
         folder.UpdatedAt = now;
+
+        folder.ShareFailureCount += 1;
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -588,7 +1404,10 @@ public sealed class FolderService : IFolderService
             AiReviewReason = folder.AiReviewReason,
             AiReviewConfidence = folder.AiReviewConfidence,
             AiReviewFailureCount = folder.AiReviewFailureCount,
+            ShareSubmissionCount = folder.ShareSubmissionCount,
+            ShareFailureCount = folder.ShareFailureCount,
             HumanReviewReason = folder.HumanReviewReason,
+            StudentFeedbackReason = folder.StudentFeedbackReason,
             RequiresHumanReview = folder.RequiresHumanReview,
             AppealRequestedAt = folder.AppealRequestedAt,
             AppealMessage = folder.AppealMessage,
@@ -686,6 +1505,107 @@ public sealed class FolderService : IFolderService
             : normalized[..2000];
     }
 
+    private static string NormalizeRequiredLongText(string? value, string code, string message)
+    {
+        var normalized = NormalizeModerationNote(value);
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new DocumentException(400, code, message);
+        }
+
+        return normalized;
+    }
+
+    private static string NormalizeRequiredShortText(string? value, string code, string message)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized))
+        {
+            throw new DocumentException(400, code, message);
+        }
+
+        return normalized.Length <= 200
+            ? normalized
+            : normalized[..200];
+    }
+
+    private async Task<FolderSchemaCapabilities> GetFolderSchemaCapabilitiesAsync(CancellationToken cancellationToken)
+    {
+        var connection = _db.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'folders';
+                """;
+
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    columns.Add(reader.GetString(0));
+                }
+            }
+
+            var hasExtendedShareReviewColumns =
+                columns.Contains("share_review_source") &&
+                columns.Contains("ai_review_reason") &&
+                columns.Contains("ai_review_confidence") &&
+                columns.Contains("ai_review_failure_count") &&
+                columns.Contains("human_review_reason") &&
+                columns.Contains("requires_human_review") &&
+                columns.Contains("appeal_requested_at") &&
+                columns.Contains("appeal_message");
+
+            var hasShareReviewSourceColumn = columns.Contains("share_review_source");
+            var hasShareSubmissionCountColumn = columns.Contains("share_submission_count");
+            var hasShareFailureCountColumn = columns.Contains("share_failure_count");
+            var hasStudentFeedbackReasonColumn = columns.Contains("student_feedback_reason");
+            var hasAppealRequestedAtColumn = columns.Contains("appeal_requested_at");
+            var hasAppealMessageColumn = columns.Contains("appeal_message");
+            var hasRequiresHumanReviewColumn = columns.Contains("requires_human_review");
+
+            var hasStudentFeedbackWorkflowColumns =
+                hasStudentFeedbackReasonColumn &&
+                hasAppealMessageColumn;
+
+            return new FolderSchemaCapabilities(
+                hasExtendedShareReviewColumns,
+                hasShareSubmissionCountColumn,
+                hasShareFailureCountColumn,
+                hasStudentFeedbackReasonColumn,
+                hasAppealRequestedAtColumn,
+                hasAppealMessageColumn,
+                hasRequiresHumanReviewColumn,
+                hasShareReviewSourceColumn,
+                hasStudentFeedbackWorkflowColumns,
+                hasExtendedShareReviewColumns
+                && hasShareSubmissionCountColumn
+                && hasShareFailureCountColumn
+                && hasStudentFeedbackReasonColumn
+                && hasAppealRequestedAtColumn
+                && hasAppealMessageColumn
+                && hasRequiresHumanReviewColumn);
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
     private static FolderDto ToDto(Folder folder, int documentCount) => new()
     {
         Id = folder.Id,
@@ -699,7 +1619,10 @@ public sealed class FolderService : IFolderService
         AiReviewReason = folder.AiReviewReason,
         AiReviewConfidence = folder.AiReviewConfidence,
         AiReviewFailureCount = folder.AiReviewFailureCount,
+        ShareSubmissionCount = folder.ShareSubmissionCount,
+        ShareFailureCount = folder.ShareFailureCount,
         HumanReviewReason = folder.HumanReviewReason,
+        StudentFeedbackReason = folder.StudentFeedbackReason,
         RequiresHumanReview = folder.RequiresHumanReview,
         AppealRequestedAt = folder.AppealRequestedAt,
         AppealMessage = folder.AppealMessage,
@@ -712,5 +1635,17 @@ public sealed class FolderService : IFolderService
                  folder.Documents.Any() && folder.Documents.All(d => d.Status == DocumentStatus.Ready) ? (folder.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
                  "Empty"
     };
+
+    private sealed record FolderSchemaCapabilities(
+        bool HasExtendedShareReviewColumns,
+        bool HasShareSubmissionCountColumn,
+        bool HasShareFailureCountColumn,
+        bool HasStudentFeedbackReasonColumn,
+        bool HasAppealRequestedAtColumn,
+        bool HasAppealMessageColumn,
+        bool HasRequiresHumanReviewColumn,
+        bool HasShareReviewSourceColumn,
+        bool HasStudentFeedbackWorkflowColumns,
+        bool HasFullModernShareFlowColumns);
 }
 

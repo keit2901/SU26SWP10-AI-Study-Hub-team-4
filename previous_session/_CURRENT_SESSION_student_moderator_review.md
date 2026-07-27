@@ -134,3 +134,35 @@
 - Verification:
   - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.tmp-build-community"` -> success.
   - Build still reports only pre-existing warnings in unrelated files (`QuizDialog`, `Admin/Dashboard`, `DocumentLibrary`, `DocumentDetail`, `AiChat`, `DashboardService`).
+
+### 2026-07-27T19:05:00+07:00 - Student feedback/fail-count flow and moderator reject reasons implemented
+- Reworked `AI_Study_Hub_v2/Components/Pages/Community.razor` so `My Share Center` now acts as a single `Share Activity` table with the four agreed student-facing statuses: `Shared`, `Pending Review`, `AI Failed`, and `Moderator Rejected`.
+- Added student review actions in the same page: `View review feedback`, `Send feedback`, and `Share again`, plus latest activity text, latest reason preview, submit count, and fail count. `Send feedback` now requires at least 3 failed reviews and shows an info snackbar if clicked earlier.
+- Updated `AI_Study_Hub_v2/Components/Shared/AppealFolderShareDialog.razor` consumers in both `Community.razor` and `DocumentLibrary.razor` to send structured `Reason + Description` via `AppealFolderShareRequest` instead of the old single `Message` string.
+- Added moderator reject-reason dialog usage in `AI_Study_Hub_v2/Components/Pages/Dashboard/DocumentDashboard.razor`, `Dashboard/AnalyticsDashboard.razor`, and `Dashboard/ShareReviewQueue.razor`, so manual reject now requires a reason before the action is sent.
+- Updated backend share-review logic in `AI_Study_Hub_v2/Services/FolderService.cs` and document moderation logic in `AI_Study_Hub_v2/Services/DashboardService.cs` to:
+  - increment `ShareSubmissionCount` on re-share,
+  - increment `ShareFailureCount` on AI/manual rejection,
+  - allow student feedback only after 3 failed attempts,
+  - clear approval reasons on approved folders so student-facing approved status stays clean,
+  - store moderator reject reason on document/folder rejection paths.
+- Added a manual migration `AI_Study_Hub_v2/Migrations/20260727113000_AddFolderShareFeedbackTracking.cs` using PostgreSQL `IF NOT EXISTS` guards, plus updated `AppDbContextModelSnapshot.cs`, because `dotnet ef migrations add` is blocked in this environment by NuGet network access.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.tmp-build-community"` -> success before invoking EF tooling.
+  - After `dotnet ef` touched the local toolchain state, subsequent build verification was blocked by sandboxed NuGet access (`NU1301` to `https://api.nuget.org/v3/index.json`), so the migration files were validated by source inspection rather than a second clean build in this session.
+
+### 2026-07-27T20:18:00+07:00 - Share request compatibility fix and Share Center sidebar tightened
+- Fixed `AI_Study_Hub_v2/Services/FolderService.cs` so `RequestShareAsync` no longer materializes the full `Folder` entity when the current database schema is missing the new moderation columns. The compatibility branch now uses a lightweight projection plus raw SQL update for `share_status`, `shared_at`, and `updated_at`, which prevents legacy-schema share requests from throwing `An unexpected error occurred while managing folders.`.
+- Updated `AI_Study_Hub_v2/Components/Pages/Community.razor` so the left folder list in `My Share Center` now shows only approved/shared folders, while the main activity table can still show pending/rejected history.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".tmp-build-community"` -> success with only the same pre-existing warnings in unrelated files (`Admin/Dashboard`, `DocumentDetail`, `QuizDialog`, `DocumentLibrary`, `AiChat`, `DashboardService`).
+
+### 2026-07-27T20:58:00+07:00 - Moderator pages made compatible with legacy folder schema
+- Updated `AI_Study_Hub_v2/Services/DashboardService.cs` so moderator document queries and folder-status updates no longer require the full modern folder review columns to exist. `GetPendingDocumentsAsync`, `AiReviewDocumentAsync`, and folder review result updates now fall back to schema-safe projections and raw SQL when the current `folders` table is still on the older structure.
+- Reworked moderator-facing pages to stop materializing full `Folder` entities where that would pull missing columns from the database:
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/FolderDashboard.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/ShareReviewQueue.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Dashboard/AnalyticsDashboard.razor`
+- These pages now use lightweight projections based on safe columns (`id`, `name`, `share_status`, `updated_at`, owner info, and document aggregates), which should prevent the moderator area from crashing with the generic Blazor `An unhandled error has occurred` overlay on older databases.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".tmp-build-community"` -> success with only pre-existing warnings in unrelated files.

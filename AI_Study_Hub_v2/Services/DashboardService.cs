@@ -194,64 +194,131 @@ public class DashboardService : IDashboardService
 
     public async Task<System.Collections.Generic.List<DocumentDto>> GetPendingDocumentsAsync(System.Guid? folderId = null, CancellationToken ct = default)
     {
+        var folderSchema = await GetFolderSchemaCapabilitiesAsync(ct);
         IQueryable<Document> query;
 
         if (folderId.HasValue)
         {
-            // Folder-specific: all documents in the folder (any status)
             query = _context.Documents.AsNoTracking()
                 .Where(d => d.FolderId == folderId.Value);
         }
         else
         {
-            // Global view: all documents from ANY folder with PendingShare status
             query = _context.Documents.AsNoTracking()
                 .Where(d => d.Folder != null && d.Folder.ShareStatus == FolderStatus.PendingShare);
         }
 
-        var docs = await query
-            .Include(d => d.Folder)
-            .OrderByDescending(d => d.CreatedAt)
-            .ToListAsync(ct);
-
-        return docs.Select(d => new DocumentDto
+        if (folderSchema.HasFullModernShareFlowColumns)
         {
-            Id = d.Id,
-            FolderId = d.FolderId,
-            FileName = d.FileName,
-            FileSizeBytes = d.FileSizeBytes,
-            MimeType = d.MimeType,
-            SubjectCode = d.SubjectCode,
-            Semester = d.Semester,
-            PageCount = d.PageCount,
-            Status = d.Status,
-            ReviewStatus = d.ReviewStatus,
-            ErrorMessage = d.ErrorMessage,
-            CreatedAt = d.CreatedAt,
-            UpdatedAt = d.UpdatedAt,
-            FolderName = d.Folder?.Name,
-            FolderShareStatus = d.Folder?.ShareStatus ?? FolderStatus.None,
-            ShareReviewSource = d.Folder?.ShareReviewSource
-        }).ToList();
+            return await query
+                .OrderByDescending(d => d.CreatedAt)
+                .Select(d => new DocumentDto
+                {
+                    Id = d.Id,
+                    FolderId = d.FolderId,
+                    FileName = d.FileName,
+                    FileSizeBytes = d.FileSizeBytes,
+                    MimeType = d.MimeType,
+                    SubjectCode = d.SubjectCode,
+                    Semester = d.Semester,
+                    PageCount = d.PageCount,
+                    Status = d.Status,
+                    ReviewStatus = d.ReviewStatus,
+                    ErrorMessage = d.ErrorMessage,
+                    CreatedAt = d.CreatedAt,
+                    UpdatedAt = d.UpdatedAt,
+                    FolderName = d.Folder != null ? d.Folder.Name : null,
+                    FolderShareStatus = d.Folder != null ? d.Folder.ShareStatus : FolderStatus.None,
+                    ShareReviewSource = d.Folder != null ? d.Folder.ShareReviewSource : null,
+                    ShareFailureCount = d.Folder != null && folderSchema.HasShareFeedbackColumns ? d.Folder.ShareFailureCount : 0,
+                    StudentFeedbackReason = d.Folder != null && folderSchema.HasStudentFeedbackWorkflowColumns ? d.Folder.StudentFeedbackReason : null,
+                    AppealMessage = d.Folder != null && folderSchema.HasStudentFeedbackWorkflowColumns ? d.Folder.AppealMessage : null
+                })
+                .ToListAsync(ct);
+        }
+
+        return await query
+            .OrderByDescending(d => d.CreatedAt)
+            .Select(d => new DocumentDto
+            {
+                Id = d.Id,
+                FolderId = d.FolderId,
+                FileName = d.FileName,
+                FileSizeBytes = d.FileSizeBytes,
+                MimeType = d.MimeType,
+                SubjectCode = d.SubjectCode,
+                Semester = d.Semester,
+                PageCount = d.PageCount,
+                Status = d.Status,
+                ReviewStatus = d.ReviewStatus,
+                ErrorMessage = d.ErrorMessage,
+                CreatedAt = d.CreatedAt,
+                UpdatedAt = d.UpdatedAt,
+                FolderName = d.Folder != null ? d.Folder.Name : null,
+                FolderShareStatus = d.Folder != null ? d.Folder.ShareStatus : FolderStatus.None,
+                ShareReviewSource = null,
+                ShareFailureCount = d.Folder != null && folderSchema.HasShareFeedbackColumns ? d.Folder.ShareFailureCount : 0,
+                StudentFeedbackReason = d.Folder != null && folderSchema.HasStudentFeedbackWorkflowColumns ? d.Folder.StudentFeedbackReason : null,
+                AppealMessage = d.Folder != null && folderSchema.HasStudentFeedbackWorkflowColumns ? d.Folder.AppealMessage : null
+            })
+            .ToListAsync(ct);
     }
 
     public async Task<DocumentAiReviewResultDto?> AiReviewDocumentAsync(Guid documentId, CancellationToken ct = default)
     {
-        var doc = await _context.Documents
-            .Include(d => d.Folder)
+        var folderSchema = await GetFolderSchemaCapabilitiesAsync(ct);
+        var docQuery = _context.Documents
             .Include(d => d.Chunks)
-            .FirstOrDefaultAsync(d => d.Id == documentId, ct);
+            .AsQueryable();
+
+        if (folderSchema.HasFullModernShareFlowColumns)
+        {
+            docQuery = docQuery.Include(d => d.Folder);
+        }
+
+        var doc = await docQuery.FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc == null)
         {
             return null;
         }
 
-        var reviewFolder = doc.Folder ?? new Folder
+        Folder reviewFolder;
+        if (doc.Folder is not null)
         {
-            Id = doc.FolderId ?? Guid.Empty,
-            Name = "Single Document Review",
-            Description = $"AI moderation review for {doc.FileName}."
-        };
+            reviewFolder = doc.Folder;
+        }
+        else if (doc.FolderId.HasValue)
+        {
+            var folderInfo = await _context.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == doc.FolderId.Value)
+                .Select(f => new { f.Id, f.Name, f.Description, f.ShareStatus })
+                .FirstOrDefaultAsync(ct);
+
+            reviewFolder = folderInfo is null
+                ? new Folder
+                {
+                    Id = doc.FolderId.Value,
+                    Name = "Single Document Review",
+                    Description = $"AI moderation review for {doc.FileName}."
+                }
+                : new Folder
+                {
+                    Id = folderInfo.Id,
+                    Name = folderInfo.Name,
+                    Description = folderInfo.Description,
+                    ShareStatus = folderInfo.ShareStatus
+                };
+        }
+        else
+        {
+            reviewFolder = new Folder
+            {
+                Id = Guid.Empty,
+                Name = "Single Document Review",
+                Description = $"AI moderation review for {doc.FileName}."
+            };
+        }
 
         var extractedTexts = doc.Chunks
             .OrderBy(chunk => chunk.ChunkIndex)
@@ -267,6 +334,8 @@ public class DashboardService : IDashboardService
             : DocumentReviewStatus.Rejected;
         doc.ErrorMessage = isApproved ? null : decision.Reason;
         doc.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _context.SaveChangesAsync(ct);
 
         await UpdateFolderShareStatusFromDocumentModerationAsync(
             doc.FolderId,
@@ -301,10 +370,12 @@ public class DashboardService : IDashboardService
         doc.ErrorMessage = null;
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
 
+        await _context.SaveChangesAsync(ct);
+
         await UpdateFolderShareStatusFromDocumentModerationAsync(
             doc.FolderId,
             reviewSource: "HUMAN",
-            moderationReason: "Approved after moderator document review.",
+            moderationReason: null,
             confidence: null,
             ct);
 
@@ -315,19 +386,25 @@ public class DashboardService : IDashboardService
         return true;
     }
 
-    public async Task<bool> RejectDocumentAsync(System.Guid documentId, CancellationToken ct = default)
+    public async Task<bool> RejectDocumentAsync(System.Guid documentId, string? reason = null, CancellationToken ct = default)
     {
         var doc = await _context.Documents.FirstOrDefaultAsync(d => d.Id == documentId, ct);
         if (doc == null) return false;
 
+        var normalizedReason = string.IsNullOrWhiteSpace(reason)
+            ? "Rejected by moderator."
+            : reason.Trim();
+
         doc.ReviewStatus = DocumentReviewStatus.Rejected;
-        doc.ErrorMessage = "Rejected by moderator.";
+        doc.ErrorMessage = normalizedReason;
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
+
+        await _context.SaveChangesAsync(ct);
 
         await UpdateFolderShareStatusFromDocumentModerationAsync(
             doc.FolderId,
             reviewSource: "HUMAN",
-            moderationReason: "Rejected after moderator document review.",
+            moderationReason: normalizedReason,
             confidence: null,
             ct);
 
@@ -347,6 +424,79 @@ public class DashboardService : IDashboardService
     {
         if (!folderId.HasValue)
         {
+            return;
+        }
+
+        var schema = await GetFolderSchemaCapabilitiesAsync(ct);
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            var folderInfo = await _context.Folders
+                .AsNoTracking()
+                .Where(f => f.Id == folderId.Value)
+                .Select(f => new
+                {
+                    f.Id,
+                    f.ShareStatus,
+                    ShareFailureCount = schema.HasShareFeedbackColumns ? f.ShareFailureCount : 0
+                })
+                .FirstOrDefaultAsync(ct);
+
+            if (folderInfo == null || folderInfo.ShareStatus != FolderStatus.PendingShare)
+            {
+                return;
+            }
+
+            var statuses = await _context.Documents
+                .AsNoTracking()
+                .Where(d => d.FolderId == folderId.Value)
+                .Select(d => d.ReviewStatus)
+                .ToListAsync(ct);
+
+            if (statuses.Count == 0)
+            {
+                return;
+            }
+
+            var hasRejectedDocumentCompatibility = statuses.Any(status => status == DocumentReviewStatus.Rejected);
+            var allDocumentsApprovedCompatibility = statuses.All(status => status == DocumentReviewStatus.Approved);
+            if (!hasRejectedDocumentCompatibility && !allDocumentsApprovedCompatibility)
+            {
+                return;
+            }
+
+            var nowCompatibility = DateTimeOffset.UtcNow;
+            if (hasRejectedDocumentCompatibility)
+            {
+                if (schema.HasShareFeedbackColumns)
+                {
+                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)FolderStatus.Rejected},
+    shared_at = NULL,
+    share_failure_count = share_failure_count + 1,
+    updated_at = {nowCompatibility}
+WHERE id = {folderId.Value}", ct);
+                }
+                else
+                {
+                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)FolderStatus.Rejected},
+    shared_at = NULL,
+    updated_at = {nowCompatibility}
+WHERE id = {folderId.Value}", ct);
+                }
+            }
+            else
+            {
+                await _context.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_status = {(int)FolderStatus.Approved},
+    shared_at = {nowCompatibility},
+    updated_at = {nowCompatibility}
+WHERE id = {folderId.Value}", ct);
+            }
+
             return;
         }
 
@@ -395,13 +545,63 @@ public class DashboardService : IDashboardService
         {
             folder.ShareStatus = FolderStatus.Rejected;
             folder.SharedAt = null;
+            folder.ShareFailureCount += 1;
         }
         else if (allDocumentsApproved)
         {
             folder.ShareStatus = FolderStatus.Approved;
             folder.SharedAt = now;
+            folder.AiReviewReason = null;
+            folder.AiReviewConfidence = null;
+            folder.HumanReviewReason = null;
+            folder.AppealRequestedAt = null;
+            folder.AppealMessage = null;
+            folder.StudentFeedbackReason = null;
         }
     }
+
+    private async Task<FolderSchemaCapabilities> GetFolderSchemaCapabilitiesAsync(CancellationToken ct)
+    {
+        var columnNames = await _context.Database
+            .SqlQueryRaw<string>(@"
+SELECT column_name
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'folders'")
+            .ToListAsync(ct);
+
+        var columns = columnNames
+            .Where(name => !string.IsNullOrWhiteSpace(name))
+            .Select(name => name.Trim())
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var hasShareFeedbackColumns = columns.Contains("share_failure_count");
+
+            var hasStudentFeedbackWorkflowColumns =
+                columns.Contains("student_feedback_reason") &&
+            columns.Contains("appeal_message");
+
+        var hasFullModernShareFlowColumns =
+            columns.Contains("share_review_source") &&
+            columns.Contains("ai_review_reason") &&
+            columns.Contains("ai_review_confidence") &&
+            columns.Contains("human_review_reason") &&
+            hasShareFeedbackColumns &&
+            columns.Contains("student_feedback_reason") &&
+            columns.Contains("requires_human_review") &&
+            columns.Contains("appeal_requested_at") &&
+            columns.Contains("appeal_message");
+
+        return new FolderSchemaCapabilities(
+            hasShareFeedbackColumns,
+            hasStudentFeedbackWorkflowColumns,
+            hasFullModernShareFlowColumns);
+    }
+
+    private sealed record FolderSchemaCapabilities(
+        bool HasShareFeedbackColumns,
+        bool HasStudentFeedbackWorkflowColumns,
+        bool HasFullModernShareFlowColumns);
 
     public async Task<UserAnalyticsDto> GetUserAnalyticsAsync(System.Guid userId, System.Guid? folderId = null, CancellationToken ct = default)
     {
