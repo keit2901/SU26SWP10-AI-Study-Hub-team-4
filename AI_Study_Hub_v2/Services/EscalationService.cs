@@ -33,7 +33,7 @@ public sealed class EscalationService : IEscalationService
             Id = Guid.NewGuid(),
             FolderId = request.FolderId,
             EscalatedByUserId = escalatedByUserId,
-            Reason = request.Reason,
+            Reason = request.Reason?.Trim() ?? string.Empty,
             EscalationStatus = "Pending",
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -70,49 +70,58 @@ public sealed class EscalationService : IEscalationService
 
     public async Task<IReadOnlyList<DocumentEscalationDto>> GetPendingAsync(CancellationToken ct = default)
     {
-        var escalationIds = await _db.DocumentEscalations
+        return await _db.DocumentEscalations
+            .Include(x => x.EscalatedByUser)
+            .Include(x => x.ResolvedByUser)
+            .Include(x => x.Items).ThenInclude(i => i.Document)
             .Where(e => e.EscalationStatus == "Pending")
             .OrderByDescending(e => e.CreatedAt)
-            .Select(e => e.Id)
+            .Select(e => new DocumentEscalationDto(
+                e.Id, e.FolderId,
+                e.EscalatedByUser.FullName,
+                e.Reason, e.EscalationStatus, e.AdminResponse,
+                e.ResolvedByUser != null ? e.ResolvedByUser.FullName : null,
+                e.CreatedAt, e.ResolvedAt,
+                e.Items.Select(i => new DocumentEscalationItemDto(i.DocumentId, i.Document.FileName, i.RejectReason)).ToList()))
+            .AsNoTracking()
             .ToListAsync(ct);
-
-        var result = new List<DocumentEscalationDto>();
-        foreach (var id in escalationIds)
-        {
-            result.Add(await GetByIdAsync(id, ct));
-        }
-        return result;
     }
 
     public async Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default)
     {
-        var escalationIds = await _db.DocumentEscalations
+        return await _db.DocumentEscalations
+            .Include(x => x.EscalatedByUser)
+            .Include(x => x.ResolvedByUser)
+            .Include(x => x.Items).ThenInclude(i => i.Document)
             .OrderByDescending(e => e.CreatedAt)
-            .Select(e => e.Id)
+            .Select(e => new DocumentEscalationDto(
+                e.Id, e.FolderId,
+                e.EscalatedByUser.FullName,
+                e.Reason, e.EscalationStatus, e.AdminResponse,
+                e.ResolvedByUser != null ? e.ResolvedByUser.FullName : null,
+                e.CreatedAt, e.ResolvedAt,
+                e.Items.Select(i => new DocumentEscalationItemDto(i.DocumentId, i.Document.FileName, i.RejectReason)).ToList()))
+            .AsNoTracking()
             .ToListAsync(ct);
-
-        var result = new List<DocumentEscalationDto>();
-        foreach (var id in escalationIds)
-        {
-            result.Add(await GetByIdAsync(id, ct));
-        }
-        return result;
     }
 
     public async Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(Guid userId, CancellationToken ct = default)
     {
-        var escalationIds = await _db.DocumentEscalations
+        return await _db.DocumentEscalations
+            .Include(x => x.EscalatedByUser)
+            .Include(x => x.ResolvedByUser)
+            .Include(x => x.Items).ThenInclude(i => i.Document)
             .Where(e => e.EscalatedByUserId == userId)
             .OrderByDescending(e => e.CreatedAt)
-            .Select(e => e.Id)
+            .Select(e => new DocumentEscalationDto(
+                e.Id, e.FolderId,
+                e.EscalatedByUser.FullName,
+                e.Reason, e.EscalationStatus, e.AdminResponse,
+                e.ResolvedByUser != null ? e.ResolvedByUser.FullName : null,
+                e.CreatedAt, e.ResolvedAt,
+                e.Items.Select(i => new DocumentEscalationItemDto(i.DocumentId, i.Document.FileName, i.RejectReason)).ToList()))
+            .AsNoTracking()
             .ToListAsync(ct);
-
-        var result = new List<DocumentEscalationDto>();
-        foreach (var id in escalationIds)
-        {
-            result.Add(await GetByIdAsync(id, ct));
-        }
-        return result;
     }
 
     public async Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, ResolveEscalationRequest request, Guid resolvedByUserId, CancellationToken ct = default)
