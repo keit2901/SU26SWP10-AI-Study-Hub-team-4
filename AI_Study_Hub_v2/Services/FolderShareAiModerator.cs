@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.RegularExpressions;
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Dtos;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -206,4 +207,50 @@ public sealed partial class FolderShareAiModerator : IFolderShareAiModerator
 
     [GeneratedRegex(@"[\W_]+", RegexOptions.CultureInvariant)]
     private static partial Regex ModerationTokenRegex();
+
+    // ── Per-Document Evaluation ──
+
+    public ShareReviewFileDto EvaluateDocument(Document document, Folder folder)
+    {
+        var fileName = document.FileName.ToLowerInvariant();
+        var severity = ShareReviewSeverity.Low;
+        string? aiReason = null;
+        string? aiContext = null;
+        double confidence = 0.95;
+        var blocked = false;
+
+        if (BlockedExtensions.Any(ext => fileName.EndsWith(ext)))
+        {
+            return new ShareReviewFileDto(document.Id, document.FileName, document.SubjectCode,
+                document.FileSizeBytes, document.PageCount ?? 0, folder.User?.FullName ?? "Unknown",
+                ShareReviewSeverity.High, "Blocked file extension", "This file type is not allowed.", 0.99, true);
+        }
+
+        var normalized = fileName.Replace('_', ' ').Replace('-', ' ');
+        if (ContainsSignal(normalized, ExamSignals))
+        {
+            severity = ShareReviewSeverity.Medium;
+            aiReason = "Potential academic integrity concern";
+            aiContext = $"The filename \"{document.FileName}\" contains keywords that may indicate exam-related content.";
+            confidence = 0.72;
+        }
+        else if (ContainsSignal(normalized, IllegalSignals))
+        {
+            severity = ShareReviewSeverity.High;
+            aiReason = "Potential illegal or unauthorized content";
+            aiContext = $"The filename \"{document.FileName}\" suggests cracked/hacked software distribution.";
+            confidence = 0.88;
+        }
+
+        return new ShareReviewFileDto(document.Id, document.FileName, document.SubjectCode,
+            document.FileSizeBytes, document.PageCount ?? 0, folder.User?.FullName ?? "Unknown",
+            severity, aiReason, aiContext, confidence, blocked);
+    }
+
+    private static readonly string[] BlockedExtensions = { ".exe", ".dll", ".bat", ".cmd", ".msi", ".apk" };
+    private static readonly string[] ExamSignals = { "exam", "leak", "answer", "solution", "cheat" };
+    private static readonly string[] IllegalSignals = { "crack", "hack", "keygen", "pirate", "warez" };
+
+    private static bool ContainsSignal(string text, string[] signals)
+        => signals.Any(s => text.Contains(s, StringComparison.OrdinalIgnoreCase));
 }

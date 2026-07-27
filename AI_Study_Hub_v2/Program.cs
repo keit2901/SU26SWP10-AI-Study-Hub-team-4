@@ -142,6 +142,7 @@ builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<ISharedFolderCopyCoordinator, SharedFolderCopyCoordinator>();
 builder.Services.AddScoped<IFolderShareAiModerator, FolderShareAiModerator>();
+builder.Services.AddScoped<IShareReviewService, ShareReviewService>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
