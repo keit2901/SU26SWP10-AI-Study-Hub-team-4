@@ -5,7 +5,6 @@ using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
-using Moq;
 
 namespace AI_Study_Hub_v2.Tests.Services;
 
@@ -17,7 +16,7 @@ public sealed class AiAnswerReportServiceTests
     {
         using var db = TestDb.CreateInMemory();
         var user = SeedActiveStudent(db);
-        var sut = new AiAnswerReportService(db, Mock.Of<IAuditLogService>());
+        var sut = new AiAnswerReportService(db);
         var source = new AiChatSourceDto("S1", Guid.NewGuid(), "rag.pdf", 0, 1, "source excerpt", 0.12);
 
         var response = await sut.ReportAsync(user.SupabaseUserId, new AiAnswerReportRequest(
@@ -47,7 +46,7 @@ public sealed class AiAnswerReportServiceTests
     {
         using var db = TestDb.CreateInMemory();
         var user = SeedActiveStudent(db);
-        var sut = new AiAnswerReportService(db, Mock.Of<IAuditLogService>());
+        var sut = new AiAnswerReportService(db);
 
         var act = () => sut.ReportAsync(user.SupabaseUserId, new AiAnswerReportRequest(" ", "answer", "reason"));
 
@@ -62,7 +61,7 @@ public sealed class AiAnswerReportServiceTests
     {
         using var db = TestDb.CreateInMemory();
         var user = SeedActiveStudent(db, isActive: false);
-        var sut = new AiAnswerReportService(db, Mock.Of<IAuditLogService>());
+        var sut = new AiAnswerReportService(db);
 
         var act = () => sut.ReportAsync(user.SupabaseUserId, new AiAnswerReportRequest("question", "answer", "reason"));
 

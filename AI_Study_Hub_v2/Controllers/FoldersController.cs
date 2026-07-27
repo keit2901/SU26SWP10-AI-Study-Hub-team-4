@@ -28,6 +28,14 @@ public sealed class FoldersController : ControllerBase
     public async Task<ActionResult<IReadOnlyList<FolderDto>>> List(CancellationToken cancellationToken)
         => await ExecuteAsync(() => _service.ListAsync(GetSupabaseUserIdFromClaims(), cancellationToken));
 
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> GetById(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.GetFolderAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
+
     [HttpGet("shared")]
     [AllowAnonymous]
     [ProducesResponseType(typeof(IReadOnlyList<FolderDto>), StatusCodes.Status200OK)]

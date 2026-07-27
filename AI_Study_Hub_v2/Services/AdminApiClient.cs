@@ -71,16 +71,11 @@ public sealed class AdminApiClient
     public Task<IReadOnlyList<AuditLogDto>> ListAuditLogsAsync(
         string accessToken,
         int limit = 200,
-        Guid? actorUserId = null,
         CancellationToken cancellationToken = default)
-    {
-        var url = $"api/admin/audit-logs?limit={Math.Clamp(limit, 1, 500)}";
-        if (actorUserId.HasValue)
-        {
-            url += $"&actorUserId={actorUserId.Value}";
-        }
-        return GetListAsync<AuditLogDto>(url, accessToken, cancellationToken);
-    }
+        => GetListAsync<AuditLogDto>(
+            $"api/admin/audit-logs?limit={Math.Clamp(limit, 1, 500)}",
+            accessToken,
+            cancellationToken);
 
     public async Task<IReadOnlyList<AdminDocumentDto>> ListDocumentsAsync(
         string accessToken,
@@ -120,28 +115,6 @@ public sealed class AdminApiClient
         using var response = await _http.SendAsync(request, ct);
         if (response.IsSuccessStatusCode) return;
         await ThrowFromResponseAsync(response, ct);
-    }
-
-    public async Task<AdminDocumentDto> UpdateDocumentAsync(
-        string accessToken,
-        Guid id,
-        UpdateDocumentRequest update,
-        CancellationToken cancellationToken = default)
-    {
-        using var request = CreateAuthorizedRequest(
-            HttpMethod.Patch,
-            $"api/admin/documents/{id}",
-            accessToken);
-        request.Content = JsonContent.Create(update);
-
-        using var response = await _http.SendAsync(request, cancellationToken);
-        if (response.IsSuccessStatusCode)
-        {
-            return await response.Content.ReadFromJsonAsync<AdminDocumentDto>(cancellationToken: cancellationToken)
-                ?? throw new DocumentApiException(500, "empty_response", "Server returned an empty response.");
-        }
-        await ThrowFromResponseAsync(response, cancellationToken);
-        throw new InvalidOperationException("Unreachable");
     }
 
     private async Task<IReadOnlyList<T>> GetListAsync<T>(

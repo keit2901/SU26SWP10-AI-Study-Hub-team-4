@@ -28,7 +28,7 @@ else
             </div>
 
             <div class="student-profile-badges">
-                <span class="profile-badge plan">@FormatPlanLabel()</span>
+                <span class="profile-badge plan @FormatPlanClass()">@FormatPlanLabel()</span>
                 <span class="profile-badge role">@user.Role</span>
                 <span class="profile-badge active">@(user.IsActive ? "Active" : "Inactive")</span>
             </div>
@@ -46,6 +46,44 @@ else
             <div class="summary-item">
                 <span class="summary-label">Plan expires</span>
                 <strong>@BuildPlanExpiryText()</strong>
+            </div>
+        </div>
+
+        <div class="student-profile-quota-section">
+            <div class="quota-card storage-quota">
+                <div class="quota-card-header">
+                    <div class="quota-card-title">
+                        <MudIcon Icon="@Icons.Material.Filled.CloudQueue" Size="Size.Small" />
+                        <span>Storage Usage</span>
+                    </div>
+                    <span class="quota-card-value">@FormatStorageBarText()</span>
+                </div>
+                <MudProgressLinear Value="@GetStoragePercentage()"
+                                   Color="@GetStorageProgressColor()"
+                                   Size="Size.Medium"
+                                   Class="quota-progress-bar my-2 rounded-pill" />
+                <div class="quota-card-footer">
+                    <span class="quota-footer-info">Documents uploaded: <strong>@GetTotalDocumentCount()</strong></span>
+                    <span class="quota-percentage">@GetStoragePercentage().ToString("0.#")%</span>
+                </div>
+            </div>
+
+            <div class="quota-card token-quota">
+                <div class="quota-card-header">
+                    <div class="quota-card-title">
+                        <MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" />
+                        <span>Token Quota</span>
+                    </div>
+                    <span class="quota-card-value">@FormatTokenBarText()</span>
+                </div>
+                <MudProgressLinear Value="@GetTokenPercentage()"
+                                   Color="Color.Primary"
+                                   Size="Size.Medium"
+                                   Class="quota-progress-bar my-2 rounded-pill" />
+                <div class="quota-card-footer">
+                    <span class="quota-footer-info">Resets daily at 00:00 UTC</span>
+                    <span class="quota-percentage">@GetTokenPercentage().ToString("0.#")%</span>
+                </div>
             </div>
         </div>
 
@@ -114,8 +152,27 @@ else
                     @if (_editingPassword)
                     {
                         <MudTextField T="string"
-                                      Value="_newPassword"
-                                      ValueChanged="@(value => _newPassword = value)"
+                                      Label="Old password"
+                                      Value="_oldPasswordInput"
+                                      ValueChanged="@(value => _oldPasswordInput = value)"
+                                      InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true"
+                                      Class="profile-inline-input mb-2" />
+                        <MudTextField T="string"
+                                      Label="New password"
+                                      Value="_newPasswordInput"
+                                      ValueChanged="@(value => _newPasswordInput = value)"
+                                      InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true"
+                                      Class="profile-inline-input mb-2" />
+                        <MudTextField T="string"
+                                      Label="Confirm password"
+                                      Value="_confirmPasswordInput"
+                                      ValueChanged="@(value => _confirmPasswordInput = value)"
                                       InputType="@(_showPassword ? InputType.Text : InputType.Password)"
                                       Variant="Variant.Outlined"
                                       Margin="Margin.Dense"
@@ -182,6 +239,9 @@ else
     private bool _editingPassword;
     private string _newPassword = string.Empty;
     private string _passwordVal = "demo12345";
+    private string _oldPasswordInput = string.Empty;
+    private string _newPasswordInput = string.Empty;
+    private string _confirmPasswordInput = string.Empty;
 
     protected override async Task OnInitializedAsync()
     {
@@ -276,15 +336,72 @@ else
     private string FormatPlanLabel()
         => Session.CurrentPlanDisplayName;
 
+    private string FormatPlanClass()
+    {
+        var plan = Session.CurrentPlan?.ToLowerInvariant() ?? "free";
+        return plan == "pro" ? "plan-pro" : "plan-free";
+    }
+
     private string BuildPlanExpiryText()
         => Session.CurrentPlanSnapshot?.ExpiresAt is DateTimeOffset expiresAt
             ? expiresAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
             : "No expiration";
 
     private bool ShouldShowStorageWarning()
-        => Session.CurrentPlanSnapshot?.QuotaBytes is long quota
-            && quota > 0
-            && Session.CurrentPlanSnapshot.UsedBytes > quota;
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot is null) return false;
+        if (snapshot.HasExpiredPaidPlan) return true;
+        if (snapshot.QuotaBytes is long quota && quota > 0)
+        {
+            return snapshot.UsedBytes >= quota || GetStoragePercentage() >= 90.0;
+        }
+        return false;
+    }
+
+    private double GetStoragePercentage()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot?.QuotaBytes is not long quota || quota <= 0) return 0;
+        return Math.Min(100.0, Math.Max(0.0, (snapshot.UsedBytes / (double)quota) * 100.0));
+    }
+
+    private Color GetStorageProgressColor()
+    {
+        var pct = GetStoragePercentage();
+        if (pct < 70.0) return Color.Success;
+        if (pct <= 90.0) return Color.Warning;
+        return Color.Error;
+    }
+
+    private string FormatStorageBarText()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot is null) return "0 MB / 500 MB used";
+        var usedMb = snapshot.UsedBytes / (1024.0 * 1024.0);
+        var quotaMb = (snapshot.QuotaBytes ?? (500L * 1024 * 1024)) / (1024.0 * 1024.0);
+        return $"{usedMb:0.#} MB / {quotaMb:0.#} MB used";
+    }
+
+    private double GetTokenPercentage()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot is null || snapshot.DailyTokenQuota is not long quota || quota <= 0) return 0;
+        return Math.Min(100.0, Math.Max(0.0, (snapshot.TokensUsedToday / (double)quota) * 100.0));
+    }
+
+    private string FormatTokenBarText()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        var used = snapshot?.TokensUsedToday ?? 0;
+        var quota = snapshot?.DailyTokenQuota ?? 25000;
+        return $"{used:N0} / {quota:N0} tokens used today";
+    }
+
+    private int GetTotalDocumentCount()
+    {
+        return Session.CurrentPlanSnapshot?.TotalDocumentCount ?? 0;
+    }
 
     private string BuildStorageUsageText()
     {
@@ -343,7 +460,9 @@ else
 
     private void StartEditPassword()
     {
-        _newPassword = _passwordVal;
+        _oldPasswordInput = string.Empty;
+        _newPasswordInput = string.Empty;
+        _confirmPasswordInput = string.Empty;
         _editingPassword = true;
     }
 
@@ -389,20 +508,48 @@ else
             () => _editingEmail = false);
 
     private async Task SavePassword()
-        => await SaveUserUpdateAsync(
-            new UpdateUserRequest { Password = _newPassword },
+    {
+        if (string.IsNullOrWhiteSpace(_oldPasswordInput))
+        {
+            Snackbar.Add("Vui lòng nhập mật khẩu cũ.", Severity.Warning);
+            return;
+        }
+        if (_oldPasswordInput != _passwordVal)
+        {
+            Snackbar.Add("Mật khẩu cũ không chính xác.", Severity.Error);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_newPasswordInput))
+        {
+            Snackbar.Add("Vui lòng nhập mật khẩu mới.", Severity.Warning);
+            return;
+        }
+        if (_newPasswordInput.Length < 6)
+        {
+            Snackbar.Add("Mật khẩu mới phải có ít nhất 6 ký tự.", Severity.Warning);
+            return;
+        }
+        if (_newPasswordInput != _confirmPasswordInput)
+        {
+            Snackbar.Add("Xác nhận mật khẩu mới không khớp.", Severity.Error);
+            return;
+        }
+
+        await SaveUserUpdateAsync(
+            new UpdateUserRequest { Password = _newPasswordInput },
             user =>
             {
                 if (Session.Session is not null)
                 {
                     Session.Session.User = user;
-                    Session.Session.Password = _newPassword;
+                    Session.Session.Password = _newPasswordInput;
                 }
 
-                _passwordVal = _newPassword;
+                _passwordVal = _newPasswordInput;
             },
-            "Password updated successfully.",
+            "Thay đổi mật khẩu thành công.",
             () => _editingPassword = false);
+    }
 
     private async Task SaveUserUpdateAsync(
         UpdateUserRequest request,
@@ -530,6 +677,18 @@ else
     .profile-badge.plan {
         background: rgba(94, 92, 230, 0.12);
         color: #4f46d9;
+    }
+
+    .profile-badge.plan.plan-pro {
+        background: rgba(245, 158, 11, 0.15);
+        color: #d97706;
+        border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+
+    .profile-badge.plan.plan-free {
+        background: rgba(94, 92, 230, 0.12);
+        color: #4f46d9;
+        border: 1px solid rgba(94, 92, 230, 0.18);
     }
 
     .profile-badge.role {
@@ -750,8 +909,61 @@ else
         margin-top: 0;
     }
 
+    .student-profile-quota-section {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.8rem;
+        margin-bottom: 1.2rem;
+    }
+
+    .quota-card {
+        background: rgba(245, 243, 255, 0.6);
+        border: 1px solid rgba(199, 196, 215, 0.35);
+        border-radius: 16px;
+        padding: 0.9rem 1rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .quota-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.3rem;
+    }
+
+    .quota-card-title {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #4a4563;
+    }
+
+    .quota-card-value {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #1f1936;
+    }
+
+    .quota-card-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.72rem;
+        color: #6f678c;
+        margin-top: 0.2rem;
+    }
+
+    .quota-percentage {
+        font-weight: 600;
+    }
+
     @@media (max-width: 800px) {
-        .student-profile-summary {
+        .student-profile-summary,
+        .student-profile-quota-section {
             grid-template-columns: 1fr;
         }
 

@@ -5,7 +5,6 @@ using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 
 namespace AI_Study_Hub_v2.Tests.Services;
 
@@ -157,7 +156,7 @@ public sealed class ChatPersistenceServiceTests
         db.ChatSessions.Should().ContainSingle(s => s.Id == created.Id && s.UserId == owner.Id);
     }
 
-    private static AI_Study_Hub_v2.Services.ChatPersistenceService CreateSut(AppDbContext db) => new(db, NullLogger<AI_Study_Hub_v2.Services.ChatPersistenceService>.Instance, Mock.Of<IAuditLogService>());
+    private static AI_Study_Hub_v2.Services.ChatPersistenceService CreateSut(AppDbContext db) => new(db, NullLogger<AI_Study_Hub_v2.Services.ChatPersistenceService>.Instance);
 
     private static User SeedUser(AppDbContext db)
     {

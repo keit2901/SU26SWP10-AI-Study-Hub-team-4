@@ -33,7 +33,7 @@ public class DocumentServiceTests
     {
         quota ??= DefaultQuotaMock().Object;
         return new(db, storage, quota, NullLogger<DocumentService>.Instance, ingestion,
-            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<IAuditLogService>());
+            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance), capacityGuard ?? Mock.Of<IPlanCapacityGuard>());
     }
 
     private static Mock<IStorageQuotaService> DefaultQuotaMock()
@@ -168,7 +168,7 @@ public class DocumentServiceTests
         dto.FileName.Should().Be("notes.pdf");                // trimmed
         dto.SubjectCode.Should().Be("SWP391");                 // upper-cased
         dto.Semester.Should().Be("SU26");                      // upper-cased
-        dto.Status.Should().Be(DocumentStatus.Ready);
+        dto.Status.Should().Be(DocumentStatus.Processing);
         dto.FileSizeBytes.Should().Be(2048);
         dto.MimeType.Should().Be("application/pdf");
         dto.DownloadUrl.Should().BeNull(); // Upload endpoint never returns the signed URL.

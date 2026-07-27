@@ -78,8 +78,7 @@
                               @bind-Value="_model.Username"
                               Required="true"
                               RequiredError="Username is required"
-                              Validation="@(new RegularExpressionAttribute(@"^[a-zA-Z0-9_]{3,15}$") { ErrorMessage = "Username must be 3-15 characters, alphanumeric or underscore only." })"
-                              MaxLength="15"
+                              Validation="@(new RegularExpressionAttribute(@"^[a-zA-Z0-9_]{3,15}$") { ErrorMessage = "3-15 chars, alphanumeric or underscore" })"
                               Variant="Variant.Outlined"
                               Adornment="Adornment.Start"
                               AdornmentIcon="@Icons.Material.Filled.AlternateEmail"
@@ -90,8 +89,7 @@
                               @bind-Value="_model.FullName"
                               Required="true"
                               RequiredError="Full name is required"
-                              Validation="@(new StringLengthAttribute(100) { MinimumLength = 2, ErrorMessage = "Full name must be between 2 and 100 characters." })"
-                              MaxLength="100"
+                              Validation="@(new StringLengthAttribute(100) { MinimumLength = 2, ErrorMessage = "2-100 characters" })"
                               Variant="Variant.Outlined"
                               Adornment="Adornment.Start"
                               AdornmentIcon="@Icons.Material.Filled.Badge"
@@ -102,12 +100,11 @@
                               @bind-Value="_model.Password"
                               Required="true"
                               RequiredError="Password is required"
-                              Validation="@(new StringLengthAttribute(128) { MinimumLength = 8, ErrorMessage = "Password must be at least 8 characters." })"
-                              InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                              Validation="@(new StringLengthAttribute(128) { MinimumLength = 8, ErrorMessage = "Minimum 8 characters" })"
+                              InputType="InputType.Password"
                               Variant="Variant.Outlined"
-                              Adornment="Adornment.End"
-                              AdornmentIcon="@(_showPassword ? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
-                              OnAdornmentClick="TogglePasswordVisibility"
+                              Adornment="Adornment.Start"
+                              AdornmentIcon="@Icons.Material.Filled.Lock"
                               Disabled="_busy" />
             </MudForm>
 
@@ -151,7 +148,6 @@
     private bool _isValid;
     private bool _humanCheckValid;
     private bool _busy;
-    private bool _showPassword;
     private string? _error;
     private readonly RegistrationAttemptState _attemptState = new();
     // Retained for transport retries of this form instance; a fresh page instance starts a new operation.
@@ -220,6 +216,4 @@
             StateHasChanged();
         }
     }
-
-    private void TogglePasswordVisibility() => _showPassword = !_showPassword;
 }

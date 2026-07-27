@@ -8,7 +8,6 @@ using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Components.Pages.Dashboard;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -121,13 +120,33 @@ public class DashboardService : IDashboardService
             var subject = firstDoc?.SubjectCode ?? "N/A";
             var semester = firstDoc?.Semester ?? "N/A";
 
-            string status = "Pending";
-            if (f.Documents.Any(d => d.Status == DocumentStatus.Failed))
-                status = "Rejected";
+            string status = "Private";
+            if (f.ShareStatus != FolderStatus.None)
+            {
+                status = f.ShareStatus switch
+                {
+                    FolderStatus.PendingShare => "Pending Share",
+                    FolderStatus.Approved => "Shared",
+                    FolderStatus.Rejected => "Rejected",
+                    _ => "Private"
+                };
+            }
+            else if (f.Documents.Any(d => d.Status == DocumentStatus.Failed))
+            {
+                status = "Failed";
+            }
             else if (f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing))
-                status = "Pending";
+            {
+                status = "Processing";
+            }
             else if (f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready))
-                status = "Approved";
+            {
+                status = "Private";
+            }
+            else
+            {
+                status = "Empty";
+            }
 
             return new FolderViewModel
             {
@@ -380,9 +399,6 @@ public class DashboardService : IDashboardService
             ct);
 
         await _context.SaveChangesAsync(ct);
-
-        _audit.Add(null, "DOCUMENT_APPROVED", "Document", documentId.ToString(), "Low");
-
         return true;
     }
 
@@ -409,9 +425,6 @@ public class DashboardService : IDashboardService
             ct);
 
         await _context.SaveChangesAsync(ct);
-
-        _audit.Add(null, "DOCUMENT_REJECTED", "Document", documentId.ToString(), "Medium");
-
         return true;
     }
 

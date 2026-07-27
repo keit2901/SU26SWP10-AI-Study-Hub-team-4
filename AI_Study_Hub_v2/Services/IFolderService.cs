@@ -8,6 +8,15 @@ public interface IFolderService
         Guid supabaseUserId,
         CancellationToken cancellationToken = default);
 
+    /// <summary>
+    /// Gets a single folder by ID. Returns the folder if the requesting user is the owner,
+    /// or the folder is publicly shared (Approved), or the user is an Admin/Moderator.
+    /// </summary>
+    Task<FolderDto> GetFolderAsync(
+        Guid supabaseUserId,
+        Guid folderId,
+        CancellationToken cancellationToken = default);
+
     Task<FolderDto> CreateAsync(
         Guid supabaseUserId,
         CreateFolderRequest request,

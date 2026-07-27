@@ -11,4 +11,7 @@ public sealed record StorageQuotaSnapshotDto(
     int? MaxFolderCount = null,
     int? MaxDocsPerFolder = null,
     bool HasExpiredPaidPlan = false,
-    string? ExpiredPaidPlanDisplayName = null);
+    string? ExpiredPaidPlanDisplayName = null,
+    long TokensUsedToday = 0,
+    long? DailyTokenQuota = 25000,
+    int TotalDocumentCount = 0);
