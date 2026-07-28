@@ -79,6 +79,9 @@ public sealed class ShareReviewService : IShareReviewService
                 case "HumanReview":
                     folder.RequiresHumanReview = true;
                     folder.HumanReviewReason = v.Note ?? "Student requested human review.";
+                    folder.ShareStatus = FolderStatus.PendingShare;
+                    folder.ShareReviewSource = "HUMAN_REQUEST";
+                    folder.AppealRequestedAt = DateTimeOffset.UtcNow;
                     humanReviewCount++;
                     break;
                 default:

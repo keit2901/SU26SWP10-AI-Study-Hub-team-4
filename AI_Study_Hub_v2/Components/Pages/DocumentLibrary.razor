@@ -406,11 +406,19 @@ else
                                                         <span>Review by human</span>
                                                     </div>
                                                 }
-                                                @if (folder.ShareStatus == Data.Entities.FolderStatus.PendingShare && folder.ShareReviewSource == "AI")
+                                                @if (string.Equals(folder.ShareReviewSource, "AI", StringComparison.OrdinalIgnoreCase) 
+                                                    && (folder.AiReviewFailureCount >= 1 || folder.ShareStatus == Data.Entities.FolderStatus.PendingShare))
                                                 {
                                                     <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); Nav.NavigateTo($"/share-review/{folder.Id}"); })">
                                                         <MudIcon Icon="@Icons.Material.Filled.RateReview" Size="Size.Small" Color="Color.Primary" />
                                                         <span>Review &amp; Share</span>
+                                                    </div>
+                                                }
+                                                @if (folder.ShareStatus == Data.Entities.FolderStatus.Rejected)
+                                                {
+                                                    <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowRejectionActionsAsync(folder); })">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Feedback" Size="Size.Small" Color="Color.Warning" />
+                                                        <span>Folder Actions</span>
                                                     </div>
                                                 }
                                                 <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ConfirmDeleteFolderAsync(folder); })">
@@ -1711,6 +1719,30 @@ else
         catch (DocumentApiException ex)
         {
             Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+        }
+    }
+
+    private async Task ShowRejectionActionsAsync(FolderDto folder)
+    {
+        var parameters = new DialogParameters
+        {
+            ["FolderId"] = folder.Id,
+            ["FolderName"] = folder.Name
+        };
+        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        var dialogRef = await Dialogs.ShowAsync<RejectedFolderActions>("Folder Rejected", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+
+        var action = ((dynamic)result.Data)?.Action as string;
+        switch (action)
+        {
+            case "Resubmit":
+                await RequestShareAsync(folder);
+                break;
+            case "Delete":
+                await ConfirmDeleteFolderAsync(folder);
+                break;
         }
     }
 

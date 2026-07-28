@@ -50,6 +50,13 @@ public sealed class EscalationService : IEscalationService
             });
         }
 
+        foreach (var item in request.Items)
+        {
+            var document = await _db.Documents.FindAsync(item.DocumentId);
+            if (document is not null)
+                document.ReviewStatus = DocumentReviewStatus.Escalated;
+        }
+
         _audit.Add(
             escalatedByUserId,
             "ESCALATION_CREATED",
