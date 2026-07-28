@@ -14,13 +14,18 @@
 <PageTitle>My Escalations - AI Study Hub</PageTitle>
 
 <div style="padding: 2rem 1.5rem; width: 100%; box-sizing: border-box;">
-    <div style="margin-bottom: 2rem; display: flex; flex-direction: column; gap: 0.5rem;">
-        <h1 style="font-size: 1.875rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.6px; color: #1a1b1f; margin: 0;">
-            My Escalations
-        </h1>
-        <p style="font-size: 1rem; font-weight: 400; color: #464554; margin: 0;">
-            Track escalations you've sent to admin for review.
-        </p>
+    <div style="margin-bottom: 2rem; display: flex; flex-direction: row; justify-content: space-between; align-items: center; gap: 0.5rem;">
+        <div>
+            <h1 style="font-size: 1.875rem; font-weight: 700; line-height: 1.2; letter-spacing: -0.6px; color: #1a1b1f; margin: 0;">
+                My Escalations
+            </h1>
+            <p style="font-size: 1rem; font-weight: 400; color: #464554; margin: 0;">
+                Track escalations you've sent to admin for review.
+            </p>
+        </div>
+        <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" OnClick="() => LoadAsync()" Disabled="@_isLoading" Style="text-transform: none;">
+            Refresh
+        </MudButton>
     </div>
 
     <!-- KPI Cards -->
@@ -171,7 +176,7 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Unable to load escalations: {ex.Message}";
+            _errorMessage = "Unable to load escalations. Please refresh the page.";
         }
         finally
         {

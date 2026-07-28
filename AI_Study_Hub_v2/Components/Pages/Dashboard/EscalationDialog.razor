@@ -59,9 +59,16 @@
     <DialogActions>
         <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Error"
-                   Disabled="@(!CanSubmit)"
+                   Disabled="@(!CanSubmit || _submitting)"
                    OnClick="Submit">
-            <MudIcon Icon="@Icons.Material.Filled.Flag" Class="me-1" Style="font-size: 18px;" />
+            @if (_submitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-1" Style="color: white;" />
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Flag" Class="me-1" Style="font-size: 18px;" />
+            }
             Escalate to Admin
         </MudButton>
     </DialogActions>
@@ -76,6 +83,7 @@
 
     private string _reason = string.Empty;
     private List<RejectedDocItem> _rejectedDocs = new();
+    private bool _submitting;
 
     private bool CanSubmit =>
         !string.IsNullOrWhiteSpace(_reason) &&

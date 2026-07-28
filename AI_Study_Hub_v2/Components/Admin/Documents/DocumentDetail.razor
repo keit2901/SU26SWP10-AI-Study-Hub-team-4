@@ -139,6 +139,30 @@ else
     </MudStack>
 }
 
+<MudDialog @bind-IsVisible="_editOpen" Title="Edit document metadata" Style="min-width: 420px;">
+    <DialogContent>
+        <MudForm @ref="_editForm" @bind-IsValid="_editFormValid">
+            <MudStack Spacing="3">
+                <MudTextField @bind-Value="_editTitle" Label="Title" Variant="Variant.Outlined" Required="true" RequiredError="Title is required" />
+                <MudSelect T="string" @bind-Value="_editSubjectCode" Label="Subject" Variant="Variant.Outlined" Required="true">
+                    <MudSelectItem T="string" Value="@("SWP391")">SWP391</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("PRN212")">PRN212</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("DBI202")">DBI202</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("SWT301")">SWT301</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("CS402")">CS402</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("MATH101")">MATH101</MudSelectItem>
+                    <MudSelectItem T="string" Value="@("PHYS205")">PHYS205</MudSelectItem>
+                </MudSelect>
+                <MudTextField @bind-Value="_editStoragePath" Label="Storage path" Variant="Variant.Outlined" Required="true" />
+            </MudStack>
+        </MudForm>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="() => _editOpen = false">Cancel</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" Disabled="@(!_editFormValid || _editSaving)" OnClick="SaveEditMetadataAsync">Save</MudButton>
+    </DialogActions>
+</MudDialog>
+
 @code {
     [Parameter] public Guid Id { get; set; }
 
@@ -147,6 +171,13 @@ else
     private string? _errorMessage;
     private readonly List<ChunkPreviewRow> _chunks = new();
     private readonly List<ActivityRow> _activities = new();
+    private bool _editOpen;
+    private string _editTitle = string.Empty;
+    private string _editSubjectCode = string.Empty;
+    private string _editStoragePath = string.Empty;
+    private bool _editFormValid;
+    private bool _editSaving;
+    private MudForm? _editForm;
 
     protected override async void OnInitialized()
     {
@@ -204,9 +235,48 @@ else
 
     private void EditMetadata()
     {
-        if (_document is not null)
+        if (_document is null) return;
+        _editTitle = _document.Title;
+        _editSubjectCode = _document.SubjectCode;
+        _editStoragePath = _document.StoragePath;
+        _editFormValid = true;
+        _editOpen = true;
+    }
+
+    private async Task SaveEditMetadataAsync()
+    {
+        if (_document is null || _editForm is null) return;
+        await _editForm.ValidateAsync();
+        if (!_editForm.IsValid) return;
+
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
         {
-            Snackbar.Add($"Edit metadata flow selected for {_document.Title}.", Severity.Info);
+            Snackbar.Add("Session expired.", Severity.Error);
+            return;
+        }
+
+        _editSaving = true;
+        try
+        {
+            await AdminApi.UpdateDocumentAsync(Session.AccessToken, _document.Id, new UpdateDocumentRequest
+            {
+                Title = _editTitle,
+                SubjectCode = _editSubjectCode,
+                StoragePath = _editStoragePath
+            });
+            _document.Title = _editTitle;
+            _document.SubjectCode = _editSubjectCode;
+            _document.StoragePath = _editStoragePath;
+            _editOpen = false;
+            Snackbar.Add("Document metadata updated.", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _editSaving = false;
         }
     }
 
@@ -243,7 +313,21 @@ else
 
         if (result is { Canceled: false })
         {
-            Snackbar.Add($"Document {_document.Title} deleted.", Severity.Warning);
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                Snackbar.Add("Session expired.", Severity.Error);
+                return;
+            }
+            try
+            {
+                await AdminApi.DeleteDocumentAsync(Session.AccessToken, _document.Id);
+                Snackbar.Add($"Document {_document.Title} deleted.", Severity.Warning);
+            }
+            catch (Exception ex)
+            {
+                Snackbar.Add($"Failed: {ex.Message}", Severity.Error);
+                return;
+            }
             Navigation.NavigateTo("/admin/documents");
         }
     }

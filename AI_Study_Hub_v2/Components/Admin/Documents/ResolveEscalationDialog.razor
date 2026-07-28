@@ -25,7 +25,8 @@
             <MudSelect @bind-Value="_status"
                        Label="Decision"
                        Variant="Variant.Outlined"
-                       Required="true">
+                       Required="true"
+                       Disabled="@ReadOnly">
                 <MudSelectItem Value="@("Approved")">Approved &mdash; Escalation is valid</MudSelectItem>
                 <MudSelectItem Value="@("Rejected")">Rejected &mdash; Escalation is not valid</MudSelectItem>
             </MudSelect>
@@ -36,17 +37,28 @@
                           Variant="Variant.Outlined"
                           MaxLines="4"
                           Lines="3"
+                          Disabled="@ReadOnly"
                           HelperText="Provide feedback to the moderator who escalated" />
         </MudStack>
     </DialogContent>
     <DialogActions>
-        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">@(ReadOnly ? "Close" : "Cancel")</MudButton>
+        @if (!ReadOnly)
+        {
         <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                   Disabled="@string.IsNullOrWhiteSpace(_status)"
+                   Disabled="@(string.IsNullOrWhiteSpace(_status) || _submitting)"
                    OnClick="Submit">
-            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="me-1" Style="font-size: 18px;" />
+            @if (_submitting)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="me-1" Style="color: white;" />
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Class="me-1" Style="font-size: 18px;" />
+            }
             Resolve
         </MudButton>
+        }
     </DialogActions>
 </MudDialog>
 
@@ -58,9 +70,11 @@
     [Parameter] public string EscalatedByName { get; set; } = string.Empty;
     [Parameter] public string Reason { get; set; } = string.Empty;
     [Parameter] public int DocumentCount { get; set; }
+    [Parameter] public bool ReadOnly { get; set; }
 
     private string _status = "Approved";
     private string? _adminResponse;
+    private bool _submitting;
 
     private void Cancel() => MudDialog.Cancel();
 

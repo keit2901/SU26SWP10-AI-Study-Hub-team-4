@@ -57,24 +57,52 @@ public sealed class EscalationController : ControllerBase
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(IReadOnlyList<DocumentEscalationDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<DocumentEscalationDto>>> GetPending(CancellationToken cancellationToken)
-        => Ok(await _escalation.GetPendingAsync(cancellationToken));
+    {
+        try
+        {
+            return Ok(await _escalation.GetPendingAsync(cancellationToken));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get pending escalations");
+            return StatusCode(500, new ApiErrorResponse { Code = "unexpected_error", Message = "An unexpected error occurred." });
+        }
+    }
 
     [HttpGet("all")]
     [Authorize(Roles = "Admin")]
     [ProducesResponseType(typeof(IReadOnlyList<DocumentEscalationDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<DocumentEscalationDto>>> GetAll(CancellationToken cancellationToken)
-        => Ok(await _escalation.GetAllAsync(cancellationToken));
+    {
+        try
+        {
+            return Ok(await _escalation.GetAllAsync(cancellationToken));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get all escalations");
+            return StatusCode(500, new ApiErrorResponse { Code = "unexpected_error", Message = "An unexpected error occurred." });
+        }
+    }
 
     [HttpGet("my")]
     [Authorize(Roles = "Admin,Moderator")]
     [ProducesResponseType(typeof(IReadOnlyList<DocumentEscalationDto>), StatusCodes.Status200OK)]
     public async Task<ActionResult<IReadOnlyList<DocumentEscalationDto>>> GetMy(CancellationToken cancellationToken)
     {
-        var userId = await GetLocalUserIdAsync();
-        if (userId is null)
-            return Unauthorized();
+        try
+        {
+            var userId = await GetLocalUserIdAsync();
+            if (userId is null)
+                return Unauthorized();
 
-        return Ok(await _escalation.GetMyAsync(userId.Value, cancellationToken));
+            return Ok(await _escalation.GetMyAsync(userId.Value, cancellationToken));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get my escalations");
+            return StatusCode(500, new ApiErrorResponse { Code = "unexpected_error", Message = "An unexpected error occurred." });
+        }
     }
 
     [HttpPatch("{id:guid}")]
