@@ -17,6 +17,8 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using MudBlazor.Services;
@@ -440,7 +442,7 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        await db.Database.MigrateAsync();
+        await MigrateDatabaseWithCompatibilityAsync(db, startupLogger);
         startupLogger.LogInformation("Database migrations applied.");
         await EnsurePhase3SchemaAsync(db, startupLogger);
         await CleanupDeprecatedSeedAccountsAsync(db, goTrue, startupLogger);
@@ -572,6 +574,30 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
     logger.LogInformation("Default admin profile inserted for identity {SupabaseUserId}", supabaseUserId);
 }
 
+static async Task MigrateDatabaseWithCompatibilityAsync(AppDbContext db, ILogger logger)
+{
+    const string preReSyncMigration = "20260706184528_AddDocumentEscalation";
+    const string reSyncPlanMigration = "20260709165701_ReSyncPlanFkAndConstraints";
+
+    var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
+    if (!appliedMigrations.Contains(reSyncPlanMigration, StringComparer.Ordinal))
+    {
+        if (!appliedMigrations.Contains(preReSyncMigration, StringComparer.Ordinal))
+        {
+            logger.LogInformation("Applying compatibility migration step {MigrationName} before full database migrate.", preReSyncMigration);
+            await db.Database.GetService<IMigrator>().MigrateAsync(preReSyncMigration);
+        }
+
+        logger.LogInformation("Dropping legacy payment_transactions FK before re-sync migration compatibility pass.");
+        await db.Database.ExecuteSqlRawAsync("""
+            ALTER TABLE IF EXISTS public.payment_transactions
+            DROP CONSTRAINT IF EXISTS "FK_payment_transactions_users_user_id";
+            """);
+    }
+
+    await db.Database.MigrateAsync();
+}
+
 static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
 {
     await db.Database.ExecuteSqlRawAsync("""
@@ -622,6 +648,21 @@ static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
     await db.Database.ExecuteSqlRawAsync("""
         CREATE INDEX IF NOT EXISTS ix_document_chunks_search_vector
         ON document_chunks USING GIN (search_vector);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_submission_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_failure_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS student_feedback_reason character varying(200);
         """);
 
     await db.Database.ExecuteSqlRawAsync("""

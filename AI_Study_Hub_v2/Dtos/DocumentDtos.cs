@@ -63,7 +63,25 @@ public sealed class DocumentDto
 
     /// <summary>Folder display name (populated by admin dashboard queries).</summary>
     public string? FolderName { get; set; }
+
+    /// <summary>Folder share status/source (populated by moderator dashboard queries).</summary>
+    public FolderStatus FolderShareStatus { get; set; }
+
+    public string? ShareReviewSource { get; set; }
+
+    public int ShareFailureCount { get; set; }
+
+    public string? StudentFeedbackReason { get; set; }
+
+    public string? AppealMessage { get; set; }
 }
+
+public sealed record DocumentAiReviewResultDto(
+    Guid DocumentId,
+    DocumentReviewStatus ReviewStatus,
+    string ReviewSource,
+    string Message,
+    double Confidence);
 
 /// <summary>
 /// Optional filter set for listing documents. All fields are optional.
@@ -141,7 +159,13 @@ public sealed class FolderDto
 
     public int AiReviewFailureCount { get; set; }
 
+    public int ShareSubmissionCount { get; set; }
+
+    public int ShareFailureCount { get; set; }
+
     public string? HumanReviewReason { get; set; }
+
+    public string? StudentFeedbackReason { get; set; }
 
     public bool RequiresHumanReview { get; set; }
 
@@ -205,6 +229,20 @@ public sealed class VoteRequest
 
 public sealed class AppealFolderShareRequest
 {
+    [StringLength(200)]
+    public string? Reason { get; set; }
+
+    [StringLength(2000)]
+    public string? Description { get; set; }
+
+    // Legacy fallback for older callers that only send one message field.
     [StringLength(2000)]
     public string? Message { get; set; }
+}
+
+public sealed class RejectFolderShareRequest
+{
+    [Required]
+    [StringLength(2000)]
+    public string Reason { get; set; } = string.Empty;
 }

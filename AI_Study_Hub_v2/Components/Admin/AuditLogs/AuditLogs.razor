@@ -41,7 +41,7 @@
             <option value="">Action</option>
             @foreach (var action in _logs.Select(log => log.Action).Distinct().OrderBy(action => action))
             {
-                <option value="@action">@action</option>
+                <option value="@action">@GetDisplayAction(action)</option>
             }
         </select>
         <select class="filter-select" value="@_selectedActor" @onchange="OnActorChanged">
@@ -154,7 +154,7 @@
                         <div class="audit-row-summary" @onclick="@(() => ToggleExpand(log.RequestId))">
                             <!-- Col 1: Action Badge & Date -->
                             <div>
-                                <span class="action-badge-custom @GetActionClass(log.Action)">@log.Action</span>
+                                <span class="action-badge-custom @GetActionClass(log.Action)">@GetDisplayAction(log.Action)</span>
                                 <div class="col-subtitle">@FormatDateTime(log.CreatedAt)</div>
                             </div>
                             
@@ -851,6 +851,7 @@
     private const string MediumSeverity = "Medium";
     private const string LowSeverity = "Low";
     private const string ConfigChangeAction = "CONFIG_CHANGE";
+    private const string FolderShareAutoCheckedAction = "FOLDER_SHARE_AUTO_CHECKED";
     private const int AuditPageSize = 10;
 
     private readonly List<AuditLogRow> _logs = new();
@@ -864,6 +865,30 @@
     private string? _selectedDateString;
     private string? _errorMessage;
     private bool _loadStarted;
+
+    private string _selectedCategory = "All";
+
+    private static readonly Dictionary<string, string[]> _categoryActions = new()
+    {
+        ["Documents"] = new[] { "DOCUMENT_UPLOADED", "DOCUMENT_DELETED", "DOCUMENT_APPROVED", "DOCUMENT_REJECTED" },
+        ["Users_Auth"] = new[] { "ROLE_CHANGE", "QUOTA_UPDATE", "USER_REGISTERED", "USER_LOGOUT", "USER_LOCK", "USER_UNLOCK", "FORCE_LOGOUT_FAILED" },
+        ["AI_Chat"] = new[] { "AI_CHAT_SESSION_CREATED", "AI_CHAT_EXCHANGE", "AI_ANSWER_REPORTED", "AI_QUOTA_BLOCKED" },
+        ["Folders_Share"] = new[] { "FOLDER_SHARE_REQUESTED", "FOLDER_SHARE_APPROVED", "FOLDER_SHARE_REJECTED", "FOLDER_SHARE_AUTO_CHECKED", "FOLDER_COPIED" },
+        ["Community"] = new[] { "FOLDER_REPORTED", "REPORT_RESOLVED" },
+        ["System"] = new[] { "CONFIG_UPDATE", "CONFIG_CHANGE", "QUIZ_GENERATED", "QUIZ_SUBMITTED", "ESCALATION_CREATED", "ESCALATION_RESOLVED", "PlanPaymentCompleted" },
+    };
+
+    private IEnumerable<(string Key, string Label, string Icon, int Count)> _categories =>
+        new[]
+        {
+            ("All", "All", "📋", _logs.Count),
+            ("Documents", "Documents", "📄", _logs.Count(l => _categoryActions["Documents"].Contains(l.Action))),
+            ("Users_Auth", "Users", "👤", _logs.Count(l => _categoryActions["Users_Auth"].Contains(l.Action))),
+            ("AI_Chat", "AI", "🤖", _logs.Count(l => _categoryActions["AI_Chat"].Contains(l.Action))),
+            ("Folders_Share", "Folders", "📁", _logs.Count(l => _categoryActions["Folders_Share"].Contains(l.Action))),
+            ("Community", "Reports", "🚩", _logs.Count(l => _categoryActions["Community"].Contains(l.Action))),
+            ("System", "System", "⚙️", _logs.Count(l => _categoryActions["System"].Contains(l.Action))),
+        };
     private int _currentPage = 1;
     private string _pageJumpInput = string.Empty;
 
@@ -1159,6 +1184,7 @@
 
         var text = _searchText.Trim();
         return log.Action.Contains(text, StringComparison.OrdinalIgnoreCase)
+            || GetDisplayAction(log.Action).Contains(text, StringComparison.OrdinalIgnoreCase)
             || log.ActorEmail.Contains(text, StringComparison.OrdinalIgnoreCase)
             || log.EntityName.Contains(text, StringComparison.OrdinalIgnoreCase)
             || log.EntityId.Contains(text, StringComparison.OrdinalIgnoreCase)
@@ -1183,12 +1209,20 @@
             "ROLE_CHANGE" => "action-role-change",
             "DOCUMENT_APPROVE" => "action-approve",
             "DOCUMENT_REJECT" => "action-reject",
+            FolderShareAutoCheckedAction => "action-approve",
             "CONFIG_CHANGE" => "action-config-change",
             "QUOTA_UPDATE" => "action-quota-update",
             "LOGIN_FAILED" => "action-login-failed",
             _ => "action-default"
         };
     }
+
+    private static string GetDisplayAction(string action) =>
+        action switch
+        {
+            FolderShareAutoCheckedAction => "AI Review",
+            _ => action
+        };
 
     private sealed record AuditLogRow(
         string Action,

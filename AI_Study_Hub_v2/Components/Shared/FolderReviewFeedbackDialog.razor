@@ -1,0 +1,118 @@
+@namespace AI_Study_Hub_v2.Components.Shared
+@using AI_Study_Hub_v2.Data.Entities
+@using AI_Study_Hub_v2.Dtos
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Folder: <strong>@Folder.Name</strong>
+            </MudText>
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" sm="6">
+                    <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid rgba(199,196,215,0.4);">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Current status</MudText>
+                        <MudText Typo="Typo.body1">@GetCurrentStatusText(Folder)</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid rgba(199,196,215,0.4);">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Review source</MudText>
+                        <MudText Typo="Typo.body1">@GetReviewSourceText(Folder)</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid rgba(199,196,215,0.4);">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Submit count</MudText>
+                        <MudText Typo="Typo.body1">@Folder.ShareSubmissionCount</MudText>
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid rgba(199,196,215,0.4);">
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Fail count</MudText>
+                        <MudText Typo="Typo.body1">@Folder.ShareFailureCount</MudText>
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            @if (!string.IsNullOrWhiteSpace(GetReviewReason(Folder)))
+            {
+                <MudAlert Severity="@GetReasonSeverity(Folder)" Variant="Variant.Outlined">
+                    @GetReviewReason(Folder)
+                </MudAlert>
+            }
+
+            @if (!string.IsNullOrWhiteSpace(Folder.StudentFeedbackReason) || !string.IsNullOrWhiteSpace(Folder.AppealMessage))
+            {
+                <MudPaper Class="pa-3" Elevation="0" Style="border:1px solid rgba(199,196,215,0.4);">
+                    <MudText Typo="Typo.subtitle2">Student feedback</MudText>
+                    @if (!string.IsNullOrWhiteSpace(Folder.StudentFeedbackReason))
+                    {
+                        <MudText Typo="Typo.body2"><strong>Reason:</strong> @Folder.StudentFeedbackReason</MudText>
+                    }
+                    @if (!string.IsNullOrWhiteSpace(Folder.AppealMessage))
+                    {
+                        <MudText Typo="Typo.body2" Style="white-space: pre-wrap;">@Folder.AppealMessage</MudText>
+                    }
+                </MudPaper>
+            }
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Updated: @Folder.UpdatedAt.LocalDateTime.ToString("dd/MM/yyyy HH:mm")
+            </MudText>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Close">Close</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public FolderDto Folder { get; set; } = new();
+
+    private void Close() => MudDialog.Close();
+
+    private static string GetCurrentStatusText(FolderDto folder) => folder.ShareStatus switch
+    {
+        FolderStatus.Approved => "Shared",
+        FolderStatus.PendingShare => "Pending Review",
+        FolderStatus.Rejected when string.Equals(folder.ShareReviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase) => "AI Failed",
+        FolderStatus.Rejected => "Moderator Rejected",
+        _ => "Private"
+    };
+
+    private static string GetReviewSourceText(FolderDto folder)
+    {
+        if (folder.ShareStatus == FolderStatus.Approved)
+        {
+            return "Approved";
+        }
+
+        return folder.ShareReviewSource switch
+        {
+            "AI_ASSIST" => "AI Review",
+            "HUMAN" => "Moderator Review",
+            "STUDENT_FEEDBACK" => "Student Feedback Submitted",
+            _ => "Pending Review"
+        };
+    }
+
+    private static string GetReviewReason(FolderDto folder) =>
+        !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
+            ? folder.HumanReviewReason
+            : !string.IsNullOrWhiteSpace(folder.AiReviewReason)
+                ? folder.AiReviewReason
+                : folder.ShareStatus == FolderStatus.Approved
+                    ? "Folder was approved for community sharing."
+                    : "No detailed review feedback is available yet.";
+
+    private static Severity GetReasonSeverity(FolderDto folder) => folder.ShareStatus switch
+    {
+        FolderStatus.Approved => Severity.Success,
+        FolderStatus.PendingShare => Severity.Info,
+        _ => Severity.Warning
+    };
+}

@@ -300,7 +300,7 @@ else if (_authorized)
         _authorized = false;
         _checkingAccess = false;
         await InvokeAsync(StateHasChanged);
-        Navigation.NavigateTo("/login", replace: true);
+        Navigation.NavigateTo(BuildLoginReturnUrl(), replace: true);
     }
 
     private async Task SignOutAsync()
@@ -310,6 +310,18 @@ else if (_authorized)
         Navigation.NavigateTo("/login", replace: true);
     }
 
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Navigation.ToBaseRelativePath(Navigation.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/admin"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
+    }
+
+    private void NavigateToProfile() => Navigation.NavigateTo("/profile");
+    private void NavigateToSettings() => Navigation.NavigateTo("/admin/settings");
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
 
     private void ToggleTheme() => _isDarkMode = !_isDarkMode;

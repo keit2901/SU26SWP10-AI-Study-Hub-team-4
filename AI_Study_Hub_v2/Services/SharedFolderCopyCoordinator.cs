@@ -266,7 +266,8 @@ public sealed class SharedFolderCopyCoordinator : ISharedFolderCopyCoordinator
                 Id = prepared.DestinationFolderId, UserId = prepared.DestinationUserId, Name = prepared.DestinationName,
                 Description = prepared.Source.Description, Icon = prepared.Source.Icon, IsFavorite = false,
                 ShareStatus = FolderStatus.None, SharedAt = null, ShareReviewSource = null, AiReviewReason = null,
-                AiReviewConfidence = null, AiReviewFailureCount = 0, HumanReviewReason = null,
+                AiReviewConfidence = null, AiReviewFailureCount = 0, ShareSubmissionCount = 0,
+                ShareFailureCount = 0, HumanReviewReason = null, StudentFeedbackReason = null,
                 RequiresHumanReview = false, AppealRequestedAt = null, AppealMessage = null,
                 CreatedAt = prepared.CreatedAt, UpdatedAt = prepared.CreatedAt,
             };

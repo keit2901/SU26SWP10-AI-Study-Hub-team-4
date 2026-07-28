@@ -177,12 +177,22 @@
                 Snackbar.Add(message, Severity.Warning);
             }
 
-            Nav.NavigateTo("/login", replace: true);
+            Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
         }
         finally
         {
             _signOutInProgress = false;
         }
+    }
+
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
     }
 
     private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)

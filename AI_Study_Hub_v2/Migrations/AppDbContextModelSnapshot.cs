@@ -736,6 +736,63 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("shared_at");
 
+                    b.Property<string>("ShareReviewSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("share_review_source");
+
+                    b.Property<string>("AiReviewReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("ai_review_reason");
+
+                    b.Property<double?>("AiReviewConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("ai_review_confidence");
+
+                    b.Property<int>("AiReviewFailureCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("ai_review_failure_count");
+
+                    b.Property<int>("ShareSubmissionCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("share_submission_count");
+
+                    b.Property<int>("ShareFailureCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("share_failure_count");
+
+                    b.Property<string>("HumanReviewReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("human_review_reason");
+
+                    b.Property<string>("StudentFeedbackReason")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("student_feedback_reason");
+
+                    b.Property<bool>("RequiresHumanReview")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("requires_human_review");
+
+                    b.Property<DateTimeOffset?>("AppealRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("appeal_requested_at");
+
+                    b.Property<string>("AppealMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("appeal_message");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
