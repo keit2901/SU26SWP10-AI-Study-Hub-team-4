@@ -1753,13 +1753,13 @@ else
         var parameters = new DialogParameters
         {
             ["FolderName"] = folder.Name,
-            ["AiReason"] = folder.AiReviewReason,
+            ["LatestReason"] = folder.AiReviewReason,
         };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialogRef = await Dialogs.ShowAsync<AppealFolderShareDialog>("Review by human", parameters, options);
         var result = await dialogRef.Result;
         if (result is null || result.Canceled) return;
-        var message = result.Data as string;
+        var message = (result.Data as AppealFolderShareDialog.AppealFolderShareDialogResult)?.Reason;
         await RequestHumanReviewAsync(folder, message);
     }
 
