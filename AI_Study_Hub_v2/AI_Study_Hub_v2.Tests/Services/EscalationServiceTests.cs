@@ -235,6 +235,37 @@ public sealed class EscalationServiceTests
         ex.Which.StatusCode.Should().Be(404);
     }
 
+    [Test]
+    public async Task ResolveAsync_AlreadyResolved_Throws409()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, roleId: 3, "Moderator");
+        var admin = SeedUser(db, roleId: 1, "Admin");
+        var folder = SeedFolder(db, moderator.Id);
+        var doc = SeedDocument(db, moderator.Id, folder.Id);
+        var sut = new EscalationService(db, new AuditLogService(db));
+
+        var createReq = new CreateEscalationRequest
+        {
+            FolderId = folder.Id,
+            Reason = "Need admin review.",
+            Items = new List<EscalationItemRequest>
+            {
+                new() { DocumentId = doc.Id, RejectReason = "Wrong content" }
+            }
+        };
+        var created = await sut.CreateAsync(moderator.Id, createReq);
+
+        // First resolve succeeds
+        await sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Approved" }, admin.Id);
+
+        // Second resolve should throw 409
+        var act = () => sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Rejected" }, admin.Id);
+        var ex = await act.Should().ThrowAsync<AdminException>();
+        ex.Which.StatusCode.Should().Be(409);
+        ex.Which.Message.Should().Contain("already been resolved");
+    }
+
     // ── Helpers ──
 
     private static User SeedUser(Data.AppDbContext db, int roleId, string fullName)

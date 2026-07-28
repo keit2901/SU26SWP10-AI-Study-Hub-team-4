@@ -124,7 +124,8 @@ public sealed class EscalationService : IEscalationService
             .Include(x => x.EscalatedByUser)
             .Include(x => x.Items).ThenInclude(i => i.Document)
             .AsNoTracking()
-            .FirstAsync(x => x.Id == escalationId, ct);
+            .FirstOrDefaultAsync(x => x.Id == escalationId, ct)
+            ?? throw new AdminException(404, "escalation_not_found", "Escalation not found.");
 
         return new DocumentEscalationDto(
             e.Id, e.FolderId,
