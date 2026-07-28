@@ -75,9 +75,9 @@
     .folder-card { transition: all 0.15s; cursor: pointer; position: relative; border-radius: 12px !important; background: #fff !important; border: 1px solid #e2e8f0 !important; padding: 16px; }
     .folder-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
     .folder-card-more { position: absolute; top: 8px; right: 8px; color: #94a3b8; cursor: pointer; }
-    .folder-card-menu-btn { position: absolute; top: 8px; right: 8px; z-index: 2; color: #94a3b8; }
+    .folder-card-menu-btn { position: absolute; top: 8px; right: 8px; z-index: 2000; color: #94a3b8; }
     .folder-card-menu-btn:hover { color: #6366f1; }
-    .folder-card-dropdown { position: absolute; top: 32px; right: 8px; z-index: 3; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 6px; min-width: 170px; }
+    .folder-card-dropdown { position: absolute; top: 32px; right: 8px; z-index: 2000; background: #fff; border: 1px solid #e2e8f0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,0.12); padding: 6px; min-width: 170px; }
     .folder-card-dropdown-item { display: flex; align-items: center; gap: 10px; padding: 8px 12px; cursor: pointer; font-size: 13px; color: #1e293b; border-radius: 6px; transition: background 0.1s; }
     .folder-card-dropdown-item:hover { background: #f8fafc; }
     .folder-card-icon-box { width: 40px; height: 40px; border-radius: 8px; background: #fff; display: flex; align-items: center; justify-content: center; margin-bottom: 12px; position: relative; }
@@ -399,6 +399,20 @@ else
                                                     <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" Color="@(folder.ShareStatus == Data.Entities.FolderStatus.Approved ? Color.Primary : folder.ShareStatus == Data.Entities.FolderStatus.PendingShare ? Color.Warning : Color.Default)" />
                                                     <span>@GetShareButtonText(folder)</span>
                                                 </div>
+                                                @if (CanRequestHumanReview(folder))
+                                                {
+                                                    <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowHumanReviewDialogAsync(folder); })">
+                                                        <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" Color="Color.Info" />
+                                                        <span>Review by human</span>
+                                                    </div>
+                                                }
+                                                @if (folder.ShareStatus == Data.Entities.FolderStatus.PendingShare && folder.ShareReviewSource == "AI")
+                                                {
+                                                    <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); Nav.NavigateTo($"/share-review/{folder.Id}"); })">
+                                                        <MudIcon Icon="@Icons.Material.Filled.RateReview" Size="Size.Small" Color="Color.Primary" />
+                                                        <span>Review &amp; Share</span>
+                                                    </div>
+                                                }
                                                 <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ConfirmDeleteFolderAsync(folder); })">
                                                     <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" Color="Color.Error" />
                                                     <span>Delete</span>
@@ -649,10 +663,10 @@ else
                             <MudTd Class="table-cell">
                                 <MudChip T="string"
                                          Size="Size.Small"
-                                         Color="@GetStatusColor(context)"
+                                         Color="@GetStatusColor(context.Status)"
                                          Variant="Variant.Filled"
-                                         Icon="@GetStatusIcon(context)">
-                                    @GetStatusText(context)
+                                         Icon="@GetStatusIcon(context.Status)">
+                                    @GetStatusText(context.Status)
                                 </MudChip>
                             </MudTd>
                             <MudTd Class="table-cell">
@@ -837,7 +851,7 @@ else
         .ToList();
 
     private List<string> _statusOptions => _documents
-        .Select(d => GetStatusText(d))
+        .Select(d => GetStatusText(d.Status))
         .Where(value => !string.IsNullOrWhiteSpace(value))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
@@ -876,7 +890,7 @@ else
 
             if (!string.IsNullOrWhiteSpace(_filterStatusQuery))
             {
-                query = query.Where(d => GetStatusText(d).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
+                query = query.Where(d => GetStatusText(d.Status).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
             }
 
             var createdFrom = ParseDocumentLocalDateTimeFilter(_filterCreatedFrom);
@@ -903,8 +917,6 @@ else
                 "folder-desc" => query.OrderByDescending(d => GetFolderName(d.FolderId), StringComparer.OrdinalIgnoreCase),
                 "size-asc" => query.OrderBy(d => d.FileSizeBytes),
                 "size-desc" => query.OrderByDescending(d => d.FileSizeBytes),
-                "status-asc" => query.OrderBy(d => GetStatusText(d), StringComparer.OrdinalIgnoreCase),
-                "status-desc" => query.OrderByDescending(d => GetStatusText(d), StringComparer.OrdinalIgnoreCase),
                 "created-asc" => query.OrderBy(d => d.CreatedAt),
                 _ => query.OrderByDescending(d => d.CreatedAt),
             };
@@ -1197,7 +1209,6 @@ else
 
     private void FilterByFolder(Guid? folderId)
     {
-        CloseFolderMenu();
         _filterFolderId = folderId;
         _currentPage = 1;
     }
@@ -1469,7 +1480,7 @@ else
         return _folders.FirstOrDefault(f => f.Id == folderId.Value)?.Name ?? "—";
     }
 
-    private static Color GetStatusColor(DocumentDto doc) => doc.Status switch
+    private static Color GetStatusColor(DocumentStatus status) => status switch
     {
         DocumentStatus.Ready => Color.Success,
         DocumentStatus.Uploading => Color.Info,
@@ -1478,7 +1489,7 @@ else
         _ => Color.Default,
     };
 
-    private static string GetStatusIcon(DocumentDto doc) => doc.Status switch
+    private static string GetStatusIcon(DocumentStatus status) => status switch
     {
         DocumentStatus.Ready => Icons.Material.Filled.CheckCircle,
         DocumentStatus.Uploading => Icons.Material.Filled.CloudUpload,
@@ -1487,13 +1498,13 @@ else
         _ => Icons.Material.Filled.Help,
     };
 
-    private static string GetStatusText(DocumentDto doc) => doc.Status switch
+    private static string GetStatusText(DocumentStatus status) => status switch
     {
         DocumentStatus.Ready => "Ready",
         DocumentStatus.Uploading => "Uploading",
         DocumentStatus.Processing => "Processing",
         DocumentStatus.Failed => "Failed",
-        _ => doc.Status.ToString(),
+        _ => status.ToString(),
     };
 
     private static string GetShortFileName(string fileName, int maxLength)
@@ -1710,22 +1721,17 @@ else
         var parameters = new DialogParameters
         {
             ["FolderName"] = folder.Name,
-            ["FailCount"] = folder.ShareFailureCount,
-            ["LatestReason"] = !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
-                ? folder.HumanReviewReason
-                : folder.AiReviewReason,
+            ["AiReason"] = folder.AiReviewReason,
         };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialogRef = await Dialogs.ShowAsync<AppealFolderShareDialog>("Send Feedback", parameters, options);
+        var dialogRef = await Dialogs.ShowAsync<AppealFolderShareDialog>("Review by human", parameters, options);
         var result = await dialogRef.Result;
         if (result is null || result.Canceled) return;
-        if (result.Data is AppealFolderShareDialog.AppealFolderShareDialogResult feedback)
-        {
-            await RequestHumanReviewAsync(folder, feedback);
-        }
+        var message = result.Data as string;
+        await RequestHumanReviewAsync(folder, message);
     }
 
-    private async Task RequestHumanReviewAsync(FolderDto folder, AppealFolderShareDialog.AppealFolderShareDialogResult feedback)
+    private async Task RequestHumanReviewAsync(FolderDto folder, string? message)
     {
         if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
 
@@ -1734,11 +1740,7 @@ else
             var updated = await FoldersApi.AppealShareReviewAsync(
                 Session.AccessToken!,
                 folder.Id,
-                new AppealFolderShareRequest
-                {
-                    Reason = feedback.Reason,
-                    Description = feedback.Description
-                });
+                new AppealFolderShareRequest { Message = message });
             var idx = _folders.FindIndex(f => f.Id == folder.Id);
             if (idx >= 0)
             {
@@ -1747,7 +1749,7 @@ else
                 StateHasChanged();
             }
 
-            Snackbar.Add("Feedback sent. Your folder is back in the moderator queue.", Severity.Info);
+            Snackbar.Add("Human review requested. Your folder is now waiting for moderator review.", Severity.Info);
         }
         catch (DocumentApiException ex)
         {
@@ -1757,18 +1759,19 @@ else
 
     private static bool CanRequestHumanReview(FolderDto folder) =>
         folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-        && folder.ShareFailureCount >= 2;
+        && folder.AiReviewFailureCount >= 2
+        && !string.Equals(folder.ShareReviewSource, "HUMAN", StringComparison.OrdinalIgnoreCase);
 
     private static string GetShareButtonText(FolderDto folder)
     {
         if (folder.ShareStatus == Data.Entities.FolderStatus.PendingShare && folder.AppealRequestedAt.HasValue)
         {
-            return "Pending Moderator Review";
+            return "Human Review Pending";
         }
 
         return folder.ShareStatus switch
         {
-            Data.Entities.FolderStatus.PendingShare => "Pending Moderator Review",
+            Data.Entities.FolderStatus.PendingShare => "Human Review Pending",
             Data.Entities.FolderStatus.Approved => "Shared",
             Data.Entities.FolderStatus.Rejected => "Share Again",
             _ => "Share"
@@ -1777,19 +1780,17 @@ else
 
     private static string GetShareDecisionMessage(FolderDto folder)
     {
-        var reasonSource = !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
-            ? folder.HumanReviewReason
-            : folder.AiReviewReason;
-        var reason = string.IsNullOrWhiteSpace(reasonSource)
+        var reason = string.IsNullOrWhiteSpace(folder.AiReviewReason)
             ? string.Empty
-            : $" Reason: {reasonSource}";
+            : $" Reason: {folder.AiReviewReason}";
 
         return folder.ShareStatus switch
         {
-            Data.Entities.FolderStatus.Approved => "Folder approved for community sharing.",
-            Data.Entities.FolderStatus.Rejected => $"Folder was not approved for community sharing.{reason}",
-            Data.Entities.FolderStatus.PendingShare => "Share request submitted. Your folder is waiting for moderator review.",
-            _ => "Share request submitted."
+            Data.Entities.FolderStatus.Approved => $"AI approved this folder for community sharing.{reason}",
+            Data.Entities.FolderStatus.Rejected when folder.AiReviewFailureCount >= 2 => $"AI did not approve this folder after {folder.AiReviewFailureCount} review attempts. Human review is now available.{reason}",
+            Data.Entities.FolderStatus.Rejected => $"AI did not approve this folder. You can try sharing again.{reason}",
+            Data.Entities.FolderStatus.PendingShare => $"Human review requested. Your folder is waiting in the moderator queue.{reason}",
+            _ => $"Share request submitted.{reason}"
         };
     }
 
