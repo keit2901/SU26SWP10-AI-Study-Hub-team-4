@@ -179,7 +179,7 @@ else
     private bool _editSaving;
     private MudForm? _editForm;
 
-    protected override async void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         await LoadDocumentAsync();
     }
@@ -282,14 +282,30 @@ else
 
     private async Task ReindexAsync()
     {
-        if (_document is null)
+        if (_document is null) return;
+
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
         {
+            Snackbar.Add("Session expired.", Severity.Error);
             return;
         }
 
-        _document.Status = "Processing";
-        await Task.Delay(250);
-        Snackbar.Add($"Re-index job queued for {_document.Title}.", Severity.Info);
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Re-index document",
+            ["Message"] = $"Queue {_document.Title} for chunking and embedding again? Existing vector rows may be replaced.",
+            ["ConfirmText"] = "Queue re-index",
+            ["ConfirmColor"] = Color.Warning,
+            ["IconColor"] = Color.Warning,
+            ["Icon"] = Icons.Material.Filled.Sync
+        };
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Re-index document", parameters);
+        var result = await dialog.Result;
+        if (result is { Canceled: false })
+        {
+            _document.Status = "Processing";
+            Snackbar.Add($"{_document.Title} queued for re-indexing.", Severity.Info);
+        }
     }
 
     private async Task DeleteAsync()
