@@ -267,7 +267,7 @@
             }
             _summary = await FoldersApi.GetShareReviewAsync(Session.AccessToken, FolderId);
             _flaggedFiles = _summary.Files
-                .Where(f => f.Severity >= ShareReviewSeverity.Medium && !f.IsBlocked)
+                .Where(f => f.Severity != ShareReviewSeverity.Low && !f.IsBlocked)
                 .OrderByDescending(f => f.Severity)
                 .ToList();
         }
@@ -321,10 +321,16 @@
         if (!string.IsNullOrWhiteSpace(_selectedDecision)) SaveCurrentDecision();
         if (_decisions.Count == 0) { _currentStep = 3; return; }
 
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            Snackbar.Add("Session expired. Please log in again.", Severity.Error);
+            return;
+        }
+
         _isSubmitting = true;
         try
         {
-            var resp = await FoldersApi.ApplyShareReviewAsync(Session.AccessToken!, FolderId, new ApplyDecisionsRequest { Verdicts = _decisions });
+            var resp = await FoldersApi.ApplyShareReviewAsync(Session.AccessToken, FolderId, new ApplyDecisionsRequest { Verdicts = _decisions });
             _deletedCount = resp.DeletedCount;
             _currentStep = 3;
         }
@@ -349,10 +355,15 @@
 
     private async Task PublishToCommunity()
     {
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            Snackbar.Add("Session expired. Please log in again.", Severity.Error);
+            return;
+        }
         _isPublishing = true;
         try
         {
-            await FoldersApi.RetryShareReviewAsync(Session.AccessToken!, FolderId);
+            await FoldersApi.RetryShareReviewAsync(Session.AccessToken, FolderId);
             Snackbar.Add("Folder shared to Community!", Severity.Success);
             StartUndoTimer();
         }
@@ -380,10 +391,15 @@
 
     private async Task UndoPublish()
     {
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            Snackbar.Add("Session expired. Please log in again.", Severity.Error);
+            return;
+        }
         _undoTimer?.Stop(); _undoTimer?.Dispose();
         try
         {
-            var result = await FoldersApi.RollbackShareAsync(Session.AccessToken!, FolderId);
+            var result = await FoldersApi.RollbackShareAsync(Session.AccessToken, FolderId);
             if (result.CanUndo) { _undoSeconds = 0; Snackbar.Add("Share undone.", Severity.Info); }
             else { Snackbar.Add("Too late to undo.", Severity.Warning); }
         }
