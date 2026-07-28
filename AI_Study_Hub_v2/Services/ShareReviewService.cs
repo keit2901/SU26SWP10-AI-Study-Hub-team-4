@@ -30,13 +30,13 @@ public sealed class ShareReviewService : IShareReviewService
             .Include(f => f.Documents)
             .Include(f => f.User)
             .AsNoTracking()
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.User.SupabaseUserId == userId, ct)
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == userId, ct)
             ?? throw new AdminException(404, "folder_not_found", "Folder not found or not owned by you.");
 
         var files = folder.Documents.Select(d => _aiModerator.EvaluateDocument(d, folder)).ToList();
 
         var cleanFiles = files.Count(f => f.Severity == ShareReviewSeverity.Low && !f.IsBlocked);
-        var flaggedFiles = files.Count(f => f.Severity >= ShareReviewSeverity.Medium && !f.IsBlocked);
+        var flaggedFiles = files.Count(f => f.Severity != ShareReviewSeverity.Low && !f.IsBlocked);
         var blockedFiles = files.Count(f => f.IsBlocked);
         var totalFiles = files.Count;
         var healthScore = totalFiles > 0 ? Math.Round((double)cleanFiles / totalFiles * 100, 0) : 0;
