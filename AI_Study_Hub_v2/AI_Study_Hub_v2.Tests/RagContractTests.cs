@@ -13,7 +13,7 @@ public sealed class RagContractTests
     {
         var options = new RagOptions();
 
-        options.ChunkingStrategy.Should().Be("semantic-v2");
+        options.ChunkingStrategy.Should().Be("semantic");
         options.ChunkSizeChars.Should().Be(700);
         options.ChunkOverlapChars.Should().Be(70);
         options.MinChunkChars.Should().Be(200);

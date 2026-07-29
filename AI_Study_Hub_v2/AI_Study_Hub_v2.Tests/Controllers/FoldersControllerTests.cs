@@ -14,7 +14,7 @@ public class FoldersControllerTests
 {
     private static FoldersController BuildSut(IFolderService service, ClaimsPrincipal? user = null)
     {
-        var ctrl = new FoldersController(service, NullLogger<FoldersController>.Instance);
+        var ctrl = new FoldersController(service, Mock.Of<IShareReviewService>(), NullLogger<FoldersController>.Instance);
         var http = new DefaultHttpContext();
         if (user is not null)
         {

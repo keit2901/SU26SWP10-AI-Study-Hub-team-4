@@ -566,7 +566,9 @@ public sealed class FolderService : IFolderService
                     DislikeCount = f.Reactions.Count(r => !r.IsLike),
                     Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
                              f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                             f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                             f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ?
+                                 (f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                                  f.ShareStatus == FolderStatus.Rejected ? "Rejected" : "Pending Share") :
                              "Empty"
                 })
                 .ToListAsync(cancellationToken);
@@ -595,7 +597,9 @@ public sealed class FolderService : IFolderService
                         DislikeCount = f.Reactions.Count(r => !r.IsLike),
                         Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
                                  f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ?
+                                     (f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                                      f.ShareStatus == FolderStatus.Rejected ? "Rejected" : "Pending Share") :
                                  "Empty"
                     })
                     .ToListAsync(cancellationToken);
@@ -620,7 +624,9 @@ public sealed class FolderService : IFolderService
                         DislikeCount = f.Reactions.Count(r => !r.IsLike),
                         Status = f.Documents.Any(d => d.Status == DocumentStatus.Failed) ? "Rejected" :
                                  f.Documents.Any(d => d.Status == DocumentStatus.Uploading || d.Status == DocumentStatus.Processing) ? "Processing" :
-                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ? (f.ShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share") :
+                                 f.Documents.Any() && f.Documents.All(d => d.Status == DocumentStatus.Ready) ?
+                                     (f.ShareStatus == FolderStatus.Approved ? "Shared" :
+                                      f.ShareStatus == FolderStatus.Rejected ? "Rejected" : "Pending Share") :
                                  "Empty"
                     })
                     .ToListAsync(cancellationToken);
@@ -1605,6 +1611,11 @@ WHERE id = {folderId}", cancellationToken);
 
     private async Task<FolderSchemaCapabilities> GetFolderSchemaCapabilitiesAsync(CancellationToken cancellationToken)
     {
+        if (!_db.Database.IsRelational())
+        {
+            return new FolderSchemaCapabilities(true, true, true, true, true, true, true, true, true, true);
+        }
+
         var connection = _db.Database.GetDbConnection();
         var shouldClose = connection.State != ConnectionState.Open;
         if (shouldClose)

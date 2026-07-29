@@ -636,6 +636,11 @@ public sealed class DocumentService : IDocumentService
 
     private async Task<DocumentSchemaCapabilities> GetDocumentSchemaCapabilitiesAsync(CancellationToken cancellationToken)
     {
+        if (!_db.Database.IsRelational())
+        {
+            return new DocumentSchemaCapabilities(HasReviewStatusColumn: true);
+        }
+
         var connection = _db.Database.GetDbConnection();
         var shouldClose = connection.State != ConnectionState.Open;
         if (shouldClose)
@@ -676,6 +681,11 @@ public sealed class DocumentService : IDocumentService
 
     private async Task<FolderSchemaCapabilities> GetFolderSchemaCapabilitiesAsync(CancellationToken cancellationToken)
     {
+        if (!_db.Database.IsRelational())
+        {
+            return new FolderSchemaCapabilities(HasFullModernShareFlowColumns: true);
+        }
+
         var connection = _db.Database.GetDbConnection();
         var shouldClose = connection.State != ConnectionState.Open;
         if (shouldClose)

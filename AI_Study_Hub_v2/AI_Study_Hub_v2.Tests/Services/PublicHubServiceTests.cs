@@ -573,7 +573,7 @@ public sealed class PublicHubServiceTests
             guard.Object,
             NullLogger<SharedFolderCopyCoordinator>.Instance);
         return new FolderService(db, NullLogger<FolderService>.Instance,
-            Mock.Of<IStorageDeletionCoordinator>(), new FolderShareAiModerator(),
+            Mock.Of<IStorageDeletionCoordinator>(), Mock.Of<IAuditLogService>(), new FolderShareAiModerator(),
             guard.Object, coordinator);
     }
 
