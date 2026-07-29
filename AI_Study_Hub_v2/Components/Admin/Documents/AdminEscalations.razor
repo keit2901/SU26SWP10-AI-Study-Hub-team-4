@@ -64,7 +64,8 @@
         <select class="filter-select" value="@_selectedStatus" @onchange="OnStatusSelectChanged">
             <option value="">All Escalations</option>
             <option value="Pending">Pending</option>
-            <option value="Resolved">Resolved</option>
+            <option value="Approved">Approved</option>
+            <option value="Rejected">Rejected</option>
         </select>
 
         @{
@@ -453,7 +454,7 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Unable to load escalations: {ex.Message}";
+            _errorMessage = "Unable to load escalations. Please try again.";
         }
         finally
         {
@@ -491,7 +492,7 @@
         }
         catch (Exception ex)
         {
-            Snackbar.Add($"Failed to resolve escalation: {ex.Message}", Severity.Error);
+            Snackbar.Add("Failed to resolve escalation. Please try again.", Severity.Error);
         }
     }
 
@@ -503,10 +504,11 @@
             ["FolderName"] = $"Folder #{escalation.FolderId.ToString()[..8]}",
             ["EscalatedByName"] = escalation.EscalatedByName,
             ["Reason"] = escalation.Reason,
-            ["DocumentCount"] = escalation.Items.Count
+            ["DocumentCount"] = escalation.Items.Count,
+            ["ReadOnly"] = true
         };
 
-        var dialog = await DialogService.ShowAsync<ResolveEscalationDialog>($"Escalation Detail — {escalation.EscalationStatus}", parameters);
+        await DialogService.ShowAsync<ResolveEscalationDialog>($"Escalation Detail — {escalation.EscalationStatus}", parameters);
     }
 
     private void OnSearchInputChanged(ChangeEventArgs e)

@@ -238,7 +238,7 @@ else if (_authorized)
                 return;
 
             var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
-            _moderationCount = stats.PendingCount;
+            _moderationCount = stats.PendingEscalationCount;
             _failedCount = stats.TotalFailedJobs;
             await InvokeAsync(StateHasChanged);
         }

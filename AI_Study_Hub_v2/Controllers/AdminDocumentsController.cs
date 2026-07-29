@@ -146,6 +146,47 @@ public sealed class AdminDocumentsController : ControllerBase
         return Ok(result);
     }
 
+    [HttpPatch("{id:guid}")]
+    [ProducesResponseType(typeof(AdminDocumentDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<AdminDocumentDto>> Update(
+        Guid id,
+        [FromBody] UpdateDocumentRequest request,
+        CancellationToken cancellationToken)
+    {
+        var document = await _db.Documents
+            .Include(d => d.User)
+            .FirstOrDefaultAsync(d => d.Id == id, cancellationToken);
+
+        if (document is null)
+            return NotFound(new ApiErrorResponse { Code = "document_not_found", Message = "Document not found." });
+
+        document.FileName = request.Title;
+        document.SubjectCode = request.SubjectCode;
+        if (!string.IsNullOrWhiteSpace(request.StoragePath))
+            document.StoragePath = request.StoragePath;
+        document.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await _db.SaveChangesAsync(cancellationToken);
+
+        var chunkCount = await _db.DocumentChunks
+            .CountAsync(c => c.DocumentId == id, cancellationToken);
+
+        return Ok(new AdminDocumentDto(
+            document.Id,
+            document.FileName,
+            document.SubjectCode,
+            document.User.FullName,
+            document.User.Username ?? "",
+            document.Status.ToString(),
+            document.ReviewStatus.ToString(),
+            document.MimeType,
+            document.FileSizeBytes,
+            document.StoragePath,
+            chunkCount,
+            document.CreatedAt));
+    }
+
     [HttpDelete("{id:guid}")]
     public async Task<IActionResult> Delete(Guid id, CancellationToken ct)
     {

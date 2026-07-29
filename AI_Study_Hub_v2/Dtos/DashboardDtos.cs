@@ -13,7 +13,8 @@ public record AdminDashboardStatsDto(
     int ProcessingCount,
     int PendingCount,
     long DailyTokensUsed,
-    long DailyTokenQuota
+    long DailyTokenQuota,
+    int PendingEscalationCount = 0
 );
 
 public record UserDashboardStatsDto(

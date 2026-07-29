@@ -23,7 +23,7 @@ public sealed class DocumentEscalationConfiguration : IEntityTypeConfiguration<D
         builder.HasIndex(e => e.FolderId);
         builder.HasIndex(e => e.EscalationStatus);
 
-        builder.HasOne(e => e.Folder).WithMany().HasForeignKey(e => e.FolderId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(e => e.Folder).WithMany().HasForeignKey(e => e.FolderId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne(e => e.EscalatedByUser).WithMany().HasForeignKey(e => e.EscalatedByUserId).OnDelete(DeleteBehavior.NoAction);
         builder.HasOne(e => e.ResolvedByUser).WithMany().HasForeignKey(e => e.ResolvedByUserId).OnDelete(DeleteBehavior.NoAction);
     }

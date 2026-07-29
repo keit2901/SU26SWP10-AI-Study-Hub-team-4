@@ -71,6 +71,10 @@ public class DashboardService : IDashboardService
         var dailyTokenQuota = await _context.Users.AsNoTracking()
             .SumAsync(u => (long)u.DailyTokenQuota, ct);
 
+        var pendingEscalationCount = await _context.DocumentEscalations.AsNoTracking()
+            .Where(e => e.EscalationStatus == "Pending")
+            .CountAsync(ct);
+
         return new AdminDashboardStatsDto(
             TotalUsers: totalUsers,
             TotalDocuments: totalDocs,
@@ -81,7 +85,8 @@ public class DashboardService : IDashboardService
             ProcessingCount: processingCount,
             PendingCount: pendingCount,
             DailyTokensUsed: dailyTokensUsed,
-            DailyTokenQuota: dailyTokenQuota
+            DailyTokenQuota: dailyTokenQuota,
+            PendingEscalationCount: pendingEscalationCount
         );
     }
 

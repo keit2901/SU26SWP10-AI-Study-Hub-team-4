@@ -1,0 +1,61 @@
+@namespace AI_Study_Hub_v2.Components.Pages
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
+@using AI_Study_Hub_v2.Dtos
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">Folder Rejected — What would you like to do?</MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudStack Spacing="3">
+            <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                Your folder "@FolderName" was rejected. Choose an action below.
+            </MudAlert>
+
+            <MudRadioGroup @bind-Value="_selectedAction" T="string">
+                <MudRadio Value="@("Resubmit")" Color="Color.Primary">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Resubmit</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Fix issues and submit for review again</MudText>
+                    </MudStack>
+                </MudRadio>
+                <MudRadio Value="@("Delete")" Color="Color.Error">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Delete Folder</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Remove permanently</MudText>
+                    </MudStack>
+                </MudRadio>
+                <MudRadio Value="@("Keep")" Color="Color.Primary">
+                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
+                        <MudIcon Icon="@Icons.Material.Filled.Archive" Size="Size.Small" />
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Keep Folder</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Keep as private, don't share</MudText>
+                    </MudStack>
+                </MudRadio>
+            </MudRadioGroup>
+
+            <MudTextField @bind-Value="_note" Label="Note (optional)" Variant="Variant.Outlined" Lines="2" />
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@string.IsNullOrWhiteSpace(_selectedAction)">Confirm</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public Guid FolderId { get; set; }
+    [Parameter] public string FolderName { get; set; } = string.Empty;
+
+    private string _selectedAction = "Resubmit";
+    private string _note = string.Empty;
+
+    private void Cancel() => MudDialog.Cancel();
+    private void Submit() => MudDialog.Close(DialogResult.Ok(new { Action = _selectedAction, Note = _note }));
+}

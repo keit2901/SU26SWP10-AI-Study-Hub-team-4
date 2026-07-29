@@ -81,7 +81,12 @@ public sealed class EscalationApiClient
                 throw new DocumentApiException((int)resp.StatusCode, err.Code ?? "error", err.Message ?? "Error");
         }
         catch (DocumentApiException) { throw; }
-        catch { }
+        catch (Exception)
+        {
+            var raw = await resp.Content.ReadAsStringAsync(ct);
+            throw new DocumentApiException((int)resp.StatusCode, "error",
+                $"Request failed ({resp.StatusCode}). Raw: {raw[..Math.Min(raw.Length, 200)]}");
+        }
         throw new DocumentApiException((int)resp.StatusCode, "error", $"Request failed ({resp.StatusCode})");
     }
 }

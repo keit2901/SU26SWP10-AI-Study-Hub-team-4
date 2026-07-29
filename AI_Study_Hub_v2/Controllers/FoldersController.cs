@@ -14,11 +14,13 @@ namespace AI_Study_Hub_v2.Controllers;
 public sealed class FoldersController : ControllerBase
 {
     private readonly IFolderService _service;
+    private readonly IShareReviewService _shareReview;
     private readonly ILogger<FoldersController> _logger;
 
-    public FoldersController(IFolderService service, ILogger<FoldersController> logger)
+    public FoldersController(IFolderService service, IShareReviewService shareReview, ILogger<FoldersController> logger)
     {
         _service = service;
+        _shareReview = shareReview;
         _logger = logger;
     }
 
@@ -260,5 +262,42 @@ public sealed class FoldersController : ControllerBase
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? User.FindFirstValue("sub");
         return Guid.TryParse(sub, out var id) ? id : null;
+    }
+
+    // ── Share Review Endpoints ──
+
+    [HttpGet("{folderId:guid}/share-review")]
+    [ProducesResponseType(typeof(ShareReviewSummaryDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ShareReviewSummaryDto>> GetShareReview(Guid folderId, CancellationToken ct)
+    {
+        var userId = GetSupabaseUserIdFromClaims();
+        var result = await _shareReview.GetReviewAsync(folderId, userId, ct);
+        return Ok(result);
+    }
+
+    [HttpPost("{folderId:guid}/share-review/apply")]
+    [ProducesResponseType(typeof(ApplyDecisionsResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApplyDecisionsResponse>> ApplyShareReview(Guid folderId, [FromBody] ApplyDecisionsRequest req, CancellationToken ct)
+    {
+        var userId = GetSupabaseUserIdFromClaims();
+        var result = await _shareReview.ApplyDecisionsAsync(folderId, userId, req, ct);
+        return Ok(result);
+    }
+
+    [HttpPost("{folderId:guid}/share-review/retry")]
+    public async Task<IActionResult> RetryShareReview(Guid folderId, CancellationToken ct)
+    {
+        var userId = GetSupabaseUserIdFromClaims();
+        await _shareReview.RetryShareAfterResolveAsync(folderId, userId, ct);
+        return Ok();
+    }
+
+    [HttpPost("{folderId:guid}/share-review/rollback")]
+    [ProducesResponseType(typeof(ShareRollbackResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ShareRollbackResponse>> RollbackShare(Guid folderId, CancellationToken ct)
+    {
+        var userId = GetSupabaseUserIdFromClaims();
+        var result = await _shareReview.TryRollbackShareAsync(folderId, userId, ct);
+        return Ok(result);
     }
 }
