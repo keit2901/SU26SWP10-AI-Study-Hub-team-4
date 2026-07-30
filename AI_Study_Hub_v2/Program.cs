@@ -1,6 +1,4 @@
 using System.Net.Http.Headers;
-using System.Security.Claims;
-using System.Text;
 using System.Threading.RateLimiting;
 using AI_Study_Hub_v2.Components;
 using AI_Study_Hub_v2.Data;
@@ -19,7 +17,6 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
-using Microsoft.IdentityModel.Tokens;
 using MudBlazor.Services;
 using Npgsql;
 using Pgvector.EntityFrameworkCore;
@@ -41,7 +38,8 @@ builder.Services
     .Validate(o => !string.IsNullOrWhiteSpace(o.Url), "Supabase:Url is required.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.JwtIssuer), "Supabase:JwtIssuer is required.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.JwtAudience), "Supabase:JwtAudience is required.")
-    .Validate(o => !string.IsNullOrWhiteSpace(o.JwtSecret) && o.JwtSecret.Length >= 32, "Supabase:JwtSecret is required and must be >= 32 characters. Set it via dotnet user-secrets.")
+    .Validate(o => Enum.IsDefined(o.JwtValidationMode), "Supabase:JwtValidationMode must be Jwks or LegacyHs256.")
+    .Validate(o => o.JwtValidationMode != SupabaseJwtValidationMode.LegacyHs256 || o.HasValidLegacyJwtSecret(), "Supabase:JwtSecret is required and must be >= 32 characters when Supabase:JwtValidationMode is LegacyHs256.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.AnonKey), "Supabase:AnonKey is required. Set it via dotnet user-secrets.")
     .Validate(o => !string.IsNullOrWhiteSpace(o.ServiceRoleKey), "Supabase:ServiceRoleKey is required. Set it via dotnet user-secrets.")
     .ValidateOnStart();
@@ -116,12 +114,6 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // Auth services ---------------------------------------------------------------
 var supabaseBootstrap = builder.Configuration.GetSection(SupabaseOptions.SectionName).Get<SupabaseOptions>()
     ?? throw new InvalidOperationException("Supabase section is missing from configuration.");
-
-if (string.IsNullOrWhiteSpace(supabaseBootstrap.JwtSecret) || supabaseBootstrap.JwtSecret.Length < 32)
-{
-    throw new InvalidOperationException(
-        "Supabase:JwtSecret must be configured (>= 32 characters). Set it via 'dotnet user-secrets set Supabase:JwtSecret <value>'.");
-}
 
 builder.Services.AddHttpClient<IGoTrueClient, GoTrueClient>((sp, http) =>
 {
@@ -403,55 +395,7 @@ builder.Services
     .AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     .AddJwtBearer(options =>
     {
-        options.RequireHttpsMetadata = false;
-        options.SaveToken = true;
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidateAudience = true,
-            ValidateLifetime = true,
-            ValidateIssuerSigningKey = true,
-            ValidIssuer = supabaseBootstrap.JwtIssuer,
-            ValidAudience = supabaseBootstrap.JwtAudience,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(supabaseBootstrap.JwtSecret)),
-            ClockSkew = TimeSpan.FromSeconds(30),
-            // GoTrue stores roles in app_metadata.role and emits a top-level "role"
-            // claim of "authenticated". Map ClaimTypes.Role from app_metadata so
-            // [Authorize(Roles = "...")] works against domain roles like Admin/Student.
-            RoleClaimType = ClaimTypes.Role,
-            NameClaimType = ClaimTypes.NameIdentifier,
-        };
-        options.Events = new JwtBearerEvents
-        {
-            OnTokenValidated = ctx =>
-            {
-                if (ctx.Principal?.Identity is ClaimsIdentity identity)
-                {
-                    // Promote app_metadata.role (set by the seed step + admin endpoints) to a real Role claim.
-                    var appMetaRole = identity.FindFirst("app_metadata")?.Value;
-                    if (!string.IsNullOrEmpty(appMetaRole))
-                    {
-                        try
-                        {
-                            using var doc = System.Text.Json.JsonDocument.Parse(appMetaRole);
-                            if (doc.RootElement.TryGetProperty("role", out var roleProp) && roleProp.ValueKind == System.Text.Json.JsonValueKind.String)
-                            {
-                                var role = roleProp.GetString();
-                                if (!string.IsNullOrEmpty(role) && !identity.HasClaim(ClaimTypes.Role, role))
-                                {
-                                    identity.AddClaim(new Claim(ClaimTypes.Role, role));
-                                }
-                            }
-                        }
-                        catch
-                        {
-                            // ignore parse errors
-                        }
-                    }
-                }
-                return Task.CompletedTask;
-            }
-        };
+        SupabaseJwtConfigurator.Configure(options, supabaseBootstrap, builder.Environment.IsDevelopment());
     });
 
 builder.Services.AddAuthorization();

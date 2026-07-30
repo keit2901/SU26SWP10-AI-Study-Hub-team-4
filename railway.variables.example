@@ -4,9 +4,9 @@ ConnectionStrings__Postgres=Host=YOUR_SUPABASE_SESSION_POOLER;Port=5432;Database
 
 # Supabase Auth and Storage
 Supabase__Url=https://YOUR_PROJECT.supabase.co
+Supabase__JwtValidationMode=Jwks
 Supabase__JwtIssuer=https://YOUR_PROJECT.supabase.co/auth/v1
 Supabase__JwtAudience=authenticated
-Supabase__JwtSecret=YOUR_SUPABASE_JWT_SECRET
 Supabase__AnonKey=YOUR_SUPABASE_ANON_KEY
 Supabase__ServiceRoleKey=YOUR_SUPABASE_SERVICE_ROLE_KEY
 
