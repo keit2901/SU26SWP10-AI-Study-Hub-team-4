@@ -622,6 +622,42 @@
     font-size: 1rem;
 }
 
+.quota-summary {
+    border: 1px solid rgba(67, 56, 202, 0.1);
+    border-radius: 0.85rem;
+    background: linear-gradient(180deg, rgba(79, 70, 229, 0.06), rgba(255, 255, 255, 0.95));
+    padding: 0.9rem;
+}
+
+.quota-summary-plan {
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: #4338ca;
+    margin-bottom: 0.7rem;
+}
+
+.quota-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.55rem;
+}
+
+.quota-summary-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    font-size: 0.75rem;
+    color: #5b6475;
+}
+
+.quota-summary-item strong {
+    color: #111827;
+    font-size: 0.8rem;
+}
+
 .checklist-items {
     display: flex;
     flex-direction: column;

@@ -17,8 +17,10 @@ namespace AI_Study_Hub_v2.Services;
 /// </summary>
 public sealed class DocumentService : IDocumentService
 {
-    /// <summary>50 MB cap (plan L5 + bucket config).</summary>
-    public const long MaxFileSizeBytes = 50L * 1024 * 1024;
+    /// <summary>
+    /// Absolute server cap for a single multipart upload. Effective per-plan limits can be lower.
+    /// </summary>
+    public const long MaxFileSizeBytes = 250L * 1024 * 1024;
 
     /// <summary>Maximum documents allowed in a single folder.</summary>
     public const int MaxDocumentsPerFolder = 30;
@@ -87,6 +89,9 @@ public sealed class DocumentService : IDocumentService
         ArgumentNullException.ThrowIfNull(content);
         ArgumentException.ThrowIfNullOrWhiteSpace(fileName);
 
+        var folderSchema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        var documentSchema = await GetDocumentSchemaCapabilitiesAsync(cancellationToken);
+
         // 1. Resolve the caller's domain user (public.users) from the GoTrue id.
         var profile = await _db.Users
             .AsNoTracking()
@@ -100,16 +105,19 @@ public sealed class DocumentService : IDocumentService
                 "User account is inactive and cannot upload documents.");
         }
 
+        var planSnapshot = await _quota.GetSnapshotAsync(supabaseUserId, cancellationToken);
+        var effectiveMaxFileSizeBytes = planSnapshot.MaxFileSizeBytes ?? MaxFileSizeBytes;
+
         // 2. Validate file size + MIME against the bucket policy.
         if (fileSizeBytes <= 0)
         {
             throw new DocumentException(400, "empty_file",
                 "Uploaded file is empty.");
         }
-        if (fileSizeBytes > MaxFileSizeBytes)
+        if (fileSizeBytes > effectiveMaxFileSizeBytes)
         {
             throw new DocumentException(413, "file_too_large",
-                $"File exceeds the {MaxFileSizeBytes / (1024 * 1024)} MB upload limit.");
+                $"File exceeds the {effectiveMaxFileSizeBytes / (1024 * 1024)} MB upload limit for your current plan.");
         }
 
         var canonicalContentType = ResolveCanonicalContentType(fileName, contentType);
@@ -205,7 +213,7 @@ public sealed class DocumentService : IDocumentService
                 SubjectCode = request.SubjectCode.Trim().ToUpperInvariant(),
                 Semester = request.Semester.Trim().ToUpperInvariant(),
                 PageCount = null,
-                Status = DocumentStatus.Ready,
+                Status = IsIngestionCandidate(canonicalContentType) ? DocumentStatus.Processing : DocumentStatus.Ready,
                 ErrorMessage = null,
                 CreatedAt = now,
                 UpdatedAt = now,
@@ -217,24 +225,61 @@ public sealed class DocumentService : IDocumentService
                 try
                 {
                     await _capacityGuard.LockAndValidateAsync(_db, profile.Id,
-                        new PlanCapacityRequest(1, 0, request.FolderId, request.FolderId.HasValue ? 1 : 0), cancellationToken);
+                        new PlanCapacityRequest(1, 0, request.FolderId, request.FolderId.HasValue ? 1 : 0, 0), cancellationToken);
                     if (request.FolderId.HasValue)
                     {
-                        var folder = await _db.Folders.SingleOrDefaultAsync(f => f.Id == request.FolderId.Value && f.UserId == profile.Id, cancellationToken)
-                            ?? throw new DocumentException(404, "folder_not_found", "Folder does not exist or does not belong to the caller.");
+                        var targetFolderId = request.FolderId.Value;
+                        var folderExists = await _db.Folders
+                            .AnyAsync(f => f.Id == targetFolderId && f.UserId == profile.Id, cancellationToken);
+                        if (!folderExists)
+                        {
+                            throw new DocumentException(404, "folder_not_found", "Folder does not exist or does not belong to the caller.");
+                        }
+
                         var folderDocumentCount = await _db.Documents
-                            .CountAsync(document => document.FolderId == folder.Id, cancellationToken);
+                            .CountAsync(document => document.FolderId == targetFolderId, cancellationToken);
                         if (folderDocumentCount >= MaxDocumentsPerFolder)
                         {
                             throw new DocumentException(409, "folder_full",
                                 $"This folder already has {folderDocumentCount} document(s), which is the maximum ({MaxDocumentsPerFolder}).");
                         }
-                        if (await _db.Documents.AnyAsync(d => d.FolderId == folder.Id && d.FileName.ToLower() == doc.FileName.ToLower(), cancellationToken))
+                        if (await _db.Documents.AnyAsync(d => d.FolderId == targetFolderId && d.FileName.ToLower() == doc.FileName.ToLower(), cancellationToken))
                             throw new DocumentException(409, "duplicate_file", $"A file named \"{doc.FileName}\" already exists in this folder.");
-                        folder.UpdatedAt = now;
+
+                        if (folderSchema.HasFullModernShareFlowColumns)
+                        {
+                            var folder = await _db.Folders.SingleAsync(
+                                f => f.Id == targetFolderId && f.UserId == profile.Id,
+                                cancellationToken);
+                            folder.UpdatedAt = now;
+                        }
+                        else
+                        {
+                            await _db.Database.ExecuteSqlInterpolatedAsync($"""
+                                UPDATE folders
+                                SET updated_at = {now}
+                                WHERE id = {targetFolderId} AND user_id = {profile.Id}
+                                """, cancellationToken);
+                        }
                     }
-                    _db.Documents.Add(doc);
-                    await _db.SaveChangesAsync(cancellationToken);
+
+                    if (documentSchema.HasReviewStatusColumn)
+                    {
+                        _db.Documents.Add(doc);
+                        await _db.SaveChangesAsync(cancellationToken);
+                    }
+                    else
+                    {
+                        await _db.Database.ExecuteSqlInterpolatedAsync($"""
+                            INSERT INTO documents
+                            (id, user_id, folder_id, file_name, storage_path, file_size_bytes, mime_type, subject_code, semester, page_count, status, error_message, created_at, updated_at)
+                            VALUES
+                            ({doc.Id}, {doc.UserId}, {doc.FolderId}, {doc.FileName}, {doc.StoragePath}, {doc.FileSizeBytes}, {doc.MimeType}, {doc.SubjectCode}, {doc.Semester}, {doc.PageCount}, {doc.Status}, {doc.ErrorMessage}, {doc.CreatedAt}, {doc.UpdatedAt})
+                            """, cancellationToken);
+
+                        _logger.LogWarning("Document review_status column is not available in the current database schema. Using compatibility insert mode for document upload.");
+                    }
+
                     await tx.CommitAsync(cancellationToken);
                     metadataCommitted = true;
                 }
@@ -589,6 +634,111 @@ public sealed class DocumentService : IDocumentService
         _ => false,
     };
 
+    private async Task<DocumentSchemaCapabilities> GetDocumentSchemaCapabilitiesAsync(CancellationToken cancellationToken)
+    {
+        if (!_db.Database.IsRelational())
+        {
+            return new DocumentSchemaCapabilities(HasReviewStatusColumn: true);
+        }
+
+        var connection = _db.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'documents';
+                """;
+
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    columns.Add(reader.GetString(0));
+                }
+            }
+
+            return new DocumentSchemaCapabilities(
+                columns.Contains("review_status"));
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
+    private async Task<FolderSchemaCapabilities> GetFolderSchemaCapabilitiesAsync(CancellationToken cancellationToken)
+    {
+        if (!_db.Database.IsRelational())
+        {
+            return new FolderSchemaCapabilities(HasFullModernShareFlowColumns: true);
+        }
+
+        var connection = _db.Database.GetDbConnection();
+        var shouldClose = connection.State != ConnectionState.Open;
+        if (shouldClose)
+        {
+            await connection.OpenAsync(cancellationToken);
+        }
+
+        try
+        {
+            await using var command = connection.CreateCommand();
+            command.CommandText = """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public' AND table_name = 'folders';
+                """;
+
+            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            await using var reader = await command.ExecuteReaderAsync(cancellationToken);
+            while (await reader.ReadAsync(cancellationToken))
+            {
+                if (!reader.IsDBNull(0))
+                {
+                    columns.Add(reader.GetString(0));
+                }
+            }
+
+            var hasExtendedShareReviewColumns =
+                columns.Contains("share_review_source") &&
+                columns.Contains("ai_review_reason") &&
+                columns.Contains("ai_review_confidence") &&
+                columns.Contains("ai_review_failure_count") &&
+                columns.Contains("human_review_reason") &&
+                columns.Contains("requires_human_review") &&
+                columns.Contains("appeal_requested_at") &&
+                columns.Contains("appeal_message");
+
+            var hasShareFeedbackColumns =
+                columns.Contains("share_submission_count") &&
+                columns.Contains("share_failure_count") &&
+                columns.Contains("student_feedback_reason");
+
+            return new FolderSchemaCapabilities(
+                hasExtendedShareReviewColumns && hasShareFeedbackColumns);
+        }
+        finally
+        {
+            if (shouldClose)
+            {
+                await connection.CloseAsync();
+            }
+        }
+    }
+
     private static DocumentDto ToDto(Document doc, string? signedUrl) => new()
     {
         Id = doc.Id,
@@ -604,7 +754,12 @@ public sealed class DocumentService : IDocumentService
         CreatedAt = doc.CreatedAt,
         UpdatedAt = doc.UpdatedAt,
         DownloadUrl = signedUrl,
+        ReviewStatus = doc.ReviewStatus,
     };
+
+    private sealed record DocumentSchemaCapabilities(bool HasReviewStatusColumn);
+
+    private sealed record FolderSchemaCapabilities(bool HasFullModernShareFlowColumns);
 
     /// <summary>
     /// Strip path separators / dangerous chars from an upload filename so it's safe

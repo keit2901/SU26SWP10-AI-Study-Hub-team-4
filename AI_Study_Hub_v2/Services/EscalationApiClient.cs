@@ -20,9 +20,9 @@ public sealed class EscalationApiClient
         throw new InvalidOperationException();
     }
 
-    public async Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(string accessToken, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(string accessToken, CancellationToken ct = default)
     {
-        using var req = CreateAuth(HttpMethod.Get, "api/admin/escalations/my", accessToken);
+        using var req = CreateAuth(HttpMethod.Get, "api/admin/escalations/all", accessToken);
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)
             return await resp.Content.ReadFromJsonAsync<List<DocumentEscalationDto>>(cancellationToken: ct) ?? new();
@@ -30,9 +30,9 @@ public sealed class EscalationApiClient
         throw new InvalidOperationException();
     }
 
-    public async Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(string accessToken, CancellationToken ct = default)
+    public async Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(string accessToken, CancellationToken ct = default)
     {
-        using var req = CreateAuth(HttpMethod.Get, "api/admin/escalations/all", accessToken);
+        using var req = CreateAuth(HttpMethod.Get, "api/admin/escalations/my", accessToken);
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)
             return await resp.Content.ReadFromJsonAsync<List<DocumentEscalationDto>>(cancellationToken: ct) ?? new();
@@ -81,7 +81,12 @@ public sealed class EscalationApiClient
                 throw new DocumentApiException((int)resp.StatusCode, err.Code ?? "error", err.Message ?? "Error");
         }
         catch (DocumentApiException) { throw; }
-        catch { }
+        catch (Exception)
+        {
+            var raw = await resp.Content.ReadAsStringAsync(ct);
+            throw new DocumentApiException((int)resp.StatusCode, "error",
+                $"Request failed ({resp.StatusCode}). Raw: {raw[..Math.Min(raw.Length, 200)]}");
+        }
         throw new DocumentApiException((int)resp.StatusCode, "error", $"Request failed ({resp.StatusCode})");
     }
 }

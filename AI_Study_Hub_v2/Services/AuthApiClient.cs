@@ -25,6 +25,9 @@ public sealed class AuthApiClient
     public Task<AuthResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
         => PostAsync<LoginRequest, AuthResponse>("api/auth/login", request, accessToken: null, ct);
 
+    public Task<AuthResponse> RefreshAsync(RefreshTokenRequest request, CancellationToken ct = default)
+        => PostAsync<RefreshTokenRequest, AuthResponse>("api/auth/refresh", request, accessToken: null, ct);
+
     public async Task LogoutAsync(string accessToken, CancellationToken ct = default)
     {
         using var req = new HttpRequestMessage(HttpMethod.Post, "api/auth/logout");

@@ -18,8 +18,8 @@ namespace AI_Study_Hub_v2.Controllers;
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public sealed class DocumentsController : ControllerBase
 {
-    /// <summary>50 MB cap mirrors <see cref="DocumentService.MaxFileSizeBytes"/>.</summary>
-    public const long MaxRequestBodyBytes = 50L * 1024 * 1024;
+    /// <summary>Absolute multipart cap mirrors <see cref="DocumentService.MaxFileSizeBytes"/>.</summary>
+    public const long MaxRequestBodyBytes = DocumentService.MaxFileSizeBytes;
 
     private readonly IDocumentService _service;
     private readonly IDocumentIngestionService? _ingestionService;
@@ -76,6 +76,10 @@ public sealed class DocumentsController : ControllerBase
             return CreatedAtAction(nameof(GetById), new { id = dto.Id }, dto);
         }
         catch (DocumentException ex)
+        {
+            return ToErrorResult(ex);
+        }
+        catch (PlanException ex)
         {
             return ToErrorResult(ex);
         }
@@ -347,6 +351,13 @@ public sealed class DocumentsController : ControllerBase
     }
 
     private ObjectResult ToErrorResult(DocumentException exception) =>
+        StatusCode(exception.StatusCode, new ApiErrorResponse
+        {
+            Code = exception.Code,
+            Message = exception.Message,
+        });
+
+    private ObjectResult ToErrorResult(PlanException exception) =>
         StatusCode(exception.StatusCode, new ApiErrorResponse
         {
             Code = exception.Code,

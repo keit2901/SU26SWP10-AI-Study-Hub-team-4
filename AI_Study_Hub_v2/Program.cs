@@ -9,6 +9,7 @@ using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Payment;
+using AI_Study_Hub_v2.Services.Payment.Abstractions;
 using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
@@ -49,8 +50,8 @@ builder.Services.Configure<SeedOptions>(builder.Configuration.GetSection(SeedOpt
 builder.Services
     .AddOptions<RagOptions>()
     .Bind(builder.Configuration.GetSection(RagOptions.SectionName))
-    .Validate(RagOptions.HasValidChatBounds,
-        "Rag chat limits must use exchanges 0-10, history chars 0 or 500-10000, assistant chars 100-2000, and context chars 1000-20000.")
+    .Validate(options => RagOptions.HasValidChatBounds(options) && RagOptions.HasValidSemanticV2Bounds(options),
+        "Rag limits must use valid chat bounds and semantic-v2 bounds: 0 <= overlap < min <= target <= max <= 192.")
     .ValidateOnStart();
 builder.Services.ConfigureOptions<ConfigureRagOptions>();
 builder.Services
@@ -62,7 +63,9 @@ builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Olla
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
-builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
+builder.Services.Configure<PayOsSettings>(builder.Configuration.GetSection(PayOsSettings.SectionName));
+// Archived: VNPay settings kept for reference
+// builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
 builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -125,12 +128,14 @@ builder.Services.AddHttpClient<IGoTrueClient, GoTrueClient>((sp, http) =>
     var opts = sp.GetRequiredService<IOptions<SupabaseOptions>>().Value;
     var baseUrl = opts.Url.TrimEnd('/') + "/auth/v1/";
     http.BaseAddress = new Uri(baseUrl);
-    // Default apikey for non-admin endpoints. Admin requests override Authorization but keep apikey.
+    // GoTrueClient replaces the default anon apikey with the service-role key on every admin request.
     http.DefaultRequestHeaders.TryAddWithoutValidation("apikey", opts.AnonKey);
     http.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 });
 
 builder.Services.AddScoped<IAuthService, SupabaseAuthService>();
+builder.Services.AddScoped<IRegistrationCoordinator, RegistrationCoordinator>();
+builder.Services.AddScoped<IRegistrationReconciliationService, RegistrationReconciliationService>();
 
 // Storage services -----------------------------------------------------------
 // Phase 2 (SCRUM-13): Supabase Storage HTTP wrapper + document service.
@@ -147,22 +152,27 @@ builder.Services.AddHttpClient<ISupabaseStorageClient, SupabaseStorageClient>((s
 });
 
 builder.Services.AddScoped<IDocumentService, DocumentService>();
-builder.Services.AddScoped<IDocumentModerationService, DocumentModerationService>();
 builder.Services.AddScoped<IEscalationService, EscalationService>();
 builder.Services.AddScoped<IFolderService, FolderService>();
 builder.Services.AddScoped<ISharedFolderCopyCoordinator, SharedFolderCopyCoordinator>();
 builder.Services.AddScoped<IFolderShareAiModerator, FolderShareAiModerator>();
+builder.Services.AddScoped<IShareReviewService, ShareReviewService>();
 builder.Services.AddScoped<ICommunityService, CommunityService>();
 builder.Services.AddScoped<IAuditLogService, AuditLogService>();
 builder.Services.AddScoped<IAdminUserService, AdminUserService>();
 builder.Services.AddScoped<ISystemConfigService, SystemConfigService>();
+builder.Services.AddScoped<ISelfRegistrationPolicy, SelfRegistrationPolicy>();
 builder.Services.AddScoped<IAiQuotaService, AiQuotaService>();
 builder.Services.AddScoped<IPlanService, PlanService>();
 builder.Services.AddScoped<IStorageQuotaService, StorageQuotaService>();
 builder.Services.AddScoped<IPlanCapacityGuard, PlanCapacityGuard>();
 builder.Services.AddScoped<IStorageDeletionCoordinator, StorageDeletionCoordinator>();
 builder.Services.AddScoped<IStorageReconciliationService, StorageReconciliationService>();
-builder.Services.AddScoped<IVnPayService, VnPayService>();
+// PayOS provider + Payment service
+builder.Services.AddScoped<IPaymentProvider, PayOsProvider>();
+builder.Services.AddScoped<IPaymentService, PaymentService>();
+// Archived: VNPay service kept for reference
+// builder.Services.AddScoped<IVnPayService, VnPayService>();
 
 // Sprint 2 RAG services -------------------------------------------------------
 builder.Services.AddScoped<ITextExtractionService, PdfTextExtractionService>();
@@ -171,11 +181,18 @@ builder.Services.AddScoped<SentenceSplitter>();
 builder.Services.AddScoped<ChunkMerger>();
 builder.Services.AddScoped<ChunkingService>();
 builder.Services.AddScoped<FixedSizeChunkingService>();
+builder.Services.AddSingleton<ITokenEstimator, ConservativeTokenEstimator>();
+builder.Services.AddScoped<SemanticV2ChunkingService>();
 builder.Services.AddScoped<IChunkingService>(sp =>
 {
     var ragOptions = sp.GetRequiredService<IOptions<RagOptions>>().Value;
-    return string.Equals(ragOptions.ChunkingStrategy, "fixed", StringComparison.OrdinalIgnoreCase)
-        ? sp.GetRequiredService<FixedSizeChunkingService>()
+    if (string.Equals(ragOptions.ChunkingStrategy, "fixed", StringComparison.OrdinalIgnoreCase))
+    {
+        return sp.GetRequiredService<FixedSizeChunkingService>();
+    }
+
+    return string.Equals(ragOptions.ChunkingStrategy, "semantic-v2", StringComparison.OrdinalIgnoreCase)
+        ? sp.GetRequiredService<SemanticV2ChunkingService>()
         : sp.GetRequiredService<ChunkingService>();
 });
 builder.Services.AddHttpClient(nameof(SupabaseDocumentStorageReadService));
@@ -223,6 +240,7 @@ builder.Services.AddScoped<BenchmarkRunner>();
 builder.Services.AddScoped<ChunkingBenchmarkService>();
 builder.Services.AddHostedService<BenchmarkAutomationHostedService>();
 builder.Services.AddHostedService<StorageReconciliationHostedService>();
+builder.Services.AddHostedService<RegistrationReconciliationHostedService>();
 
 // Demo UI: typed HttpClient targeting our own backend + per-circuit session state
 static Uri ResolveDemoUiBackendBaseUrl(IServiceProvider sp)
@@ -467,11 +485,13 @@ using (var scope = app.Services.CreateScope())
         await db.Database.MigrateAsync();
         startupLogger.LogInformation("Database migrations applied.");
         await EnsurePhase3SchemaAsync(db, startupLogger);
+        await CleanupDeprecatedSeedAccountsAsync(db, goTrue, startupLogger);
 
         await SeedDefaultAdminAsync(db, goTrue, seedOptions, startupLogger);
         await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
-        await SeedSystemConfigsAsync(db, startupLogger);
+        await SystemConfigSeeder.SeedAsync(db, startupLogger);
         await SeedDefaultPlansAsync(db, startupLogger);
+        await SeedDefaultProStudentAsync(db, goTrue, seedOptions, startupLogger);
     }
     catch (Exception ex)
     {
@@ -499,19 +519,6 @@ if (!app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 app.UseStaticFiles();
-
-if (app.Environment.IsDevelopment())
-{
-    var agentationPath = Path.GetFullPath(Path.Combine(app.Environment.ContentRootPath, "../../agentation/node_modules"));
-    if (Directory.Exists(agentationPath))
-    {
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            FileProvider = new Microsoft.Extensions.FileProviders.PhysicalFileProvider(agentationPath),
-            RequestPath = "/agentation-static"
-        });
-    }
-}
 
 app.UseRouting();
 app.UseAuthentication();
@@ -672,6 +679,21 @@ static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)
 
     await db.Database.ExecuteSqlRawAsync("""
         ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_submission_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS share_failure_count integer NOT NULL DEFAULT 0;
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
+        ADD COLUMN IF NOT EXISTS student_feedback_reason character varying(200);
+        """);
+
+    await db.Database.ExecuteSqlRawAsync("""
+        ALTER TABLE folders
         ADD COLUMN IF NOT EXISTS share_review_source character varying(32);
         """);
 
@@ -805,37 +827,6 @@ static async Task SeedDefaultModeratorAsync(AppDbContext db, IGoTrueClient gotru
     logger.LogInformation("Default moderator profile inserted for identity {SupabaseUserId}", supabaseUserId);
 }
 
-static async Task SeedSystemConfigsAsync(AppDbContext db, ILogger logger)
-{
-    if (await db.SystemConfigs.AnyAsync())
-    {
-        logger.LogInformation("System configs already seeded — skipping.");
-        return;
-    }
-
-    var configs = new[]
-    {
-        new SystemConfig { Key = "ai.chat_model", Value = "gpt-4o-mini", DefaultValue = "gpt-4o-mini", Category = "Model", DisplayName = "Chat model", Description = "Model identifier used by the RAG answer generation pipeline.", ConfigType = "Text", IsCritical = true },
-        new SystemConfig { Key = "ai.embedding_model", Value = "text-embedding-3-small", DefaultValue = "text-embedding-3-small", Category = "Model", DisplayName = "Embedding model", Description = "Provider model identifier used to embed document_chunks.", ConfigType = "Text", IsCritical = true },
-        new SystemConfig { Key = "rag.chunk_size", Value = "700", DefaultValue = "700", Category = "Retrieval", DisplayName = "Chunk size", Description = "Maximum characters or tokens per source chunk before embedding.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "rag.chunk_overlap", Value = "70", DefaultValue = "70", Category = "Retrieval", DisplayName = "Chunk overlap", Description = "Overlap between consecutive chunks to preserve context.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "rag.max_chunks", Value = "8", DefaultValue = "8", Category = "Retrieval", DisplayName = "Max retrieval chunks", Description = "Maximum document chunks sent to the answer generation pipeline.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "generation.temperature", Value = "0.2", DefaultValue = "0.2", Category = "Generation", DisplayName = "Temperature", Description = "Controls answer randomness for study assistant responses.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "generation.top_p", Value = "0.9", DefaultValue = "0.9", Category = "Generation", DisplayName = "Top-p", Description = "Nucleus sampling parameter for answer generation.", ConfigType = "Number", IsCritical = true },
-        new SystemConfig { Key = "generation.system_prompt", Value = "You are AI Study Hub.", DefaultValue = "You are AI Study Hub.", Category = "Generation", DisplayName = "System prompt", Description = "Instruction block applied to every RAG chat response.", ConfigType = "Text", IsCritical = true },
-        new SystemConfig { Key = "quota.default_student_daily_tokens", Value = "25000", DefaultValue = "25000", Category = "Quota", DisplayName = "Student daily quota", Description = "Default daily token quota assigned to new student profiles.", ConfigType = "Number", IsCritical = false },
-        new SystemConfig { Key = "quota.default_admin_daily_tokens", Value = "75000", DefaultValue = "75000", Category = "Quota", DisplayName = "Admin daily quota", Description = "Default daily token quota assigned to administrator profiles.", ConfigType = "Number", IsCritical = false },
-        new SystemConfig { Key = "auth.allow_self_registration", Value = "false", DefaultValue = "false", Category = "Security", DisplayName = "Allow self registration", Description = "Controls whether new users can create accounts without an invitation.", ConfigType = "Boolean", IsCritical = true },
-        new SystemConfig { Key = "documents.allowed_extensions", Value = "[\".pdf\", \".docx\"]", DefaultValue = "[\".pdf\", \".docx\"]", Category = "Documents", DisplayName = "Allowed document extensions", Description = "JSON array of file extensions accepted by upload validation.", ConfigType = "Json", IsCritical = false },
-        new SystemConfig { Key = "moderation.report_reasons", Value = "[\"Wrong subject\"]", DefaultValue = "[\"Wrong subject\"]", Category = "Moderation", DisplayName = "Report reasons", Description = "JSON options shown when a user reports a document.", ConfigType = "Json", IsCritical = false },
-        new SystemConfig { Key = "audit.retention_days", Value = "365", DefaultValue = "365", Category = "Governance", DisplayName = "Audit retention days", Description = "Number of days audit_logs remain visible before archival.", ConfigType = "Number", IsCritical = false },
-    };
-
-    db.SystemConfigs.AddRange(configs);
-    await db.SaveChangesAsync();
-    logger.LogInformation("Seeded {Count} system configs.", configs.Length);
-}
-
 static async Task SeedDefaultPlansAsync(AppDbContext db, ILogger logger)
 {
     var now = DateTimeOffset.UtcNow;
@@ -928,5 +919,151 @@ static async Task SeedDefaultPlansAsync(AppDbContext db, ILogger logger)
 
         await db.SaveChangesAsync();
         logger.LogInformation("Backfill: assigned Free plan to {Count} users without a plan.", usersWithoutPlan.Count);
+    }
+}
+
+static async Task SeedDefaultProStudentAsync(AppDbContext db, IGoTrueClient gotrue, SeedOptions seedOptions, ILogger logger)
+{
+    var cfg = seedOptions.DefaultProStudent;
+    if (cfg is null
+        || string.IsNullOrWhiteSpace(cfg.Email)
+        || string.IsNullOrWhiteSpace(cfg.Username)
+        || string.IsNullOrWhiteSpace(cfg.FullName)
+        || string.IsNullOrWhiteSpace(cfg.Password))
+    {
+        logger.LogWarning("Default Pro student seed skipped: Seed:DefaultProStudent is not fully configured (Email/Username/FullName/Password). Set Seed:DefaultProStudent:Password via dotnet user-secrets.");
+        return;
+    }
+
+    var studentRole = await db.Roles.FirstOrDefaultAsync(r => r.RoleName == Role.StudentRoleName);
+    var proPlan = await db.Plans.FirstOrDefaultAsync(p => p.PlanKey == "pro");
+    if (studentRole is null || proPlan is null)
+    {
+        logger.LogError("Default Pro student seed failed: Student role or Pro plan is missing.");
+        return;
+    }
+
+    var emailLower = cfg.Email.Trim().ToLowerInvariant();
+    var usernameTrim = cfg.Username.Trim();
+    var fullNameTrim = cfg.FullName.Trim();
+
+    var existingIdentity = await gotrue.AdminGetUserByEmailAsync(emailLower);
+    Guid supabaseUserId;
+    if (existingIdentity is not null && existingIdentity.Id != Guid.Empty)
+    {
+        supabaseUserId = existingIdentity.Id;
+        logger.LogInformation("Default Pro student already exists in GoTrue. Reusing identity {SupabaseUserId}.", supabaseUserId);
+    }
+    else
+    {
+        var created = await gotrue.AdminCreateUserAsync(
+            emailLower,
+            cfg.Password,
+            userMetadata: new Dictionary<string, object?>
+            {
+                ["username"] = usernameTrim,
+                ["full_name"] = fullNameTrim,
+            },
+            appMetadata: new Dictionary<string, object?>
+            {
+                ["role"] = Role.StudentRoleName,
+            });
+        supabaseUserId = created.Id;
+        logger.LogInformation("Default Pro student created in GoTrue with identity {SupabaseUserId}", supabaseUserId);
+    }
+
+    var student = await db.Users
+        .Include(u => u.Role)
+        .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId);
+
+    if (student is null)
+    {
+        var usernameClash = await db.Users.AnyAsync(u => u.Username == usernameTrim);
+        if (usernameClash)
+        {
+            logger.LogWarning("Default Pro student seed skipped: a user already exists with the same username.");
+            return;
+        }
+
+        var now = DateTimeOffset.UtcNow;
+        student = new User
+        {
+            Id = Guid.NewGuid(),
+            RoleId = studentRole.Id,
+            SupabaseUserId = supabaseUserId,
+            Username = usernameTrim,
+            FullName = fullNameTrim,
+            TotalTokensUsed = 0,
+            IsActive = true,
+            CreatedAt = now,
+            UpdatedAt = now,
+        };
+
+        db.Users.Add(student);
+        await db.SaveChangesAsync();
+        logger.LogInformation("Default Pro student profile inserted for identity {SupabaseUserId}", supabaseUserId);
+    }
+
+    var activePlans = await db.UserPlans
+        .Where(up => up.UserId == student.Id && up.Status == "active")
+        .ToListAsync();
+
+    var alreadyOnPro = await db.UserPlans
+        .Include(up => up.Plan)
+        .AnyAsync(up => up.UserId == student.Id
+            && up.Status == "active"
+            && up.Plan.PlanKey == "pro"
+            && (up.ExpiresAt == null || up.ExpiresAt > DateTimeOffset.UtcNow));
+    if (alreadyOnPro)
+    {
+        logger.LogInformation("Default Pro student already has an active Pro plan.");
+        return;
+    }
+
+    foreach (var activePlan in activePlans)
+    {
+        activePlan.Status = "deactivated";
+    }
+
+    db.UserPlans.Add(new UserPlan
+    {
+        Id = Guid.NewGuid(),
+        UserId = student.Id,
+        PlanId = proPlan.Id,
+        Status = "active",
+        AssignedAt = DateTimeOffset.UtcNow,
+        PaidAt = DateTimeOffset.UtcNow,
+        ExpiresAt = DateTimeOffset.UtcNow.AddYears(1),
+    });
+
+    await db.SaveChangesAsync();
+    logger.LogInformation("Default Pro student plan assigned to {SupabaseUserId}.", supabaseUserId);
+}
+
+static async Task CleanupDeprecatedSeedAccountsAsync(AppDbContext db, IGoTrueClient gotrue, ILogger logger)
+{
+    const string deprecatedEmail = "student.expiredpro@aistudyhub.local";
+    const string deprecatedUsername = "studentexpired";
+
+    try
+    {
+        var deprecatedIdentity = await gotrue.AdminGetUserByEmailAsync(deprecatedEmail);
+        if (deprecatedIdentity is not null)
+        {
+            await gotrue.AdminDeleteUserAsync(deprecatedIdentity.Id);
+            logger.LogInformation("Removed deprecated demo auth account {Email}.", deprecatedEmail);
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogWarning(ex, "Failed to remove deprecated demo auth account {Email}.", deprecatedEmail);
+    }
+
+    var deprecatedProfile = await db.Users.FirstOrDefaultAsync(user => user.Username == deprecatedUsername);
+    if (deprecatedProfile is not null)
+    {
+        db.Users.Remove(deprecatedProfile);
+        await db.SaveChangesAsync();
+        logger.LogInformation("Removed deprecated demo profile {Username}.", deprecatedUsername);
     }
 }

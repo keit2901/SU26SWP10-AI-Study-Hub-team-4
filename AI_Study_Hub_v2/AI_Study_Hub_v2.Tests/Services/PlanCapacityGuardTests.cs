@@ -141,6 +141,24 @@ public sealed class PlanCapacityGuardTests
         exception.Which.Code.Should().Be("folder_full");
     }
 
+    [Test]
+    public async Task LockAndValidateAsync_ExistingFolderUpload_DoesNotApplyFolderCountLimit()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db);
+        SeedActivePlan(db, user, maxFolders: 1);
+        var folder = SeedFolder(db, user.Id);
+        var sut = new PlanCapacityGuard(Mock.Of<IPlanService>());
+
+        var act = () => sut.LockAndValidateAsync(
+            db,
+            user.Id,
+            new PlanCapacityRequest(1, 0, folder.Id, 1, 0),
+            CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
+    }
+
     [TestCase(true)]
     [TestCase(false)]
     public async Task LockAndValidateAsync_MissingOrInactiveUser_ThrowsUserNotFound(bool inactiveUser)

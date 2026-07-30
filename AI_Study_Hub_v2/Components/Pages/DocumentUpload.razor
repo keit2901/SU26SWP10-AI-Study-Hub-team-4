@@ -5,6 +5,7 @@
 @using AI_Study_Hub_v2.Services
 @inject DocumentApiClient DocumentsApi
 @inject FolderApiClient FoldersApi
+@inject PlanApiClient PlanApi
 @inject AuthSessionState Session
 @inject AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
@@ -37,7 +38,7 @@
             </p>
             <div class="upload-tags">
                 <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" /> PDF / DOCX / PPTX</span>
-                <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" /> 5 files / 50 MB max</span>
+                <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Small" /> @MaxUploadFiles files / @FormatBytes(EffectivePerFileLimitBytes) per file</span>
                 <span class="upload-tag"><MudIcon Icon="@Icons.Material.Filled.FolderOpen" Size="Size.Small" /> Private library</span>
             </div>
         </section>
@@ -101,7 +102,7 @@
                     <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Size="Size.Small" />
                 </div>
                 <span class="stat-value">@FormatBytes(_files.Sum(f => f.Size))</span>
-                <span class="stat-label">of @FormatBytes(MaxTotalUploadBytes) session total</span>
+                <span class="stat-label">of @FormatBytes(EffectiveBatchUploadBytes) current batch limit</span>
             </div>
         </MudPaper>
     </div>
@@ -162,7 +163,9 @@
             </MudButton>
 
             <p class="source-footnote">
-                Choose up to <strong>5 files</strong> (max <strong>50 MB</strong> total per session) in PDF, Word, or PowerPoint format. Your files stay in the private cabinet.
+                Choose up to <strong>@MaxUploadFiles files</strong>, with a <strong>@FormatBytes(EffectivePerFileLimitBytes)</strong> per-file limit and
+                <strong>@(RemainingStorageBytes.HasValue ? FormatBytes(RemainingStorageBytes.Value) : "unlimited")</strong> storage remaining on your current plan.
+                Your files stay in the private cabinet.
             </p>
         </section>
 
@@ -236,7 +239,8 @@
                     <input class="field-input flex-1"
                            placeholder="e.g. SWP391 \u2013 Spring 2026"
                            @bind="_newFolderName"
-                           disabled="@(_busy || _foldersBusy)" />
+                           disabled="@(_busy || _foldersBusy)"
+                           maxlength="100" />
                     <MudButton Variant="Variant.Outlined"
                                Color="Color.Secondary"
                                OnClick="CreateFolderAsync"
@@ -305,6 +309,24 @@
                 <h3 class="panel-title">Checklist</h3>
             </div>
 
+            <div class="quota-summary">
+                <div class="quota-summary-plan">@CurrentPlanLabel plan</div>
+                <div class="quota-summary-grid">
+                    <div class="quota-summary-item">
+                        <span>Used</span>
+                        <strong>@FormatBytes(_planSnapshot?.UsedBytes ?? 0)</strong>
+                    </div>
+                    <div class="quota-summary-item">
+                        <span>Remaining</span>
+                        <strong>@(RemainingStorageBytes.HasValue ? FormatBytes(RemainingStorageBytes.Value) : "Unlimited")</strong>
+                    </div>
+                    <div class="quota-summary-item">
+                        <span>Per file</span>
+                        <strong>@FormatBytes(EffectivePerFileLimitBytes)</strong>
+                    </div>
+                </div>
+            </div>
+
             <div class="checklist-items">
                 <div class="checklist-item @(IsSubjectValid ? "done" : "")">
                     <div class="checklist-bullet @(IsSubjectValid ? "done" : "")">
@@ -324,11 +346,11 @@
                     </div>
                     <span>@_files.Count / @MaxUploadFiles file(s) selected</span>
                 </div>
-                <div class="checklist-item @(_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0 ? "done" : "")">
-                    <div class="checklist-bullet @(_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0 ? "done" : "")">
-                        @if (_files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
+                <div class="checklist-item @(_files.Sum(f => f.Size) <= EffectiveBatchUploadBytes && _files.Count > 0 ? "done" : "")">
+                    <div class="checklist-bullet @(_files.Sum(f => f.Size) <= EffectiveBatchUploadBytes && _files.Count > 0 ? "done" : "")">
+                        @if (_files.Sum(f => f.Size) <= EffectiveBatchUploadBytes && _files.Count > 0) {<MudIcon Icon="@Icons.Material.Filled.Check" Size="Size.Small" />}
                     </div>
-                    <span>Total @FormatBytes(_files.Sum(f => f.Size)) / @FormatBytes(MaxTotalUploadBytes)</span>
+                    <span>Total @FormatBytes(_files.Sum(f => f.Size)) / @FormatBytes(EffectiveBatchUploadBytes)</span>
                 </div>
                 <div class="checklist-item @(_model.FolderId is not null ? "done" : "")">
                     <div class="checklist-bullet @(_model.FolderId is not null ? "done" : "")">
@@ -340,7 +362,7 @@
 
             <div class="checklist-footer">
                 @{
-                    var passed = new[] { IsSubjectValid, IsSemesterValid, _files.Count > 0, _files.Sum(f => f.Size) <= MaxTotalUploadBytes && _files.Count > 0, _model.FolderId is not null }.Count(x => x);
+                    var passed = new[] { IsSubjectValid, IsSemesterValid, _files.Count > 0, _files.Sum(f => f.Size) <= EffectiveBatchUploadBytes && _files.Count > 0, _model.FolderId is not null }.Count(x => x);
                     var totalChecks = 5;
                 }
                 @if (passed == totalChecks)
@@ -382,7 +404,6 @@
 
     private const long MaxFileSizeBytes = DocumentApiClient.MaxFileSizeBytes;
     private const int MaxUploadFiles = 5;
-    private const long MaxTotalUploadBytes = 50L * 1024 * 1024;
     private const string AcceptAttr = ".pdf,.doc,.docx,.ppt,.pptx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
     private MudForm? _form;
@@ -397,6 +418,7 @@
     private string _selectedFolderIdStr = "";
     private List<IBrowserFile> _files = new();
     private List<FolderDto> _folders = new();
+    private StorageQuotaSnapshotDto? _planSnapshot;
     private readonly UploadDocumentRequest _model = new();
     private int _uploadProgress;
     private int _uploadTotal;
@@ -412,6 +434,13 @@
 
     private bool IsSubjectValid => Regex.IsMatch(_model.SubjectCode ?? "", @"^[A-Z]{2,4}\d{3,4}$");
     private bool IsSemesterValid => Regex.IsMatch(_model.Semester ?? "", @"^(SPR|SU|FA|M1)\d{2}$");
+    private string CurrentPlanLabel => _planSnapshot?.PlanDisplayName ?? Session.CurrentPlanDisplayName;
+    private long EffectivePerFileLimitBytes => _planSnapshot?.MaxFileSizeBytes ?? MaxFileSizeBytes;
+    private long EffectiveBatchUploadBytes => CalculateEffectiveBatchUploadBytes();
+    private long? RemainingStorageBytes =>
+        _planSnapshot?.QuotaBytes is long quota
+            ? Math.Max(0, quota - (_planSnapshot?.UsedBytes ?? 0))
+            : null;
 
     protected override async Task OnInitializedAsync()
     {
@@ -427,6 +456,7 @@
             }
         }
 
+        await LoadPlanSnapshotAsync();
         await LoadFoldersAsync();
 
         if (QueryFolderId.HasValue && _folders.Any(f => f.Id == QueryFolderId.Value))
@@ -451,6 +481,27 @@
 
     private async Task OpenFilePickerAsync()
         => await JS.InvokeVoidAsync("openFilePicker", "document-file-input");
+
+    private async Task LoadPlanSnapshotAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            return;
+        }
+
+        try
+        {
+            _planSnapshot = await PlanApi.GetCurrentPlanAsync(Session.AccessToken!);
+            await Session.LoadCurrentPlanAsync(PlanApi);
+        }
+        catch (PlanApiException ex)
+        {
+            Snackbar.Add($"Could not load current plan limits: {ex.Message}", Severity.Warning);
+        }
+        catch
+        {
+        }
+    }
 
     private async Task LoadFoldersAsync()
     {
@@ -482,13 +533,19 @@
     private async Task CreateFolderAsync()
     {
         if (string.IsNullOrWhiteSpace(Session.AccessToken) || string.IsNullOrWhiteSpace(_newFolderName)) return;
+        var trimmed = _newFolderName.Trim();
+        if (trimmed.Length > 100)
+        {
+            Snackbar.Add("Folder name must not exceed 100 characters.", Severity.Warning);
+            return;
+        }
         _foldersBusy = true;
         _error = null;
         try
         {
             var folder = await FoldersApi.CreateAsync(
                 Session.AccessToken!,
-                new CreateFolderRequest { Name = _newFolderName.Trim() });
+                new CreateFolderRequest { Name = trimmed });
 
             _folders.Add(folder);
             _folders = _folders.OrderBy(f => f.Name).ToList();
@@ -520,7 +577,7 @@
     private Task OnInputFileChangedAsync(InputFileChangeEventArgs e)
     {
         _error = null;
-        var selected = e.GetMultipleFiles(50);
+        var selected = e.GetMultipleFiles(MaxUploadFiles);
 
         if (_files.Count + selected.Count > MaxUploadFiles)
         {
@@ -532,15 +589,15 @@
         var valid = new List<IBrowserFile>();
         foreach (var file in selected)
         {
-            if (file.Size > MaxFileSizeBytes)
+            if (file.Size > EffectivePerFileLimitBytes)
             {
-                _error = $"\"{file.Name}\" is {FormatBytes(file.Size)}; the 50 MB per-file limit applies.";
+                _error = $"\"{file.Name}\" is {FormatBytes(file.Size)}; your current plan allows up to {FormatBytes(EffectivePerFileLimitBytes)} per file.";
                 continue;
             }
 
-            if (totalBytes + file.Size > MaxTotalUploadBytes)
+            if (totalBytes + file.Size > EffectiveBatchUploadBytes)
             {
-                _error = $"Adding \"{file.Name}\" ({FormatBytes(file.Size)}) would exceed the {FormatBytes(MaxTotalUploadBytes)} total session limit. Upload in smaller batches.";
+                _error = $"Adding \"{file.Name}\" ({FormatBytes(file.Size)}) would exceed your current batch limit of {FormatBytes(EffectiveBatchUploadBytes)}.";
                 continue;
             }
 
@@ -613,7 +670,7 @@
                 try
                 {
                     var mem = new MemoryStream((int)file.Size);
-                    await file.OpenReadStream(MaxFileSizeBytes).CopyToAsync(mem);
+                    await file.OpenReadStream(EffectivePerFileLimitBytes).CopyToAsync(mem);
                     mem.Position = 0;
                     fileData.Add((file.Name, file.ContentType, file.Size, mem));
                 }
@@ -648,7 +705,7 @@
                     var msg = ex.StatusCode switch
                     {
                         401 => "Your session has expired. Please sign in again.",
-                        413 => "File is larger than the 50 MB server limit.",
+                        413 => $"File is larger than your current plan limit of {FormatBytes(EffectivePerFileLimitBytes)}.",
                         415 => "That file type isn't supported.",
                         _ => MapError(ex),
                     };
@@ -665,6 +722,7 @@
             if (_successCount > 0)
             {
                 Snackbar.Add($"Uploaded {_successCount} file(s).", Severity.Success);
+                await LoadPlanSnapshotAsync();
                 await LoadFoldersAsync();
                 _files.Clear();
                 _model.SubjectCode = string.Empty;
@@ -709,6 +767,9 @@
     private static string MapError(DocumentApiException ex) => (ex.StatusCode, ex.Code) switch
     {
         (401, _) => "Your session has expired. Please sign in again.",
+        (402, "storage_quota_exceeded") => "You cannot upload more files until you delete some documents or renew your plan.",
+        (402, "document_count_exceeded") => "You have reached the document limit for your current plan.",
+        (402, "folder_count_exceeded") => "You have reached the folder limit for your current plan.",
         (409, "folder_full") => ex.Message,
         (409, "duplicate_file") => ex.Message,
         (409, _) => "A folder with that name already exists.",
@@ -724,5 +785,13 @@
         if (bytes < 1024L * 1024) return $"{bytes / 1024.0:0.#} KB";
         if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):0.#} MB";
         return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
+    }
+
+    private long CalculateEffectiveBatchUploadBytes()
+    {
+        var planBasedBatchLimit = EffectivePerFileLimitBytes * MaxUploadFiles;
+        return RemainingStorageBytes.HasValue
+            ? Math.Min(RemainingStorageBytes.Value, planBasedBatchLimit)
+            : planBasedBatchLimit;
     }
 }

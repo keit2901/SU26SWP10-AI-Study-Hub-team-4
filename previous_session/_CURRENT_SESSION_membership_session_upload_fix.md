@@ -1,0 +1,227 @@
+# _CURRENT_SESSION - membership_session_upload_fix
+
+**Started:** 2026-07-21T12:09:25.5122140Z
+**Agent:** Codex (GPT-5)
+**Goal:** Fix student plan display/session persistence/payment expiry/upload quota behavior, and add a seeded Pro student account path for local development.
+**Status:** IN_PROGRESS
+
+---
+
+## 0. Context loaded
+- [x] `previous_session/rule.md` (read 2026-07-21T12:09:25.5122140Z)
+- [x] `Project-Docs/skill.md` (read 2026-07-21T12:09:25.5122140Z)
+- [x] `previous_session/handoff_2026-07-10.md` (read 2026-07-21T12:09:25.5122140Z)
+- [x] `previous_session/_CURRENT_SESSION_subscription_payment_bug.md` (read 2026-07-21T12:09:25.5122140Z)
+- [x] `previous_session/_CURRENT_SESSION_folder_quota_upload_fix.md` (read 2026-07-21T12:09:25.5122140Z)
+- [x] `previous_session/_CURRENT_SESSION_student_profile_menu.md` (read 2026-07-21T12:09:25.5122140Z)
+
+## 1. Verified state at start
+- `git status --short --branch --untracked-files=all` -> branch `feature/Dashbroad(moderator-sort-filter)-analytics(box-deletion)...origin/feature/Dashbroad(moderator-sort-filter)-analytics(box-deletion) [ahead 4]`
+- Relevant files confirmed:
+  - `AI_Study_Hub_v2/Components/Shared/UserAccountMenu.razor`
+  - `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor`
+  - `AI_Study_Hub_v2/Components/Pages/Pricing.razor`
+  - `AI_Study_Hub_v2/Components/Pages/PricingCheckoutDialog.razor`
+  - `AI_Study_Hub_v2/Components/Pages/PaymentResult.razor`
+  - `AI_Study_Hub_v2/Components/Pages/DocumentUpload.razor`
+  - `AI_Study_Hub_v2/Services/AuthPersistenceService.cs`
+  - `AI_Study_Hub_v2/Services/AuthSessionState.cs`
+  - `AI_Study_Hub_v2/Services/StorageQuotaService.cs`
+  - `AI_Study_Hub_v2/Services/Payment/PaymentService.cs`
+  - `AI_Study_Hub_v2/Program.cs`
+
+## 2. Plan
+1. Replace hardcoded student plan labels with real current-plan snapshot data everywhere relevant.
+2. Extend auth persistence to survive longer and auto-refresh expired access tokens from the stored refresh token.
+3. Reduce payment expiry to 2 minutes and surface expired-payment UX that returns the student to pricing.
+4. Make upload quota/file-limit UI and enforcement respect the active plan instead of fixed Free defaults.
+5. Add a local-development seeded Pro student account configuration path.
+
+## 3. Progress log (append-only, newest last)
+
+### 2026-07-21T12:09:25.5122140Z - Discovery completed
+- Confirmed `UserAccountMenu.razor` still hardcodes `Free` in the top-right student trigger.
+- Confirmed `StudentProfilePanel.razor` and payment history already depend on `Session.LoadCurrentPlanAsync`, but the shared session state only stores a plan key and the menu never binds a real plan snapshot.
+- Confirmed auth persistence still uses `ProtectedSessionStorage` and only restores stored tokens; it does not auto-refresh when `ExpiresAt` is past.
+- Confirmed payment expiry is controlled by `PayOsSettings.ExpireMinutes` and `PaymentService`, currently defaulting to 15 minutes.
+- Confirmed `DocumentUpload.razor`, `DocumentApiClient`, `DocumentsController`, and `DocumentService` still enforce/display a hardcoded 50 MB upload limit even though seeded Pro plan metadata allows 100 MB.
+
+### 2026-07-21T12:45:00.0000000Z - Membership/session/payment/upload patch implemented
+- Updated auth/session persistence:
+  - `AI_Study_Hub_v2/Services/AuthApiClient.cs` -> added `RefreshAsync`
+  - `AI_Study_Hub_v2/Services/AuthPersistenceService.cs` -> switched to `ProtectedLocalStorage` and auto-refreshes expired access tokens with the stored refresh token
+  - `AI_Study_Hub_v2/Services/AuthSessionState.cs` -> now tracks the full current plan snapshot/display name instead of a key-only demo value
+- Updated student plan display:
+  - `AI_Study_Hub_v2/Components/Shared/UserAccountMenu.razor` -> removed hardcoded `Free`, loads real plan snapshot for the top-right student chip
+  - `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor` -> uses the shared display name from session state
+- Updated plan snapshot payload:
+  - `AI_Study_Hub_v2/Dtos/StorageQuotaSnapshotDto.cs` -> now carries file/document/folder limit fields
+  - `AI_Study_Hub_v2/Services/StorageQuotaService.cs` -> populates the extra plan-limit fields from the effective plan
+- Updated upload flow to respect the purchased plan:
+  - `AI_Study_Hub_v2/Services/DocumentApiClient.cs` + `AI_Study_Hub_v2/Controllers/DocumentsController.cs` + `AI_Study_Hub_v2/Services/DocumentService.cs`
+    - absolute backend cap raised to 250 MB
+    - per-plan file-size enforcement now comes from the active plan snapshot
+  - `AI_Study_Hub_v2/Components/Pages/DocumentUpload.razor` + `.razor.css`
+    - upload sidebar now shows current plan, used storage, remaining storage, and per-file limit
+    - client-side validation/messages now use the active plan limits instead of fixed 50 MB text
+- Updated payment expiry behavior:
+  - `AI_Study_Hub_v2/Options/PayOsSettings.cs` -> default expiry reduced to 2 minutes
+  - `AI_Study_Hub_v2/Services/Payment/PaymentService.cs` -> pending transactions are marked `expired` immediately when return verification sees they have timed out
+  - `AI_Study_Hub_v2/Components/Pages/PaymentResult.razor` -> added explicit expired-payment state and auto-return to pricing
+  - `AI_Study_Hub_v2/Components/Pages/PricingCheckoutDialog.razor` -> surfaces the 2-minute payment window to the student before redirect
+- Added local Pro student seed path:
+  - `AI_Study_Hub_v2/Options/SeedOptions.cs`
+  - `AI_Study_Hub_v2/Program.cs`
+  - `AI_Study_Hub_v2/appsettings.json`
+  - `AI_Study_Hub_v2/appsettings.Development.json`
+  - startup can now create/maintain a configured `DefaultProStudent` account and keep it on the Pro plan without committing any plaintext password
+
+### 2026-07-21T13:10:00.0000000Z - Verification completed
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false` -> PASS (0 errors, 0 warnings)
+
+### 2026-07-22T09:40:00.0000000Z - Expired Pro over-quota demo state added
+- Added a dedicated seeded student scenario for local/demo testing:
+  - `AI_Study_Hub_v2/Options/SeedOptions.cs`
+  - `AI_Study_Hub_v2/appsettings.Development.json`
+  - `AI_Study_Hub_v2/Program.cs`
+- Startup now seeds `DefaultExpiredProStudent` as:
+  - previous Pro plan marked `expired`
+  - current Free plan marked `active`
+  - `storage_used_bytes` forced to about `7.2 GB`
+  - password reuses `Seed:DefaultProStudent:Password` when no dedicated expired-student password is provided
+- Extended `AI_Study_Hub_v2/Dtos/StorageQuotaSnapshotDto.cs` and `AI_Study_Hub_v2/Services/StorageQuotaService.cs` with `HasExpiredPaidPlan` so the profile UI can distinguish “expired paid plan + over Free quota” from a generic quota overflow.
+- Updated `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor` warning copy to show the intended student-facing message:
+  - title: `Gói Pro của bạn đã hết hạn`
+  - body: `Bạn đang dùng 7.2 GB / 2 GB của gói Free...` (value is dynamic from actual usage)
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/expired-pro-demo-build"` -> PASS (0 errors, 15 pre-existing warnings)
+
+### 2026-07-23T10:20:00.0000000Z - Legacy oversized Pro-era file seeded for downgrade scenario
+- Extended `AI_Study_Hub_v2/Program.cs` startup seeding so `DefaultExpiredProStudent` now also receives:
+  - folder `Legacy Pro Archive`
+  - document `legacy-pro-oversize-demo.pdf`
+  - file size `55 MB` (valid under Pro 100 MB, above Free 50 MB)
+- The seed attempts to upload a real placeholder PDF object to Supabase Storage; if local storage is unavailable it still creates metadata so Library/Profile/quota UX can be tested.
+- This gives a concrete downgrade test case:
+  - current plan is `Free`
+  - profile warning still shows expired Pro / over Free quota
+  - Library contains a historical Pro-era file larger than the Free per-file upload limit
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/legacy-pro-file-demo-build"` -> PASS (0 errors, 15 pre-existing warnings)
+
+### 2026-07-23T11:05:00.0000000Z - Demo clone seed removed and deprecated account cleanup added
+- Removed the extra expired-Pro demo seed from:
+  - `AI_Study_Hub_v2/Options/SeedOptions.cs`
+  - `AI_Study_Hub_v2/appsettings.Development.json`
+  - `AI_Study_Hub_v2/Program.cs`
+- Added startup cleanup logic in `AI_Study_Hub_v2/Program.cs` to delete the deprecated local demo account:
+  - auth email `student.expiredpro@aistudyhub.local`
+  - profile username `studentexpired`
+- This prevents future clone-account recreation and avoids the local Supabase Storage `413 Payload too large` warning caused by trying to seed a fake 55 MB file into a bucket still capped at 50 MB.
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/remove-demo-clone-build"` -> PASS (0 errors, 15 pre-existing warnings)
+
+### 2026-07-23T11:45:00.0000000Z - Session/payment-history/expired-plan follow-up fixes applied
+- Tightened idle-session logout behavior in `AI_Study_Hub_v2/wwwroot/idle-session.js`:
+  - now tracks `lastActivityAt`
+  - checks elapsed time when timers wake up late or when a background tab becomes visible again
+  - avoids granting a fresh 15-minute window after browser sleep / background throttling
+- Fixed payment-history resolution timestamps in `AI_Study_Hub_v2/Services/Payment/PaymentService.cs`:
+  - `failed` transactions now set `CompletedAt`
+  - stale `expired` transactions now set `CompletedAt`
+  - this makes the "Kết thúc lúc" column in `StudentPaymentHistoryDialog.razor` line up with the actual terminal status time instead of incorrectly falling back to `ExpiresAt`
+- Improved expired-paid-plan detection in `AI_Study_Hub_v2/Services/StorageQuotaService.cs`:
+  - the profile warning no longer waits for the hourly expiry hosted service to flip status to `expired`
+  - a paid plan that has already passed `ExpiresAt` is now recognized immediately for the downgrade warning flow
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o ".codex-build/session-payment-expiry-fix-build"` -> PASS (0 errors, 15 pre-existing warnings)
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-restore -o .codex-build\\membership-fix-tests` -> PASS (0 errors, 0 warnings)
+- `dotnet vstest ".codex-build\\membership-fix-tests\\AI_Study_Hub_v2.Tests.dll" --TestCaseFilter:"FullyQualifiedName~SupabaseAuthServiceTests|FullyQualifiedName~StorageQuotaServiceTests|FullyQualifiedName~PlansControllerTests"` -> PASS
+  - Result: Passed 39, Skipped 2, Failed 0
+
+## 4. Files changed this session
+| Path | Change |
+|---|---|
+| `AI_Study_Hub_v2/Services/AuthApiClient.cs` | added refresh-token API call |
+| `AI_Study_Hub_v2/Services/AuthPersistenceService.cs` | local persisted session + auto refresh |
+| `AI_Study_Hub_v2/Services/AuthSessionState.cs` | current plan snapshot/display state |
+| `AI_Study_Hub_v2/Components/Shared/UserAccountMenu.razor` | top-right user chip uses real plan |
+| `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor` | profile plan label uses shared display name |
+| `AI_Study_Hub_v2/Dtos/StorageQuotaSnapshotDto.cs` | added plan limit fields |
+| `AI_Study_Hub_v2/Services/StorageQuotaService.cs` | returns plan limit fields in snapshot |
+| `AI_Study_Hub_v2/Services/DocumentApiClient.cs` | absolute upload cap aligned to dynamic plan enforcement |
+| `AI_Study_Hub_v2/Controllers/DocumentsController.cs` | request cap aligned to dynamic plan enforcement |
+| `AI_Study_Hub_v2/Services/DocumentService.cs` | per-plan file-size enforcement |
+| `AI_Study_Hub_v2/Components/Pages/DocumentUpload.razor` | dynamic upload quota UI + validation |
+| `AI_Study_Hub_v2/Components/Pages/DocumentUpload.razor.css` | styling for quota summary panel |
+| `AI_Study_Hub_v2/Options/PayOsSettings.cs` | default payment expiry set to 2 minutes |
+| `AI_Study_Hub_v2/Services/Payment/PaymentService.cs` | return-time expiry handling |
+| `AI_Study_Hub_v2/Components/Pages/PaymentResult.razor` | expired-payment UX + redirect |
+| `AI_Study_Hub_v2/Components/Pages/PricingCheckoutDialog.razor` | payment-window notice |
+| `AI_Study_Hub_v2/Options/SeedOptions.cs` | added `DefaultProStudent` config model |
+| `AI_Study_Hub_v2/Program.cs` | added Pro student seed routine |
+| `AI_Study_Hub_v2/appsettings.json` | base config for `DefaultProStudent` + PayOS expiry |
+| `AI_Study_Hub_v2/appsettings.Development.json` | local dev Pro student identity metadata + PayOS expiry |
+| `previous_session/_CURRENT_SESSION_membership_session_upload_fix.md` | created live session log |
+
+## 5. Commands run (only side-effect / stateful)
+- `git status --short --branch --untracked-files=all`
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false` -> PASS
+- `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.Tests\\AI_Study_Hub_v2.Tests.csproj" --nologo --no-restore -o .codex-build\\membership-fix-tests` -> PASS
+- `dotnet vstest ".codex-build\\membership-fix-tests\\AI_Study_Hub_v2.Tests.dll" --TestCaseFilter:"FullyQualifiedName~SupabaseAuthServiceTests|FullyQualifiedName~StorageQuotaServiceTests|FullyQualifiedName~PlansControllerTests"` -> Passed 39, Skipped 2, Failed 0
+
+## 6. Decisions locked
+- Use the current PayOS-based payment flow (`PaymentService`) as the source of truth; do not revive archived VNPay logic.
+- Prefer extending current plan snapshot/session services rather than duplicating plan queries per component.
+
+## 7. Open questions / risks
+- The seeded Pro student path is implemented, but the actual account will only be created on startup when `Seed:DefaultProStudent:Password` exists in local user-secrets or another secure config source. No plaintext password was committed.
+
+## 8. Next step (if pause/crash now)
+Patch `AuthPersistenceService`, plan snapshot DTO/state, upload limit enforcement, and PayOS expiry flow together, then run focused tests/build verification.
+
+## 9. Quick Facts (snapshot)
+- Current date: 2026-07-21
+- Payment provider in use: PayOS (`PaymentService`)
+- Existing seeded plan limits: `free` 50 MB/file, `pro` 100 MB/file, `unlimited` null file limit in DB
+
+### 2026-07-21T13:45:00.0000000Z - Follow-up payment + library bug fixes
+- Investigated student-reported `Request failed with status 409` in the payment flow.
+- Root cause:
+  - `PlansController.PurchasePlan` was catching every `InvalidOperationException` from `PaymentService` and converting it into HTTP `409 Conflict`.
+  - That incorrectly treated external PayOS link-creation failures like business-rule conflicts.
+- Applied fixes:
+  - Added `AI_Study_Hub_v2/Services/Payment/PaymentProviderException.cs` for provider-specific failures.
+  - Updated `AI_Study_Hub_v2/Services/Payment/PaymentService.cs`:
+    - missing user/plan now throws `KeyNotFoundException`
+    - PayOS link-creation failure now throws `PaymentProviderException` with a safe user-facing message
+  - Updated `AI_Study_Hub_v2/Controllers/PlansController.cs`:
+    - provider failures now return `503 Service Unavailable`
+    - missing purchase target now returns `404`
+    - invalid purchase request now returns `400`
+  - Updated `AI_Study_Hub_v2/Components/Pages/PricingCheckoutDialog.razor`:
+    - refreshes the current plan before checkout
+    - blocks opening a purchase for the already-active plan
+    - shows cleaner conflict/service-unavailable messaging
+  - Updated `AI_Study_Hub_v2/Components/Pages/Pricing.razor`:
+    - refreshes current plan before selection
+    - fixes downgrade-to-free to call `PurchaseFreePlanAsync`
+  - Updated `AI_Study_Hub_v2/Components/Pages/DocumentLibrary.razor`:
+    - lowered folder menu `z-index` so opened filter/tab overlays cover the `...` menu correctly
+    - closes the open folder menu whenever folder filtering/tab selection changes
+- Verification:
+  - `dotnet build "AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o .codex-build\\payment-fix-build` -> PASS
+  - normal in-place build was blocked by the already running app locking `bin\\Debug\\net8.0\\AI_Study_Hub_v2.dll`, so verification used an alternate output folder instead.
+
+### 2026-07-23T08:59:11.8205318+07:00 - Payment history retention + expired-plan profile wording
+- Addressed the remaining payment-history retention gap:
+  - `AI_Study_Hub_v2/Controllers/PlansController.cs` now trims each user's payment history to the newest 50 records via a shared helper before returning the list, and reads history with a stable `CreatedAt` + `Id` descending order.
+  - `AI_Study_Hub_v2/Services/Payment/PaymentService.cs` now trims payment history immediately after creating a new PayOS transaction so the 51st older record is removed from the database right away.
+  - `AI_Study_Hub_v2/Services/Payment/VnPayService.cs` received the same retention safeguard to keep legacy payment flow behavior aligned.
+- Fixed the remaining profile wording issue for downgrade/expired-plan storage warnings:
+  - `AI_Study_Hub_v2/Dtos/StorageQuotaSnapshotDto.cs` now carries `ExpiredPaidPlanDisplayName`.
+  - `AI_Study_Hub_v2/Services/StorageQuotaService.cs` now resolves the latest expired paid plan name for the signed-in user.
+  - `AI_Study_Hub_v2/Components/Shared/StudentProfilePanel.razor` now shows the real expired plan name and the real current plan name instead of hardcoded `Pro` / `Free`.
+  - `AI_Study_Hub_v2/Components/Shared/StudentPaymentHistoryDialog.razor` now requests 50 items to match backend retention.
+- Verification:
+  - `dotnet build "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\AI_Study_Hub_v2\\AI_Study_Hub_v2.csproj" --nologo --no-restore -p:UseAppHost=false -o "D:\\projectCode\\SWP\\SU26SWP10-AI-Study-Hub-team-4\\.codex-build\\final-history-warning-fix-build-2"` -> PASS (0 errors, 15 pre-existing warnings)

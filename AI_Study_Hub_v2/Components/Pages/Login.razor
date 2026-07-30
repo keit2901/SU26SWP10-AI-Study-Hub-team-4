@@ -127,6 +127,8 @@
     private bool _busy;
     private string? _error;
     private readonly LoginRequest _model = new();
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    public string? ReturnUrl { get; set; }
 
     protected override void OnInitialized()
     {
@@ -138,9 +140,7 @@
 
     private void RedirectByRole()
     {
-        Nav.NavigateTo(
-            AdminAccessPolicy.GetAuthenticatedLandingPage(Session.CurrentUser?.Role),
-            replace: true);
+        Nav.NavigateTo(GetPostLoginTarget(Session.CurrentUser?.Role), replace: true);
     }
 
     private Task OnHumanCheckChanged(bool valid)
@@ -188,6 +188,21 @@
 
     private void RedirectAuthenticatedUser(string? role)
     {
-        Nav.NavigateTo(AdminAccessPolicy.GetAuthenticatedLandingPage(role), replace: true);
+        Nav.NavigateTo(GetPostLoginTarget(role), replace: true);
     }
+
+    private string GetPostLoginTarget(string? role)
+    {
+        if (IsSafeLocalReturnUrl(ReturnUrl))
+        {
+            return ReturnUrl!;
+        }
+
+        return AdminAccessPolicy.GetAuthenticatedLandingPage(role);
+    }
+
+    private static bool IsSafeLocalReturnUrl(string? returnUrl) =>
+        !string.IsNullOrWhiteSpace(returnUrl)
+        && returnUrl.StartsWith("/", StringComparison.Ordinal)
+        && !returnUrl.StartsWith("//", StringComparison.Ordinal);
 }

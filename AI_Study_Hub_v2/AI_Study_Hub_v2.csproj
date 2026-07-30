@@ -28,6 +28,7 @@
     </PackageReference>
     <PackageReference Include="MudBlazor" Version="9.4.0" />
     <PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="8.0.10" />
+    <PackageReference Include="payOS" Version="2.1.0" />
     <PackageReference Include="PdfPig" Version="0.1.14" />
     <PackageReference Include="Pgvector" Version="0.3.1" />
     <PackageReference Include="Pgvector.EntityFrameworkCore" Version="0.2.0" />

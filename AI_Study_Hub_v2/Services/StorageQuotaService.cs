@@ -111,13 +111,49 @@ public sealed class StorageQuotaService : IStorageQuotaService
             .FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId, ct)
             ?? throw new PlanException(404, "user_not_found", "User profile not found.");
 
-        var effectivePlan = await GetEffectivePlanAsync(user.Id, ct);
+        var activeUserPlan = await _db.UserPlans
+            .AsNoTracking()
+            .Include(up => up.Plan)
+            .Where(up => up.UserId == user.Id
+                         && up.Status == "active"
+                         && (up.ExpiresAt == null || up.ExpiresAt > DateTimeOffset.UtcNow))
+            .OrderByDescending(up => up.AssignedAt)
+            .FirstOrDefaultAsync(ct);
+
+        var effectivePlan = activeUserPlan?.Plan ?? _planService.GetFreePlan();
+        var now = DateTimeOffset.UtcNow;
+        var latestExpiredPaidPlan = await _db.UserPlans
+            .AsNoTracking()
+            .Include(up => up.Plan)
+            .Where(up => up.UserId == user.Id
+                && up.Plan.PlanKey != "free"
+                && up.ExpiresAt.HasValue
+                && up.ExpiresAt.Value <= now
+                && (up.Status == "expired" || up.Status == "active"))
+            .OrderByDescending(up => up.ExpiresAt)
+            .Select(up => up.Plan.DisplayName)
+            .FirstOrDefaultAsync(ct);
+
+        var docCount = await _db.Documents.CountAsync(d => d.UserId == user.Id, ct);
+        var today = DateOnly.FromDateTime(DateTime.UtcNow);
+        var tokensUsedToday = user.TokenUsageDate == today ? user.TokensUsedToday : 0;
+        var dailyTokenQuota = effectivePlan.DailyTokenQuota ?? user.DailyTokenQuota;
 
         return new StorageQuotaSnapshotDto(
             user.StorageUsedBytes,
             effectivePlan.StorageQuotaBytes,
             effectivePlan.PlanKey,
-            effectivePlan.DisplayName);
+            effectivePlan.DisplayName,
+            activeUserPlan?.ExpiresAt,
+            effectivePlan.MaxFileSizeBytes,
+            effectivePlan.MaxDocumentCount,
+            effectivePlan.MaxFolderCount,
+            effectivePlan.MaxDocsPerFolder,
+            latestExpiredPaidPlan is not null,
+            latestExpiredPaidPlan,
+            tokensUsedToday,
+            dailyTokenQuota,
+            docCount);
     }
 
     public async Task ValidateDocumentCountAsync(

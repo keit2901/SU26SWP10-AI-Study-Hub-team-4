@@ -27,8 +27,6 @@ public class AppDbContext : DbContext
 
     public DbSet<Quiz> Quizzes => Set<Quiz>();
 
-    public DbSet<QuizAttempt> QuizAttempts => Set<QuizAttempt>();
-
     public DbSet<FolderReaction> FolderReactions => Set<FolderReaction>();
 
     public DbSet<CommunityReport> CommunityReports => Set<CommunityReport>();
@@ -38,6 +36,8 @@ public class AppDbContext : DbContext
     public DbSet<UserPlan> UserPlans => Set<UserPlan>();
 
     public DbSet<SharedFolderCopyOperation> SharedFolderCopyOperations => Set<SharedFolderCopyOperation>();
+
+    public DbSet<RegistrationOperation> RegistrationOperations => Set<RegistrationOperation>();
 
     public DbSet<PaymentTransaction> PaymentTransactions => Set<PaymentTransaction>();
 
@@ -127,6 +127,14 @@ public class AppDbContext : DbContext
         }
 
         foreach (var entry in ChangeTracker.Entries<SystemConfig>())
+        {
+            if (entry.State == EntityState.Modified)
+            {
+                entry.Entity.UpdatedAt = now;
+            }
+        }
+
+        foreach (var entry in ChangeTracker.Entries<RegistrationOperation>())
         {
             if (entry.State == EntityState.Modified)
             {

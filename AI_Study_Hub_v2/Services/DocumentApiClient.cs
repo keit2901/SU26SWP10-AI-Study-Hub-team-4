@@ -14,8 +14,11 @@ namespace AI_Study_Hub_v2.Services;
 /// </summary>
 public sealed class DocumentApiClient
 {
-    /// <summary>Server-side cap mirrored from <see cref="DocumentService.MaxFileSizeBytes"/>. Useful for client-side guards.</summary>
-    public const long MaxFileSizeBytes = 50L * 1024 * 1024;
+    /// <summary>
+    /// Absolute server-side cap mirrored from <see cref="DocumentService.MaxFileSizeBytes"/>.
+    /// Per-plan limits can be lower and should come from the current plan snapshot.
+    /// </summary>
+    public const long MaxFileSizeBytes = 250L * 1024 * 1024;
 
     /// <summary>Server-allowed MIME types — kept in sync with <see cref="DocumentService.AllowedMimeTypes"/>.</summary>
     public static readonly IReadOnlySet<string> AllowedMimeTypes = new HashSet<string>(StringComparer.OrdinalIgnoreCase)

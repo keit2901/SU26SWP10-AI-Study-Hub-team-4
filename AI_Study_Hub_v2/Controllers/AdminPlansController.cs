@@ -370,7 +370,9 @@ public sealed class AdminPlansController : ControllerBase
                 pt.AmountVnd,
                 pt.Status,
                 pt.CreatedAt,
-                pt.CompletedAt))
+                pt.CompletedAt,
+                pt.ExpiresAt,
+                pt.ErrorMessage))
             .ToListAsync(ct);
 
         return Ok(new

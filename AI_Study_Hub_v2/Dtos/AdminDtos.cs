@@ -110,6 +110,7 @@ public sealed class EscalationItemRequest
 public sealed class ResolveEscalationRequest
 {
     [Required]
+    [RegularExpression("^(Approved|Rejected)$", ErrorMessage = "Status must be 'Approved' or 'Rejected'.")]
     public string Status { get; set; } = string.Empty;
     [StringLength(2000)]
     public string? AdminResponse { get; set; }
@@ -153,3 +154,15 @@ public sealed record DocumentChunkPreviewDto(
     string ContentPreview,
     int TokenCount,
     int? PageNumber);
+
+public sealed class UpdateDocumentRequest
+{
+    [Required]
+    [StringLength(500)]
+    public string Title { get; set; } = string.Empty;
+    [Required]
+    [StringLength(50)]
+    public string SubjectCode { get; set; } = string.Empty;
+    [StringLength(1000)]
+    public string? StoragePath { get; set; }
+}

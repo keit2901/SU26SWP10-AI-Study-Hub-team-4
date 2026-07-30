@@ -54,9 +54,21 @@ public sealed class FolderConfiguration : IEntityTypeConfiguration<Folder>
             .HasColumnName("ai_review_failure_count")
             .HasDefaultValue(0);
 
+        builder.Property(f => f.ShareSubmissionCount)
+            .HasColumnName("share_submission_count")
+            .HasDefaultValue(0);
+
+        builder.Property(f => f.ShareFailureCount)
+            .HasColumnName("share_failure_count")
+            .HasDefaultValue(0);
+
         builder.Property(f => f.HumanReviewReason)
             .HasColumnName("human_review_reason")
             .HasMaxLength(2000);
+
+        builder.Property(f => f.StudentFeedbackReason)
+            .HasColumnName("student_feedback_reason")
+            .HasMaxLength(200);
 
         builder.Property(f => f.RequiresHumanReview)
             .HasColumnName("requires_human_review")

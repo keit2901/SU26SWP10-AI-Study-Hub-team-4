@@ -1,31 +1,48 @@
 @namespace AI_Study_Hub_v2.Components.Shared
+@using AI_Study_Hub_v2.Data.Entities
 
 <MudDialog>
     <DialogContent>
         <MudStack Spacing="2">
-            <MudText Typo="Typo.h6">Review by human</MudText>
+            <MudText Typo="Typo.h6">Send Feedback</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary">
                 Folder: <strong>@FolderName</strong>
             </MudText>
-            @if (!string.IsNullOrWhiteSpace(AiReason))
+            @if (FailCount > 0)
+            {
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Failed reviews: <strong>@FailCount</strong>
+                </MudText>
+            }
+            @if (!string.IsNullOrWhiteSpace(LatestReason))
             {
                 <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true">
-                    AI reason: @AiReason
+                    Latest review feedback: @LatestReason
                 </MudAlert>
             }
             <MudTextField T="string"
-                          @bind-Value="_message"
-                          Label="Explain why this folder should be reviewed again"
+                          @bind-Value="_reason"
+                          Label="Reason"
+                          Placeholder="Why should this folder be reviewed again?"
+                          Variant="Variant.Outlined"
+                          Margin="Margin.Dense"
+                          Immediate="true"
+                          Required="true" />
+            <MudTextField T="string"
+                          @bind-Value="_description"
+                          Label="Description"
+                          Placeholder="Describe what you changed or what the moderator should know"
                           Variant="Variant.Outlined"
                           Margin="Margin.Dense"
                           Lines="4"
-                          Immediate="true" />
+                          Immediate="true"
+                          Required="true" />
         </MudStack>
     </DialogContent>
     <DialogActions>
         <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
         <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Confirm">
-            Send request
+            Send feedback
         </MudButton>
     </DialogActions>
 </MudDialog>
@@ -35,11 +52,36 @@
 
     [Parameter] public string FolderName { get; set; } = string.Empty;
 
-    [Parameter] public string? AiReason { get; set; }
+    [Parameter] public int FailCount { get; set; }
 
-    private string? _message;
+    [Parameter] public string? LatestReason { get; set; }
 
-    private void Confirm() => MudDialog.Close(DialogResult.Ok(_message?.Trim()));
+    private string? _reason;
+
+    private string? _description;
+
+    private void Confirm()
+    {
+        var reason = _reason?.Trim();
+        var description = _description?.Trim();
+        if (string.IsNullOrWhiteSpace(reason) || string.IsNullOrWhiteSpace(description))
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(new AppealFolderShareDialogResult
+        {
+            Reason = reason,
+            Description = description
+        }));
+    }
 
     private void Cancel() => MudDialog.Cancel();
+
+    public sealed class AppealFolderShareDialogResult
+    {
+        public string Reason { get; set; } = string.Empty;
+
+        public string Description { get; set; } = string.Empty;
+    }
 }

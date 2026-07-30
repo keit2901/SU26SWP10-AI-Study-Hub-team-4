@@ -6,6 +6,7 @@
 @using Microsoft.Extensions.Options
 @implements IDisposable
 @inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
 @inject DocumentApiClient DocumentsApi
 @inject FolderApiClient FoldersApi
 @inject IHttpClientFactory HttpClientFactory
@@ -734,17 +735,24 @@
         }
     }
 
-    protected override Task OnInitializedAsync()
+    protected override async Task OnInitializedAsync()
     {
         _chatApi = ResolveChatApiClient();
         _selectedModel = DefaultModel;
 
         if (!Session.IsAuthenticated)
         {
-            Nav.NavigateTo("/login", replace: true);
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+            {
+                Session.Set(restored);
+            }
         }
 
-        return Task.CompletedTask;
+        if (!Session.IsAuthenticated)
+        {
+            Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
+        }
     }
 
     protected override async Task OnParametersSetAsync()
@@ -765,6 +773,16 @@
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         await ScrollToBottomAsync();
+    }
+
+    private string BuildLoginReturnUrl()
+    {
+        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
+        var currentPath = string.IsNullOrWhiteSpace(relativePath)
+            ? "/ai/chat"
+            : "/" + relativePath;
+
+        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
     }
 
     private async Task ScrollToBottomAsync()
@@ -807,10 +825,9 @@
                 {
                     try
                     {
-                        var sharedFolders = await FoldersApi.ListSharedAsync(Session.AccessToken!, scopeCts.Token);
+                        var sharedFolder = await FoldersApi.GetAsync(Session.AccessToken!, queryFolderId.Value, scopeCts.Token);
                         if (!IsCurrentWorkspace(workspaceVersion) || scopeCts.IsCancellationRequested) return;
 
-                        var sharedFolder = sharedFolders.FirstOrDefault(f => f.Id == queryFolderId.Value);
                         if (sharedFolder != null)
                         {
                             var sharedDocs = await DocumentsApi.ListAsync(

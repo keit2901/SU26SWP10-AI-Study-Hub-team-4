@@ -14,11 +14,13 @@ namespace AI_Study_Hub_v2.Controllers;
 public sealed class FoldersController : ControllerBase
 {
     private readonly IFolderService _service;
+    private readonly IShareReviewService _shareReview;
     private readonly ILogger<FoldersController> _logger;
 
-    public FoldersController(IFolderService service, ILogger<FoldersController> logger)
+    public FoldersController(IFolderService service, IShareReviewService shareReview, ILogger<FoldersController> logger)
     {
         _service = service;
+        _shareReview = shareReview;
         _logger = logger;
     }
 
@@ -27,6 +29,14 @@ public sealed class FoldersController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     public async Task<ActionResult<IReadOnlyList<FolderDto>>> List(CancellationToken cancellationToken)
         => await ExecuteAsync(() => _service.ListAsync(GetSupabaseUserIdFromClaims(), cancellationToken));
+
+    [HttpGet("{id:guid}")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> GetById(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.GetFolderAsync(GetSupabaseUserIdFromClaims(), id, cancellationToken));
 
     [HttpGet("shared")]
     [AllowAnonymous]
@@ -132,6 +142,42 @@ public sealed class FoldersController : ControllerBase
             request ?? new AppealFolderShareRequest(),
             cancellationToken));
 
+    [HttpPatch("{id:guid}/share/approve")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> ApproveShare(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.ApproveFolderShareAsync(id, cancellationToken));
+
+    [HttpPatch("{id:guid}/share/reject")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> RejectShare(
+        Guid id,
+        [FromBody] RejectFolderShareRequest? request,
+        CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.RejectFolderShareAsync(
+            id,
+            request ?? new RejectFolderShareRequest { Reason = "Rejected after moderator review." },
+            cancellationToken));
+
+    [HttpPatch("{id:guid}/share/auto-check")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(FolderDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<FolderDto>> AutoCheckShare(Guid id, CancellationToken cancellationToken)
+        => await ExecuteAsync(() => _service.AutoCheckFolderShareAsync(id, cancellationToken));
+
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
@@ -216,5 +262,42 @@ public sealed class FoldersController : ControllerBase
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
             ?? User.FindFirstValue("sub");
         return Guid.TryParse(sub, out var id) ? id : null;
+    }
+
+    // ── Share Review Endpoints ──
+
+    [HttpGet("{folderId:guid}/share-review")]
+    [ProducesResponseType(typeof(ShareReviewSummaryDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ShareReviewSummaryDto>> GetShareReview(Guid folderId, CancellationToken ct)
+    {
+        var userId = GetSupabaseUserIdFromClaims();
+        var result = await _shareReview.GetReviewAsync(folderId, userId, ct);
+        return Ok(result);
+    }
+
+    [HttpPost("{folderId:guid}/share-review/apply")]
+    [ProducesResponseType(typeof(ApplyDecisionsResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ApplyDecisionsResponse>> ApplyShareReview(Guid folderId, [FromBody] ApplyDecisionsRequest req, CancellationToken ct)
+    {
+        var userId = GetSupabaseUserIdFromClaims();
+        var result = await _shareReview.ApplyDecisionsAsync(folderId, userId, req, ct);
+        return Ok(result);
+    }
+
+    [HttpPost("{folderId:guid}/share-review/retry")]
+    public async Task<IActionResult> RetryShareReview(Guid folderId, CancellationToken ct)
+    {
+        var userId = GetSupabaseUserIdFromClaims();
+        await _shareReview.RetryShareAfterResolveAsync(folderId, userId, ct);
+        return Ok();
+    }
+
+    [HttpPost("{folderId:guid}/share-review/rollback")]
+    [ProducesResponseType(typeof(ShareRollbackResponse), StatusCodes.Status200OK)]
+    public async Task<ActionResult<ShareRollbackResponse>> RollbackShare(Guid folderId, CancellationToken ct)
+    {
+        var userId = GetSupabaseUserIdFromClaims();
+        var result = await _shareReview.TryRollbackShareAsync(folderId, userId, ct);
+        return Ok(result);
     }
 }

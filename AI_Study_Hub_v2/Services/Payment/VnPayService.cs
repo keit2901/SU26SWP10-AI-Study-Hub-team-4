@@ -11,6 +11,7 @@ namespace AI_Study_Hub_v2.Services.Payment;
 
 public sealed class VnPayService : IVnPayService
 {
+    private const int MaxPaymentHistoryItems = 50;
     private readonly AppDbContext _db;
     private readonly VnPaySettings _settings;
     private readonly IPlanService _planService;
@@ -35,6 +36,8 @@ public sealed class VnPayService : IVnPayService
         Guid userId, string planKey, string billingCycle,
         string userIpAddress, CancellationToken ct)
     {
+        var now = DateTimeOffset.UtcNow;
+
         var user = await _db.Users
             .FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null)
@@ -49,14 +52,29 @@ public sealed class VnPayService : IVnPayService
             .FirstOrDefaultAsync(pt => pt.UserId == userId && pt.Status == "pending", ct);
         if (existingPending is not null)
         {
-            var expiresAt = existingPending.CreatedAt.AddMinutes(_settings.ExpireMinutes);
-            if (expiresAt > DateTimeOffset.UtcNow)
-                throw new InvalidOperationException(
-                    $"A payment is already in progress. It expires at {expiresAt:yyyy-MM-dd HH:mm:ss} UTC.");
+            var expiresAt = existingPending.ExpiresAt ?? existingPending.CreatedAt.AddMinutes(_settings.ExpireMinutes);
+            existingPending.ExpiresAt ??= expiresAt;
 
-            // If expired, mark it as expired
-            existingPending.Status = "expired";
-            existingPending.ErrorMessage = "Payment expired before new purchase.";
+            if (expiresAt > now)
+            {
+                if (string.Equals(existingPending.PlanKey, planKey, StringComparison.OrdinalIgnoreCase)
+                    && string.Equals(existingPending.BillingCycle, billingCycle, StringComparison.OrdinalIgnoreCase))
+                {
+                    return BuildPaymentResponse(existingPending, userIpAddress);
+                }
+
+                existingPending.Status = "expired";
+                existingPending.ErrorMessage = "Payment superseded by a new purchase attempt.";
+                existingPending.CompletedAt = now;
+            }
+            else
+            {
+                existingPending.Status = "expired";
+                existingPending.ErrorMessage = "Payment expired before new purchase.";
+                existingPending.CompletedAt = now;
+            }
+
+            await _db.SaveChangesAsync(ct);
         }
 
         var amountVnd = billingCycle == "yearly"
@@ -68,8 +86,6 @@ public sealed class VnPayService : IVnPayService
 
         var txnRef = $"VP_{Guid.NewGuid():N}"[..20];
         var orderInfo = $"AI Study Hub - {plan.PlanKey} {billingCycle}";
-
-        var now = DateTimeOffset.UtcNow;
 
         var txn = new PaymentTransaction
         {
@@ -86,11 +102,9 @@ public sealed class VnPayService : IVnPayService
         };
         _db.PaymentTransactions.Add(txn);
         await _db.SaveChangesAsync(ct);
+        await TrimPaymentHistoryAsync(userId, ct);
 
-        var paymentUrl = VnPayLibrary.BuildPaymentUrl(_settings, txnRef, amountVnd, orderInfo, userIpAddress, now);
-
-        return new Dtos.PaymentUrlResponse(
-            paymentUrl, txnRef, planKey, billingCycle, amountVnd, txn.ExpiresAt!.Value);
+        return BuildPaymentResponse(txn, userIpAddress);
     }
 
     public async Task<Dtos.IpnResult> ProcessIpnCallbackAsync(
@@ -249,5 +263,49 @@ public sealed class VnPayService : IVnPayService
         }
         if (count > 0) await _db.SaveChangesAsync(ct);
         return count;
+    }
+
+    private async Task TrimPaymentHistoryAsync(Guid userId, CancellationToken ct)
+    {
+        var stalePaymentIds = await _db.PaymentTransactions
+            .Where(pt => pt.UserId == userId)
+            .OrderByDescending(pt => pt.CreatedAt)
+            .ThenByDescending(pt => pt.Id)
+            .Skip(MaxPaymentHistoryItems)
+            .Select(pt => pt.Id)
+            .ToListAsync(ct);
+
+        if (stalePaymentIds.Count == 0)
+        {
+            return;
+        }
+
+        await _db.PaymentTransactions
+            .Where(pt => stalePaymentIds.Contains(pt.Id))
+            .ExecuteDeleteAsync(ct);
+    }
+
+    private Dtos.PaymentUrlResponse BuildPaymentResponse(
+        PaymentTransaction txn,
+        string userIpAddress)
+    {
+        var createdAt = txn.CreatedAt == default ? DateTimeOffset.UtcNow : txn.CreatedAt;
+        var expiresAt = txn.ExpiresAt ?? createdAt.AddMinutes(_settings.ExpireMinutes);
+        var orderInfo = $"AI Study Hub - {txn.PlanKey} {txn.BillingCycle}";
+        var paymentUrl = VnPayLibrary.BuildPaymentUrl(
+            _settings,
+            txn.TxnRef,
+            txn.AmountVnd,
+            orderInfo,
+            userIpAddress,
+            createdAt);
+
+        return new Dtos.PaymentUrlResponse(
+            paymentUrl,
+            txn.TxnRef,
+            txn.PlanKey,
+            txn.BillingCycle,
+            txn.AmountVnd,
+            expiresAt);
     }
 }

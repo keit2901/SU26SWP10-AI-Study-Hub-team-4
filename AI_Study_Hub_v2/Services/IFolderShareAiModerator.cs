@@ -1,4 +1,5 @@
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Dtos;
 
 namespace AI_Study_Hub_v2.Services;
 
@@ -8,6 +9,8 @@ public interface IFolderShareAiModerator
         Folder folder,
         IReadOnlyList<Document> documents,
         IReadOnlyList<string> extractedTexts);
+
+    ShareReviewFileDto EvaluateDocument(Document document, Folder folder);
 }
 
 public sealed record FolderShareModerationDecision(

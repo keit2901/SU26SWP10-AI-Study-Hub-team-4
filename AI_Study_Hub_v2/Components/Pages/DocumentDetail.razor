@@ -37,6 +37,7 @@
             <span class="bc-current">@_doc.FileName</span>
         </div>
 
+
         @* ── Document Header Card ── *@
         <div class="detail-header-card">
             <div class="dh-top-row">
@@ -92,9 +93,9 @@
                 </div>
             </div>
             <div class="dh-tags">
-                <span class="dh-status-badge status-@_doc.Status.ToString().ToLowerInvariant()">
+                <span class="dh-status-badge status-@StatusCssClass">
                     <span class="dh-status-dot"></span>
-                    @_doc.Status.ToString()
+                    @DisplayStatusText
                 </span>
                 <span class="dh-tag"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>@_doc.SubjectCode</span>
                 <span class="dh-tag"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2H2v10l9.29 9.29c.94.94 2.48.94 3.42 0l6.58-6.58c.94-.94.94-2.48 0-3.42L12 2Z"/><path d="M7 7h.01"/></svg>@_doc.Semester</span>
@@ -110,7 +111,7 @@
                 </div>
                 <div>
                     <p class="ds-label">STATUS</p>
-                    <p class="ds-value">@_doc.Status.ToString()</p>
+                    <p class="ds-value">@DisplayStatusText</p>
                 </div>
             </div>
             <div class="ds-card">
@@ -315,6 +316,8 @@
     private bool _busy;
     private string? _error;
     private DocumentDto? _doc;
+    private string DisplayStatusText => _doc?.Status.ToString() ?? "";
+    private string StatusCssClass => DisplayStatusText.ToLowerInvariant();
     private List<FolderDto> _folders = new();
     private bool _renaming;
     private string _renameValue = string.Empty;

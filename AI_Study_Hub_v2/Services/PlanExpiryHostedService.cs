@@ -1,6 +1,7 @@
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Services.Payment;
+using AI_Study_Hub_v2.Services.Payment.Abstractions;
 using Microsoft.EntityFrameworkCore;
 
 namespace AI_Study_Hub_v2.Services;
@@ -56,15 +57,15 @@ public sealed class PlanExpiryHostedService : BackgroundService
         using var scope = _scopeFactory.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         var planService = scope.ServiceProvider.GetRequiredService<IPlanService>();
-        var vnPayService = scope.ServiceProvider.GetRequiredService<IVnPayService>();
+        var paymentService = scope.ServiceProvider.GetRequiredService<IPaymentService>();
 
         var now = DateTimeOffset.UtcNow;
 
-        // Expire stale VNPay pending payments
-        var expiredPayments = await vnPayService.ExpireStalePaymentsAsync(ct);
+        // Expire stale pending payments
+        var expiredPayments = await paymentService.ExpireStalePaymentsAsync(ct);
         if (expiredPayments > 0)
         {
-            _logger.LogInformation("Expired {Count} stale VNPay pending payments.", expiredPayments);
+            _logger.LogInformation("Expired {Count} stale pending payments.", expiredPayments);
         }
 
         // M4: Atomic bulk update to prevent overwriting admin "deactivated"

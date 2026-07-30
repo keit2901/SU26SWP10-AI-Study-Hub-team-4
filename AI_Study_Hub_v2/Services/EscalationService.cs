@@ -1,3 +1,4 @@
+using System.Text.Json;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
@@ -11,14 +12,19 @@ public interface IEscalationService
     Task<IReadOnlyList<DocumentEscalationDto>> GetPendingAsync(CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(Guid userId, CancellationToken ct = default);
-    Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, Guid resolvedByUserId, ResolveEscalationRequest request, CancellationToken ct = default);
+    Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, ResolveEscalationRequest request, Guid resolvedByUserId, CancellationToken ct = default);
 }
 
 public sealed class EscalationService : IEscalationService
 {
     private readonly AppDbContext _db;
+    private readonly IAuditLogService _audit;
 
-    public EscalationService(AppDbContext db) => _db = db;
+    public EscalationService(AppDbContext db, IAuditLogService audit)
+    {
+        _db = db;
+        _audit = audit;
+    }
 
     public async Task<DocumentEscalationDto> CreateAsync(Guid escalatedByUserId, CreateEscalationRequest request, CancellationToken ct = default)
     {
@@ -44,7 +50,28 @@ public sealed class EscalationService : IEscalationService
             });
         }
 
+        foreach (var item in request.Items)
+        {
+            var document = await _db.Documents.FindAsync(item.DocumentId);
+            if (document is not null)
+                document.ReviewStatus = DocumentReviewStatus.Escalated;
+        }
+
+        _audit.Add(
+            escalatedByUserId,
+            "ESCALATION_CREATED",
+            "DocumentEscalation",
+            escalation.Id.ToString(),
+            "Medium",
+            afterJson: JsonSerializer.Serialize(new
+            {
+                escalation.FolderId,
+                escalation.Reason,
+                DocumentCount = request.Items.Count
+            }));
+
         await _db.SaveChangesAsync(ct);
+
         return await GetByIdAsync(escalation.Id, ct);
     }
 
@@ -63,7 +90,6 @@ public sealed class EscalationService : IEscalationService
         }
         return result;
     }
-
 
     public async Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default)
     {
@@ -96,16 +122,33 @@ public sealed class EscalationService : IEscalationService
         return result;
     }
 
-    public async Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, Guid resolvedByUserId, ResolveEscalationRequest request, CancellationToken ct = default)
+    public async Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, ResolveEscalationRequest request, Guid resolvedByUserId, CancellationToken ct = default)
     {
         var escalation = await _db.DocumentEscalations
             .FirstOrDefaultAsync(e => e.Id == escalationId, ct)
             ?? throw new AdminException(404, "escalation_not_found", "Escalation not found.");
 
+        if (escalation.EscalationStatus != "Pending")
+            throw new AdminException(409, "already_resolved", $"Escalation has already been resolved as '{escalation.EscalationStatus}'.");
+
+        var previousStatus = escalation.EscalationStatus;
         escalation.EscalationStatus = request.Status;
         escalation.AdminResponse = request.AdminResponse;
         escalation.ResolvedByUserId = resolvedByUserId;
         escalation.ResolvedAt = DateTimeOffset.UtcNow;
+
+        var beforeJson = JsonSerializer.Serialize(new { Status = previousStatus });
+        var afterJson = JsonSerializer.Serialize(new { escalation.EscalationStatus, escalation.AdminResponse });
+
+        _audit.Add(
+            resolvedByUserId,
+            "ESCALATION_RESOLVED",
+            "DocumentEscalation",
+            escalation.Id.ToString(),
+            "Medium",
+            beforeJson: beforeJson,
+            afterJson: afterJson);
+
         await _db.SaveChangesAsync(ct);
 
         return await GetByIdAsync(escalationId, ct);

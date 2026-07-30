@@ -1,6 +1,9 @@
 # Build artifacts
 **/bin/
 **/obj/
+**/packages/
+.tmp-build-*/
+*.nupkg
 
 # Tests
 **/*.Tests/
@@ -15,16 +18,20 @@
 .vscode/
 .idea/
 *.user
+**/*.suo
 launchSettings.json
 
 # Local dev
 opencode.json
 user-secrets/
 appsettings.Development.json
+.env
+.env.*
 
 # Docker
 Dockerfile
 .dockerignore
+docker-compose*.yml
 railway.variables.example
 
 # Infra (Supabase is external in production)
@@ -38,6 +45,7 @@ previous_session/
 
 # Node (agentation dev only)
 **/node_modules/
+**/wwwroot/uploads/
 
 # Docs / planning
 *.md
@@ -46,3 +54,9 @@ previous_session/
 # Misc
 *.tmp
 *.log
+**/*.bak
+**/*.orig
+*.swp
+*~
+.DS_Store
+Thumbs.db

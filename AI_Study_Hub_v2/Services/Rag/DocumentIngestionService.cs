@@ -15,6 +15,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
     private readonly IDocumentStorageReadService _storageRead;
     private readonly ITextExtractionService _textExtraction;
     private readonly IChunkingService _chunking;
+    private readonly ITokenEstimator _tokenEstimator;
     private readonly IEmbeddingService _embedding;
     private readonly IImageDescriptionService _imageDescription;
     private readonly RagOptions _options;
@@ -27,6 +28,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
         IDocumentStorageReadService storageRead,
         ITextExtractionService textExtraction,
         IChunkingService chunking,
+        ITokenEstimator tokenEstimator,
         IEmbeddingService embedding,
         IImageDescriptionService imageDescription,
         IOptions<RagOptions> options,
@@ -38,6 +40,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
         _storageRead = storageRead;
         _textExtraction = textExtraction;
         _chunking = chunking;
+        _tokenEstimator = tokenEstimator;
         _embedding = embedding;
         _imageDescription = imageDescription;
         _options = options.Value;
@@ -70,6 +73,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
                 return Failure(documentId, "Document does not exist or does not belong to the caller.");
             }
 
+            document.Status = DocumentStatus.Processing;
             document.ErrorMessage = null;
             await _db.SaveChangesAsync(cancellationToken);
 
@@ -180,7 +184,7 @@ foreach (var draft in drafts)
     ChunkIndex = draft.ChunkIndex,
     PageNumber = draft.PageNumber,
     Content = draft.Content,
-    TokenCount = EstimateTokenCount(draft.Content),
+    TokenCount = _tokenEstimator.Estimate(draft.Content),
     Embedding = new Vector(embedding),
     EmbeddingModel = _currentEmbeddingModel,
     CreatedAt = now,
@@ -191,7 +195,7 @@ foreach (var draft in drafts)
     {
         existingChunk.PageNumber = draft.PageNumber;
 existingChunk.Content = draft.Content;
-existingChunk.TokenCount = EstimateTokenCount(draft.Content);
+existingChunk.TokenCount = _tokenEstimator.Estimate(draft.Content);
 existingChunk.Embedding = new Vector(embedding);
 existingChunk.EmbeddingModel = _currentEmbeddingModel;
     }
@@ -240,14 +244,11 @@ return new DocumentIngestionResult(
     Success: true,
     ErrorMessage: null);
         }
-        catch (OperationCanceledException)
-        {
-            throw;
-        }
         catch (Exception ex)
         {
+            var isCancellation = ex is OperationCanceledException;
             _logger.LogWarning(ex, "Document ingestion failed: id={DocumentId}", documentId);
-            var message = TrimError(ex.Message);
+            var message = isCancellation ? "Ingestion was canceled or timed out." : TrimError(ex.Message);
 
             if (document is not null)
             {
@@ -269,14 +270,17 @@ return new DocumentIngestionResult(
                 }
             }
 
+            if (isCancellation)
+            {
+                throw;
+            }
+
             return Failure(documentId, message);
         }
     }
 
     private static DocumentIngestionResult Failure(Guid documentId, string errorMessage) =>
         new(documentId, ChunkCount: 0, Success: false, ErrorMessage: errorMessage);
-
-    private static int EstimateTokenCount(string content) => Math.Max(1, (int)Math.Ceiling(content.Length / 4d));
 
     private static string TrimError(string errorMessage)
     {

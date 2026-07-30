@@ -30,6 +30,23 @@ public sealed class FolderApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public async Task<FolderDto> GetAsync(string accessToken, Guid id, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/folders/{id}");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<FolderDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     public async Task<FolderDto> CreateAsync(
         string accessToken,
         CreateFolderRequest request,
@@ -212,6 +229,65 @@ public sealed class FolderApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public async Task<FolderDto> ApproveShareAsync(string accessToken, Guid id, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Patch, $"api/folders/{id}/share/approve");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<FolderDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<FolderDto> RejectShareAsync(
+        string accessToken,
+        Guid id,
+        RejectFolderShareRequest request,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        ArgumentNullException.ThrowIfNull(request);
+
+        using var req = new HttpRequestMessage(HttpMethod.Patch, $"api/folders/{id}/share/reject")
+        {
+            Content = JsonContent.Create(request)
+        };
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<FolderDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<FolderDto> AutoCheckShareAsync(string accessToken, Guid id, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Patch, $"api/folders/{id}/share/auto-check");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var dto = await resp.Content.ReadFromJsonAsync<FolderDto>(cancellationToken: ct);
+            return dto ?? throw new DocumentApiException(500, "empty_response", "Server returned empty response.");
+        }
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     public async Task DeleteAsync(string accessToken, Guid id, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
@@ -225,6 +301,55 @@ public sealed class FolderApiClient
             return;
         }
         await ThrowFromResponseAsync(resp, ct);
+    }
+
+    public async Task<ShareReviewSummaryDto> GetShareReviewAsync(string accessToken, Guid folderId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/folders/{folderId}/share-review");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<ShareReviewSummaryDto>(cancellationToken: ct)
+                ?? throw new DocumentApiException(500, "empty_response", "Empty response.");
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<ApplyDecisionsResponse> ApplyShareReviewAsync(string accessToken, Guid folderId, ApplyDecisionsRequest request, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/folders/{folderId}/share-review/apply");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        req.Content = JsonContent.Create(request);
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<ApplyDecisionsResponse>(cancellationToken: ct)
+                ?? throw new DocumentApiException(500, "empty_response", "Empty response.");
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task RetryShareReviewAsync(string accessToken, Guid folderId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/folders/{folderId}/share-review/retry");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var resp = await _http.SendAsync(req, ct);
+        if (!resp.IsSuccessStatusCode) await ThrowFromResponseAsync(resp, ct);
+    }
+
+    public async Task<ShareRollbackResponse> RollbackShareAsync(string accessToken, Guid folderId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/folders/{folderId}/share-review/rollback");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<ShareRollbackResponse>(cancellationToken: ct)
+                ?? new ShareRollbackResponse(false, 0, false);
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
     }
 
     private static async Task ThrowFromResponseAsync(HttpResponseMessage resp, CancellationToken ct)

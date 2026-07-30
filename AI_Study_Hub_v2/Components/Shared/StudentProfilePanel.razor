@@ -1,0 +1,991 @@
+@using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Services
+@inject AuthApiClient AuthApi
+@inject AuthSessionState Session
+@inject AuthPersistenceService AuthPersistence
+@inject PlanApiClient PlanApi
+@inject NavigationManager Nav
+@inject ISnackbar Snackbar
+
+@if (!Session.IsAuthenticated || Session.CurrentUser is null || Session.Session is null)
+{
+    <MudAlert Severity="Severity.Warning" Variant="Variant.Filled">
+        You are not signed in.
+    </MudAlert>
+}
+else
+{
+    var user = Session.CurrentUser;
+
+    <div class="student-profile-panel @(Compact ? "compact" : "page")">
+        <div class="student-profile-header">
+            <div class="student-profile-identity">
+                <div class="student-profile-avatar">@GetInitials(user)</div>
+                <div>
+                    <div class="student-profile-name">@user.FullName</div>
+                    <div class="student-profile-email">@user.Email</div>
+                </div>
+            </div>
+
+            <div class="student-profile-badges">
+                <span class="profile-badge plan @FormatPlanClass()">@FormatPlanLabel()</span>
+                <span class="profile-badge role">@user.Role</span>
+                <span class="profile-badge active">@(user.IsActive ? "Active" : "Inactive")</span>
+            </div>
+        </div>
+
+        <div class="student-profile-summary">
+            <div class="summary-item">
+                <span class="summary-label">Member since</span>
+                <strong>@user.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</strong>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">Current plan</span>
+                <strong>@FormatPlanLabel()</strong>
+            </div>
+            <div class="summary-item">
+                <span class="summary-label">Plan expires</span>
+                <strong>@BuildPlanExpiryText()</strong>
+            </div>
+        </div>
+
+        <div class="student-profile-quota-section">
+            <div class="quota-card storage-quota">
+                <div class="quota-card-header">
+                    <div class="quota-card-title">
+                        <MudIcon Icon="@Icons.Material.Filled.CloudQueue" Size="Size.Small" />
+                        <span>Storage Usage</span>
+                    </div>
+                    <span class="quota-card-value">@FormatStorageBarText()</span>
+                </div>
+                <MudProgressLinear Value="@GetStoragePercentage()"
+                                   Color="@GetStorageProgressColor()"
+                                   Size="Size.Medium"
+                                   Class="quota-progress-bar my-2 rounded-pill" />
+                <div class="quota-card-footer">
+                    <span class="quota-footer-info">Documents uploaded: <strong>@GetTotalDocumentCount()</strong></span>
+                    <span class="quota-percentage">@GetStoragePercentage().ToString("0.#")%</span>
+                </div>
+            </div>
+
+            <div class="quota-card token-quota">
+                <div class="quota-card-header">
+                    <div class="quota-card-title">
+                        <MudIcon Icon="@Icons.Material.Filled.Bolt" Size="Size.Small" />
+                        <span>Token Quota</span>
+                    </div>
+                    <span class="quota-card-value">@FormatTokenBarText()</span>
+                </div>
+                <MudProgressLinear Value="@GetTokenPercentage()"
+                                   Color="Color.Primary"
+                                   Size="Size.Medium"
+                                   Class="quota-progress-bar my-2 rounded-pill" />
+                <div class="quota-card-footer">
+                    <span class="quota-footer-info">Resets daily at 00:00 UTC</span>
+                    <span class="quota-percentage">@GetTokenPercentage().ToString("0.#")%</span>
+                </div>
+            </div>
+        </div>
+
+        @if (ShouldShowStorageWarning())
+        {
+            <div class="profile-plan-warning">
+                <div class="profile-plan-warning-icon">
+                    <MudIcon Icon="@Icons.Material.Filled.WarningAmber" />
+                </div>
+                <div class="profile-plan-warning-body">
+                    <div class="profile-plan-warning-title">@BuildStorageWarningTitle()</div>
+                    <p>
+                        @BuildStorageWarningMessage()
+                    </p>
+                </div>
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Warning"
+                           Size="Size.Small"
+                           Class="profile-plan-warning-action"
+                           OnClick="GoToPricing">
+                    Gia hạn gói
+                </MudButton>
+            </div>
+        }
+
+        <div class="student-profile-fields">
+            @RenderEditableRow(
+                "Full name",
+                Icons.Material.Filled.Badge,
+                _editingFullName,
+                _newFullName,
+                value => _newFullName = value,
+                user.FullName,
+                StartEditFullName,
+                CancelEditFullName,
+                SaveFullName)
+
+            @RenderEditableRow(
+                "Username",
+                Icons.Material.Filled.Person,
+                _editingUsername,
+                _newUsername,
+                value => _newUsername = value,
+                user.Username,
+                StartEditUsername,
+                CancelEditUsername,
+                SaveUsername)
+
+            @RenderEditableRow(
+                "Email",
+                Icons.Material.Filled.Email,
+                _editingEmail,
+                _newEmail,
+                value => _newEmail = value,
+                user.Email,
+                StartEditEmail,
+                CancelEditEmail,
+                SaveEmail)
+
+            <div class="profile-row">
+                <div class="profile-row-main">
+                    <div class="profile-row-label">
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" />
+                        <span>Password</span>
+                    </div>
+                    @if (_editingPassword)
+                    {
+                        <MudTextField T="string"
+                                      Label="Old password"
+                                      Value="_oldPasswordInput"
+                                      ValueChanged="@(value => _oldPasswordInput = value)"
+                                      InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true"
+                                      Class="profile-inline-input mb-2" />
+                        <MudTextField T="string"
+                                      Label="New password"
+                                      Value="_newPasswordInput"
+                                      ValueChanged="@(value => _newPasswordInput = value)"
+                                      InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true"
+                                      Class="profile-inline-input mb-2" />
+                        <MudTextField T="string"
+                                      Label="Confirm password"
+                                      Value="_confirmPasswordInput"
+                                      ValueChanged="@(value => _confirmPasswordInput = value)"
+                                      InputType="@(_showPassword ? InputType.Text : InputType.Password)"
+                                      Variant="Variant.Outlined"
+                                      Margin="Margin.Dense"
+                                      Immediate="true"
+                                      Class="profile-inline-input" />
+                    }
+                    else
+                    {
+                        <div class="profile-row-value masked">
+                            <span>@(_showPassword ? _passwordVal : "********")</span>
+                            <MudIconButton Icon="@(_showPassword ? Icons.Material.Filled.Visibility : Icons.Material.Filled.VisibilityOff)"
+                                           Size="Size.Small"
+                                           OnClick="TogglePassword"
+                                           Class="visibility-btn" />
+                        </div>
+                    }
+                </div>
+                <div class="profile-row-actions">
+                    @if (_editingPassword)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="SavePassword" Disabled="_busy" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" OnClick="CancelEditPassword" Disabled="_busy" />
+                    }
+                    else
+                    {
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="StartEditPassword">Change</MudButton>
+                    }
+                </div>
+            </div>
+        </div>
+
+        @if (ShowCloseAction)
+        {
+            <div class="student-profile-footer">
+                <MudButton Variant="Variant.Filled"
+                           Size="Size.Small"
+                           Color="Color.Primary"
+                           OnClick="@(async () => await CloseRequested.InvokeAsync())"
+                           Disabled="_busy">
+                    Close
+                </MudButton>
+            </div>
+        }
+    </div>
+}
+
+@code {
+    [Parameter] public bool Compact { get; set; } = true;
+    [Parameter] public bool ShowCloseAction { get; set; }
+    [Parameter] public EventCallback CloseRequested { get; set; }
+
+    private bool _busy;
+    private bool _showPassword;
+
+    private bool _editingFullName;
+    private string _newFullName = string.Empty;
+
+    private bool _editingUsername;
+    private string _newUsername = string.Empty;
+
+    private bool _editingEmail;
+    private string _newEmail = string.Empty;
+
+    private bool _editingPassword;
+    private string _newPassword = string.Empty;
+    private string _passwordVal = "demo12345";
+    private string _oldPasswordInput = string.Empty;
+    private string _newPasswordInput = string.Empty;
+    private string _confirmPasswordInput = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null)
+            {
+                Session.Set(restored);
+            }
+        }
+
+        if (Session.IsAuthenticated && Session.Session is not null)
+        {
+            _passwordVal = Session.Session.Password ?? "demo12345";
+            await TryLoadCurrentPlanAsync();
+        }
+    }
+
+    private RenderFragment RenderEditableRow(
+        string label,
+        string icon,
+        bool isEditing,
+        string currentEditValue,
+        Action<string> setValue,
+        string displayValue,
+        Action startEdit,
+        Action cancelEdit,
+        Func<Task> saveAction) => @<div class="profile-row">
+        <div class="profile-row-main">
+            <div class="profile-row-label">
+                <MudIcon Icon="@icon" Size="Size.Small" />
+                <span>@label</span>
+            </div>
+            @if (isEditing)
+            {
+                <MudTextField T="string"
+                              Value="@currentEditValue"
+                              ValueChanged="@(value => setValue(value))"
+                              Variant="Variant.Outlined"
+                              Margin="Margin.Dense"
+                              Immediate="true"
+                              Class="profile-inline-input" />
+            }
+            else
+            {
+                <div class="profile-row-value">@displayValue</div>
+            }
+        </div>
+        <div class="profile-row-actions">
+            @if (isEditing)
+            {
+                <MudIconButton Icon="@Icons.Material.Filled.Check" Color="Color.Success" Size="Size.Small" OnClick="@(async () => await saveAction())" Disabled="_busy" />
+                <MudIconButton Icon="@Icons.Material.Filled.Close" Color="Color.Error" Size="Size.Small" OnClick="@(() => cancelEdit())" Disabled="_busy" />
+            }
+            else
+            {
+                <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small" OnClick="@(() => startEdit())">Change</MudButton>
+            }
+        </div>
+    </div>;
+
+    private async Task TryLoadCurrentPlanAsync()
+    {
+        try
+        {
+            await Session.LoadCurrentPlanAsync(PlanApi);
+        }
+        catch
+        {
+        }
+    }
+
+    private static string GetInitials(UserDto user)
+    {
+        if (!string.IsNullOrWhiteSpace(user.FullName))
+        {
+            var parts = user.FullName.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2)
+            {
+                return $"{parts[0][0]}{parts[^1][0]}".ToUpperInvariant();
+            }
+
+            return user.FullName[..Math.Min(2, user.FullName.Length)].ToUpperInvariant();
+        }
+
+        return string.IsNullOrWhiteSpace(user.Username)
+            ? "US"
+            : user.Username[..Math.Min(2, user.Username.Length)].ToUpperInvariant();
+    }
+
+    private string FormatPlanLabel()
+        => Session.CurrentPlanDisplayName;
+
+    private string FormatPlanClass()
+    {
+        var plan = Session.CurrentPlan?.ToLowerInvariant() ?? "free";
+        return plan == "pro" ? "plan-pro" : "plan-free";
+    }
+
+    private string BuildPlanExpiryText()
+        => Session.CurrentPlanSnapshot?.ExpiresAt is DateTimeOffset expiresAt
+            ? expiresAt.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+            : "No expiration";
+
+    private bool ShouldShowStorageWarning()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot is null) return false;
+        if (snapshot.HasExpiredPaidPlan) return true;
+        if (snapshot.QuotaBytes is long quota && quota > 0)
+        {
+            return snapshot.UsedBytes >= quota || GetStoragePercentage() >= 90.0;
+        }
+        return false;
+    }
+
+    private double GetStoragePercentage()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot?.QuotaBytes is not long quota || quota <= 0) return 0;
+        return Math.Min(100.0, Math.Max(0.0, (snapshot.UsedBytes / (double)quota) * 100.0));
+    }
+
+    private Color GetStorageProgressColor()
+    {
+        var pct = GetStoragePercentage();
+        if (pct < 70.0) return Color.Success;
+        if (pct <= 90.0) return Color.Warning;
+        return Color.Error;
+    }
+
+    private string FormatStorageBarText()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot is null) return "0 MB / 500 MB used";
+        var usedMb = snapshot.UsedBytes / (1024.0 * 1024.0);
+        var quotaMb = (snapshot.QuotaBytes ?? (500L * 1024 * 1024)) / (1024.0 * 1024.0);
+        return $"{usedMb:0.#} MB / {quotaMb:0.#} MB used";
+    }
+
+    private double GetTokenPercentage()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot is null || snapshot.DailyTokenQuota is not long quota || quota <= 0) return 0;
+        return Math.Min(100.0, Math.Max(0.0, (snapshot.TokensUsedToday / (double)quota) * 100.0));
+    }
+
+    private string FormatTokenBarText()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        var used = snapshot?.TokensUsedToday ?? 0;
+        var quota = snapshot?.DailyTokenQuota ?? 25000;
+        return $"{used:N0} / {quota:N0} tokens used today";
+    }
+
+    private int GetTotalDocumentCount()
+    {
+        return Session.CurrentPlanSnapshot?.TotalDocumentCount ?? 0;
+    }
+
+    private string BuildStorageUsageText()
+    {
+        var snapshot = Session.CurrentPlanSnapshot;
+        if (snapshot?.QuotaBytes is not long quota || quota <= 0)
+        {
+            return "vượt quá dung lượng của gói hiện tại.";
+        }
+
+        return $"{FormatBytes(snapshot.UsedBytes)} / {FormatBytes(quota)} của gói {snapshot.PlanDisplayName}";
+    }
+
+    private string BuildStorageWarningTitle()
+        => !string.IsNullOrWhiteSpace(Session.CurrentPlanSnapshot?.ExpiredPaidPlanDisplayName)
+            ? $"Gói {Session.CurrentPlanSnapshot!.ExpiredPaidPlanDisplayName} của bạn đã hết hạn"
+            : "Bạn đã vượt giới hạn dung lượng của gói hiện tại";
+
+    private string BuildStorageWarningMessage()
+        => $"Bạn đang dùng {BuildStorageUsageText()}. Bạn không thể upload thêm cho đến khi xóa bớt tài liệu hoặc gia hạn gói. Các file cũ vẫn có thể xem, tải xuống và xóa bình thường.";
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes < 1024) return $"{bytes} B";
+        if (bytes < 1024L * 1024) return $"{bytes / 1024.0:0.#} KB";
+        if (bytes < 1024L * 1024 * 1024) return $"{bytes / (1024.0 * 1024):0.#} MB";
+        return $"{bytes / (1024.0 * 1024 * 1024):0.##} GB";
+    }
+
+    private void GoToPricing() => Nav.NavigateTo("/pricing");
+
+    private void TogglePassword() => _showPassword = !_showPassword;
+
+    private void StartEditFullName()
+    {
+        _newFullName = Session.CurrentUser?.FullName ?? string.Empty;
+        _editingFullName = true;
+    }
+
+    private void CancelEditFullName() => _editingFullName = false;
+
+    private void StartEditUsername()
+    {
+        _newUsername = Session.CurrentUser?.Username ?? string.Empty;
+        _editingUsername = true;
+    }
+
+    private void CancelEditUsername() => _editingUsername = false;
+
+    private void StartEditEmail()
+    {
+        _newEmail = Session.CurrentUser?.Email ?? string.Empty;
+        _editingEmail = true;
+    }
+
+    private void CancelEditEmail() => _editingEmail = false;
+
+    private void StartEditPassword()
+    {
+        _oldPasswordInput = string.Empty;
+        _newPasswordInput = string.Empty;
+        _confirmPasswordInput = string.Empty;
+        _editingPassword = true;
+    }
+
+    private void CancelEditPassword() => _editingPassword = false;
+
+    private async Task SaveFullName()
+        => await SaveUserUpdateAsync(
+            new UpdateUserRequest { FullName = _newFullName },
+            user =>
+            {
+                if (Session.Session is not null)
+                {
+                    Session.Session.User = user;
+                }
+            },
+            "Full name updated successfully.",
+            () => _editingFullName = false);
+
+    private async Task SaveUsername()
+        => await SaveUserUpdateAsync(
+            new UpdateUserRequest { Username = _newUsername },
+            user =>
+            {
+                if (Session.Session is not null)
+                {
+                    Session.Session.User = user;
+                }
+            },
+            "Username updated successfully.",
+            () => _editingUsername = false);
+
+    private async Task SaveEmail()
+        => await SaveUserUpdateAsync(
+            new UpdateUserRequest { Email = _newEmail },
+            user =>
+            {
+                if (Session.Session is not null)
+                {
+                    Session.Session.User = user;
+                }
+            },
+            "Email updated successfully.",
+            () => _editingEmail = false);
+
+    private async Task SavePassword()
+    {
+        if (string.IsNullOrWhiteSpace(_oldPasswordInput))
+        {
+            Snackbar.Add("Vui lòng nhập mật khẩu cũ.", Severity.Warning);
+            return;
+        }
+        if (_oldPasswordInput != _passwordVal)
+        {
+            Snackbar.Add("Mật khẩu cũ không chính xác.", Severity.Error);
+            return;
+        }
+        if (string.IsNullOrWhiteSpace(_newPasswordInput))
+        {
+            Snackbar.Add("Vui lòng nhập mật khẩu mới.", Severity.Warning);
+            return;
+        }
+        if (_newPasswordInput.Length < 6)
+        {
+            Snackbar.Add("Mật khẩu mới phải có ít nhất 6 ký tự.", Severity.Warning);
+            return;
+        }
+        if (_newPasswordInput != _confirmPasswordInput)
+        {
+            Snackbar.Add("Xác nhận mật khẩu mới không khớp.", Severity.Error);
+            return;
+        }
+
+        await SaveUserUpdateAsync(
+            new UpdateUserRequest { Password = _newPasswordInput },
+            user =>
+            {
+                if (Session.Session is not null)
+                {
+                    Session.Session.User = user;
+                    Session.Session.Password = _newPasswordInput;
+                }
+
+                _passwordVal = _newPasswordInput;
+            },
+            "Thay đổi mật khẩu thành công.",
+            () => _editingPassword = false);
+    }
+
+    private async Task SaveUserUpdateAsync(
+        UpdateUserRequest request,
+        Action<UserDto> applyUpdate,
+        string successMessage,
+        Action onFinally)
+    {
+        if (Session.Session is null || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            onFinally();
+            return;
+        }
+
+        _busy = true;
+        StateHasChanged();
+
+        try
+        {
+            var updatedUser = await AuthApi.UpdateUserAsync(Session.AccessToken, request);
+            applyUpdate(updatedUser);
+            Session.Set(Session.Session);
+            await AuthPersistence.SaveAsync(Session.Session);
+            Snackbar.Add(successMessage, Severity.Success);
+        }
+        catch (AuthApiException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to update profile: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _busy = false;
+            onFinally();
+            StateHasChanged();
+        }
+    }
+
+}
+
+<style>
+    .student-profile-panel {
+        width: 100%;
+        background: transparent;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+    }
+
+    .student-profile-panel.page {
+        max-width: 860px;
+        padding: 0;
+    }
+
+    .student-profile-panel.compact {
+        padding: 0;
+    }
+
+    .student-profile-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 1rem;
+        margin-bottom: 1rem;
+        flex-wrap: wrap;
+    }
+
+    .student-profile-identity {
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+        min-width: 0;
+    }
+
+    .student-profile-avatar {
+        width: 3.5rem;
+        height: 3.5rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 18px;
+        background: linear-gradient(135deg, #5e5ce6, #8578ff);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 800;
+        letter-spacing: 0.08em;
+        box-shadow: 0 16px 30px rgba(94, 92, 230, 0.28);
+    }
+
+    .student-profile-name {
+        font-size: 1.15rem;
+        font-weight: 800;
+        color: #201a38;
+        line-height: 1.2;
+    }
+
+    .student-profile-email {
+        color: #6b6487;
+        font-size: 0.92rem;
+        margin-top: 0.25rem;
+        word-break: break-word;
+    }
+
+    .student-profile-badges {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+    }
+
+    .profile-badge {
+        border-radius: 999px;
+        padding: 0.4rem 0.8rem;
+        font-size: 0.76rem;
+        font-weight: 700;
+    }
+
+    .profile-badge.plan {
+        background: rgba(94, 92, 230, 0.12);
+        color: #4f46d9;
+    }
+
+    .profile-badge.plan.plan-pro {
+        background: rgba(245, 158, 11, 0.15);
+        color: #d97706;
+        border: 1px solid rgba(245, 158, 11, 0.25);
+    }
+
+    .profile-badge.plan.plan-free {
+        background: rgba(94, 92, 230, 0.12);
+        color: #4f46d9;
+        border: 1px solid rgba(94, 92, 230, 0.18);
+    }
+
+    .profile-badge.role {
+        background: rgba(16, 185, 129, 0.12);
+        color: #0f8c63;
+    }
+
+    .profile-badge.active {
+        background: rgba(15, 23, 42, 0.08);
+        color: #41395e;
+    }
+
+    .student-profile-summary {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 0.75rem;
+        margin-bottom: 1rem;
+    }
+
+    .summary-item {
+        border-radius: 18px;
+        padding: 0.9rem 1rem;
+        border: 1px solid rgba(199, 196, 215, 0.35);
+        background: rgba(255, 255, 255, 0.72);
+    }
+
+    .summary-label {
+        display: block;
+        color: #7c7693;
+        font-size: 0.76rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        margin-bottom: 0.35rem;
+    }
+
+    .student-profile-fields {
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+    }
+
+    .profile-plan-warning {
+        display: grid;
+        grid-template-columns: auto 1fr auto;
+        gap: 0.9rem;
+        align-items: center;
+        margin-bottom: 1rem;
+        padding: 1rem 1.1rem;
+        border-radius: 20px;
+        border: 1px solid rgba(245, 158, 11, 0.28);
+        background: linear-gradient(135deg, rgba(255, 248, 235, 0.96), rgba(255, 243, 214, 0.92));
+    }
+
+    .profile-plan-warning-icon {
+        width: 2.6rem;
+        height: 2.6rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 14px;
+        background: rgba(245, 158, 11, 0.14);
+        color: #c47c00;
+        font-size: 1.35rem;
+    }
+
+    .profile-plan-warning-title {
+        color: #8f4f00;
+        font-size: 0.96rem;
+        font-weight: 800;
+        margin-bottom: 0.2rem;
+    }
+
+    .profile-plan-warning-body p {
+        margin: 0;
+        color: #7a5a16;
+        font-size: 0.88rem;
+        line-height: 1.55;
+    }
+
+    .profile-plan-warning-action {
+        white-space: nowrap;
+        border-radius: 999px !important;
+        text-transform: none !important;
+        font-weight: 700 !important;
+    }
+
+    .profile-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 0.75rem;
+        border: 1px solid rgba(199, 196, 215, 0.32);
+        background: rgba(255, 255, 255, 0.72);
+        border-radius: 18px;
+        padding: 0.9rem 1rem;
+    }
+
+    .profile-row-main {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .profile-row-label {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        color: #6f678c;
+        font-size: 0.82rem;
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+
+    .profile-row-value {
+        color: #1f1936;
+        font-weight: 600;
+        word-break: break-word;
+    }
+
+    .profile-row-value.masked {
+        display: flex;
+        align-items: center;
+        gap: 0.35rem;
+    }
+
+    .profile-row-actions {
+        display: flex;
+        align-items: center;
+        gap: 0.2rem;
+        flex-shrink: 0;
+    }
+
+    .profile-inline-input {
+        max-width: 100%;
+    }
+
+    .visibility-btn {
+        color: #7a73a1;
+    }
+
+    .student-profile-footer {
+        display: flex;
+        justify-content: flex-end;
+        gap: 0.75rem;
+        margin-top: 1.1rem;
+    }
+
+    .student-profile-panel.compact .student-profile-header {
+        gap: 0.8rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .student-profile-panel.compact .student-profile-avatar {
+        width: 3rem;
+        height: 3rem;
+        border-radius: 16px;
+        font-size: 0.92rem;
+    }
+
+    .student-profile-panel.compact .student-profile-name {
+        font-size: 1.02rem;
+    }
+
+    .student-profile-panel.compact .student-profile-email {
+        font-size: 0.86rem;
+        margin-top: 0.18rem;
+    }
+
+    .student-profile-panel.compact .student-profile-badges {
+        gap: 0.4rem;
+    }
+
+    .student-profile-panel.compact .profile-badge {
+        padding: 0.32rem 0.68rem;
+        font-size: 0.7rem;
+    }
+
+    .student-profile-panel.compact .student-profile-summary {
+        gap: 0.55rem;
+        margin-bottom: 0.8rem;
+    }
+
+    .student-profile-panel.compact .summary-item {
+        border-radius: 16px;
+        padding: 0.72rem 0.82rem;
+    }
+
+    .student-profile-panel.compact .summary-label {
+        margin-bottom: 0.22rem;
+        font-size: 0.68rem;
+    }
+
+    .student-profile-panel.compact .student-profile-fields {
+        gap: 0.55rem;
+    }
+
+    .student-profile-panel.compact .profile-row {
+        gap: 0.6rem;
+        border-radius: 16px;
+        padding: 0.72rem 0.82rem;
+    }
+
+    .student-profile-panel.compact .profile-row-label {
+        margin-bottom: 0.32rem;
+        font-size: 0.77rem;
+    }
+
+    .student-profile-panel.compact .profile-row-value {
+        font-size: 0.92rem;
+    }
+
+    .student-profile-panel.compact .profile-row-actions .mud-button-root,
+    .student-profile-panel.compact .profile-row-actions .mud-icon-button {
+        transform: scale(0.94);
+        transform-origin: right center;
+    }
+
+    .student-profile-panel.compact .profile-inline-input .mud-input-control {
+        margin-top: 0;
+    }
+
+    .student-profile-quota-section {
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 0.8rem;
+        margin-bottom: 1.2rem;
+    }
+
+    .quota-card {
+        background: rgba(245, 243, 255, 0.6);
+        border: 1px solid rgba(199, 196, 215, 0.35);
+        border-radius: 16px;
+        padding: 0.9rem 1rem;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .quota-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 0.3rem;
+    }
+
+    .quota-card-title {
+        display: flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #4a4563;
+    }
+
+    .quota-card-value {
+        font-size: 0.8rem;
+        font-weight: 700;
+        color: #1f1936;
+    }
+
+    .quota-card-footer {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-size: 0.72rem;
+        color: #6f678c;
+        margin-top: 0.2rem;
+    }
+
+    .quota-percentage {
+        font-weight: 600;
+    }
+
+    @@media (max-width: 800px) {
+        .student-profile-summary,
+        .student-profile-quota-section {
+            grid-template-columns: 1fr;
+        }
+
+        .profile-plan-warning {
+            grid-template-columns: 1fr;
+            align-items: flex-start;
+        }
+    }
+
+    @@media (max-width: 640px) {
+        .profile-row {
+            flex-direction: column;
+        }
+
+        .profile-row-actions {
+            width: 100%;
+            justify-content: flex-end;
+        }
+
+        .student-profile-panel.page,
+        .student-profile-panel.compact {
+            padding: 1rem;
+        }
+    }
+</style>

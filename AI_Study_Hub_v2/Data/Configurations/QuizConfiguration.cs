@@ -36,10 +36,6 @@ public sealed class QuizConfiguration : IEntityTypeConfiguration<Quiz>
             .IsRequired()
             .HasConversion<string>();
 
-        builder.Property(q => q.ErrorCode)
-            .HasColumnName("error_code")
-            .HasMaxLength(50);
-
         builder.Property(q => q.CurrentQuestionIndex)
             .HasColumnName("current_question_index")
             .HasDefaultValue(0);
