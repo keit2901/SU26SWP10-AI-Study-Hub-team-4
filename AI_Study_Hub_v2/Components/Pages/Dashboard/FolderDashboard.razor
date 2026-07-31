@@ -1,11 +1,13 @@
 @page "/dashboard"
 @layout DashboardLayout
+@implements IDisposable
 @using AI_Study_Hub_v2.Data
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Components.Layout
 @using Microsoft.EntityFrameworkCore
 @inject AppDbContext DbContext
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
+@inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
 @inject NavigationManager Nav
 
 <PageTitle>Dashboard Overview - AI Study Hub</PageTitle>
@@ -14,10 +16,10 @@
     <div style="padding: 2rem; max-width: 72rem; margin: 0 auto;">
         <header style="margin-bottom: 2rem;">
             <h1 style="font-size: 1.6rem; font-weight: 700; color: #111827; letter-spacing: -0.025em; margin: 0;">
-                @(IsModeratorOrAdmin ? "Content Moderation" : "Academic Dashboard")
+                @(IsModerator ? "Content Moderation" : "Academic Dashboard")
             </h1>
             <p style="font-size: 0.875rem; color: #6b7280; margin-top: 0.25rem;">
-                @(IsModeratorOrAdmin
+                @(IsModerator
                     ? "Track folders that need human review and moderation decisions."
                     : "Track your personal documents, processing files, and folder analytics.")
             </p>
@@ -31,8 +33,8 @@
         }
         else
         {
-            <div style="display: grid; grid-template-columns: repeat(@(IsModeratorOrAdmin ? 3 : 3), 1fr); gap: 1.5rem;">
-                @if (IsModeratorOrAdmin)
+            <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.5rem;">
+                @if (IsModerator)
                 {
                     <StatCard
                         Icon="@Icons.Material.Filled.SupportAgent"
@@ -109,29 +111,96 @@
     private int processingCount;
     private int rejectedCount;
     private List<FolderViewModel> viewModels = new();
+    private readonly CancellationTokenSource _lifetimeCts = new();
 
-    private bool IsModeratorOrAdmin =>
-        Session.CurrentUser?.Role?.Equals("Moderator", StringComparison.OrdinalIgnoreCase) == true
-        || Session.CurrentUser?.Role?.Equals("Admin", StringComparison.OrdinalIgnoreCase) == true;
+    private bool _isModerator;
 
-    protected override async Task OnInitializedAsync()
+    private bool IsModerator => _isModerator;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        var userId = Session.CurrentUser?.Id;
-        if (userId is null)
+        if (!firstRender)
         {
             return;
         }
 
-        if (IsModeratorOrAdmin)
+        await LoadDashboardAsync();
+    }
+
+    private async Task LoadDashboardAsync()
+    {
+        try
         {
-            await LoadModeratorDashboardAsync(userId.Value);
+            var verifiedUser = await VerifyDashboardUserAsync();
+            if (verifiedUser is null)
+            {
+                isLoading = false;
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            var role = verifiedUser.Role.RoleName;
+            if (AdminAccessPolicy.IsAdmin(role))
+            {
+                Nav.NavigateTo("/admin", replace: true);
+                return;
+            }
+
+            _isModerator = string.Equals(role, "Moderator", StringComparison.OrdinalIgnoreCase);
+            if (_isModerator)
+            {
+                await LoadModeratorDashboardAsync(verifiedUser.Id);
+            }
+            else
+            {
+                await LoadStudentDashboardAsync(verifiedUser.Id);
+            }
+
+            isLoading = false;
+            await InvokeAsync(StateHasChanged);
         }
-        else
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
         {
-            await LoadStudentDashboardAsync(userId.Value);
+        }
+    }
+
+    private async Task<User?> VerifyDashboardUserAsync()
+    {
+        if (!Session.IsAuthenticated)
+        {
+            var restored = await AuthPersistence.TryRestoreAsync();
+            if (restored is not null && restored.ExpiresAt > DateTimeOffset.UtcNow)
+            {
+                Session.Set(restored);
+            }
         }
 
-        isLoading = false;
+        var currentUser = Session.CurrentUser;
+        if (!Session.IsAuthenticated || currentUser is null || currentUser.Id == Guid.Empty)
+        {
+            await RejectDashboardUserAsync();
+            return null;
+        }
+
+        var verifiedUser = await DbContext.Users
+            .AsNoTracking()
+            .Include(user => user.Role)
+            .FirstOrDefaultAsync(user => user.Id == currentUser.Id, _lifetimeCts.Token);
+
+        if (verifiedUser is null || verifiedUser.Role is null || !verifiedUser.IsActive)
+        {
+            await RejectDashboardUserAsync();
+            return null;
+        }
+
+        return verifiedUser;
+    }
+
+    private async Task RejectDashboardUserAsync()
+    {
+        Session.Clear();
+        await AuthPersistence.ClearAsync();
+        Nav.NavigateTo("/login?returnUrl=%2Fdashboard", replace: true);
     }
 
     private async Task LoadModeratorDashboardAsync(Guid currentUserId)
@@ -150,7 +219,7 @@
                 folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
                 folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
                 folder.User != null ? (folder.User.FullName ?? folder.User.Username) : "Unknown"))
-            .ToListAsync();
+            .ToListAsync(_lifetimeCts.Token);
 
         humanReviewCount = studentFolders.Count(NeedsHumanReview);
         sharedCount = studentFolders.Count(folder => folder.ShareStatus == FolderStatus.Approved);
@@ -192,7 +261,7 @@
                 folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
                 folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
                 "Me"))
-            .ToListAsync();
+            .ToListAsync(_lifetimeCts.Token);
 
         foreach (var folder in myFolders)
         {
@@ -294,4 +363,10 @@
         string SubjectCode,
         string Semester,
         string OwnerName);
+
+    public void Dispose()
+    {
+        _lifetimeCts.Cancel();
+        _lifetimeCts.Dispose();
+    }
 }

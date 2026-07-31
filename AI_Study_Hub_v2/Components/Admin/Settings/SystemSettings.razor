@@ -11,11 +11,12 @@
 @inject ISnackbar Snackbar
 @inject AuthSessionState Session
 @inject SystemSettingsApiClient SettingsApi
+@inject NavigationManager Navigation
 @implements IDisposable
 
 <div class="settings-page">
     <div class="breadcrumbs-container">
-        UC13 • UC16 • AI SYSTEM PARAMETERS
+        Governance · System parameters
     </div>
 
     <div class="page-header-row">
@@ -26,11 +27,11 @@
         <div class="header-actions">
             <button class="header-outline-btn" @onclick="ShowAuditHint">
                 <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" />
-                <span>AUDIT TRAIL</span>
+                <span>Audit logs</span>
             </button>
             <button class="header-filled-btn" @onclick="Reload">
                 <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
-                <span>RELOAD CONFIGS</span>
+                <span>Reload</span>
             </button>
         </div>
     </div>
@@ -39,30 +40,23 @@
     <div class="kpi-grid-container mb-6">
         <div class="kpi-card-custom">
             <div class="kpi-card-bottom">
-                <span class="kpi-label">SYSTEM CONFIGS</span>
-                <div class="kpi-value">@_configs.Count</div>
-                <span class="kpi-subtext">Active system parameters</span>
+                <span class="kpi-label">@(HasRetainedConfigs ? "STALE CONFIGS" : "LOADED CONFIGS")</span>
+                <div class="kpi-value">@(MetricsUnavailable ? "—" : _configs.Count.ToString())</div>
+                <span class="kpi-subtext">@SettingsMetricSourceText</span>
             </div>
         </div>
         <div class="kpi-card-custom">
             <div class="kpi-card-bottom">
-                <span class="kpi-label">ACTION REQUIRED</span>
-                <div class="kpi-value warning-color">@_configs.Count(c => c.IsCritical)</div>
-                <span class="kpi-subtext">Requires confirmation</span>
+                <span class="kpi-label">@(HasRetainedConfigs ? "STALE CRITICAL CONFIGS" : "CRITICAL CONFIGS")</span>
+                <div class="kpi-value warning-color">@(MetricsUnavailable ? "—" : _configs.Count(c => c.IsCritical).ToString())</div>
+                <span class="kpi-subtext">@(MetricsUnavailable ? "Unavailable until reload succeeds" : "Require confirmation before save")</span>
             </div>
         </div>
         <div class="kpi-card-custom">
             <div class="kpi-card-bottom">
-                <span class="kpi-label">LAST SYNC</span>
-                <div class="kpi-value">@DateTime.Now.ToString("HH:mm")</div>
-                <span class="kpi-subtext">Refreshed just now</span>
-            </div>
-        </div>
-        <div class="kpi-card-custom">
-            <div class="kpi-card-bottom">
-                <span class="kpi-label">MODEL HEALTH</span>
-                <div class="kpi-value success-color">99.8%</div>
-                <span class="kpi-subtext">Optimal performance</span>
+                <span class="kpi-label">LAST SUCCESSFUL SYNC</span>
+                <div class="kpi-value">@(MetricsUnavailable ? "—" : FormatDateTime(_lastSuccessfulLoad))</div>
+                <span class="kpi-subtext">@(HasRetainedConfigs ? "Reload failed; values shown are stale" : MetricsUnavailable ? "Reload failed; settings unavailable" : "Updated after a successful API load")</span>
             </div>
         </div>
     </div>
@@ -70,8 +64,8 @@
     <!-- Search & Filters -->
     <div class="filter-row-custom mb-6">
         <div class="search-input-wrapper">
-            <input type="text" class="search-input" placeholder="Search configs, logs, or sessions..."
-                   @bind-value="_searchText" @bind-value:event="oninput" />
+            <input type="text" class="search-input" placeholder="Search configuration keys or descriptions..."
+                   value="@_searchInput" @oninput="OnSearchInputChanged" />
             <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" Size="Size.Small" />
         </div>
         <select class="filter-select" value="@_selectedCategory" @onchange="OnCategoryChanged">
@@ -88,7 +82,7 @@
             <option value="@UnsavedRisk">Unsaved changes</option>
         </select>
         @{
-            var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchText)
+            var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchInput)
                 || !string.IsNullOrWhiteSpace(_selectedCategory)
                 || !string.IsNullOrWhiteSpace(_selectedRisk);
             var filterIconColor = hasActiveFilters ? "#575e72" : "#c7c6d5";
@@ -124,24 +118,31 @@
             }
         </div>
     }
-    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    else if (!HasRetainedConfigs && !string.IsNullOrWhiteSpace(_errorMessage))
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-6">@_errorMessage</MudAlert>
     }
-    else if (!FilteredConfigs.Any())
-    {
-        <div class="empty-state mb-6" style="background: #ffffff; border: 1px solid rgba(199, 196, 215, 0.3); border-radius: 12px; padding: 3rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px;">
-            <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Large" Color="Color.Secondary" Style="font-size: 48px; color: #767586;" />
-            <h3 style="font-size: 18px; font-weight: 800; margin-top: 1rem; color: #191c1e;">No configuration found</h3>
-            <p style="font-size: 14px; color: #575e72; margin-top: 0.5rem;">Change the search or filters to inspect a wider set of parameters.</p>
-        </div>
-    }
     else
     {
-        <div class="config-grid mb-6">
-            @foreach (var config in FilteredConfigs)
-            {
-                <div class="config-card">
+        @if (!string.IsNullOrWhiteSpace(_errorMessage))
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-6">@_errorMessage</MudAlert>
+        }
+
+        @if (!FilteredConfigs.Any())
+        {
+            <div class="empty-state mb-6" style="background: #ffffff; border: 1px solid rgba(199, 196, 215, 0.3); border-radius: 12px; padding: 3rem; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px;">
+                <MudIcon Icon="@Icons.Material.Filled.Tune" Size="Size.Large" Color="Color.Secondary" Style="font-size: 48px; color: #767586;" />
+                <h3 style="font-size: 18px; font-weight: 800; margin-top: 1rem; color: #191c1e;">No configuration found</h3>
+                <p style="font-size: 14px; color: #575e72; margin-top: 0.5rem;">Change the search or filters to inspect a wider set of parameters.</p>
+            </div>
+        }
+        else
+        {
+            <div class="config-grid mb-6">
+                @foreach (var config in FilteredConfigs)
+                {
+                    <div class="config-card">
                     <div>
                         <div class="config-header-row">
                             <div>
@@ -193,27 +194,6 @@
                                 <span class="switch-field-label">@(GetBooleanValue(config) ? "Active" : "Disabled")</span>
                             </div>
                         }
-                        else if (config.Key == "ai.chat_model" || config.Key == "ai.embedding_model")
-                        {
-                            <!-- Select Dropdown UI -->
-                            <div class="custom-select-wrapper">
-                                <select class="custom-select" value="@config.Value" @onchange="@(e => config.Value = e.Value?.ToString() ?? "")">
-                                    @if (config.Key == "ai.chat_model")
-                                    {
-                                        <option value="gpt-4o-mini">gpt-4o-mini (Current)</option>
-                                        <option value="gpt-4">gpt-4</option>
-                                        <option value="gpt-4o">gpt-4o</option>
-                                        <option value="claude-3-5-sonnet">claude-3-5-sonnet</option>
-                                    }
-                                    else
-                                    {
-                                        <option value="text-embedding-3-small">text-embedding-3-small (Current)</option>
-                                        <option value="text-embedding-3-large">text-embedding-3-large</option>
-                                        <option value="text-embedding-ada-002">text-embedding-ada-002</option>
-                                    }
-                                </select>
-                            </div>
-                        }
                         else if (config.Type == ConfigInputType.Number)
                         {
                             <!-- Suffix input UI -->
@@ -250,7 +230,7 @@
                     <div>
                         <div class="card-meta-row">
                             <span>Default: @config.DefaultValue</span>
-                            <span>Last updated: @FormatDateTime(config.UpdatedAt) by admin</span>
+                            <span>Last updated: @FormatDateTime(config.UpdatedAt) by @config.UpdatedBy</span>
                         </div>
 
                         <div class="card-actions">
@@ -258,48 +238,18 @@
                             <button class="save-btn" disabled="@(!config.HasChanges)" @onclick="@(() => SaveConfigAsync(config))">SAVE</button>
                         </div>
                     </div>
-                </div>
-            }
-        </div>
+                    </div>
+                }
+            </div>
+        }
     }
-
-    <!-- Live configuration stream console -->
-    <div class="live-stream-panel mb-6">
-        <div class="stream-header">
-            <div class="stream-title-group">
-                <span class="stream-dot"></span>
-                <span class="stream-title">LIVE CONFIGURATION STREAM</span>
-            </div>
-            <div class="stream-actions">
-                <button class="stream-action-btn" title="Pause Stream">
-                    <MudIcon Icon="@Icons.Material.Filled.Pause" Size="Size.Small" />
-                </button>
-                <button class="stream-action-btn" title="Clear Logs" @onclick="ClearTerminalLogs">
-                    <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
-                </button>
-            </div>
-        </div>
-        <div class="terminal-console">
-            @foreach (var log in _terminalLogs)
-            {
-                var lowerLog = log.ToLowerInvariant();
-                var logClass = "info";
-                if (lowerLog.Contains("event:")) logClass = "event";
-                else if (lowerLog.Contains("warn:")) logClass = "warn";
-                else if (lowerLog.Contains("error:")) logClass = "error";
-
-                <p class="terminal-line @logClass">@log</p>
-            }
-            <p class="terminal-line"><span class="terminal-cursor"></span></p>
-        </div>
-    </div>
 
     <!-- Configuration Audit Preview -->
     <div class="audit-preview-card mb-6">
         <div class="audit-preview-header">
             <div>
-                <h3 class="audit-preview-title">Configuration audit preview</h3>
-                <p class="audit-preview-desc">Recent local changes that should map to audit_logs entries.</p>
+                <h3 class="audit-preview-title">Browser-session save history</h3>
+                <p class="audit-preview-desc">This view only records successful saves made while this browser session remains open.</p>
             </div>
             <button class="open-audit-btn" @onclick="ShowAuditHint">
                 <span>Open Audit Logs</span>
@@ -353,7 +303,7 @@
     .breadcrumbs-container {
         font-size: 11px;
         font-weight: 700;
-        color: #4648d4;
+        color: #72dcf2;
         letter-spacing: 0.05em;
         text-transform: uppercase;
         margin-bottom: 0.5rem;
@@ -443,7 +393,7 @@
     .kpi-card-custom {
         background: #ffffff;
         border: 1px solid rgba(199, 196, 215, 0.3);
-        border-radius: 12px;
+        border-radius: 10px;
         padding: 1.25rem;
         box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
     }
@@ -623,7 +573,7 @@
         border: 1px solid rgba(199, 196, 215, 0.3);
         border-radius: 12px;
         padding: 1.5rem;
-        box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.02);
+        box-shadow: none;
         display: flex;
         flex-direction: column;
         justify-content: space-between;
@@ -777,9 +727,10 @@
     }
 
     .custom-switch-container input {
+        position: absolute;
         opacity: 0;
-        width: 0;
-        height: 0;
+        width: 1px;
+        height: 1px;
     }
 
     .custom-switch-slider {
@@ -813,6 +764,11 @@
 
     input:checked + .custom-switch-slider:before {
         transform: translateX(24px);
+    }
+
+    .custom-switch-container input:focus-visible + .custom-switch-slider {
+        outline: 2px solid #72dcf2;
+        outline-offset: 3px;
     }
 
     .switch-field-label {
@@ -1316,9 +1272,11 @@
 
     private readonly List<ConfigRow> _configs = new();
     private readonly List<ConfigChangePreview> _recentChanges = new();
-    private readonly List<string> _terminalLogs = new();
-    private System.Threading.Timer? _logTimer;
     private bool _isLoading = true;
+    private DateTime? _lastSuccessfulLoad;
+    private bool _loadFailed;
+    private CancellationTokenSource? _searchDebounceCts;
+    private string _searchInput = string.Empty;
     private string? _searchText;
     private string? _selectedCategory;
     private string? _selectedRisk;
@@ -1331,6 +1289,14 @@
         .OrderByDescending(config => config.IsCritical)
         .ThenBy(config => config.Category)
         .ThenBy(config => config.Key);
+
+    private bool HasRetainedConfigs => _loadFailed && _configs.Count > 0;
+    private bool MetricsUnavailable => _loadFailed && !HasRetainedConfigs;
+    private string SettingsMetricSourceText => HasRetainedConfigs
+        ? "Reload failed; values retained from the last successful load"
+        : MetricsUnavailable
+            ? "Unavailable until reload succeeds"
+            : "Returned by the settings API";
 
     private IEnumerable<string> ActiveFilters
     {
@@ -1348,11 +1314,9 @@
         }
     }
 
-    protected override async void OnInitialized()
+    protected override async Task OnInitializedAsync()
     {
         await ReloadAsync();
-        InitializeTerminalLogs();
-        _logTimer = new System.Threading.Timer(OnLogTimerTick, null, 8000, 8000);
     }
 
     private async Task ReloadAsync()
@@ -1364,20 +1328,21 @@
         {
             if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
             {
+                _loadFailed = true;
                 _errorMessage = "You must be logged in as an administrator to view system settings.";
                 return;
             }
 
             var configs = await SettingsApi.GetAllAsync(Session.AccessToken);
+            var loadedConfigs = configs.Select(ConfigRow.FromDto).ToList();
             _configs.Clear();
-            foreach (var dto in configs)
-            {
-                _configs.Add(ConfigRow.FromDto(dto));
-            }
-            _terminalLogs.Add($"[{DateTime.Now:HH:mm:ss}] info: Successfully fetched {_configs.Count} parameters from API.");
+            _configs.AddRange(loadedConfigs);
+            _lastSuccessfulLoad = DateTime.UtcNow;
+            _loadFailed = false;
         }
         catch (Exception ex)
         {
+            _loadFailed = true;
             _errorMessage = $"Unable to load system settings: {ex.Message}";
         }
         finally
@@ -1386,59 +1351,14 @@
         }
     }
 
-    private void Reload()
+    private async Task Reload()
     {
-        _ = ReloadAsync();
-    }
-
-    private void InitializeTerminalLogs()
-    {
-        var now = DateTime.Now;
-        _terminalLogs.Add($"[{now.AddMinutes(-5).ToString("HH:mm:ss")}] info: Polling Supabase for configuration updates...");
-        _terminalLogs.Add($"[{now.AddMinutes(-4).ToString("HH:mm:ss")}] info: Successfully fetched 14 parameters.");
-        _terminalLogs.Add($"[{now.AddMinutes(-3).ToString("HH:mm:ss")}] event: User 'admin@aistudyhub.edu' accessed ai.chat_model via Admin Console.");
-        _terminalLogs.Add($"[{now.AddMinutes(-1).ToString("HH:mm:ss")}] warn: generation.temperature local value (0.2) differs from production (0.2).");
-        _terminalLogs.Add($"[{now.ToString("HH:mm:ss")}] info: RAG pipeline health check: 200 OK. Latency: 1.2s.");
-    }
-
-    private void OnLogTimerTick(object? state)
-    {
-        var random = new Random();
-        var now = DateTime.Now.ToString("HH:mm:ss");
-        string log;
-        int choice = random.Next(3);
-        if (choice == 0)
-        {
-            log = $"[{now}] info: RAG pipeline health check: 200 OK. Latency: {random.NextDouble() * 0.5 + 0.8:F1}s.";
-        }
-        else if (choice == 1)
-        {
-            log = $"[{now}] info: Polling Supabase for configuration updates...";
-        }
-        else
-        {
-            log = $"[{now}] info: Successfully synced {_configs.Count} parameters with secondary replica.";
-        }
-
-        InvokeAsync(() =>
-        {
-            _terminalLogs.Add(log);
-            if (_terminalLogs.Count > 50)
-            {
-                _terminalLogs.RemoveAt(0);
-            }
-            StateHasChanged();
-        });
-    }
-
-    private void ClearTerminalLogs()
-    {
-        _terminalLogs.Clear();
+        await ReloadAsync();
     }
 
     private void ShowAuditHint()
     {
-        Snackbar.Add("Open /admin/audit-logs to review persisted CONFIG_CHANGE entries with before/after JSON.", Severity.Info);
+        Navigation.NavigateTo("/admin/audit-logs");
     }
 
     private void OnCategoryChanged(ChangeEventArgs args)
@@ -1471,8 +1391,32 @@
     {
         _selectedCategory = null;
         _selectedRisk = null;
+        Interlocked.Exchange(ref _searchDebounceCts, null)?.Cancel();
+        _searchInput = string.Empty;
         _searchText = null;
         await InvokeAsync(StateHasChanged);
+    }
+
+    private async Task OnSearchInputChanged(ChangeEventArgs e)
+    {
+        _searchInput = e.Value?.ToString() ?? string.Empty;
+        var debounceCts = new CancellationTokenSource();
+        var previousCts = Interlocked.Exchange(ref _searchDebounceCts, debounceCts);
+        previousCts?.Cancel();
+
+        try
+        {
+            await Task.Delay(275, debounceCts.Token);
+            _searchText = _searchInput;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _searchDebounceCts, null, debounceCts);
+            debounceCts.Dispose();
+        }
     }
 
     private bool MatchesCategory(ConfigRow config)
@@ -1546,12 +1490,10 @@
             var previous = config.OriginalValue;
             var updated = await SettingsApi.UpdateValueAsync(Session.AccessToken, config.Key, config.Value);
             config.OriginalValue = config.Value;
-            config.UpdatedAt = updated.UpdatedAt?.UtcDateTime ?? DateTime.UtcNow;
-            config.UpdatedBy = updated.UpdatedBy ?? "admin";
+            config.UpdatedAt = updated.UpdatedAt?.UtcDateTime ?? config.UpdatedAt;
+            config.UpdatedBy = updated.UpdatedBy ?? config.UpdatedBy;
 
             _recentChanges.Insert(0, new ConfigChangePreview(config.Key, config.UpdatedBy, config.UpdatedAt, ToBeforeAfterJson(previous, config.Value)));
-
-            _terminalLogs.Add($"[{DateTime.Now:HH:mm:ss}] event: Config '{config.Key}' saved via API to value '{config.Value}'.");
 
             Snackbar.Add($"{config.Key} saved to server.", Severity.Success);
         }
@@ -1563,11 +1505,8 @@
 
     private void ResetConfig(ConfigRow config)
     {
-        var prev = config.Value;
         config.Value = config.OriginalValue;
-        
-        _terminalLogs.Add($"[{DateTime.Now.ToString("HH:mm:ss")}] event: User 'admin@aistudyhub.edu' reset {config.Key} from '{prev}' to '{config.OriginalValue}'.");
-        
+
         Snackbar.Add($"{config.Key} reset to the last saved value.", Severity.Info);
     }
 
@@ -1689,19 +1628,19 @@
         return value.Replace("\\", "\\\\", StringComparison.Ordinal).Replace("\"", "\\\"", StringComparison.Ordinal).Replace("\r", "", StringComparison.Ordinal).Replace("\n", "\\n", StringComparison.Ordinal);
     }
 
-    private static string FormatDateTime(DateTime value)
+    private static string FormatDateTime(DateTime? value)
     {
-        return value.ToLocalTime().ToString("MMM dd, HH:mm");
+        return value?.ToLocalTime().ToString("MMM dd, HH:mm") ?? "—";
     }
 
     public void Dispose()
     {
-        _logTimer?.Dispose();
+        Interlocked.Exchange(ref _searchDebounceCts, null)?.Cancel();
     }
 
     private sealed class ConfigRow
     {
-        private ConfigRow(string key, string displayName, string description, string category, ConfigInputType type, string value, string defaultValue, bool isCritical, int lines, DateTime updatedAt, string updatedBy)
+        private ConfigRow(string key, string displayName, string description, string category, ConfigInputType type, string value, string defaultValue, bool isCritical, int lines, DateTime? updatedAt, string updatedBy)
         {
             Key = key;
             DisplayName = displayName;
@@ -1737,8 +1676,8 @@
                 dto.DefaultValue,
                 dto.IsCritical,
                 lines,
-                dto.UpdatedAt?.UtcDateTime ?? DateTime.UtcNow,
-                dto.UpdatedBy ?? "admin");
+                dto.UpdatedAt?.UtcDateTime,
+                dto.UpdatedBy ?? "—");
         }
 
         public string Key { get; }
@@ -1751,12 +1690,12 @@
         public string DefaultValue { get; }
         public bool IsCritical { get; }
         public int Lines { get; }
-        public DateTime UpdatedAt { get; set; }
+        public DateTime? UpdatedAt { get; set; }
         public string UpdatedBy { get; set; }
         public bool HasChanges => !string.Equals(Value, OriginalValue, StringComparison.Ordinal);
     }
 
-    private sealed record ConfigChangePreview(string Key, string Actor, DateTime CreatedAt, string BeforeAfterJson);
+    private sealed record ConfigChangePreview(string Key, string Actor, DateTime? CreatedAt, string BeforeAfterJson);
 
     private enum ConfigInputType
     {

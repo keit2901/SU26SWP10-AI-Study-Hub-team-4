@@ -11,24 +11,19 @@
 @inject ISnackbar Snackbar
 @inject AuthSessionState Session
 @inject AdminApiClient AdminApi
+@implements IDisposable
 
 <div class="documents-page page-enter">
     <!-- Breadcrumbs & Header -->
     <div class="d-flex justify-space-between align-center mb-6 flex-wrap" style="gap: 1rem;">
         <div>
-            <div class="breadcrumb-custom mb-1">
-                <span class="crumb-parent">Console</span>
-                <span class="crumb-separator">/</span>
-                <span class="crumb-active">Document Library</span>
-            </div>
+            <div class="breadcrumb-custom mb-1"><span class="crumb-parent">Operations · Knowledge</span></div>
             <h2 class="text-headline-lg font-headline-lg text-on-surface" style="font-size: 28px; font-weight: 800; color: #191c1e; font-family: 'Hanken Grotesk', sans-serif; line-height: 1.2;">Document Library</h2>
-            <p class="text-body-md text-on-surface-variant mt-1" style="font-size: 14px; color: #575e72; font-family: 'Hanken Grotesk', sans-serif;">Manage and monitor the health of your RAG knowledge base. Ensure all academic materials are correctly indexed for the AI tutor system.</p>
+            <p class="text-body-md text-on-surface-variant mt-1" style="font-size: 14px; color: #575e72; font-family: 'Hanken Grotesk', sans-serif;">Inspect loaded documents, processing state, review state, and ownership.</p>
         </div>
-        <div class="d-flex align-center" style="gap: 0.75rem;">
-            <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.UploadFile" OnClick="OpenRegisterSheet" Class="register-doc-btn" Style="background-color: #4648d4; color: #ffffff; border-radius: 8px; font-weight: 700; text-transform: none; font-size: 13px;">
-                Register Document
-            </MudButton>
-        </div>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadDocumentsAsync" Disabled="@_isLoading" Style="background-color: #4648d4; color: #ffffff; border-radius: 8px; font-weight: 700; text-transform: none; font-size: 13px;">
+            Refresh
+        </MudButton>
     </div>
 
     <!-- KPI Grid -->
@@ -39,14 +34,10 @@
                 <div class="kpi-icon-circle violet">
                     <MudIcon Icon="@Icons.Material.Filled.Folder" Size="Size.Small" />
                 </div>
-                <span class="kpi-trend violet">+12%</span>
             </div>
             <div class="kpi-card-bottom">
-                <span class="kpi-label">TOTAL DOCUMENTS</span>
+                <span class="kpi-label">LOADED DOCUMENTS</span>
                 <div class="kpi-value">@TotalDocumentsCount.ToString("N0")</div>
-                <div class="kpi-progress-bar">
-                    <div class="kpi-progress-fill violet" style="width: 85%"></div>
-                </div>
             </div>
         </div>
 
@@ -56,13 +47,13 @@
                 <div class="kpi-icon-circle violet">
                     <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" />
                 </div>
-                <span class="kpi-trend violet">93.8%</span>
+                <span class="kpi-trend violet">@IndexedPercent%</span>
             </div>
             <div class="kpi-card-bottom">
-                <span class="kpi-label">INDEXED</span>
+                <span class="kpi-label">LOADED INDEXED</span>
                 <div class="kpi-value">@IndexedCount.ToString("N0")</div>
                 <div class="kpi-progress-bar">
-                    <div class="kpi-progress-fill violet" style="width: 93.8%"></div>
+                    <div class="kpi-progress-fill violet" style="width: @IndexedPercent%"></div>
                 </div>
             </div>
         </div>
@@ -76,10 +67,10 @@
                 <span class="kpi-trend red">Action Req.</span>
             </div>
             <div class="kpi-card-bottom">
-                <span class="kpi-label">NEEDS ATTENTION</span>
+                <span class="kpi-label">LOADED NEEDS ATTENTION</span>
                 <div class="kpi-value">@NeedsAttentionCount.ToString("N0")</div>
                 <div class="kpi-progress-bar">
-                    <div class="kpi-progress-fill red" style="width: 20%"></div>
+                    <div class="kpi-progress-fill red" style="width: @NeedsAttentionPercent%"></div>
                 </div>
             </div>
         </div>
@@ -90,13 +81,13 @@
                 <div class="kpi-icon-circle grey">
                     <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" />
                 </div>
-                <span class="kpi-trend grey">Critical</span>
+                <span class="kpi-trend grey">@FailedPercent%</span>
             </div>
             <div class="kpi-card-bottom">
-                <span class="kpi-label">FAILED JOBS</span>
+                <span class="kpi-label">LOADED FAILED</span>
                 <div class="kpi-value">@FailedCount.ToString("N0")</div>
                 <div class="kpi-progress-bar">
-                    <div class="kpi-progress-fill grey" style="width: 10%"></div>
+                    <div class="kpi-progress-fill grey" style="width: @FailedPercent%"></div>
                 </div>
             </div>
         </div>
@@ -106,7 +97,7 @@
     <div class="filter-row-custom mb-6">
         <div class="search-input-wrapper">
             <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" />
-            <input type="text" placeholder="Search title, owner, or subject..." value="@_searchText" @oninput="OnSearchInputChanged" class="search-input" />
+            <input type="text" placeholder="Search title, owner, or subject..." value="@_searchInput" @oninput="OnSearchInputChanged" class="search-input" />
         </div>
         
         <select class="filter-select" value="@_selectedProcessingStatus" @onchange="OnProcessingStatusSelectChanged">
@@ -126,7 +117,7 @@
         </select>
 
         @{
-            var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchText)
+            var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchInput)
                 || !string.IsNullOrWhiteSpace(_selectedProcessingStatus)
                 || !string.IsNullOrWhiteSpace(_selectedSubject);
             var filterIconColor = hasActiveFilters ? "#575e72" : "#c7c6d5";
@@ -158,7 +149,7 @@
             <div class="d-flex flex-column align-center justify-center py-10" style="text-align: center; gap: 0.5rem;">
                 <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Large" Color="Color.Secondary" />
                 <div class="font-bold text-lg" style="color: #191c1e;">No documents match the current filters</div>
-                <div class="text-sm" style="color: #767586;">Clear filters or register a document.</div>
+                <div class="text-sm" style="color: #767586;">Clear filters or refresh the loaded document list.</div>
             </div>
         }
         else
@@ -228,7 +219,6 @@
                                     <ChildContent>
                                         <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(doc))">View details</MudMenuItem>
                                         <MudMenuItem Icon="@Icons.Material.Filled.Edit" OnClick="@(() => EditDocument(doc))">Edit metadata</MudMenuItem>
-                                        <MudMenuItem Icon="@Icons.Material.Filled.Sync" OnClick="@(() => ReindexDocumentAsync(doc))">Re-index</MudMenuItem>
                                         <MudMenuItem Icon="@Icons.Material.Filled.Delete" OnClick="@(() => RemoveDocumentAsync(doc))">Remove record</MudMenuItem>
                                     </ChildContent>
                                 </MudMenu>
@@ -240,7 +230,7 @@
 
             <!-- Pagination Row -->
             <div class="pagination-bar-custom">
-                <div class="pagination-info">Total @TotalDocumentsCount document@(TotalDocumentsCount == 1 ? string.Empty : "s")</div>
+                <div class="pagination-info">Loaded @TotalDocumentsCount document@(TotalDocumentsCount == 1 ? string.Empty : "s") (API limit: 100)</div>
                 <div class="pagination-buttons">
                     <button class="pagination-btn" disabled="@(_currentPage <= 1)" @onclick="(() => GoToPage(_currentPage - 1))">Prev</button>
                     @foreach (var pageNum in GetPageNumbers())
@@ -270,41 +260,29 @@
     <!-- Bottom Status Footer -->
     <div class="bottom-status-footer mb-6">
         <div class="indexing-progress-wrapper">
-            <span class="indexing-label">Documents Indexed</span>
+            <span class="indexing-label">Loaded documents indexed</span>
             <div class="indexing-progress-bar">
-                <div class="indexing-progress-fill" style="width: @_indexedPercent%"></div>
+                <div class="indexing-progress-fill" style="width: @IndexedPercent%"></div>
             </div>
-            <span class="indexing-percentage">@_indexedPercent%</span>
-        </div>
-        <div class="db-status-badge">
-            <span class="db-status-dot @(_errorMessage is null ? "online" : "error")"></span>
-            <span class="db-status-text">@(_errorMessage is null ? "DATABASE STATUS OPERATIONAL" : "LOAD ERROR")</span>
+            <span class="indexing-percentage">@IndexedPercent%</span>
         </div>
         <div class="last-updated-text">
-            Last Updated: @_lastLoadTime
+            Last successful load: @_lastLoadTime
         </div>
     </div>
 </div>
 
 <EntitySheet Open="@_documentSheetOpen"
              OpenChanged="@(value => _documentSheetOpen = value)"
-             Title="@DocumentSheetTitle"
-              Subtitle="Edit document metadata — title, subject and storage path."
+             Title="Edit document"
+             Subtitle="Edit document metadata — title, subject and storage path."
              Width="540px">
     <ChildContent>
         <MudForm @ref="_form" @bind-IsValid="_isFormValid">
             <MudStack Spacing="3">
                 <MudTextField @bind-Value="_editingDocument.Title" Label="Title" Variant="Variant.Outlined" Required="true" RequiredError="Title is required" />
-                <MudSelect T="string" @bind-Value="_editingDocument.SubjectCode" Label="Subject" Variant="Variant.Outlined" Required="true">
-                    <MudSelectItem T="string" Value="@("SWP391")">SWP391</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("PRN212")">PRN212</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("DBI202")">DBI202</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("SWT301")">SWT301</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("CS402")">CS402</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("MATH101")">MATH101</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("PHYS205")">PHYS205</MudSelectItem>
-                </MudSelect>
-                <MudTextField @bind-Value="_editingDocument.StoragePath" Label="Storage path" Variant="Variant.Outlined" Required="true" />
+                <MudTextField @bind-Value="_editingDocument.SubjectCode" Label="Subject" Variant="Variant.Outlined" Required="true" RequiredError="Subject is required" />
+                <MudTextField @bind-Value="_editingDocument.StoragePath" Label="Storage path" Variant="Variant.Outlined" Required="true" RequiredError="Storage path is required" />
                 <HumanCheck @ref="_humanCheck" Action="admin-document-edit" ValidChanged="OnHumanCheckChanged" />
             </MudStack>
         </MudForm>
@@ -332,6 +310,8 @@
     private bool _documentSheetOpen;
     private bool _isFormValid;
     private bool _isSaving;
+    private CancellationTokenSource? _searchDebounceCts;
+    private string _searchInput = string.Empty;
     private string? _searchText;
     private string? _selectedProcessingStatus;
     private string? _selectedSubject;
@@ -339,11 +319,8 @@
     private MudForm? _form;
     private HumanCheck? _humanCheck;
     private bool _humanCheckValid;
-    private DocumentEditModel _editingDocument = DocumentEditModel.New();
-    private int _indexedPercent;
+    private DocumentEditModel _editingDocument = new();
     private string _lastLoadTime = "—";
-
-    private string DocumentSheetTitle => _editingDocument.Id == Guid.Empty ? "Register document" : "Edit document";
 
     private IEnumerable<DocumentRow> FilteredDocuments => _documents
         .Where(MatchesProcessingStatus)
@@ -361,10 +338,13 @@
 
     private int _totalPages => Math.Max(1, (int)Math.Ceiling((double)FilteredDocuments.Count() / _pageSize));
 
-    private int TotalDocumentsCount => FilteredDocuments.Count();
-    private int IndexedCount => FilteredDocuments.Count(d => d.ProcessingStatus == IndexedProcessing);
-    private int NeedsAttentionCount => FilteredDocuments.Count(d => d.ProcessingStatus is PendingProcessing or FailedProcessing);
-    private int FailedCount => FilteredDocuments.Count(d => d.ProcessingStatus == FailedProcessing);
+    private int TotalDocumentsCount => _documents.Count;
+    private int IndexedCount => _documents.Count(d => d.ProcessingStatus == IndexedProcessing);
+    private int IndexedPercent => TotalDocumentsCount > 0 ? (int)Math.Round((double)IndexedCount / TotalDocumentsCount * 100) : 0;
+    private int NeedsAttentionCount => _documents.Count(d => d.ProcessingStatus is PendingProcessing or FailedProcessing);
+    private int FailedCount => _documents.Count(d => d.ProcessingStatus == FailedProcessing);
+    private int NeedsAttentionPercent => TotalDocumentsCount > 0 ? (int)Math.Round((double)NeedsAttentionCount / TotalDocumentsCount * 100) : 0;
+    private int FailedPercent => TotalDocumentsCount > 0 ? (int)Math.Round((double)FailedCount / TotalDocumentsCount * 100) : 0;
 
     private void GoToPage(int page)
     {
@@ -452,9 +432,6 @@
             {
                 _documents.Add(ToRow(dto));
             }
-            var total = _documents.Count;
-            var indexed = _documents.Count(d => d.ProcessingStatus == IndexedProcessing);
-            _indexedPercent = total > 0 ? (int)Math.Round((double)indexed / total * 100) : 0;
             _lastLoadTime = DateTime.Now.ToString("HH:mm:ss");
         }
         catch (Exception ex)
@@ -467,11 +444,27 @@
         }
     }
 
-    private Task OnSearchInputChanged(ChangeEventArgs e)
+    private async Task OnSearchInputChanged(ChangeEventArgs e)
     {
-        _searchText = e.Value?.ToString();
-        _currentPage = 1;
-        return Task.CompletedTask;
+        _searchInput = e.Value?.ToString() ?? string.Empty;
+        var debounceCts = new CancellationTokenSource();
+        var previousCts = Interlocked.Exchange(ref _searchDebounceCts, debounceCts);
+        previousCts?.Cancel();
+
+        try
+        {
+            await Task.Delay(275, debounceCts.Token);
+            _searchText = _searchInput;
+            _currentPage = 1;
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            Interlocked.CompareExchange(ref _searchDebounceCts, null, debounceCts);
+            debounceCts.Dispose();
+        }
     }
 
     private Task OnProcessingStatusSelectChanged(ChangeEventArgs e)
@@ -490,6 +483,8 @@
 
     private Task ClearFiltersAsync()
     {
+        Interlocked.Exchange(ref _searchDebounceCts, null)?.Cancel();
+        _searchInput = string.Empty;
         _searchText = null;
         _selectedProcessingStatus = null;
         _selectedSubject = null;
@@ -526,12 +521,6 @@
             || document.Tags.Any(tag => tag.Contains(text, StringComparison.OrdinalIgnoreCase));
     }
 
-    private void OpenRegisterSheet()
-    {
-        _editingDocument = DocumentEditModel.New();
-        _documentSheetOpen = true;
-    }
-
     private void OpenDetails(DocumentRow document)
     {
         Navigation.NavigateTo($"/admin/documents/{document.Id}");
@@ -543,10 +532,63 @@
         _documentSheetOpen = true;
     }
 
+    private async Task SaveDocumentAsync()
+    {
+        if (_form is null)
+        {
+            return;
+        }
+
+        await _form.ValidateAsync();
+        var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
+        if (!_form.IsValid || !humanOk)
+        {
+            return;
+        }
+
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            Snackbar.Add("Session expired. Please log in again.", Severity.Error);
+            return;
+        }
+
+        _isSaving = true;
+        try
+        {
+            var update = new UpdateDocumentRequest
+            {
+                Title = _editingDocument.Title,
+                SubjectCode = _editingDocument.SubjectCode,
+                StoragePath = _editingDocument.StoragePath
+            };
+            await AdminApi.UpdateDocumentAsync(Session.AccessToken, _editingDocument.Id, update);
+
+            var document = _documents.FirstOrDefault(item => item.Id == _editingDocument.Id);
+            if (document is not null)
+            {
+                document.Title = _editingDocument.Title;
+                document.SubjectCode = _editingDocument.SubjectCode;
+                document.StoragePath = _editingDocument.StoragePath;
+                Snackbar.Add("Document metadata updated.", Severity.Success);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Failed to update document: {ex.Message}", Severity.Error);
+            return;
+        }
+        finally
+        {
+            _isSaving = false;
+        }
+
+        await CloseSheetAsync();
+    }
+
     private async Task CloseSheetAsync()
     {
         _documentSheetOpen = false;
-        _editingDocument = DocumentEditModel.New();
+        _humanCheckValid = false;
         if (_humanCheck is not null)
         {
             await _humanCheck.ResetAsync();
@@ -557,83 +599,6 @@
     {
         _humanCheckValid = valid;
         return Task.CompletedTask;
-    }
-
-    private async Task SaveDocumentAsync()
-    {
-        if (_form is null) return;
-
-        await _form.ValidateAsync();
-        var humanOk = _humanCheck is not null && await _humanCheck.ValidateAsync();
-        if (!_form.IsValid || !humanOk) return;
-
-        if (_editingDocument.Id == Guid.Empty)
-        {
-            // New document — handled by upload flow, not editable here
-            _documents.Insert(0, _editingDocument.ToDocumentRow(DateTime.UtcNow));
-            Snackbar.Add("Document registered and audit log entry queued.", Severity.Success);
-        }
-        else
-        {
-            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
-            {
-                Snackbar.Add("Session expired. Please log in again.", Severity.Error);
-                return;
-            }
-
-            _isSaving = true;
-            try
-            {
-                var update = new UpdateDocumentRequest
-                {
-                    Title = _editingDocument.Title,
-                    SubjectCode = _editingDocument.SubjectCode,
-                    StoragePath = _editingDocument.StoragePath
-                };
-                await AdminApi.UpdateDocumentAsync(Session.AccessToken, _editingDocument.Id, update);
-
-                var document = _documents.FirstOrDefault(item => item.Id == _editingDocument.Id);
-                if (document is not null)
-                {
-                    document.Title = _editingDocument.Title;
-                    document.SubjectCode = _editingDocument.SubjectCode;
-                    document.StoragePath = _editingDocument.StoragePath;
-                    Snackbar.Add("Document updated and audit log entry queued.", Severity.Success);
-                }
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Failed to update document: {ex.Message}", Severity.Error);
-            }
-            finally
-            {
-                _isSaving = false;
-            }
-        }
-
-        await CloseSheetAsync();
-    }
-
-    private async Task ReindexDocumentAsync(DocumentRow document)
-    {
-        var parameters = new DialogParameters
-        {
-            ["Title"] = "Re-index document",
-            ["Message"] = $"Queue {document.Title} for chunking and embedding again? Existing vector rows may be replaced.",
-            ["ConfirmText"] = "Queue re-index",
-            ["ConfirmColor"] = Color.Warning,
-            ["IconColor"] = Color.Warning,
-            ["Icon"] = Icons.Material.Filled.Sync
-        };
-
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Re-index document", parameters);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false })
-        {
-            document.ProcessingStatus = ProcessingProcessing;
-            Snackbar.Add($"{document.Title} queued for re-indexing.", Severity.Info);
-        }
     }
 
     private async Task RemoveDocumentAsync(DocumentRow document)
@@ -668,11 +633,6 @@
                 Snackbar.Add($"Failed: {ex.Message}", Severity.Error);
             }
         }
-    }
-
-    private static bool CanModerate(DocumentRow document)
-    {
-        return false; // Moderation has been removed — always false
     }
 
     private static string GetProcessingText(string status)
@@ -826,7 +786,7 @@
     {
         public Guid Id { get; set; }
         public string Title { get; set; } = string.Empty;
-        public string SubjectCode { get; set; } = "SWP391";
+        public string SubjectCode { get; set; } = string.Empty;
         public string OwnerName { get; set; } = string.Empty;
         public string OwnerEmail { get; set; } = string.Empty;
         public string ProcessingStatus { get; set; } = PendingProcessing;
@@ -835,13 +795,6 @@
         public double FileSizeMb { get; set; } = 1;
         public string StoragePath { get; set; } = string.Empty;
         public string TagsCsv { get; set; } = string.Empty;
-
-        public static DocumentEditModel New() => new()
-        {
-            Id = Guid.Empty,
-            Title = string.Empty,
-            StoragePath = "documents/swp391/new-document.pdf"
-        };
 
         public static DocumentEditModel FromRow(DocumentRow document)
         {
@@ -861,25 +814,11 @@
             };
         }
 
-        public DocumentRow ToDocumentRow(DateTime createdAt)
-        {
-            return new DocumentRow
-            {
-                Id = Guid.NewGuid(),
-                Title = Title,
-                SubjectCode = SubjectCode,
-                OwnerName = OwnerName,
-                OwnerEmail = OwnerEmail,
-                ProcessingStatus = ProcessingStatus,
-                ReviewStatus = ReviewStatus,
-                FileType = FileType,
-                FileSizeMb = FileSizeMb,
-                StoragePath = StoragePath,
-                Tags = ParseTags(TagsCsv),
-                ChunkCount = 0,
-                CreatedAt = createdAt
-            };
-        }
+    }
+
+    public void Dispose()
+    {
+        Interlocked.Exchange(ref _searchDebounceCts, null)?.Cancel();
     }
 }
 
@@ -897,7 +836,7 @@
     .crumb-parent {
         font-size: 11px;
         font-weight: 700;
-        color: #4648d4;
+        color: #72dcf2;
         text-transform: uppercase;
         letter-spacing: 0.05em;
     }
@@ -938,7 +877,7 @@
         display: flex;
         flex-direction: column;
         justify-content: space-between;
-        min-height: 140px;
+        min-height: 124px;
     }
     .kpi-card-top {
         display: flex;
@@ -1095,10 +1034,11 @@
         border: 1px solid rgba(199, 196, 215, 0.3);
         border-radius: 12px;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
-        overflow: hidden;
+        overflow-x: auto;
     }
     .document-table {
         width: 100%;
+        min-width: 900px;
         border-collapse: collapse;
     }
     .document-table th {

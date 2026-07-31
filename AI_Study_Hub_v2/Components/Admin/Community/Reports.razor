@@ -1,7 +1,7 @@
 @namespace AI_Study_Hub_v2.Components.Admin.Community
 @page "/admin/community-reports"
 @layout AdminLayout
-@implements IDisposable
+@implements IAsyncDisposable
 @inject AuthSessionState Session
 @inject CommunityApiClient CommunityApi
 @inject IDialogService DialogService
@@ -11,17 +11,18 @@
     <MudPaper Elevation="0" Class="report-header">
         <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Style="flex-wrap: wrap; gap: 1rem;">
             <div>
-                <MudText Typo="Typo.overline" Color="Color.Secondary">SCRUM-62 · Community safety</MudText>
-                <MudText Typo="Typo.h4">Public Content Reports</MudText>
+                <MudText Typo="Typo.overline" Class="report-kicker">Operations · Moderation</MudText>
+                <MudText Typo="Typo.h4">Community reports</MudText>
                 <MudText Typo="Typo.body1" Color="Color.Secondary">
                     Review reports submitted against folders published to the Public Hub.
                 </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">@RefreshStatus</MudText>
             </div>
             <MudButton Variant="Variant.Outlined"
                        StartIcon="@Icons.Material.Filled.Refresh"
-                       Disabled="_loading"
-                       OnClick="LoadAsync">
-                Refresh
+                       Disabled="@_manualRefreshQueued"
+                       OnClick="RefreshAsync">
+                @RefreshButtonText
             </MudButton>
         </MudStack>
     </MudPaper>
@@ -93,11 +94,26 @@
     private bool _loading = true;
     private string? _error;
     private Guid? _busyReportId;
-    private bool _loadStarted;
+    private bool _hasLoaded;
+    private bool _isRefreshing;
+    private bool _manualRefreshQueued;
+    private DateTimeOffset? _lastSuccessfulRefreshUtc;
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly PeriodicTimer _pollTimer = new(TimeSpan.FromSeconds(30));
+    private Task? _pollTask;
+
+    private string RefreshStatus => _lastSuccessfulRefreshUtc is null
+        ? "Waiting for the first successful refresh."
+        : $"Last refreshed {_lastSuccessfulRefreshUtc.Value.ToLocalTime():dd/MM/yyyy HH:mm:ss}.";
+    private string RefreshButtonText => _manualRefreshQueued
+        ? "Refresh queued"
+        : _isRefreshing ? "Refreshing..." : "Refresh";
 
     protected override void OnInitialized()
     {
         Session.OnChange += HandleSessionChanged;
+        _pollTask = PollAsync();
         if (Session.IsAuthenticated)
         {
             _ = LoadAsync();
@@ -106,36 +122,85 @@
 
     private void HandleSessionChanged()
     {
-        if (Session.IsAuthenticated && !_loadStarted)
+        if (Session.IsAuthenticated)
         {
-            _ = InvokeAsync(LoadAsync);
+            _ = InvokeAsync(() => LoadAsync());
         }
     }
 
-    private async Task LoadAsync()
+    private async Task RefreshAsync()
+    {
+        _manualRefreshQueued = _isRefreshing;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            await LoadAsync(waitForActiveRefresh: true);
+        }
+        finally
+        {
+            _manualRefreshQueued = false;
+            if (!_lifetimeCts.IsCancellationRequested)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task LoadAsync(bool waitForActiveRefresh = false)
     {
         if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
         {
             return;
         }
 
-        _loadStarted = true;
-        _loading = true;
-        _error = null;
+        bool entered;
         try
         {
-            var rows = await CommunityApi.GetPendingReportsAsync(Session.AccessToken);
+            entered = await _refreshGate.WaitAsync(
+                waitForActiveRefresh ? Timeout.InfiniteTimeSpan : TimeSpan.Zero,
+                _lifetimeCts.Token);
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!entered)
+        {
+            return;
+        }
+
+        _loading = !_hasLoaded;
+        _isRefreshing = true;
+        await InvokeAsync(StateHasChanged);
+        try
+        {
+            var rows = await CommunityApi.GetPendingReportsAsync(Session.AccessToken, _lifetimeCts.Token);
             _reports.Clear();
             _reports.AddRange(rows);
+            _hasLoaded = true;
+            _lastSuccessfulRefreshUtc = DateTimeOffset.UtcNow;
+            _error = null;
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // Expected while disposal cancels a pending refresh.
         }
         catch (Exception ex)
         {
-            _error = $"Unable to load community reports: {ex.Message}";
+            _error = _hasLoaded
+                ? $"Unable to refresh community reports. Showing the last successful data: {ex.Message}"
+                : $"Unable to load community reports: {ex.Message}";
         }
         finally
         {
             _loading = false;
-            await InvokeAsync(StateHasChanged);
+            _isRefreshing = false;
+            _refreshGate.Release();
+            if (!_lifetimeCts.IsCancellationRequested)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -163,11 +228,16 @@
                 Session.AccessToken!,
                 report.Id,
                 decision,
-                resolution);
+                resolution,
+                _lifetimeCts.Token);
             _reports.Remove(report);
             Snackbar.Add(
                 decision == "Resolved" ? "Report resolved." : "Report dismissed.",
                 decision == "Resolved" ? Severity.Success : Severity.Info);
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // Expected when component disposal cancels a report resolution.
         }
         catch (Exception ex)
         {
@@ -179,9 +249,32 @@
         }
     }
 
-    public void Dispose()
+    private async Task PollAsync()
+    {
+        try
+        {
+            while (await _pollTimer.WaitForNextTickAsync(_lifetimeCts.Token))
+            {
+                await InvokeAsync(() => LoadAsync());
+            }
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // Expected while the component is disposed.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
     {
         Session.OnChange -= HandleSessionChanged;
+        _lifetimeCts.Cancel();
+        _pollTimer.Dispose();
+        if (_pollTask is not null)
+        {
+            await _pollTask;
+        }
+        await _refreshGate.WaitAsync();
+        _refreshGate.Dispose();
     }
 }
 
@@ -189,12 +282,17 @@
     .report-header,
     .report-list {
         padding: 1.25rem;
-        border-radius: 26px;
-        border: 1px solid rgba(15, 118, 110, .12);
-        background: rgba(255, 252, 246, .9);
+        border-radius: 10px;
+        border: 1px solid rgba(190, 196, 255, .14);
+        background: rgba(18, 18, 31, .9);
     }
 
     .report-header {
-        background: linear-gradient(135deg, rgba(15, 118, 110, .12), rgba(180, 83, 9, .08));
+        background: rgba(18, 18, 31, .9);
+        border-left: 3px solid #72dcf2;
     }
+
+    .report-kicker { color: #72dcf2 !important; letter-spacing: .09em; }
+
+    @@media (max-width: 600px) { .report-header, .report-list { padding: 1rem; } }
 </style>

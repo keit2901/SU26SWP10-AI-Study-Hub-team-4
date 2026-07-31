@@ -34,7 +34,7 @@ else
                     <MudIcon Icon="@GetFileIcon(_document.FileType)" />
                 </MudAvatar>
                 <div>
-                    <MudText Typo="Typo.overline" Color="Color.Secondary">Document detail</MudText>
+                    <MudText Typo="Typo.overline" Class="detail-kicker">Knowledge · Document</MudText>
                     <MudText Typo="Typo.h4">@_document.Title</MudText>
                     <MudText Typo="Typo.body2" Color="Color.Secondary">@_document.StoragePath</MudText>
                 </div>
@@ -42,7 +42,6 @@ else
             <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="BackToDocuments">Back</MudButton>
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditMetadata">Edit metadata</MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Sync" OnClick="ReindexAsync">Re-index</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete" OnClick="DeleteAsync">Delete</MudButton>
             </MudStack>
         </MudStack>
@@ -78,27 +77,15 @@ else
             <MudTabs Rounded="true" Elevation="0" TabPanelsClass="pa-4">
                 <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.Info">
                     <MudGrid>
-                        <MudItem xs="12" md="6">
+                        <MudItem xs="12">
                             <MudList T="string" Dense="true">
                                 <MudListSubheader>Document fields</MudListSubheader>
                                 <MudListItem Text="ID" SecondaryText="@_document.Id.ToString()" />
                                 <MudListItem Text="Owner" SecondaryText="@($"{_document.OwnerName} ({_document.OwnerEmail})")" />
                                 <MudListItem Text="File type" SecondaryText="@_document.FileType.ToUpperInvariant()" />
                                 <MudListItem Text="Uploaded" SecondaryText="@FormatDateTime(_document.CreatedAt)" />
-                                <MudListItem Text="Last indexed" SecondaryText="@FormatDateTime(_document.IndexedAt)" />
+                                <MudListItem Text="Last updated" SecondaryText="@FormatDateTime(_document.UpdatedAt)" />
                             </MudList>
-                        </MudItem>
-                        <MudItem xs="12" md="6">
-                            <MudText Typo="Typo.subtitle2" Class="mb-2">Tags</MudText>
-                            <MudChipSet T="string">
-                                @foreach (var tag in _document.Tags)
-                                {
-                                    <MudChip T="string" Value="@tag" Color="Color.Primary" Variant="Variant.Outlined">@tag</MudChip>
-                                }
-                            </MudChipSet>
-                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mt-4">
-                                Connect this view to Supabase Storage and document_chunks to show signed download links and chunk previews.
-                            </MudAlert>
                         </MudItem>
                     </MudGrid>
                 </MudTabPanel>
@@ -109,31 +96,15 @@ else
                             <MudTh>#</MudTh>
                             <MudTh>Preview</MudTh>
                             <MudTh>Tokens</MudTh>
-                            <MudTh>Status</MudTh>
                         </HeaderContent>
                         <RowTemplate>
                             <MudTd DataLabel="#">@context.Index</MudTd>
                             <MudTd DataLabel="Preview">@context.Preview</MudTd>
                             <MudTd DataLabel="Tokens">@context.TokenCount</MudTd>
-                            <MudTd DataLabel="Status">
-                                <MudChip T="string" Color="Color.Success" Variant="Variant.Outlined" Size="Size.Small">Embedded</MudChip>
-                            </MudTd>
                         </RowTemplate>
                     </MudTable>
                 </MudTabPanel>
 
-                <MudTabPanel Text="Audit" Icon="@Icons.Material.Filled.History">
-                    <MudTimeline Class="document-timeline">
-                        @foreach (var activity in _activities)
-                        {
-                            <MudTimelineItem Color="@activity.Color" Icon="@activity.Icon">
-                                <MudText Typo="Typo.subtitle2">@activity.Action</MudText>
-                                <MudText Typo="Typo.body2" Color="Color.Secondary">@activity.Description</MudText>
-                                <MudText Typo="Typo.caption">@FormatDateTime(activity.CreatedAt)</MudText>
-                            </MudTimelineItem>
-                        }
-                    </MudTimeline>
-                </MudTabPanel>
             </MudTabs>
         </MudPaper>
     </MudStack>
@@ -144,15 +115,7 @@ else
         <MudForm @ref="_editForm" @bind-IsValid="_editFormValid">
             <MudStack Spacing="3">
                 <MudTextField @bind-Value="_editTitle" Label="Title" Variant="Variant.Outlined" Required="true" RequiredError="Title is required" />
-                <MudSelect T="string" @bind-Value="_editSubjectCode" Label="Subject" Variant="Variant.Outlined" Required="true">
-                    <MudSelectItem T="string" Value="@("SWP391")">SWP391</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("PRN212")">PRN212</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("DBI202")">DBI202</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("SWT301")">SWT301</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("CS402")">CS402</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("MATH101")">MATH101</MudSelectItem>
-                    <MudSelectItem T="string" Value="@("PHYS205")">PHYS205</MudSelectItem>
-                </MudSelect>
+                <MudTextField @bind-Value="_editSubjectCode" Label="Subject" Variant="Variant.Outlined" Required="true" RequiredError="Subject is required" />
                 <MudTextField @bind-Value="_editStoragePath" Label="Storage path" Variant="Variant.Outlined" Required="true" />
             </MudStack>
         </MudForm>
@@ -170,7 +133,6 @@ else
     private bool _isLoading = true;
     private string? _errorMessage;
     private readonly List<ChunkPreviewRow> _chunks = new();
-    private readonly List<ActivityRow> _activities = new();
     private bool _editOpen;
     private string _editTitle = string.Empty;
     private string _editSubjectCode = string.Empty;
@@ -212,7 +174,7 @@ else
                 ChunkCount = dto.ChunkCount,
                 Tags = new(),
                 CreatedAt = dto.CreatedAt.UtcDateTime,
-                IndexedAt = dto.UpdatedAt.UtcDateTime
+                UpdatedAt = dto.UpdatedAt.UtcDateTime
             };
 
             _chunks.Clear();
@@ -277,34 +239,6 @@ else
         finally
         {
             _editSaving = false;
-        }
-    }
-
-    private async Task ReindexAsync()
-    {
-        if (_document is null) return;
-
-        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
-        {
-            Snackbar.Add("Session expired.", Severity.Error);
-            return;
-        }
-
-        var parameters = new DialogParameters
-        {
-            ["Title"] = "Re-index document",
-            ["Message"] = $"Queue {_document.Title} for chunking and embedding again? Existing vector rows may be replaced.",
-            ["ConfirmText"] = "Queue re-index",
-            ["ConfirmColor"] = Color.Warning,
-            ["IconColor"] = Color.Warning,
-            ["Icon"] = Icons.Material.Filled.Sync
-        };
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Re-index document", parameters);
-        var result = await dialog.Result;
-        if (result is { Canceled: false })
-        {
-            _document.Status = "Processing";
-            Snackbar.Add($"{_document.Title} queued for re-indexing.", Severity.Info);
         }
     }
 
@@ -391,11 +325,10 @@ else
         public int ChunkCount { get; set; }
         public List<string> Tags { get; set; } = new();
         public DateTime CreatedAt { get; set; }
-        public DateTime IndexedAt { get; set; }
+        public DateTime UpdatedAt { get; set; }
     }
 
     private sealed record ChunkPreviewRow(int Index, string Preview, int TokenCount);
-    private sealed record ActivityRow(string Action, string Description, DateTime CreatedAt, string Icon, Color Color);
 }
 
 <style>
@@ -405,18 +338,16 @@ else
 
     .detail-card,
     .detail-tabs-card {
-        border-radius: 24px;
-        border: 1px solid rgba(15, 118, 110, .12);
-        background: rgba(255, 252, 246, .88);
+        border-radius: 10px;
+        border: 1px solid rgba(190, 196, 255, .14);
+        background: rgba(18, 18, 31, .9);
     }
 
     .detail-card {
         padding: 1.25rem;
     }
 
-    .document-timeline {
-        max-width: 760px;
-    }
+    .detail-kicker { color: #72dcf2 !important; letter-spacing: .09em; }
 
     @@keyframes pageRise {
         from {
