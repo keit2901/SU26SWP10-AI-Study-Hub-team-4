@@ -302,6 +302,7 @@ builder.Services.AddScoped<AuthPersistenceService>();
 builder.Services.AddScoped<AiChatSessionState>();
 builder.Services.AddScoped<IChatPersistenceService, ChatPersistenceService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
+builder.Services.AddScoped<IUserNotificationService, UserNotificationService>();
 
 // F2.1: background service to handle plan expiry
 builder.Services.AddHostedService<PlanExpiryHostedService>();

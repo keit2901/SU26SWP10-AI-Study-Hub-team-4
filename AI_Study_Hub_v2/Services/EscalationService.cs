@@ -19,11 +19,13 @@ public sealed class EscalationService : IEscalationService
 {
     private readonly AppDbContext _db;
     private readonly IAuditLogService _audit;
+    private readonly IUserNotificationService _notifications;
 
-    public EscalationService(AppDbContext db, IAuditLogService audit)
+    public EscalationService(AppDbContext db, IAuditLogService audit, IUserNotificationService notifications)
     {
         _db = db;
         _audit = audit;
+        _notifications = notifications;
     }
 
     public async Task<DocumentEscalationDto> CreateAsync(Guid escalatedByUserId, CreateEscalationRequest request, CancellationToken ct = default)
@@ -55,6 +57,11 @@ public sealed class EscalationService : IEscalationService
         {
             throw new AdminException(400, "escalation_item_not_in_folder",
                 "Every escalated document must belong to the selected folder.");
+        }
+        if (documents.Any(document => document.ReviewStatus != DocumentReviewStatus.None))
+        {
+            throw new AdminException(409, "escalation_document_not_eligible",
+                "Only unreviewed documents can be escalated.");
         }
 
         var reason = NormalizeRequired(request.Reason, "reason_required", "Escalation reason is required.");
@@ -174,6 +181,7 @@ public sealed class EscalationService : IEscalationService
         }
 
         var previousStatus = escalation.EscalationStatus;
+        var previousFolderStatus = escalation.Folder.ShareStatus;
         var itemIds = escalation.Items.Select(item => item.DocumentId).ToList();
         var documents = await _db.Documents
             .Where(document => itemIds.Contains(document.Id) && document.FolderId == escalation.FolderId)
@@ -236,6 +244,11 @@ public sealed class EscalationService : IEscalationService
             beforeJson: beforeJson,
             afterJson: afterJson);
 
+        _notifications.StageFolderModerationFinal(
+            escalation.Folder,
+            previousFolderStatus,
+            resolutionStatus == "Rejected" ? adminResponse : null,
+            now);
         await _db.SaveChangesAsync(ct);
 
         return await GetByIdAsync(escalationId, ct);

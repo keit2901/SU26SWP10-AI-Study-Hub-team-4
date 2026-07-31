@@ -21,17 +21,20 @@ public class DashboardService : IDashboardService
     private readonly ISupabaseStorageClient _storage;
     private readonly IAuditLogService _audit;
     private readonly IFolderShareAiModerator _shareAiModerator;
+    private readonly IUserNotificationService _notifications;
 
     public DashboardService(
         AppDbContext context,
         ISupabaseStorageClient storage,
         IAuditLogService audit,
-        IFolderShareAiModerator shareAiModerator)
+        IFolderShareAiModerator shareAiModerator,
+        IUserNotificationService notifications)
     {
         _context = context;
         _storage = storage;
         _audit = audit;
         _shareAiModerator = shareAiModerator;
+        _notifications = notifications;
     }
 
     public async Task<AdminDashboardStatsDto> GetAdminStatsAsync(CancellationToken ct = default)
@@ -297,34 +300,28 @@ public class DashboardService : IDashboardService
             .ToListAsync(ct);
 
         var decision = _shareAiModerator.Evaluate(reviewFolder, [doc], extractedTexts);
-        var isApproved = decision.Outcome == FolderShareModerationOutcome.AutoApproved;
-
-        doc.ReviewStatus = isApproved
-            ? DocumentReviewStatus.Approved
-            : DocumentReviewStatus.Rejected;
-        doc.ErrorMessage = isApproved ? null : decision.Reason;
-        doc.UpdatedAt = DateTimeOffset.UtcNow;
-
-        await UpdateFolderShareStatusFromDocumentModerationAsync(
-            doc.FolderId,
-            reviewSource: "AI_ASSIST",
-            moderationReason: decision.Reason,
-            confidence: decision.Confidence,
-            ct);
+        var advisoryOutcome = decision.Outcome switch
+        {
+            FolderShareModerationOutcome.AutoApproved => DocumentAiAdvisoryOutcome.Approve,
+            FolderShareModerationOutcome.NeedsHumanReview => DocumentAiAdvisoryOutcome.NeedsHumanReview,
+            FolderShareModerationOutcome.AutoRejected => DocumentAiAdvisoryOutcome.Reject,
+            _ => throw new InvalidOperationException($"Unsupported AI moderation outcome: {decision.Outcome}.")
+        };
 
         _audit.Add(
             caller.Id,
-            isApproved ? "DOCUMENT_AI_APPROVED" : "DOCUMENT_AI_REJECTED",
+            "DOCUMENT_AI_REVIEWED",
             "Document",
             documentId.ToString(),
-            isApproved ? "Low" : "Medium");
+            "Low");
 
         await _context.SaveChangesAsync(ct);
 
         return new DocumentAiReviewResultDto(
             doc.Id,
             doc.ReviewStatus,
-            "AI",
+            advisoryOutcome,
+            "AI_ADVISORY",
             decision.Reason,
             decision.Confidence);
     }
@@ -337,8 +334,6 @@ public class DashboardService : IDashboardService
         doc.ReviewStatus = DocumentReviewStatus.Approved;
         doc.ErrorMessage = null;
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
-
-        await _context.SaveChangesAsync(ct);
 
         await UpdateFolderShareStatusFromDocumentModerationAsync(
             doc.FolderId,
@@ -367,8 +362,6 @@ public class DashboardService : IDashboardService
         doc.ErrorMessage = normalizedReason;
         doc.UpdatedAt = System.DateTimeOffset.UtcNow;
 
-        await _context.SaveChangesAsync(ct);
-
         await UpdateFolderShareStatusFromDocumentModerationAsync(
             doc.FolderId,
             reviewSource: "HUMAN",
@@ -394,74 +387,7 @@ public class DashboardService : IDashboardService
         var schema = await GetFolderSchemaCapabilitiesAsync(ct);
         if (!schema.HasFullModernShareFlowColumns)
         {
-            var folderInfo = await _context.Folders
-                .AsNoTracking()
-                .Where(f => f.Id == folderId.Value)
-                .Select(f => new
-                {
-                    f.Id,
-                    f.ShareStatus,
-                    ShareFailureCount = schema.HasShareFeedbackColumns ? f.ShareFailureCount : 0
-                })
-                .FirstOrDefaultAsync(ct);
-
-            if (folderInfo == null || folderInfo.ShareStatus != FolderStatus.PendingShare)
-            {
-                return;
-            }
-
-            var statuses = await _context.Documents
-                .AsNoTracking()
-                .Where(d => d.FolderId == folderId.Value)
-                .Select(d => d.ReviewStatus)
-                .ToListAsync(ct);
-
-            if (statuses.Count == 0)
-            {
-                return;
-            }
-
-            var hasRejectedDocumentCompatibility = statuses.Any(status => status == DocumentReviewStatus.Rejected);
-            var allDocumentsApprovedCompatibility = statuses.All(status => status == DocumentReviewStatus.Approved);
-            if (!hasRejectedDocumentCompatibility && !allDocumentsApprovedCompatibility)
-            {
-                return;
-            }
-
-            var nowCompatibility = DateTimeOffset.UtcNow;
-            if (hasRejectedDocumentCompatibility)
-            {
-                if (schema.HasShareFeedbackColumns)
-                {
-                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
-UPDATE folders
-SET share_status = {(int)FolderStatus.Rejected},
-    shared_at = NULL,
-    share_failure_count = share_failure_count + 1,
-    updated_at = {nowCompatibility}
-WHERE id = {folderId.Value}", ct);
-                }
-                else
-                {
-                    await _context.Database.ExecuteSqlInterpolatedAsync($@"
-UPDATE folders
-SET share_status = {(int)FolderStatus.Rejected},
-    shared_at = NULL,
-    updated_at = {nowCompatibility}
-WHERE id = {folderId.Value}", ct);
-                }
-            }
-            else
-            {
-                await _context.Database.ExecuteSqlInterpolatedAsync($@"
-UPDATE folders
-SET share_status = {(int)FolderStatus.Approved},
-    shared_at = {nowCompatibility},
-    updated_at = {nowCompatibility}
-WHERE id = {folderId.Value}", ct);
-            }
-
-            return;
+            throw DashboardModerationException.NotificationStagingUnavailable();
         }
 
         var folder = await _context.Folders
@@ -486,6 +412,7 @@ WHERE id = {folderId.Value}", ct);
         }
 
         var now = DateTimeOffset.UtcNow;
+        var previousStatus = folder.ShareStatus;
         folder.ShareReviewSource = reviewSource;
         folder.RequiresHumanReview = false;
         folder.AppealRequestedAt = null;
@@ -522,6 +449,8 @@ WHERE id = {folderId.Value}", ct);
             folder.AppealMessage = null;
             folder.StudentFeedbackReason = null;
         }
+
+        _notifications.StageFolderModerationFinal(folder, previousStatus, moderationReason, now);
     }
 
     private async Task<FolderSchemaCapabilities> GetFolderSchemaCapabilitiesAsync(CancellationToken ct)
@@ -921,4 +850,8 @@ public sealed class DashboardModerationException : Exception
 
     public static DashboardModerationException ReasonTooLong(int maxLength) =>
         new(StatusCodes.Status400BadRequest, "reason_too_long", $"Reason must be {maxLength:N0} characters or fewer.");
+
+    public static DashboardModerationException NotificationStagingUnavailable() =>
+        new(StatusCodes.Status503ServiceUnavailable, "notification_staging_requires_modern_schema",
+            "Document moderation is temporarily unavailable while the notification migration updates the local schema.");
 }

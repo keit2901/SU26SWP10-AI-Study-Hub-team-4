@@ -21,7 +21,7 @@ public class FolderServiceTests
         return new FolderService(db, NullLogger<FolderService>.Instance,
             new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance),
             Mock.Of<IAuditLogService>(), new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(),
-            Mock.Of<ISharedFolderCopyCoordinator>());
+            Mock.Of<ISharedFolderCopyCoordinator>(), new UserNotificationService(db));
     }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
@@ -442,6 +442,9 @@ public class FolderServiceTests
         result.ShareStatus.Should().Be(FolderStatus.Approved);
         result.SharedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
         result.ShareReviewSource.Should().Be("HUMAN");
+        var notification = await db.UserNotifications.SingleAsync();
+        notification.RecipientUserId.Should().Be(owner.Id);
+        notification.Outcome.Should().Be(UserNotificationOutcome.Approved);
     }
 
     [Test]
@@ -462,6 +465,9 @@ public class FolderServiceTests
 
         result.ShareStatus.Should().Be(FolderStatus.Rejected);
         result.HumanReviewReason.Should().Be("Missing citations");
+        var notification = await db.UserNotifications.SingleAsync();
+        notification.RecipientUserId.Should().Be(owner.Id);
+        notification.Outcome.Should().Be(UserNotificationOutcome.Rejected);
     }
 
     [Test]
