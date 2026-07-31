@@ -113,14 +113,28 @@ public sealed class EscalationController : ControllerBase
         [FromBody] ResolveEscalationRequest request,
         CancellationToken cancellationToken)
     {
+        return Conflict(new ApiErrorResponse
+        {
+            Code = "escalation_batch_decision_retired",
+            Message = "Resolve every escalation item through PATCH /api/admin/escalations/{id}/resolve-items."
+        });
+    }
+
+    [HttpPatch("{id:guid}/resolve-items")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(DocumentEscalationDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DocumentEscalationDto>> ResolveItems(
+        Guid id,
+        [FromBody] ResolveEscalationItemsRequest request,
+        CancellationToken cancellationToken)
+    {
         try
         {
             var userId = await GetLocalUserIdAsync();
             if (userId is null)
                 return Unauthorized();
 
-            var result = await _escalation.ResolveAsync(id, request, userId.Value, cancellationToken);
-            return Ok(result);
+            return Ok(await _escalation.ResolveItemsAsync(id, request, userId.Value, cancellationToken));
         }
         catch (AdminException ex)
         {
@@ -128,7 +142,7 @@ public sealed class EscalationController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Failed to resolve escalation {EscalationId}", id);
+            _logger.LogError(ex, "Failed to resolve escalation items {EscalationId}", id);
             return StatusCode(500, new ApiErrorResponse { Code = "unexpected_error", Message = "An unexpected error occurred." });
         }
     }

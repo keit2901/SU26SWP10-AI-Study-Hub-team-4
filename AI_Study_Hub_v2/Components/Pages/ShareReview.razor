@@ -10,6 +10,7 @@
 @inject ISnackbar Snackbar
 @inject AuthSessionState Session
 @inject FolderApiClient FoldersApi
+@inject DocumentApiClient DocumentsApi
 @inject AdminDashboardApiClient DashboardApi
 @inject EscalationApiClient EscalationApi
 @inject IDialogService DialogService
@@ -41,7 +42,7 @@
                     <MudText Typo="Typo.overline" Color="Color.Secondary">Moderator review</MudText>
                     <MudText Typo="Typo.h3" Class="review-title">@_summary?.FolderName</MudText>
                     <MudText Typo="Typo.body2" Color="Color.Secondary">
-                        Review each document before making the final folder decision.
+                        Review each ready file independently. AI advice never replaces your decision.
                     </MudText>
                 </div>
                 <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoToQueue">
@@ -61,6 +62,8 @@
                     @foreach (var document in _documents)
                     {
                         var decision = GetDocumentDecision(document.Id);
+                        var isActionable = IsActionable(document, decision);
+                        _aiAdvisories.TryGetValue(document.Id, out var aiAdvisory);
                         <article class="document-row">
                             <div class="document-copy">
                                 <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" />
@@ -73,14 +76,22 @@
                                     {
                                         <MudText Typo="Typo.caption" Color="Color.Error" Class="decision-reason">@decision.Reason</MudText>
                                     }
+                                    @if (aiAdvisory is not null)
+                                    {
+                                        <div class="ai-advisory" role="status" title="@aiAdvisory.Message">
+                                            <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" />
+                                            <span>AI suggestion: @GetAiAdvisoryLabel(aiAdvisory) · @FormatAiConfidence(aiAdvisory.Confidence)</span>
+                                            <strong>Advisory only</strong>
+                                        </div>
+                                    }
                                 </div>
                             </div>
                             <div class="document-actions">
-                                @if (decision is not null)
+                                @if (!isActionable)
                                 {
                                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
-                                             Color="@(decision.Approved ? Color.Success : Color.Error)">
-                                        @(decision.Approved ? "Approved" : "Rejected")
+                                             Color="@GetDocumentStatusColor(document, decision)">
+                                        @GetDocumentStatusLabel(document, decision)
                                     </MudChip>
                                 }
                                 <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.OpenInNew"
@@ -88,12 +99,22 @@
                                     Open
                                 </MudButton>
                                 <MudButton Variant="Variant.Outlined" Color="Color.Success" Size="Size.Small"
-                                           Disabled="@(IsBusy(document.Id) || decision is not null)" OnClick="() => ApproveDocumentAsync(document)">
+                                           Disabled="@(IsBusy(document.Id) || !isActionable)" OnClick="() => ApproveDocumentAsync(document)">
                                     Approve
                                 </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.AutoAwesome"
+                                           Disabled="@(IsBusy(document.Id) || !isActionable)" OnClick="() => AiReviewDocumentAsync(document)">
+                                    AI Review
+                                </MudButton>
                                 <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
-                                           Disabled="@(IsBusy(document.Id) || decision is not null)" OnClick="() => RejectDocumentAsync(document)">
+                                           Disabled="@(IsBusy(document.Id) || !isActionable)" OnClick="() => RejectDocumentAsync(document)">
                                     Reject
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Warning" Size="Size.Small"
+                                           StartIcon="@Icons.Material.Filled.Flag"
+                                           Disabled="@(IsBusy(document.Id) || !isActionable)" OnClick="() => EscalateDocumentAsync(document)">
+                                    Escalate
                                 </MudButton>
                             </div>
                         </article>
@@ -101,26 +122,9 @@
                 </MudPaper>
             }
 
-            <MudPaper Elevation="0" Class="glass-card folder-decision">
-                <div>
-                    <MudText Typo="Typo.h6" Class="review-subtitle">Folder decision</MudText>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">
-                        Approve for Community, reject with a clear reason, or escalate non-approved documents to an administrator.
-                    </MudText>
-                </div>
-                <div class="folder-actions">
-                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Flag"
-                               Disabled="@_folderBusy" OnClick="EscalateAsync">
-                        Escalate
-                    </MudButton>
-                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@_folderBusy" OnClick="RejectFolderAsync">
-                        Reject folder
-                    </MudButton>
-                    <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@_folderBusy" OnClick="ApproveFolderAsync">
-                        Approve folder
-                    </MudButton>
-                </div>
-            </MudPaper>
+            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="glass-card review-guidance">
+                Folder publication is derived from file decisions. Escalated files are locked until an administrator resolves them.
+            </MudAlert>
         </div>
     }
     else if (_folder is not null)
@@ -180,6 +184,68 @@
                     </MudPaper>
                     break;
             }
+
+            <section class="owner-files" aria-labelledby="owner-files-heading">
+                <div class="owner-files-heading">
+                    <div>
+                        <MudText Typo="Typo.overline" Color="Color.Secondary">File visibility</MudText>
+                        <MudText Typo="Typo.h5" Class="review-subtitle" id="owner-files-heading">Review results by file</MudText>
+                    </div>
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_documents.Count file(s)</MudChip>
+                </div>
+
+                @if (_documents.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="glass-card">
+                        This folder has no files to display.
+                    </MudAlert>
+                }
+                else
+                {
+                    <div class="owner-file-list">
+                        @foreach (var document in _documents)
+                        {
+                            var reviewLabel = GetOwnerDocumentStatusLabel(document);
+                            var reviewFeedback = GetOwnerDocumentFeedback(document);
+                            <article class="glass-card owner-file-card">
+                                <div class="owner-file-main">
+                                    <div class="owner-file-icon"><MudIcon Icon="@Icons.Material.Filled.Description" /></div>
+                                    <div class="owner-file-copy">
+                                        <MudText Typo="Typo.subtitle2" Class="document-name">@document.FileName</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            @document.SubjectCode · @document.Semester · @FormatFileSize(document.FileSizeBytes)
+                                        </MudText>
+                                        <div class="owner-file-badges">
+                                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@GetOwnerDocumentStatusColor(document)">@reviewLabel</MudChip>
+                                            <span class="visibility-badge @(document.ReviewStatus == DocumentReviewStatus.Approved ? "public" : "private")">
+                                                <MudIcon Icon="@(document.ReviewStatus == DocumentReviewStatus.Approved ? Icons.Material.Filled.Public : Icons.Material.Filled.Lock)" />
+                                                @(document.ReviewStatus == DocumentReviewStatus.Approved ? "Public in Community" : "Private")
+                                            </span>
+                                        </div>
+                                        @if (!string.IsNullOrWhiteSpace(reviewFeedback))
+                                        {
+                                            <div class="owner-file-feedback">
+                                                <strong>@GetOwnerFeedbackLabel(document):</strong>
+                                                <span>@reviewFeedback</span>
+                                            </div>
+                                        }
+                                    </div>
+                                </div>
+                                @if (document.ReviewStatus == DocumentReviewStatus.Rejected)
+                                {
+                                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                               StartIcon="@Icons.Material.Filled.DeleteOutline"
+                                               Disabled="@IsBusy(document.Id)"
+                                               OnClick="@(() => ConfirmDeleteRejectedDocumentAsync(document))"
+                                               aria-label="@($"Delete rejected file {document.FileName}")">
+                                        Delete rejected file
+                                    </MudButton>
+                                }
+                            </article>
+                        }
+                    </div>
+                }
+            </section>
         </div>
     }
 </div>
@@ -192,8 +258,8 @@
     private ShareReviewSummaryDto? _summary;
     private readonly List<DocumentDto> _documents = new();
     private readonly Dictionary<Guid, DocumentDecision> _documentDecisions = new();
+    private readonly Dictionary<Guid, AiAdvisoryDisplay> _aiAdvisories = new();
     private bool _isLoading = true;
-    private bool _folderBusy;
     private bool _ownerActionBusy;
     private Guid? _busyDocumentId;
     private string? _error;
@@ -220,10 +286,17 @@
                 _summary = await summaryTask;
                 _documents.Clear();
                 _documents.AddRange(await documentsTask);
+                _documentDecisions.Clear();
+                _aiAdvisories.Clear();
             }
             else
             {
-                _folder = await FoldersApi.GetAsync(token, FolderId);
+                var folderTask = FoldersApi.GetAsync(token, FolderId);
+                var documentsTask = DocumentsApi.ListAsync(token, new DocumentListQuery { FolderId = FolderId });
+                await Task.WhenAll(folderTask, documentsTask);
+                _folder = await folderTask;
+                _documents.Clear();
+                _documents.AddRange(await documentsTask);
             }
         }
         catch (DocumentApiException ex)
@@ -272,6 +345,16 @@
         }, "Unable to approve this document.");
     }
 
+    private async Task AiReviewDocumentAsync(DocumentDto document)
+    {
+        await RunDocumentActionAsync(document.Id, async token =>
+        {
+            var result = await DashboardApi.AiReviewDocumentAsync(token, document.Id);
+            _aiAdvisories[document.Id] = new AiAdvisoryDisplay(result.AdvisoryOutcome, result.Confidence, result.Message);
+            Snackbar.Add($"AI advisory ready for '{document.FileName}'. Human review is still required.", Severity.Info);
+        }, "Unable to run AI review for this document.");
+    }
+
     private async Task RejectDocumentAsync(DocumentDto document)
     {
         var dialog = await DialogService.ShowAsync<ModeratorRejectReasonDialog>(
@@ -289,34 +372,7 @@
         }, "Unable to reject this document.");
     }
 
-    private async Task ApproveFolderAsync()
-    {
-        await RunFolderActionAsync(async token =>
-        {
-            await FoldersApi.ApproveShareAsync(token, FolderId);
-            Snackbar.Add("Folder approved for Community.", Severity.Success);
-            GoToQueue();
-        }, "Unable to approve this folder.");
-    }
-
-    private async Task RejectFolderAsync()
-    {
-        var dialog = await DialogService.ShowAsync<ModeratorRejectReasonDialog>(
-            "Reject Folder Share",
-            new DialogParameters { ["DialogTitle"] = "Reject Folder Share", ["ItemName"] = _summary?.FolderName ?? "Folder" },
-            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is null || result.Canceled || result.Data is not string reason) return;
-
-        await RunFolderActionAsync(async token =>
-        {
-            await FoldersApi.RejectShareAsync(token, FolderId, new RejectFolderShareRequest { Reason = reason });
-            Snackbar.Add("Folder sharing request rejected.", Severity.Warning);
-            GoToQueue();
-        }, "Unable to reject this folder.");
-    }
-
-    private async Task EscalateAsync()
+    private async Task EscalateDocumentAsync(DocumentDto selectedDocument)
     {
         var eligibleDocuments = _documents
             .Where(IsEligibleForEscalation)
@@ -330,9 +386,12 @@
 
         if (eligibleDocuments.Count == 0)
         {
-            Snackbar.Add("All documents are approved. There are no documents available for escalation.", Severity.Info);
+            Snackbar.Add("No ready, undecided files are available for escalation.", Severity.Info);
             return;
         }
+
+        foreach (var item in eligibleDocuments)
+            item.Selected = item.DocumentId == selectedDocument.Id;
 
         var dialog = await DialogService.ShowAsync<EscalationDialog>(
             "Escalate to Admin",
@@ -346,7 +405,7 @@
         var result = await dialog.Result;
         if (result is not { Canceled: false } || result.Data is not EscalationDialog.EscalationDialogResult data) return;
 
-        await RunFolderActionAsync(async token =>
+        await RunDocumentActionAsync(selectedDocument.Id, async token =>
         {
             await EscalationApi.CreateAsync(token, new CreateEscalationRequest
             {
@@ -354,9 +413,11 @@
                 Reason = data.Reason,
                 Items = data.Items
             });
-            Snackbar.Add("Folder escalated to an administrator.", Severity.Success);
-            GoToQueue();
-        }, "Unable to escalate this folder.");
+            foreach (var item in data.Items)
+                _documentDecisions[item.DocumentId] = DocumentDecision.EscalatedDecision;
+            Snackbar.Add($"{data.Items.Count} file(s) escalated to an administrator.", Severity.Success);
+            await LoadAsync();
+        }, "Unable to escalate the selected files.");
     }
 
     private async Task ResubmitAsync()
@@ -388,6 +449,60 @@
         GoToFolder();
     }
 
+    private async Task ConfirmDeleteRejectedDocumentAsync(DocumentDto document)
+    {
+        if (document.ReviewStatus != DocumentReviewStatus.Rejected) return;
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>(
+            "Delete rejected file",
+            new DialogParameters
+            {
+                ["Title"] = "Delete rejected file?",
+                ["Message"] = $"Delete rejected file \"{document.FileName}\"? This removes only this file. The folder and every approved sibling remain unchanged.",
+                ["ConfirmText"] = "Delete rejected file",
+                ["ConfirmColor"] = Color.Error,
+                ["Icon"] = Icons.Material.Filled.DeleteForever,
+                ["IconColor"] = Color.Error
+            },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled) return;
+
+        await DeleteRejectedDocumentAsync(document);
+    }
+
+    private async Task DeleteRejectedDocumentAsync(DocumentDto document)
+    {
+        _busyDocumentId = document.Id;
+        try
+        {
+            await DocumentsApi.DeleteAsync(RequireToken(), document.Id);
+            Snackbar.Add($"Deleted rejected file '{document.FileName}'. Approved files and the folder were not changed.", Severity.Success);
+            await LoadAsync();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapOwnerDeleteError(ex), Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Navigation.NavigateTo("/login", replace: true);
+            }
+            else if (ex.StatusCode is 404 or 409)
+            {
+                await LoadAsync();
+            }
+        }
+        catch
+        {
+            Snackbar.Add("Unable to delete this rejected file. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            _busyDocumentId = null;
+        }
+    }
+
     private async Task RunDocumentActionAsync(Guid documentId, Func<string, Task> action, string fallbackMessage)
     {
         _busyDocumentId = documentId;
@@ -398,6 +513,8 @@
         catch (DocumentApiException ex)
         {
             Snackbar.Add(MapApiError(ex, fallbackMessage), Severity.Error);
+            if (ex.StatusCode == 409)
+                await LoadAsync();
         }
         catch (Exception ex)
         {
@@ -409,34 +526,22 @@
         }
     }
 
-    private async Task RunFolderActionAsync(Func<string, Task> action, string fallbackMessage)
-    {
-        _folderBusy = true;
-        try
-        {
-            await action(RequireToken());
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(MapApiError(ex, fallbackMessage), Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add(ex is InvalidOperationException ? ex.Message : fallbackMessage, Severity.Error);
-        }
-        finally
-        {
-            _folderBusy = false;
-        }
-    }
-
     private static string MapApiError(DocumentApiException ex, string fallback) => ex.StatusCode switch
     {
         401 => "Your session has expired. Please log in again.",
         403 => "You do not have permission to perform this action.",
         404 => "This folder or document could not be found.",
-        409 => "This item was changed by another reviewer. Return to the queue and refresh before trying again.",
+        409 => "This file changed while you were reviewing it. The latest moderation state has been reloaded.",
         _ => string.IsNullOrWhiteSpace(ex.Message) ? fallback : ex.Message
+    };
+
+    private static string MapOwnerDeleteError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session expired. Sign in again to continue.",
+        403 => "Only the folder owner can delete this rejected file.",
+        404 => "This file was already removed. The latest folder state has been loaded.",
+        409 => "This file changed and can no longer be deleted from this review. The latest state has been loaded.",
+        _ => string.IsNullOrWhiteSpace(ex.Message) ? "Unable to delete this rejected file." : ex.Message
     };
 
     private string GetOwnerRejectionReason() =>
@@ -452,8 +557,7 @@
     private bool IsEligibleForEscalation(DocumentDto document)
     {
         var localDecision = GetDocumentDecision(document.Id);
-        return localDecision?.Approved != true
-            && (localDecision is not null || document.ReviewStatus != DocumentReviewStatus.Approved);
+        return IsActionable(document, localDecision);
     }
 
     private string GetEscalationDocumentReason(DocumentDto document)
@@ -472,6 +576,71 @@
 
     private bool IsBusy(Guid documentId) => _busyDocumentId == documentId;
 
+    private static bool IsActionable(DocumentDto document, DocumentDecision? localDecision) =>
+        document.Status == DocumentStatus.Ready
+        && document.ReviewStatus == DocumentReviewStatus.None
+        && localDecision is null;
+
+    private static string GetDocumentStatusLabel(DocumentDto document, DocumentDecision? localDecision)
+    {
+        if (localDecision?.Escalated == true || document.ReviewStatus == DocumentReviewStatus.Escalated) return "Escalated — admin review";
+        if (localDecision?.Approved == true || document.ReviewStatus == DocumentReviewStatus.Approved) return "Approved";
+        if (localDecision is not null || document.ReviewStatus == DocumentReviewStatus.Rejected) return "Rejected";
+        return document.Status == DocumentStatus.Ready ? "Awaiting decision" : "Waiting for ingestion";
+    }
+
+    private static Color GetDocumentStatusColor(DocumentDto document, DocumentDecision? localDecision)
+    {
+        if (localDecision?.Escalated == true || document.ReviewStatus == DocumentReviewStatus.Escalated) return Color.Info;
+        if (localDecision?.Approved == true || document.ReviewStatus == DocumentReviewStatus.Approved) return Color.Success;
+        if (localDecision is not null || document.ReviewStatus == DocumentReviewStatus.Rejected) return Color.Error;
+        return Color.Warning;
+    }
+
+    private static string GetOwnerDocumentStatusLabel(DocumentDto document) => document.ReviewStatus switch
+    {
+        DocumentReviewStatus.Approved => "Approved",
+        DocumentReviewStatus.Rejected => "Rejected",
+        DocumentReviewStatus.Escalated => "Escalated — awaiting admin",
+        _ => document.Status == DocumentStatus.Ready ? "Pending review" : "Preparing for review"
+    };
+
+    private static Color GetOwnerDocumentStatusColor(DocumentDto document) => document.ReviewStatus switch
+    {
+        DocumentReviewStatus.Approved => Color.Success,
+        DocumentReviewStatus.Rejected => Color.Error,
+        DocumentReviewStatus.Escalated => Color.Info,
+        _ => Color.Warning
+    };
+
+    private static string GetOwnerFeedbackLabel(DocumentDto document) =>
+        document.ShareReviewSource?.Contains("admin", StringComparison.OrdinalIgnoreCase) == true
+        || !string.IsNullOrWhiteSpace(document.GetType().GetProperty("AdminResponse")?.GetValue(document)?.ToString())
+        || !string.IsNullOrWhiteSpace(document.GetType().GetProperty("AdminReviewReason")?.GetValue(document)?.ToString())
+            ? "Administrator feedback"
+            : "Moderator feedback";
+
+    private static string? GetOwnerDocumentFeedback(DocumentDto document)
+    {
+        if (!string.IsNullOrWhiteSpace(document.ModerationReason)) return document.ModerationReason;
+        foreach (var propertyName in new[] { "AdminResponse", "AdminReviewReason", "RejectionReason", "ReviewReason", "HumanReviewReason" })
+        {
+            var value = document.GetType().GetProperty(propertyName)?.GetValue(document)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value)) return value;
+        }
+        return document.ReviewStatus == DocumentReviewStatus.Rejected ? document.ErrorMessage : null;
+    }
+
+    private static string GetAiAdvisoryLabel(AiAdvisoryDisplay advisory) => advisory.Outcome switch
+    {
+        DocumentAiAdvisoryOutcome.Approve => "Approve",
+        DocumentAiAdvisoryOutcome.Reject => "Reject",
+        _ => "Needs human review"
+    };
+
+    private static string FormatAiConfidence(double confidence) =>
+        $"{Math.Round(Math.Clamp(confidence, 0, 1) * 100):0}%";
+
     private static string FormatFileSize(long bytes) => bytes switch
     {
         >= 1_048_576 => $"{bytes / 1_048_576d:F1} MB",
@@ -484,5 +653,10 @@
     private void GoToFolder() => Navigation.NavigateTo("/documents");
     private void GoToCommunity() => Navigation.NavigateTo("/community");
 
-    private sealed record DocumentDecision(bool Approved, string? Reason);
+    private sealed record DocumentDecision(bool Approved, string? Reason, bool Escalated = false)
+    {
+        public static DocumentDecision EscalatedDecision { get; } = new(false, null, true);
+    }
+
+    private sealed record AiAdvisoryDisplay(DocumentAiAdvisoryOutcome Outcome, double Confidence, string Message);
 }

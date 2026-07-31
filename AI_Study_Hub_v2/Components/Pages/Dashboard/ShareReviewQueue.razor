@@ -1,11 +1,9 @@
 @page "/dashboard/share-reviews"
 @layout DashboardLayout
 @using AI_Study_Hub_v2.Components.Layout
-@using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
 @inject AuthSessionState Session
 @inject FolderApiClient FolderApi
-@inject EscalationApiClient EscalationApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IDialogService DialogService
@@ -18,7 +16,7 @@
             <div>
                 <h1 style="font-size: 1.7rem; font-weight: 800; color: #111827; letter-spacing: -0.03em; margin: 0;">Share Review Queue</h1>
                 <p style="margin: 0.35rem 0 0; color: #64748b; font-size: 0.95rem;">
-                    Review folders submitted by students, inspect their documents, then decide manually.
+                    Open each submission and make an independent decision for every ready file.
                 </p>
             </div>
             <div style="display: inline-flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
@@ -69,9 +67,9 @@
                     <div style="margin-top: 0.3rem; color: #64748b; font-size: 0.84rem;">Open a folder to inspect every submitted document before deciding.</div>
                 </div>
                 <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.1rem 1.2rem;">
-                    <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase;">Manual Control</div>
-                    <div style="margin-top: 0.35rem; font-size: 1.85rem; font-weight: 800; color: #111827;">Approve / Reject</div>
-                    <div style="margin-top: 0.3rem; color: #64748b; font-size: 0.84rem;">Moderators can still review documents and decide manually.</div>
+                    <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase;">Per-file Control</div>
+                    <div style="margin-top: 0.35rem; font-size: 1.85rem; font-weight: 800; color: #111827;">4 actions</div>
+                    <div style="margin-top: 0.3rem; color: #64748b; font-size: 0.84rem;">Approve, AI Review, Reject, or Escalate each eligible file.</div>
                 </div>
             </div>
 
@@ -94,8 +92,6 @@
                         <tbody>
                             @foreach (var item in _pendingFolders)
                             {
-                                var isBusy = _busyFolderId == item.Id;
-                                var canEscalate = HasEscalationCandidates(item);
                                 <tr style="border-top: 1px solid #e2e8f0;">
                                     <td style="@BodyCellStyle">
                                         <div style="font-weight: 700; color: #0f172a;">@GetFolderDisplayName(item)</div>
@@ -122,30 +118,13 @@
                                     <td style="@BodyCellStyle">
                                         <div style="display: flex; gap: 0.45rem; flex-wrap: wrap;">
                                             <button @onclick="() => OpenFeedbackAsync(item)"
-                                                    disabled="@(isBusy || !HasStudentFeedback(item))"
-                                                    style="@GetFeedbackActionStyle(isBusy, HasStudentFeedback(item))">
+                                                    disabled="@(!HasStudentFeedback(item))"
+                                                    style="@GetFeedbackActionStyle(false, HasStudentFeedback(item))">
                                                 View Feedback
                                             </button>
                                             <button @onclick="() => OpenReview(item.Id)"
-                                                    disabled="@isBusy"
-                                                    style="@GetActionStyle(isBusy, "#eef2ff", "#4338ca", "#c7d2fe")">
+                                                    style="@GetActionStyle(false, "#eef2ff", "#4338ca", "#c7d2fe")">
                                                 Open Review
-                                            </button>
-                                            <button @onclick="() => ApproveAsync(item.Id)"
-                                                    disabled="@isBusy"
-                                                    style="@GetActionStyle(isBusy, "#ecfdf5", "#047857", "#a7f3d0")">
-                                                Approve
-                                            </button>
-                                            <button @onclick="() => EscalateAsync(item)"
-                                                    disabled="@(isBusy || !canEscalate)"
-                                                    title="@(canEscalate ? "Escalate selected documents to an administrator" : "All documents are already approved")"
-                                                    style="@GetActionStyle(isBusy || !canEscalate, "#fffbeb", "#b45309", "#fde68a")">
-                                                Escalate
-                                            </button>
-                                            <button @onclick="() => RejectAsync(item)"
-                                                    disabled="@isBusy"
-                                                    style="@GetActionStyle(isBusy, "#fef2f2", "#b91c1c", "#fecaca")">
-                                                Reject
                                             </button>
                                         </div>
                                     </td>
@@ -164,7 +143,6 @@
     private bool _loading = true;
     private bool _isAuthorized = true;
     private bool _isRefreshing;
-    private Guid? _busyFolderId;
 
     private static string HeaderCellStyle =>
         "padding: 0.85rem 1rem; text-align: left; color: #64748b; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; white-space: nowrap;";
@@ -213,129 +191,6 @@
     private void OpenReview(Guid folderId) =>
         Nav.NavigateTo($"/share-review/{folderId}?mode=moderator");
 
-    private async Task ApproveAsync(Guid folderId)
-    {
-        await RunActionAsync(folderId, async () =>
-        {
-            if (string.IsNullOrWhiteSpace(Session.AccessToken))
-            {
-                Snackbar.Add("Authentication required.", Severity.Error);
-                return;
-            }
-
-            await FolderApi.ApproveShareAsync(Session.AccessToken, folderId);
-            Snackbar.Add("Folder approved for community sharing.", Severity.Success);
-        });
-    }
-
-    private async Task RejectAsync(PendingShareFolderDto item)
-    {
-        var dialog = await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Shared.ModeratorRejectReasonDialog>(
-            "Reject Folder Share",
-            new DialogParameters
-            {
-                ["ItemName"] = item.Name
-            },
-            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is null || result.Canceled || result.Data is not string reason)
-        {
-            return;
-        }
-
-        await RunActionAsync(item.Id, async () =>
-        {
-            if (string.IsNullOrWhiteSpace(Session.AccessToken))
-            {
-                Snackbar.Add("Authentication required.", Severity.Error);
-                return;
-            }
-
-            await FolderApi.RejectShareAsync(
-                Session.AccessToken,
-                item.Id,
-                new RejectFolderShareRequest { Reason = reason });
-            Snackbar.Add("Folder rejected from community sharing.", Severity.Warning);
-        });
-    }
-
-    private async Task EscalateAsync(PendingShareFolderDto item)
-    {
-        var candidates = item.Documents
-            .Where(document => document.ReviewStatus != DocumentReviewStatus.Approved)
-            .Select(document => new EscalationDialog.RejectedDocItem
-            {
-                DocumentId = document.Id,
-                FileName = document.FileName,
-                RejectReason = GetEscalationDocumentReason(document)
-            })
-            .ToList();
-
-        if (candidates.Count == 0)
-        {
-            Snackbar.Add("All documents are approved. There are no documents available for escalation.", Severity.Info);
-            return;
-        }
-
-        var dialog = await DialogService.ShowAsync<EscalationDialog>(
-            "Escalate to Admin",
-            new DialogParameters
-            {
-                ["FolderName"] = item.Name,
-                ["FolderId"] = item.Id,
-                ["RejectedDocuments"] = candidates
-            },
-            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is not { Canceled: false } || result.Data is not EscalationDialog.EscalationDialogResult data)
-        {
-            return;
-        }
-
-        await RunActionAsync(item.Id, async () =>
-        {
-            if (string.IsNullOrWhiteSpace(Session.AccessToken))
-            {
-                throw new InvalidOperationException("Authentication required.");
-            }
-
-            await EscalationApi.CreateAsync(Session.AccessToken, new CreateEscalationRequest
-            {
-                FolderId = item.Id,
-                Reason = data.Reason,
-                Items = data.Items
-            });
-            Snackbar.Add("Folder escalated to an administrator.", Severity.Success);
-        });
-    }
-
-    private async Task RunActionAsync(Guid folderId, Func<Task> action)
-    {
-        if (_busyFolderId.HasValue)
-        {
-            return;
-        }
-
-        _busyFolderId = folderId;
-        try
-        {
-            await action();
-            await LoadAsync();
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(MapApiError(ex), Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add(ex is InvalidOperationException ? ex.Message : "Unable to complete this action.", Severity.Error);
-        }
-        finally
-        {
-            _busyFolderId = null;
-        }
-    }
-
     private static string GetActionStyle(bool isBusy, string background, string color, string borderColor) =>
         $"display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; border: 1px solid {(isBusy ? "#d1d5db" : borderColor)}; background: {(isBusy ? "#f3f4f6" : background)}; color: {(isBusy ? "#9ca3af" : color)}; padding: 0.45rem 0.8rem; font-size: 0.78rem; font-weight: 700; cursor: {(isBusy ? "not-allowed" : "pointer")};";
 
@@ -354,25 +209,6 @@
     private static bool HasStudentFeedback(PendingShareFolderDto item) =>
         !string.IsNullOrWhiteSpace(item.StudentFeedbackReason)
         || !string.IsNullOrWhiteSpace(item.AppealMessage);
-
-    private static bool HasEscalationCandidates(PendingShareFolderDto item) =>
-        item.Documents.Any(document => document.ReviewStatus != DocumentReviewStatus.Approved);
-
-    private static string GetEscalationDocumentReason(PendingShareDocumentDto document) => document.ReviewStatus switch
-    {
-        DocumentReviewStatus.Rejected => "Rejected during moderator review.",
-        DocumentReviewStatus.Escalated => "Already marked for administrator review.",
-        _ => "Requires administrator review."
-    };
-
-    private static string MapApiError(DocumentApiException ex) => ex.StatusCode switch
-    {
-        StatusCodes.Status401Unauthorized => "Your session has expired. Please log in again.",
-        StatusCodes.Status403Forbidden => "You do not have permission to perform this action.",
-        StatusCodes.Status404NotFound => "This folder or one of its documents could not be found.",
-        StatusCodes.Status409Conflict => "This folder has already been escalated or changed by another reviewer. Refresh the queue before trying again.",
-        _ => string.IsNullOrWhiteSpace(ex.Message) ? "Unable to complete this action." : ex.Message
-    };
 
     private static string GetFolderDisplayName(PendingShareFolderDto item) =>
         $"{item.Name} (Fail {item.ShareFailureCount} times)";

@@ -3,6 +3,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Supabase;
+using AI_Study_Hub_v2.Tests.Support;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
@@ -34,16 +35,7 @@ public sealed class StorageDeletionPostgresTests
         _dataSource = dataSourceBuilder.Build();
         await BootstrapAuthPrerequisiteAsync();
         await using var db = CreateDb();
-        var pendingMigrations = await db.Database.GetPendingMigrationsAsync();
-        if (pendingMigrations.Contains("20260709165701_ReSyncPlanFkAndConstraints"))
-        {
-            // The historical migration re-adds this named FK but only drops the
-            // lowercase Supabase name. Isolate that compatibility repair to this
-            // disposable test database; production migrations stay untouched.
-            await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE IF EXISTS public.payment_transactions DROP CONSTRAINT IF EXISTS \"FK_payment_transactions_users_user_id\"");
-        }
-        await db.Database.MigrateAsync();
+        await PostgresTestDatabase.BootstrapAsync(db);
     }
 
     [TearDown]
@@ -55,7 +47,7 @@ public sealed class StorageDeletionPostgresTests
             {
                 await using var db = CreateDb();
                 var documents = await db.Documents.Where(d => _createdUserIds.Contains(d.UserId)).Select(d => d.Id).ToListAsync();
-                db.DocumentEscalationItems.RemoveRange(await db.DocumentEscalationItems.Where(i => documents.Contains(i.DocumentId)).ToListAsync());
+                db.DocumentEscalationItems.RemoveRange(await db.DocumentEscalationItems.Where(i => i.DocumentId.HasValue && documents.Contains(i.DocumentId.Value)).ToListAsync());
                 db.DocumentEscalations.RemoveRange(await db.DocumentEscalations.Where(e => _createdUserIds.Contains(e.EscalatedByUserId)).ToListAsync());
                 db.Documents.RemoveRange(await db.Documents.Where(d => _createdUserIds.Contains(d.UserId)).ToListAsync());
                 db.Folders.RemoveRange(await db.Folders.Where(f => _createdUserIds.Contains(f.UserId)).ToListAsync());
@@ -86,15 +78,16 @@ public sealed class StorageDeletionPostgresTests
         var folder = await SeedFolderAsync(db, user.Id);
         var document = await SeedDocumentAsync(db, user.Id, 123, folder.Id);
         db.DocumentChunks.Add(new DocumentChunk { Id = Guid.NewGuid(), DocumentId = document.Id, ChunkIndex = 0, Content = "x", Embedding = new Pgvector.Vector(new float[384]), CreatedAt = DateTimeOffset.UtcNow });
-        await SeedEscalationItemAsync(db, user.Id, folder.Id, document.Id);
+        var escalationItemId = await SeedEscalationItemAsync(db, user.Id, folder.Id, document.Id);
         var storage = SuccessStorage(document.StoragePath);
 
-        (await new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance).DeletePrivilegedDocumentAsync(document.Id, default)).Should().BeTrue();
+        (await new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService()).DeletePrivilegedDocumentAsync(document.Id, default)).Should().BeTrue();
 
         await using var fresh = CreateDb();
         (await fresh.Documents.AnyAsync(d => d.Id == document.Id)).Should().BeFalse();
         (await fresh.DocumentChunks.AnyAsync(c => c.DocumentId == document.Id)).Should().BeFalse();
-        (await fresh.DocumentEscalationItems.AnyAsync(i => i.DocumentId == document.Id)).Should().BeFalse();
+        var escalationItem = await fresh.DocumentEscalationItems.SingleAsync(i => i.Id == escalationItemId);
+        escalationItem.DocumentId.Should().BeNull();
         (await fresh.Users.SingleAsync(u => u.Id == user.Id)).StorageUsedBytes.Should().Be(0);
     }
 
@@ -117,7 +110,7 @@ public sealed class StorageDeletionPostgresTests
         await using (var deleting = CreateDb(new ThrowOnQuotaUpdateInterceptor()))
         {
             var storage = SuccessStorage((await deleting.Documents.SingleAsync(d => d.Id == documentId)).StoragePath);
-            var act = () => new StorageDeletionCoordinator(deleting, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance)
+            var act = () => new StorageDeletionCoordinator(deleting, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService())
                 .DeletePrivilegedDocumentAsync(documentId, default);
             await act.Should().ThrowAsync<InvalidOperationException>().WithMessage("test quota update failure");
         }
@@ -152,7 +145,7 @@ public sealed class StorageDeletionPostgresTests
             })
             .Returns(Task.CompletedTask);
 
-        (await new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance).DeleteOwnedFolderAsync(folder.Id, user.Id, default)).Should().BeTrue();
+        (await new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService()).DeleteOwnedFolderAsync(folder.Id, user.Id, default)).Should().BeTrue();
 
         await using var fresh = CreateDb();
         (await fresh.Documents.AnyAsync(d => d.Id == first.Id || d.Id == second.Id)).Should().BeFalse();
@@ -186,7 +179,7 @@ public sealed class StorageDeletionPostgresTests
             })
             .Returns(Task.CompletedTask);
 
-        (await new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance).DeleteOwnedFolderAsync(source.Id, user.Id, default)).Should().BeTrue();
+        (await new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService()).DeleteOwnedFolderAsync(source.Id, user.Id, default)).Should().BeTrue();
 
         await using var fresh = CreateDb();
         (await fresh.Documents.AnyAsync(d => d.Id == document.Id)).Should().BeFalse();
@@ -206,7 +199,7 @@ public sealed class StorageDeletionPostgresTests
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
         storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, ownedDocument.StoragePath, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
 
-        (await new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance).DeleteOwnedFolderAsync(folder.Id, owner.Id, default)).Should().BeTrue();
+        (await new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService()).DeleteOwnedFolderAsync(folder.Id, owner.Id, default)).Should().BeTrue();
 
         await using var fresh = CreateDb();
         (await fresh.Documents.AnyAsync(d => d.Id == ownedDocument.Id)).Should().BeFalse();

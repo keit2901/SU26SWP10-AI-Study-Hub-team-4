@@ -17,6 +17,7 @@ public sealed class FolderService : IFolderService
     private readonly IPlanCapacityGuard _capacityGuard;
     private readonly ISharedFolderCopyCoordinator _copyCoordinator;
     private readonly IUserNotificationService _notifications;
+    private readonly IFolderPublicationStateService _publicationState;
 
     public FolderService(
         AppDbContext db,
@@ -26,7 +27,8 @@ public sealed class FolderService : IFolderService
         IFolderShareAiModerator shareAiModerator,
         IPlanCapacityGuard capacityGuard,
         ISharedFolderCopyCoordinator copyCoordinator,
-        IUserNotificationService notifications)
+        IUserNotificationService notifications,
+        IFolderPublicationStateService publicationState)
     {
         _db = db;
         _logger = logger;
@@ -36,6 +38,7 @@ public sealed class FolderService : IFolderService
         _capacityGuard = capacityGuard;
         _copyCoordinator = copyCoordinator;
         _notifications = notifications;
+        _publicationState = publicationState;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -406,9 +409,15 @@ public sealed class FolderService : IFolderService
         }
 
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            throw new DocumentException(503, "migration_required",
+                "The community listing is unavailable until the per-file moderation schema is applied.");
+        }
         var query = _db.Folders
             .AsNoTracking()
-            .Where(f => f.ShareStatus == FolderStatus.Approved)
+            .Where(f => f.ShareStatus == FolderStatus.Approved && f.Documents.Any(d =>
+                d.Status == DocumentStatus.Ready && d.ReviewStatus == DocumentReviewStatus.Approved))
             .OrderByDescending(f => f.SharedAt)
             .ThenBy(f => f.Name);
 
@@ -421,7 +430,7 @@ public sealed class FolderService : IFolderService
                     Id = f.Id,
                     Name = f.Name,
                     Description = f.Description,
-                    DocumentCount = f.Documents.Count,
+                    DocumentCount = f.Documents.Count(d => d.Status == DocumentStatus.Ready && d.ReviewStatus == DocumentReviewStatus.Approved),
                     IsFavorite = f.IsFavorite,
                     ShareStatus = f.ShareStatus,
                     SharedAt = f.SharedAt,
@@ -462,7 +471,7 @@ public sealed class FolderService : IFolderService
                         Id = f.Id,
                         Name = f.Name,
                         Description = f.Description,
-                        DocumentCount = f.Documents.Count,
+                        DocumentCount = f.Documents.Count(d => d.Status == DocumentStatus.Ready && d.ReviewStatus == DocumentReviewStatus.Approved),
                         IsFavorite = f.IsFavorite,
                         ShareStatus = f.ShareStatus,
                         SharedAt = f.SharedAt,
@@ -495,7 +504,7 @@ public sealed class FolderService : IFolderService
                         Id = f.Id,
                         Name = f.Name,
                         Description = f.Description,
-                        DocumentCount = f.Documents.Count,
+                        DocumentCount = f.Documents.Count(d => d.Status == DocumentStatus.Ready && d.ReviewStatus == DocumentReviewStatus.Approved),
                         IsFavorite = f.IsFavorite,
                         ShareStatus = f.ShareStatus,
                         SharedAt = f.SharedAt,
@@ -648,6 +657,11 @@ public sealed class FolderService : IFolderService
     {
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            throw new DocumentException(503, "migration_required",
+                "Folder sharing is temporarily unavailable until the per-file moderation schema is applied.");
+        }
         var now = DateTimeOffset.UtcNow;
         const string manualSubmissionSource = "MANUAL_SUBMISSION";
 
@@ -763,10 +777,16 @@ WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
             ?? throw new DocumentException(404, "folder_not_found",
                 "Folder does not exist or does not belong to the caller.");
 
-        if (folder.ShareStatus != FolderStatus.None && folder.ShareStatus != FolderStatus.Rejected)
+        if (folder.ShareStatus == FolderStatus.Approved)
         {
-            throw new DocumentException(400, "invalid_share_status",
-                "Only folders with status None or Rejected can be requested for sharing.");
+            throw new DocumentException(409, "folder_already_discoverable",
+                "This folder is already discoverable. Newly added files are moderated individually and do not require folder resubmission.");
+        }
+
+        if (folder.ShareStatus is not (FolderStatus.None or FolderStatus.Rejected))
+        {
+            throw new DocumentException(409, "invalid_share_status",
+                "Only private or rejected folders can be submitted for sharing.");
         }
 
         if (!folder.Documents.Any())
@@ -787,9 +807,6 @@ WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
                 "Cannot share this folder because it contains documents that failed to process. Please remove or re-upload the failed documents before sharing.");
         }
 
-        folder.ShareStatus = FolderStatus.PendingShare;
-        folder.SharedAt = null;
-        folder.UpdatedAt = now;
         folder.ShareReviewSource = manualSubmissionSource;
         folder.AiReviewReason = null;
         folder.AiReviewConfidence = null;
@@ -800,12 +817,18 @@ WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
         folder.AppealMessage = null;
         folder.StudentFeedbackReason = null;
         folder.ShareSubmissionCount += 1;
-        foreach (var document in folder.Documents)
+        folder.ShareStatus = FolderStatus.PendingShare;
+        folder.SharedAt = null;
+        foreach (var document in folder.Documents.Where(document =>
+                     document.ReviewStatus != DocumentReviewStatus.Approved))
         {
             document.ReviewStatus = DocumentReviewStatus.None;
+            document.ModerationGeneration++;
             document.ErrorMessage = null;
             document.UpdatedAt = now;
         }
+
+        _publicationState.Recompute(folder, folder.Documents, now);
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -823,6 +846,11 @@ WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
     {
         await EnsureActiveShareReviewerAsync(supabaseUserId, cancellationToken);
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            throw new DocumentException(503, "migration_required",
+                "Folder review is temporarily unavailable until the per-file moderation schema is applied.");
+        }
         if (!schema.HasFullModernShareFlowColumns)
         {
             var folderInfo = await _db.Folders
@@ -941,6 +969,11 @@ WHERE id = {folderId}", cancellationToken);
     {
         ArgumentNullException.ThrowIfNull(request);
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
+        if (!schema.HasFullModernShareFlowColumns)
+        {
+            throw new DocumentException(503, "migration_required",
+                "Folder review is temporarily unavailable until the per-file moderation schema is applied.");
+        }
 
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
         var feedbackReason = NormalizeRequiredShortText(
@@ -1083,9 +1116,11 @@ WHERE folder_id = {folderId}", cancellationToken);
         folder.ShareReviewSource = "STUDENT_FEEDBACK";
         folder.SharedAt = null;
         folder.UpdatedAt = DateTimeOffset.UtcNow;
-        foreach (var document in folder.Documents)
+        foreach (var document in folder.Documents.Where(document =>
+                     document.ReviewStatus != DocumentReviewStatus.Approved))
         {
             document.ReviewStatus = DocumentReviewStatus.None;
+            document.ModerationGeneration++;
             document.ErrorMessage = null;
             document.UpdatedAt = folder.UpdatedAt;
         }
@@ -1101,6 +1136,9 @@ WHERE folder_id = {folderId}", cancellationToken);
         Guid folderId,
         CancellationToken cancellationToken = default)
     {
+        throw new DocumentException(409, "folder_batch_moderation_retired",
+            "Folder-level moderation is retired; approve or reject individual documents instead.");
+#pragma warning disable CS0162
         await EnsureActiveShareReviewerAsync(supabaseUserId, cancellationToken);
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
         if (!schema.HasFullModernShareFlowColumns)
@@ -1181,6 +1219,7 @@ WHERE id = {folderId}", cancellationToken);
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
+#pragma warning restore CS0162
     }
 
     public async Task<FolderDto> RejectFolderShareAsync(
@@ -1189,6 +1228,9 @@ WHERE id = {folderId}", cancellationToken);
         RejectFolderShareRequest request,
         CancellationToken cancellationToken = default)
     {
+        throw new DocumentException(409, "folder_batch_moderation_retired",
+            "Folder-level moderation is retired; approve or reject individual documents instead.");
+#pragma warning disable CS0162
         ArgumentNullException.ThrowIfNull(request);
         await EnsureActiveShareReviewerAsync(supabaseUserId, cancellationToken);
         var rejectionReason = NormalizeRequiredLongText(
@@ -1313,6 +1355,7 @@ WHERE id = {folderId} AND share_status = {(int)FolderStatus.PendingShare}", canc
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
         return ToDto(folder, count);
+#pragma warning restore CS0162
     }
 
     private async Task<IReadOnlyList<string>> ExtractFolderTextsAsync(
@@ -1353,7 +1396,8 @@ WHERE id = {folderId} AND share_status = {(int)FolderStatus.PendingShare}", canc
         var folder = await _db.Folders
             .Include(f => f.User)
             .Include(f => f.Documents)
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.ShareStatus == FolderStatus.Approved, cancellationToken)
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.ShareStatus == FolderStatus.Approved
+                && f.Documents.Any(d => d.Status == DocumentStatus.Ready && d.ReviewStatus == DocumentReviewStatus.Approved), cancellationToken)
             ?? throw new DocumentException(404, "folder_not_found", "Folder not found.");
 
         var existing = await _db.FolderReactions
@@ -1389,7 +1433,8 @@ WHERE id = {folderId} AND share_status = {(int)FolderStatus.PendingShare}", canc
             .Where(r => r.FolderId == folderId && r.UserId == profile.Id)
             .Select(r => (bool?)r.IsLike)
             .FirstOrDefaultAsync(cancellationToken);
-        var docCount = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
+        var docCount = await _db.Documents.CountAsync(d => d.FolderId == folderId
+            && d.Status == DocumentStatus.Ready && d.ReviewStatus == DocumentReviewStatus.Approved, cancellationToken);
 
         return new FolderDto
         {
@@ -1449,7 +1494,8 @@ WHERE id = {folderId} AND share_status = {(int)FolderStatus.PendingShare}", canc
             ?? throw new DocumentException(404, "folder_not_found", "Folder not found.");
 
         var isOwner = folder.UserId == profile.Id;
-        var isApproved = folder.ShareStatus == FolderStatus.Approved;
+        var isApproved = folder.ShareStatus == FolderStatus.Approved
+            && folder.Documents.Any(d => d.Status == DocumentStatus.Ready && d.ReviewStatus == DocumentReviewStatus.Approved);
         var roleName = profile.Role?.RoleName ?? string.Empty;
         var isPrivileged = roleName.Equals(Role.AdminRoleName, StringComparison.OrdinalIgnoreCase)
                         || roleName.Equals(Role.ModeratorRoleName, StringComparison.OrdinalIgnoreCase);
@@ -1472,7 +1518,9 @@ WHERE id = {folderId} AND share_status = {(int)FolderStatus.PendingShare}", canc
             Id = folder.Id,
             Name = folder.Name,
             Description = folder.Description,
-            DocumentCount = folder.Documents.Count,
+            DocumentCount = isApproved
+                ? folder.Documents.Count(d => d.Status == DocumentStatus.Ready && d.ReviewStatus == DocumentReviewStatus.Approved)
+                : folder.Documents.Count,
             IsFavorite = folder.IsFavorite,
             ShareStatus = folder.ShareStatus,
             SharedAt = folder.SharedAt,

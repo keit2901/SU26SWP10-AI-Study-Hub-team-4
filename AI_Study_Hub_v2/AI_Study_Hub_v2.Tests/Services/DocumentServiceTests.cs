@@ -6,8 +6,11 @@ using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Supabase;
 using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Pgvector;
+using System.Text.Json;
 
 namespace AI_Study_Hub_v2.Tests.Services;
 
@@ -32,8 +35,10 @@ public class DocumentServiceTests
         IDocumentIngestionService? ingestion = null)
     {
         quota ??= DefaultQuotaMock().Object;
+        var publicationState = new FolderPublicationStateService();
         return new(db, storage, quota, NullLogger<DocumentService>.Instance, ingestion,
-            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance), capacityGuard ?? Mock.Of<IPlanCapacityGuard>());
+            new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance, publicationState),
+            capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), publicationState);
     }
 
     private static Mock<IStorageQuotaService> DefaultQuotaMock()
@@ -1030,6 +1035,47 @@ public class DocumentServiceTests
         (await db.Documents.AsNoTracking().SingleAsync(d => d.Id == doc.Id)).FolderId.Should().BeNull();
     }
 
+    [Test]
+    public async Task MoveToFolderAsync_SameDestination_IsNoOp()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var folder = SeedFolder(db, owner.Id);
+        var document = SeedDocument(db, owner.Id, folderId: folder.Id);
+        document.ReviewStatus = DocumentReviewStatus.Rejected;
+        document.ModerationGeneration = 4;
+        db.SaveChanges();
+
+        var result = await BuildSut(db, Mock.Of<ISupabaseStorageClient>())
+            .MoveToFolderAsync(owner.SupabaseUserId, document.Id, folder.Id);
+
+        result.FolderId.Should().Be(folder.Id);
+        var persisted = await db.Documents.AsNoTracking().SingleAsync(item => item.Id == document.Id);
+        persisted.ReviewStatus.Should().Be(DocumentReviewStatus.Rejected);
+        persisted.ModerationGeneration.Should().Be(4);
+        (await db.Folders.AsNoTracking().SingleAsync(item => item.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.None);
+    }
+
+    [Test]
+    public async Task MoveToFolderAsync_PrivateDestination_ResetsReviewWithoutStartingModeration()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var folder = SeedFolder(db, owner.Id);
+        var document = SeedDocument(db, owner.Id);
+        document.ReviewStatus = DocumentReviewStatus.Rejected;
+        document.ModerationGeneration = 4;
+        db.SaveChanges();
+
+        await BuildSut(db, Mock.Of<ISupabaseStorageClient>())
+            .MoveToFolderAsync(owner.SupabaseUserId, document.Id, folder.Id);
+
+        var persisted = await db.Documents.AsNoTracking().SingleAsync(item => item.Id == document.Id);
+        persisted.ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        persisted.ModerationGeneration.Should().Be(4);
+        (await db.Folders.AsNoTracking().SingleAsync(item => item.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.None);
+    }
+
     // -------------------------------------------------------------------------
     // DeleteAsync
     // -------------------------------------------------------------------------
@@ -1118,6 +1164,8 @@ public class DocumentServiceTests
         db.SaveChanges();
 
         var doc = SeedDocument(db, other.Id, folderId: folder.Id);
+        doc.ReviewStatus = DocumentReviewStatus.Approved;
+        db.SaveChanges();
 
         var sut = BuildSut(db, Mock.Of<ISupabaseStorageClient>());
 
@@ -1136,6 +1184,8 @@ public class DocumentServiceTests
         db.SaveChanges();
 
         var doc = SeedDocument(db, other.Id, folderId: folder.Id);
+        doc.ReviewStatus = DocumentReviewStatus.Rejected;
+        db.SaveChanges();
 
         var sut = BuildSut(db, Mock.Of<ISupabaseStorageClient>());
 
@@ -1154,6 +1204,8 @@ public class DocumentServiceTests
         db.SaveChanges();
 
         var doc = SeedDocument(db, other.Id, folderId: folder.Id);
+        doc.ReviewStatus = DocumentReviewStatus.Approved;
+        db.SaveChanges();
 
         var storage = new Mock<ISupabaseStorageClient>();
         storage.Setup(s => s.CreateSignedUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
@@ -1162,6 +1214,106 @@ public class DocumentServiceTests
 
         var dto = await sut.GetByIdAsync(me.SupabaseUserId, doc.Id);
         dto.Id.Should().Be(doc.Id);
+    }
+
+    [Test]
+    public async Task PublicAccess_ExposesOnlyApprovedDocumentsAcrossListDetailContentAndFileUrl()
+    {
+        using var db = CreateInMemoryWithChunks();
+        var viewer = SeedActiveStudent(db);
+        var owner = SeedActiveStudent(db);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.Approved;
+        var approved = SeedDocument(db, owner.Id, fileName: "approved.docx",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", folderId: folder.Id);
+        approved.ReviewStatus = DocumentReviewStatus.Approved;
+        var rejected = SeedDocument(db, owner.Id, fileName: "rejected.docx",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", folderId: folder.Id);
+        rejected.ReviewStatus = DocumentReviewStatus.Rejected;
+        var pending = SeedDocument(db, owner.Id, fileName: "pending.docx",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", folderId: folder.Id);
+        pending.ReviewStatus = DocumentReviewStatus.None;
+        var escalated = SeedDocument(db, owner.Id, fileName: "escalated.docx",
+            mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document", folderId: folder.Id);
+        escalated.ReviewStatus = DocumentReviewStatus.Escalated;
+        db.DocumentChunks.Add(new DocumentChunk
+        {
+            Id = Guid.NewGuid(),
+            DocumentId = approved.Id,
+            ChunkIndex = 0,
+            Content = "Approved public content.",
+            TokenCount = 4,
+            Embedding = new Vector(new float[DocumentChunk.EmbeddingDimension]),
+            CreatedAt = DateTimeOffset.UtcNow,
+        });
+        db.SaveChanges();
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(client => client.CreateSignedUrlAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("https://storage.local/signed");
+        var sut = BuildSut(db, storage.Object);
+
+        (await sut.ListAsync(viewer.SupabaseUserId, new DocumentListQuery { FolderId = folder.Id }))
+            .Should().ContainSingle().Which.Id.Should().Be(approved.Id);
+        (await sut.GetByIdAsync(viewer.SupabaseUserId, approved.Id)).Id.Should().Be(approved.Id);
+        var content = await sut.GetContentAsync(viewer.SupabaseUserId, approved.Id);
+        content.DocumentId.Should().Be(approved.Id);
+        content.Chunks.Should().ContainSingle().Which.Content.Should().Be("Approved public content.");
+        (await sut.GetFileViewUrlAsync(viewer.SupabaseUserId, approved.Id)).Should().Be("https://storage.local/signed");
+
+        foreach (var nonPublic in new[] { pending, rejected, escalated })
+        {
+            var detail = () => sut.GetByIdAsync(viewer.SupabaseUserId, nonPublic.Id);
+            var privateContent = () => sut.GetContentAsync(viewer.SupabaseUserId, nonPublic.Id);
+            var fileUrl = () => sut.GetFileViewUrlAsync(viewer.SupabaseUserId, nonPublic.Id);
+
+            (await detail.Should().ThrowAsync<DocumentException>()).Which.StatusCode.Should().Be(404);
+            (await privateContent.Should().ThrowAsync<DocumentException>()).Which.StatusCode.Should().Be(404);
+            (await fileUrl.Should().ThrowAsync<DocumentException>()).Which.StatusCode.Should().Be(404);
+        }
+    }
+
+    [Test]
+    public async Task UploadAsync_IntoApprovedFolder_LeavesNewFilePrivateWhileApprovedSiblingStaysPublic()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var viewer = SeedActiveStudent(db);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.Approved;
+        var approved = SeedDocument(db, owner.Id, folderId: folder.Id);
+        approved.ReviewStatus = DocumentReviewStatus.Approved;
+        db.SaveChanges();
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(client => client.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(), "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("stored");
+        var sut = BuildSut(db, storage.Object);
+
+        var uploaded = await sut.UploadAsync(owner.SupabaseUserId, UploadReq(folderId: folder.Id), "new.pdf", "application/pdf", 32, Stream(32));
+
+        uploaded.ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        (await db.Folders.SingleAsync(item => item.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.Approved);
+        (await sut.ListAsync(viewer.SupabaseUserId, new DocumentListQuery { FolderId = folder.Id }))
+            .Should().ContainSingle().Which.Id.Should().Be(approved.Id);
+    }
+
+    [Test]
+    public async Task UploadAsync_IntoPrivateFolder_DoesNotStartModeration()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var folder = SeedFolder(db, owner.Id);
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(client => client.UploadAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<Stream>(),
+                "application/pdf", false, It.IsAny<CancellationToken>()))
+            .ReturnsAsync("stored");
+
+        var uploaded = await BuildSut(db, storage.Object).UploadAsync(
+            owner.SupabaseUserId, UploadReq(folderId: folder.Id), "private.pdf", "application/pdf", 32, Stream(32));
+
+        uploaded.ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        var persisted = await db.Documents.AsNoTracking().SingleAsync(item => item.Id == uploaded.Id);
+        persisted.ModerationGeneration.Should().Be(0);
+        (await db.Folders.AsNoTracking().SingleAsync(item => item.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.None);
     }
 
     [Test]
@@ -1175,10 +1327,38 @@ public class DocumentServiceTests
         db.SaveChanges();
 
         var doc = SeedDocument(db, other.Id, folderId: folder.Id);
+        doc.ReviewStatus = DocumentReviewStatus.Rejected;
+        db.SaveChanges();
 
         var sut = BuildSut(db, Mock.Of<ISupabaseStorageClient>());
 
         var act = () => sut.GetByIdAsync(me.SupabaseUserId, doc.Id);
         await act.Should().ThrowAsync<DocumentException>().Where(ex => ex.StatusCode == 404);
+    }
+
+    private static AppDbContext CreateInMemoryWithChunks()
+    {
+        var options = new DbContextOptionsBuilder<AppDbContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .ConfigureWarnings(warnings => warnings.Ignore(InMemoryEventId.TransactionIgnoredWarning))
+            .Options;
+
+        return new DocumentContentTestDbContext(options);
+    }
+
+    private sealed class DocumentContentTestDbContext : AppDbContext
+    {
+        public DocumentContentTestDbContext(DbContextOptions<AppDbContext> options) : base(options)
+        {
+        }
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            base.OnModelCreating(modelBuilder);
+            modelBuilder.Entity<DocumentChunk>().Property(chunk => chunk.Embedding)
+                .HasConversion(
+                    vector => JsonSerializer.Serialize(vector.ToArray(), (JsonSerializerOptions?)null),
+                    values => new Vector(JsonSerializer.Deserialize<float[]>(values, (JsonSerializerOptions?)null)!));
+        }
     }
 }

@@ -524,6 +524,7 @@ public sealed class RagSearchServiceTests
         db.Folders.Add(folder);
 
         var doc = SeedDocument(db, other.Id, "shared.pdf", folder.Id);
+        doc.ReviewStatus = DocumentReviewStatus.Approved;
         SeedChunk(db, doc, 0, "shared content to search", UnitAt(0));
         await db.SaveChangesAsync();
 

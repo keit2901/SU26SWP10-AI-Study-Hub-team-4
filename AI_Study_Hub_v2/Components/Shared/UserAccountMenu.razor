@@ -88,18 +88,21 @@
                         @foreach (var item in NotificationItems)
                         {
                             var isUnread = item.ReadAt is null;
-                            var isApproved = item.Outcome == UserNotificationOutcome.Approved;
                             <button type="button"
                                     class="uam-notification-item @(isUnread ? "is-unread" : null)"
-                                    aria-label="@($"{item.Title}. {item.Message}")"
+                                    aria-label="@($"{GetNotificationTitle(item)}. {GetNotificationMessage(item)}")"
                                     disabled="@_notificationOperationBusy"
                                     @onclick="() => OpenNotificationAsync(item)">
-                                <span class="uam-notification-icon @(isApproved ? "is-approved" : "is-rejected")">
-                                    <MudIcon Icon="@(isApproved ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" Size="Size.Small" />
+                                <span class="uam-notification-icon @GetNotificationOutcomeClass(item)">
+                                    <MudIcon Icon="@GetNotificationIcon(item)" Size="Size.Small" />
                                 </span>
                                 <span class="uam-notification-copy">
-                                    <span class="uam-notification-title">@item.Title</span>
-                                    <span class="uam-notification-message">@item.Message</span>
+                                    <span class="uam-notification-title">@GetNotificationTitle(item)</span>
+                                    <span class="uam-notification-message">@GetNotificationMessage(item)</span>
+                                    @if (GetNotificationDocumentId(item).HasValue)
+                                    {
+                                        <span class="uam-notification-context">File-specific moderation update</span>
+                                    }
                                     <span class="uam-notification-time">@FormatNotificationTime(item.CreatedAt)</span>
                                 </span>
                             </button>
@@ -285,6 +288,8 @@
 
     .uam-notification-icon.is-rejected { color: #dc2626; }
 
+    .uam-notification-icon.is-mixed { color: #7c3aed; }
+
     .uam-notification-copy { min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
 
     .uam-notification-title { color: #1e1934; font-size: 0.84rem; font-weight: 700; line-height: 1.35; }
@@ -292,6 +297,8 @@
     .uam-notification-message { display: -webkit-box; overflow: hidden; color: #655f76; font-size: 0.76rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 
     .uam-notification-time { color: #8a849b; font-size: 0.68rem; font-weight: 500; }
+
+    .uam-notification-context { width: fit-content; padding: 0.12rem 0.4rem; border-radius: 999px; background: rgba(94, 92, 230, 0.09); color: #5e5ce6; font-size: 0.62rem; font-weight: 800; }
 
     .uam-notification-state { min-height: 8rem; padding: 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.55rem; color: #746c8f; font-size: 0.8rem; text-align: center; }
 
@@ -674,6 +681,49 @@
     }
 
     private string FormatUnreadCount() => _unreadCount > 9 ? "9+" : _unreadCount.ToString();
+
+    private static string GetNotificationOutcomeClass(UserNotificationFeedItemDto item) =>
+        item.Outcome.ToString() switch
+        {
+            "Approved" => "is-approved",
+            "Mixed" => "is-mixed",
+            _ => "is-rejected"
+        };
+
+    private static string GetNotificationIcon(UserNotificationFeedItemDto item) =>
+        item.Outcome.ToString() switch
+        {
+            "Approved" => Icons.Material.Filled.CheckCircle,
+            "Mixed" => Icons.Material.Filled.CallSplit,
+            _ => Icons.Material.Filled.Cancel
+        };
+
+    private static string GetNotificationTitle(UserNotificationFeedItemDto item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Title)) return item.Title;
+
+        return item.Kind.ToString() switch
+        {
+            "DocumentModerationFinal" => "Document moderation complete",
+            "EscalationResolved" => "Escalation resolved",
+            _ => "Folder moderation complete"
+        };
+    }
+
+    private static string GetNotificationMessage(UserNotificationFeedItemDto item)
+    {
+        if (!string.IsNullOrWhiteSpace(item.Message)) return item.Message;
+
+        var subject = GetNotificationDocumentId(item).HasValue ? "This file" : $"{item.FolderName}";
+        return item.Outcome.ToString() switch
+        {
+            "Approved" => $"{subject} was approved and is public.",
+            "Mixed" => $"{subject} has mixed outcomes. Approved files remain public; other files stay private.",
+            _ => $"{subject} was rejected and remains private."
+        };
+    }
+
+    private static Guid? GetNotificationDocumentId(UserNotificationFeedItemDto item) => item.DocumentId;
 
     private static string FormatNotificationTime(DateTimeOffset createdAt) =>
         createdAt.ToLocalTime().ToString("MMM d, h:mm tt");

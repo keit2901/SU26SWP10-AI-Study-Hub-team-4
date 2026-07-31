@@ -3,10 +3,9 @@ using System.Collections.Concurrent;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Tests.Support;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Moq;
 using Npgsql;
 
@@ -15,8 +14,6 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture, Category("Postgres"), NonParallelizable]
 public sealed class PlanCapacityPostgresTests
 {
-    private const string PreReSyncMigration = "20260706184528_AddDocumentEscalation";
-    private const string ReSyncPlanMigration = "20260709165701_ReSyncPlanFkAndConstraints";
     private string _connectionString = null!;
     private NpgsqlDataSource? _dataSource;
     private readonly ConcurrentBag<Guid> _createdUserIds = [];
@@ -48,8 +45,7 @@ public sealed class PlanCapacityPostgresTests
 
         await BootstrapAuthPrerequisiteAsync();
         await using var db = CreateDb();
-        await MigrateWithReSyncCompatibilityAsync(db);
-        await ApplyFolderModelDriftCompatibilityAsync(db);
+        await PostgresTestDatabase.BootstrapAsync(db);
     }
 
     [TearDown]
@@ -63,7 +59,7 @@ public sealed class PlanCapacityPostgresTests
                 if (_createdDocumentIds.Count > 0)
                 {
                     db.DocumentEscalationItems.RemoveRange(await db.DocumentEscalationItems
-                        .Where(item => _createdDocumentIds.Contains(item.DocumentId)).ToListAsync());
+                        .Where(item => item.DocumentId.HasValue && _createdDocumentIds.Contains(item.DocumentId.Value)).ToListAsync());
                     db.DocumentChunks.RemoveRange(await db.DocumentChunks
                         .Where(chunk => _createdDocumentIds.Contains(chunk.DocumentId)).ToListAsync());
                     db.Documents.RemoveRange(await db.Documents
@@ -414,43 +410,6 @@ public sealed class PlanCapacityPostgresTests
         await using var connection = await (_dataSource ?? throw new InvalidOperationException("PostgreSQL data source is not initialized.")).OpenConnectionAsync();
         await using var command = new NpgsqlCommand("CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);", connection);
         await command.ExecuteNonQueryAsync();
-    }
-
-    private static async Task MigrateWithReSyncCompatibilityAsync(AppDbContext db)
-    {
-        var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
-        if (!appliedMigrations.Contains(ReSyncPlanMigration))
-        {
-            if (!appliedMigrations.Contains(PreReSyncMigration))
-            {
-                await db.Database.GetService<IMigrator>().MigrateAsync(PreReSyncMigration);
-            }
-
-            // AddPlanSystem created this exact name, while ReSync attempts to add it
-            // again. This is limited to the disposable test database migration path.
-            await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE IF EXISTS public.payment_transactions DROP CONSTRAINT IF EXISTS \"FK_payment_transactions_users_user_id\"");
-        }
-
-        await db.Database.MigrateAsync();
-    }
-
-    private static Task ApplyFolderModelDriftCompatibilityAsync(AppDbContext db)
-    {
-        // Main currently has Folder model fields without a corresponding migration.
-        // These idempotent columns only align disposable fixture databases with the
-        // latest model and must be removed once a real application migration lands.
-        return db.Database.ExecuteSqlRawAsync("""
-            ALTER TABLE public.folders
-                ADD COLUMN IF NOT EXISTS share_review_source varchar(32) NULL,
-                ADD COLUMN IF NOT EXISTS ai_review_reason varchar(2000) NULL,
-                ADD COLUMN IF NOT EXISTS ai_review_confidence double precision NULL,
-                ADD COLUMN IF NOT EXISTS ai_review_failure_count integer NOT NULL DEFAULT 0,
-                ADD COLUMN IF NOT EXISTS human_review_reason varchar(2000) NULL,
-                ADD COLUMN IF NOT EXISTS requires_human_review boolean NOT NULL DEFAULT false,
-                ADD COLUMN IF NOT EXISTS appeal_requested_at timestamp with time zone NULL,
-                ADD COLUMN IF NOT EXISTS appeal_message varchar(2000) NULL;
-            """);
     }
 
     private async Task InsertAuthUserAsync(Guid authUserId)

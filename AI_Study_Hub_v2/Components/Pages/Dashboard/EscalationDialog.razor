@@ -22,13 +22,13 @@
                           MaxLines="4"
                           Lines="3"
                           Required="true"
-                          HelperText="Explain why this folder needs admin attention" />
+                          HelperText="Explain why the selected files need administrator attention" />
 
             <!-- Documents selected for escalation -->
             <div>
                 <div class="font-bold mb-2" style="font-size: 13px; color: #191c1e;">
-                    Documents for escalation
-                    <span class="text-sm ml-1" style="color: #767586; font-weight: 500;">(@_rejectedDocs.Count)</span>
+                    Eligible files
+                    <span class="text-sm ml-1" style="color: #767586; font-weight: 500;">(@SelectedCount selected)</span>
                 </div>
                 <MudPaper Class="pa-2" Style="max-height: 240px; overflow-y: auto; border: 1px solid #e0e3e5; border-radius: 8px;">
                     @if (_rejectedDocs.Count == 0)
@@ -43,7 +43,7 @@
                         {
                             <div class="d-flex align-center justify-space-between pa-2" style="border-bottom: 1px solid #f1f3f5;">
                                 <div class="d-flex align-center" style="gap: 0.75rem; flex: 1;">
-                                    <input type="checkbox" checked="@doc.Selected" @onchange="@((ChangeEventArgs e) => doc.Selected = (bool)(e.Value ?? false))" style="width: 18px; height: 18px; accent-color: #4648d4; cursor: pointer;" />
+                                    <input type="checkbox" checked="@doc.Selected" @onchange="@((ChangeEventArgs e) => doc.Selected = (bool)(e.Value ?? false))" aria-label="Select @doc.FileName for escalation" style="width: 18px; height: 18px; accent-color: #4648d4; cursor: pointer;" />
                                     <div style="overflow: hidden;">
                                         <div class="font-bold" style="font-size: 13px; color: #191c1e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">@doc.FileName</div>
                                         <div style="font-size: 11px; color: #767586;">@doc.RejectReason</div>
@@ -89,6 +89,8 @@
         !string.IsNullOrWhiteSpace(_reason) &&
         _rejectedDocs.Any(d => d.Selected);
 
+    private int SelectedCount => _rejectedDocs.Count(d => d.Selected);
+
     protected override void OnInitialized()
     {
         _rejectedDocs = RejectedDocuments.Select(d => new RejectedDocItem
@@ -96,7 +98,7 @@
             DocumentId = d.DocumentId,
             FileName = d.FileName,
             RejectReason = d.RejectReason,
-            Selected = true
+            Selected = d.Selected
         }).ToList();
     }
 

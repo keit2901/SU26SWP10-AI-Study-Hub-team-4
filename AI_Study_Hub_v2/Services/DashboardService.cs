@@ -22,19 +22,22 @@ public class DashboardService : IDashboardService
     private readonly IAuditLogService _audit;
     private readonly IFolderShareAiModerator _shareAiModerator;
     private readonly IUserNotificationService _notifications;
+    private readonly IFolderPublicationStateService _publicationState;
 
     public DashboardService(
         AppDbContext context,
         ISupabaseStorageClient storage,
         IAuditLogService audit,
         IFolderShareAiModerator shareAiModerator,
-        IUserNotificationService notifications)
+        IUserNotificationService notifications,
+        IFolderPublicationStateService publicationState)
     {
         _context = context;
         _storage = storage;
         _audit = audit;
         _shareAiModerator = shareAiModerator;
         _notifications = notifications;
+        _publicationState = publicationState;
     }
 
     public async Task<AdminDashboardStatsDto> GetAdminStatsAsync(CancellationToken ct = default)
@@ -78,6 +81,13 @@ public class DashboardService : IDashboardService
         var pendingEscalationCount = await _context.DocumentEscalations.AsNoTracking()
             .Where(e => e.EscalationStatus == "Pending")
             .CountAsync(ct);
+        var pendingEscalatedDocumentCount = await _context.DocumentEscalationItems.AsNoTracking()
+            .Where(item => item.ResolutionStatus == "Pending"
+                && item.DocumentId != null
+                && item.Escalation.EscalationStatus == "Pending")
+            .Select(item => item.DocumentId)
+            .Distinct()
+            .CountAsync(ct);
 
         return new AdminDashboardStatsDto(
             TotalUsers: totalUsers,
@@ -90,7 +100,8 @@ public class DashboardService : IDashboardService
             PendingCount: pendingCount,
             DailyTokensUsed: dailyTokensUsed,
             DailyTokenQuota: dailyTokenQuota,
-            PendingEscalationCount: pendingEscalationCount
+            PendingEscalationCount: pendingEscalationCount,
+            PendingEscalatedDocumentCount: pendingEscalatedDocumentCount
         );
     }
 
@@ -223,40 +234,13 @@ public class DashboardService : IDashboardService
     public async Task<List<DocumentDto>> GetPendingModerationDocumentsAsync(Guid supabaseUserId, Guid? folderId, CancellationToken ct)
     {
         await EnsureModeratorAsync(supabaseUserId, ct);
-        var folderSchema = await GetFolderSchemaCapabilitiesAsync(ct);
         IQueryable<Document> query = _context.Documents.AsNoTracking()
-            .Where(d => d.Folder != null && d.Folder.ShareStatus == FolderStatus.PendingShare);
+            .Where(d => d.Folder != null
+                && (d.Folder.ShareStatus == FolderStatus.PendingShare || d.Folder.ShareStatus == FolderStatus.Approved)
+                && d.Status == DocumentStatus.Ready
+                && d.ReviewStatus == DocumentReviewStatus.None);
         if (folderId.HasValue)
             query = query.Where(d => d.FolderId == folderId.Value);
-
-        if (folderSchema.HasFullModernShareFlowColumns)
-        {
-            return await query
-                .OrderByDescending(d => d.CreatedAt)
-                .Select(d => new DocumentDto
-                {
-                    Id = d.Id,
-                    FolderId = d.FolderId,
-                    FileName = d.FileName,
-                    FileSizeBytes = d.FileSizeBytes,
-                    MimeType = d.MimeType,
-                    SubjectCode = d.SubjectCode,
-                    Semester = d.Semester,
-                    PageCount = d.PageCount,
-                    Status = d.Status,
-                    ReviewStatus = d.ReviewStatus,
-                    ErrorMessage = d.ErrorMessage,
-                    CreatedAt = d.CreatedAt,
-                    UpdatedAt = d.UpdatedAt,
-                    FolderName = d.Folder != null ? d.Folder.Name : null,
-                    FolderShareStatus = d.Folder != null ? d.Folder.ShareStatus : FolderStatus.None,
-                    ShareReviewSource = d.Folder != null ? d.Folder.ShareReviewSource : null,
-                    ShareFailureCount = d.Folder != null && folderSchema.HasShareFeedbackColumns ? d.Folder.ShareFailureCount : 0,
-                    StudentFeedbackReason = d.Folder != null && folderSchema.HasStudentFeedbackWorkflowColumns ? d.Folder.StudentFeedbackReason : null,
-                    AppealMessage = d.Folder != null && folderSchema.HasStudentFeedbackWorkflowColumns ? d.Folder.AppealMessage : null
-                })
-                .ToListAsync(ct);
-        }
 
         return await query
             .OrderByDescending(d => d.CreatedAt)
@@ -272,15 +256,17 @@ public class DashboardService : IDashboardService
                 PageCount = d.PageCount,
                 Status = d.Status,
                 ReviewStatus = d.ReviewStatus,
+                ModerationGeneration = d.ModerationGeneration,
                 ErrorMessage = d.ErrorMessage,
+                ModerationReason = d.ErrorMessage,
                 CreatedAt = d.CreatedAt,
                 UpdatedAt = d.UpdatedAt,
                 FolderName = d.Folder != null ? d.Folder.Name : null,
                 FolderShareStatus = d.Folder != null ? d.Folder.ShareStatus : FolderStatus.None,
-                ShareReviewSource = null,
-                ShareFailureCount = d.Folder != null && folderSchema.HasShareFeedbackColumns ? d.Folder.ShareFailureCount : 0,
-                StudentFeedbackReason = d.Folder != null && folderSchema.HasStudentFeedbackWorkflowColumns ? d.Folder.StudentFeedbackReason : null,
-                AppealMessage = d.Folder != null && folderSchema.HasStudentFeedbackWorkflowColumns ? d.Folder.AppealMessage : null
+                ShareReviewSource = d.Folder != null ? d.Folder.ShareReviewSource : null,
+                ShareFailureCount = d.Folder != null ? d.Folder.ShareFailureCount : 0,
+                StudentFeedbackReason = d.Folder != null ? d.Folder.StudentFeedbackReason : null,
+                AppealMessage = d.Folder != null ? d.Folder.AppealMessage : null
             })
             .ToListAsync(ct);
     }
@@ -329,27 +315,12 @@ public class DashboardService : IDashboardService
     public async Task ApproveDocumentAsync(Guid supabaseUserId, Guid documentId, CancellationToken ct)
     {
         await EnsureModeratorAsync(supabaseUserId, ct);
-        var doc = await GetActionableModerationDocumentAsync(documentId, ct);
-
-        doc.ReviewStatus = DocumentReviewStatus.Approved;
-        doc.ErrorMessage = null;
-        doc.UpdatedAt = System.DateTimeOffset.UtcNow;
-
-        await UpdateFolderShareStatusFromDocumentModerationAsync(
-            doc.FolderId,
-            reviewSource: "HUMAN",
-            moderationReason: null,
-            confidence: null,
-            ct);
-
-        await _context.SaveChangesAsync(ct);
+        await ApplyDirectDecisionAsync(documentId, DocumentReviewStatus.Approved, null, ct);
     }
 
     public async Task RejectDocumentAsync(Guid supabaseUserId, Guid documentId, string? reason, CancellationToken ct)
     {
         await EnsureModeratorAsync(supabaseUserId, ct);
-        var doc = await GetActionableModerationDocumentAsync(documentId, ct);
-
         var normalizedReason = string.IsNullOrWhiteSpace(reason)
             ? "Rejected by moderator."
             : reason.Trim();
@@ -358,148 +329,62 @@ public class DashboardService : IDashboardService
             throw DashboardModerationException.ReasonTooLong(MaxModerationReasonLength);
         }
 
-        doc.ReviewStatus = DocumentReviewStatus.Rejected;
-        doc.ErrorMessage = normalizedReason;
-        doc.UpdatedAt = System.DateTimeOffset.UtcNow;
-
-        await UpdateFolderShareStatusFromDocumentModerationAsync(
-            doc.FolderId,
-            reviewSource: "HUMAN",
-            moderationReason: normalizedReason,
-            confidence: null,
-            ct);
-
-        await _context.SaveChangesAsync(ct);
+        await ApplyDirectDecisionAsync(documentId, DocumentReviewStatus.Rejected, normalizedReason, ct);
     }
 
-    private async Task UpdateFolderShareStatusFromDocumentModerationAsync(
-        Guid? folderId,
-        string reviewSource,
-        string? moderationReason,
-        double? confidence,
+    private async Task ApplyDirectDecisionAsync(
+        Guid documentId,
+        DocumentReviewStatus decision,
+        string? reason,
         CancellationToken ct)
     {
-        if (!folderId.HasValue)
-        {
-            return;
-        }
-
-        var schema = await GetFolderSchemaCapabilitiesAsync(ct);
-        if (!schema.HasFullModernShareFlowColumns)
-        {
-            throw DashboardModerationException.NotificationStagingUnavailable();
-        }
-
-        var folder = await _context.Folders
-            .Include(f => f.Documents)
-            .FirstOrDefaultAsync(f => f.Id == folderId.Value, ct);
-        if (folder == null || folder.ShareStatus != FolderStatus.PendingShare)
-        {
-            return;
-        }
-
-        var documents = folder.Documents.ToList();
-        if (documents.Count == 0)
-        {
-            return;
-        }
-
-        var hasRejectedDocument = documents.Any(document => document.ReviewStatus == DocumentReviewStatus.Rejected);
-        var allDocumentsApproved = documents.All(document => document.ReviewStatus == DocumentReviewStatus.Approved);
-        if (!hasRejectedDocument && !allDocumentsApproved)
-        {
-            return;
-        }
-
+        // Resolve the document and folder separately so unknown documents remain 404 and
+        // known-but-terminal documents remain 409. The conditional write below deliberately
+        // uses scalar document columns only; navigation predicates are not translatable by EF.
         var now = DateTimeOffset.UtcNow;
-        var previousStatus = folder.ShareStatus;
-        folder.ShareReviewSource = reviewSource;
-        folder.RequiresHumanReview = false;
-        folder.AppealRequestedAt = null;
-        folder.AppealMessage = null;
-        folder.UpdatedAt = now;
+        await using var transaction = await _context.Database.BeginTransactionAsync(ct);
+        await GetActionableModerationDocumentAsync(documentId, ct);
+        var affected = _context.Database.IsRelational()
+            ? await _context.Documents
+                .Where(document => document.Id == documentId
+                    && document.Status == DocumentStatus.Ready
+                    && document.ReviewStatus == DocumentReviewStatus.None)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(document => document.ReviewStatus, decision)
+                    .SetProperty(document => document.ErrorMessage, decision == DocumentReviewStatus.Rejected ? reason : null)
+                    .SetProperty(document => document.UpdatedAt, now), ct)
+            : ApplyInMemoryDirectDecision(documentId, decision, reason, now);
+        if (affected != 1)
+            throw DashboardModerationException.NotActionable();
 
-        if (string.Equals(reviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase))
+        if (_context.Database.IsRelational())
         {
-            folder.AiReviewReason = moderationReason;
-            folder.AiReviewConfidence = confidence;
-            folder.HumanReviewReason = null;
+            _context.ChangeTracker.Clear();
         }
-        else
-        {
-            folder.HumanReviewReason = moderationReason;
-            folder.AiReviewReason = null;
-            folder.AiReviewConfidence = null;
-        }
-
-        if (hasRejectedDocument)
-        {
-            folder.ShareStatus = FolderStatus.Rejected;
-            folder.SharedAt = null;
-            folder.ShareFailureCount += 1;
-        }
-        else if (allDocumentsApproved)
-        {
-            folder.ShareStatus = FolderStatus.Approved;
-            folder.SharedAt = now;
-            folder.AiReviewReason = null;
-            folder.AiReviewConfidence = null;
-            folder.HumanReviewReason = null;
-            folder.AppealRequestedAt = null;
-            folder.AppealMessage = null;
-            folder.StudentFeedbackReason = null;
-        }
-
-        _notifications.StageFolderModerationFinal(folder, previousStatus, moderationReason, now);
+        var document = await _context.Documents.Include(item => item.Folder).FirstAsync(item => item.Id == documentId, ct);
+        var folder = document.Folder ?? throw DashboardModerationException.NotActionable();
+        var folderDocuments = await _context.Documents.Where(item => item.FolderId == folder.Id).ToListAsync(ct);
+        _publicationState.Recompute(folder, folderDocuments, now);
+        _notifications.StageDocumentModerationFinal(document, folder, reason, now);
+        await _context.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 
-    private async Task<FolderSchemaCapabilities> GetFolderSchemaCapabilitiesAsync(CancellationToken ct)
+    private int ApplyInMemoryDirectDecision(
+        Guid documentId,
+        DocumentReviewStatus decision,
+        string? reason,
+        DateTimeOffset now)
     {
-        if (!_context.Database.IsRelational())
-        {
-            return new FolderSchemaCapabilities(true, true, true);
-        }
+        var document = _context.Documents.Local.FirstOrDefault(item => item.Id == documentId);
+        if (document is null || document.Status != DocumentStatus.Ready || document.ReviewStatus != DocumentReviewStatus.None)
+            return 0;
 
-        var columnNames = await _context.Database
-            .SqlQueryRaw<string>(@"
-SELECT column_name
-FROM information_schema.columns
-WHERE table_schema = 'public'
-  AND table_name = 'folders'")
-            .ToListAsync(ct);
-
-        var columns = columnNames
-            .Where(name => !string.IsNullOrWhiteSpace(name))
-            .Select(name => name.Trim())
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-
-            var hasShareFeedbackColumns = columns.Contains("share_failure_count");
-
-            var hasStudentFeedbackWorkflowColumns =
-                columns.Contains("student_feedback_reason") &&
-            columns.Contains("appeal_message");
-
-        var hasFullModernShareFlowColumns =
-            columns.Contains("share_review_source") &&
-            columns.Contains("ai_review_reason") &&
-            columns.Contains("ai_review_confidence") &&
-            columns.Contains("human_review_reason") &&
-            hasShareFeedbackColumns &&
-            columns.Contains("student_feedback_reason") &&
-            columns.Contains("requires_human_review") &&
-            columns.Contains("appeal_requested_at") &&
-            columns.Contains("appeal_message");
-
-        return new FolderSchemaCapabilities(
-            hasShareFeedbackColumns,
-            hasStudentFeedbackWorkflowColumns,
-            hasFullModernShareFlowColumns);
+        document.ReviewStatus = decision;
+        document.ErrorMessage = decision == DocumentReviewStatus.Rejected ? reason : null;
+        document.UpdatedAt = now;
+        return 1;
     }
-
-    private sealed record FolderSchemaCapabilities(
-        bool HasShareFeedbackColumns,
-        bool HasStudentFeedbackWorkflowColumns,
-        bool HasFullModernShareFlowColumns);
 
     public async Task<UserAnalyticsDto> GetUserAnalyticsAsync(System.Guid userId, System.Guid? folderId = null, CancellationToken ct = default)
     {
@@ -586,14 +471,17 @@ WHERE table_schema = 'public'
 
     public async Task<string?> GetModerationDocumentSignedUrlAsync(Guid supabaseUserId, Guid documentId, CancellationToken ct)
     {
-        await EnsureModeratorAsync(supabaseUserId, ct);
+        var caller = await EnsureModeratorAsync(supabaseUserId, ct);
         var doc = await _context.Documents
             .Include(d => d.Folder)
             .FirstOrDefaultAsync(d => d.Id == documentId, ct);
 
         if (doc == null)
             throw DashboardModerationException.NotFound();
-        if (doc.Folder?.ShareStatus != FolderStatus.PendingShare)
+        var isActionable = doc.Folder?.ShareStatus is (FolderStatus.PendingShare or FolderStatus.Approved)
+            && doc.Status == DocumentStatus.Ready
+            && doc.ReviewStatus == DocumentReviewStatus.None;
+        if (!isActionable && !await IsPendingEscalationPreviewAllowedAsync(caller, doc, ct))
             throw DashboardModerationException.NotActionable();
 
         try
@@ -611,6 +499,25 @@ WHERE table_schema = 'public'
         }
     }
 
+    private async Task<bool> IsPendingEscalationPreviewAllowedAsync(User caller, Document document, CancellationToken ct)
+    {
+        if (document.Status != DocumentStatus.Ready || document.ReviewStatus != DocumentReviewStatus.Escalated)
+            return false;
+
+        var isAdmin = await _context.Roles.AsNoTracking()
+            .AnyAsync(role => role.Id == caller.RoleId && role.RoleName == Role.AdminRoleName, ct);
+        if (!isAdmin)
+            return false;
+
+        return await _context.DocumentEscalationItems.AsNoTracking().AnyAsync(item =>
+            item.DocumentId == document.Id
+            && item.DocumentModerationGeneration == document.ModerationGeneration
+            && item.ResolutionStatus == "Pending"
+            && item.Escalation.EscalationStatus == "Pending"
+            && item.Escalation.FolderId == document.FolderId,
+            ct);
+    }
+
     public async Task<UserAnalyticsDto> GetModerationAnalyticsAsync(Guid supabaseUserId, Guid? folderId, int page, int pageSize, CancellationToken ct)
     {
         await EnsureModeratorAsync(supabaseUserId, ct);
@@ -618,7 +525,8 @@ WHERE table_schema = 'public'
         pageSize = Math.Clamp(pageSize, 1, 100);
         IQueryable<Document> query = _context.Documents.AsNoTracking()
             .Include(d => d.Folder)
-            .Where(d => d.Folder != null && d.Folder.ShareStatus == FolderStatus.PendingShare);
+            .Where(d => d.Folder != null
+                && (d.Folder.ShareStatus == FolderStatus.PendingShare || d.Folder.ShareStatus == FolderStatus.Approved));
         if (folderId.HasValue)
             query = query.Where(d => d.FolderId == folderId.Value);
 
@@ -820,7 +728,9 @@ WHERE table_schema = 'public'
 
         if (document is null)
             throw DashboardModerationException.NotFound();
-        if (document.Folder?.ShareStatus != FolderStatus.PendingShare)
+        if (document.Folder?.ShareStatus is not (FolderStatus.PendingShare or FolderStatus.Approved)
+            || document.Status != DocumentStatus.Ready
+            || document.ReviewStatus != DocumentReviewStatus.None)
             throw DashboardModerationException.NotActionable();
 
         return document;
@@ -851,7 +761,4 @@ public sealed class DashboardModerationException : Exception
     public static DashboardModerationException ReasonTooLong(int maxLength) =>
         new(StatusCodes.Status400BadRequest, "reason_too_long", $"Reason must be {maxLength:N0} characters or fewer.");
 
-    public static DashboardModerationException NotificationStagingUnavailable() =>
-        new(StatusCodes.Status503ServiceUnavailable, "notification_staging_requires_modern_schema",
-            "Document moderation is temporarily unavailable while the notification migration updates the local schema.");
 }

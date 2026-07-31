@@ -23,6 +23,11 @@ public sealed class PublicHubServiceTests
         var owner = SeedUser(db, "Owner");
         var viewer = SeedUser(db, "Viewer");
         var folder = SeedFolder(db, owner.Id, isShared: true);
+        var approvedDocument = CreateDocument(owner.Id, folder.Id, "approved.pdf");
+        approvedDocument.ReviewStatus = DocumentReviewStatus.Approved;
+        var rejectedDocument = CreateDocument(owner.Id, folder.Id, "rejected.pdf");
+        rejectedDocument.ReviewStatus = DocumentReviewStatus.Rejected;
+        db.Documents.AddRange(approvedDocument, rejectedDocument);
         db.FolderReactions.Add(new FolderReaction
         {
             FolderId = folder.Id,
@@ -39,6 +44,7 @@ public sealed class PublicHubServiceTests
         result[0].OwnerName.Should().Be("Owner");
         result[0].LikeCount.Should().Be(1);
         result[0].CurrentUserVote.Should().BeTrue();
+        result[0].DocumentCount.Should().Be(1);
     }
 
     [Test]
@@ -64,6 +70,10 @@ public sealed class PublicHubServiceTests
         var owner = SeedUser(db, "Folder Owner");
         var viewer = SeedUser(db, "Voting Student");
         var folder = SeedFolder(db, owner.Id, isShared: true);
+        var approvedDocument = CreateDocument(owner.Id, folder.Id, "approved.pdf");
+        approvedDocument.ReviewStatus = DocumentReviewStatus.Approved;
+        db.Documents.Add(approvedDocument);
+        db.SaveChanges();
         var sut = BuildSut(db);
 
         var result = await sut.VoteAsync(viewer.SupabaseUserId, folder.Id, true);
@@ -110,6 +120,7 @@ public sealed class PublicHubServiceTests
         folder.Name = "System analysis deliverables";
         folder.Description = "SRS and use-case writeup for a software project.";
         var document = CreateDocument(owner.Id, folder.Id, "software-requirements-specification.docx");
+        document.ReviewStatus = DocumentReviewStatus.None;
         document.SubjectCode = string.Empty;
         document.Semester = string.Empty;
         document.MimeType = "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -193,6 +204,7 @@ public sealed class PublicHubServiceTests
         var folder = SeedFolder(db, owner.Id, isShared: false);
         folder.Description = "ok";
         var document = CreateDocument(owner.Id, folder.Id, "meeting-notes.pdf");
+        document.ReviewStatus = DocumentReviewStatus.None;
         document.SubjectCode = string.Empty;
         document.Semester = string.Empty;
         db.Documents.Add(document);
@@ -380,6 +392,7 @@ public sealed class PublicHubServiceTests
             SubjectCode = "SWP391",
             Semester = "SU26",
             Status = DocumentStatus.Ready,
+            ReviewStatus = DocumentReviewStatus.Approved,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
@@ -437,14 +450,35 @@ public sealed class PublicHubServiceTests
         var owner = SeedUser(db, "Owner");
         var viewer = SeedUser(db, "Viewer");
         var source = SeedFolder(db, owner.Id, isShared: true);
+        var approvedSourceDocument = CreateDocument(owner.Id, source.Id, "source.pdf");
+        approvedSourceDocument.ReviewStatus = DocumentReviewStatus.Approved;
+        db.Documents.Add(approvedSourceDocument);
+        db.SaveChanges();
         SeedFolderWithName(db, viewer.Id, source.Name);
         SeedFolderWithName(db, viewer.Id, $"{source.Name} (1)");
-        var sut = BuildSut(db);
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage
+            .Setup(client => client.DownloadFileAsync(
+                DocumentService.BucketName,
+                approvedSourceDocument.StoragePath,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync(((Stream)new MemoryStream([1, 2, 3]), "application/pdf"));
+        storage
+            .Setup(client => client.UploadAsync(
+                DocumentService.BucketName,
+                It.IsAny<string>(),
+                It.IsAny<Stream>(),
+                "application/pdf",
+                false,
+                It.IsAny<CancellationToken>()))
+            .ReturnsAsync((string _, string path, Stream _, string _, bool _, CancellationToken _) => path);
+        var sut = BuildSut(db, storage.Object);
 
         var saved = await sut.CopySharedFolderAsync(viewer.SupabaseUserId, source.Id);
 
         saved.Name.Should().Be($"{source.Name} (2)");
         saved.ShareStatus.Should().Be(FolderStatus.None);
+        storage.VerifyAll();
     }
 
     [Test]
@@ -482,6 +516,7 @@ public sealed class PublicHubServiceTests
             SubjectCode = "SWP391",
             Semester = "SU26",
             Status = DocumentStatus.Ready,
+            ReviewStatus = DocumentReviewStatus.Approved,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };
@@ -522,9 +557,11 @@ public sealed class PublicHubServiceTests
         var owner = SeedUser(db, "Owner");
         var viewer = SeedUser(db, "Viewer");
         var source = SeedFolder(db, owner.Id, isShared: true);
-        db.Documents.AddRange(
-            CreateDocument(owner.Id, source.Id, "first.pdf"),
-            CreateDocument(owner.Id, source.Id, "second.pdf"));
+        var first = CreateDocument(owner.Id, source.Id, "first.pdf");
+        first.ReviewStatus = DocumentReviewStatus.Approved;
+        var second = CreateDocument(owner.Id, source.Id, "second.pdf");
+        second.ReviewStatus = DocumentReviewStatus.Approved;
+        db.Documents.AddRange(first, second);
         db.SaveChanges();
 
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
@@ -589,9 +626,10 @@ public sealed class PublicHubServiceTests
             storage ?? Mock.Of<ISupabaseStorageClient>(),
             guard.Object,
             NullLogger<SharedFolderCopyCoordinator>.Instance);
+        var publicationState = new FolderPublicationStateService();
         return new FolderService(db, NullLogger<FolderService>.Instance,
             Mock.Of<IStorageDeletionCoordinator>(), Mock.Of<IAuditLogService>(), aiModerator ?? new FolderShareAiModerator(),
-            guard.Object, coordinator, new UserNotificationService(db));
+            guard.Object, coordinator, new UserNotificationService(db), publicationState);
     }
 
     private static Data.AppDbContext CreateDbWithChunks()
@@ -672,6 +710,7 @@ public sealed class PublicHubServiceTests
             SubjectCode = "SWP391",
             Semester = "SU26",
             Status = status,
+            ReviewStatus = DocumentReviewStatus.None,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         };

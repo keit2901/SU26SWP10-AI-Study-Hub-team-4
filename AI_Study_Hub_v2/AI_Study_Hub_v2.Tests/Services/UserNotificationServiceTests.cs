@@ -37,7 +37,7 @@ public sealed class UserNotificationServiceTests
     }
 
     [Test]
-    public async Task Stage_ignores_non_final_and_repeated_transitions()
+    public async Task Stage_ignores_non_final_and_repeated_final_stages_in_the_same_unit_of_work()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var (_, folder) = await AddOwnerAndFolderAsync(db);
@@ -50,6 +50,7 @@ public sealed class UserNotificationServiceTests
         service.StageFolderModerationFinal(folder, FolderStatus.PendingShare, null, DateTimeOffset.UtcNow);
 
         db.UserNotifications.Local.Should().ContainSingle();
+        db.ChangeTracker.Entries<UserNotification>().Should().ContainSingle(entry => entry.State == EntityState.Added);
     }
 
     [Test]
