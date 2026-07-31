@@ -1,5 +1,4 @@
 @namespace AI_Study_Hub_v2.Components.Admin.Users
-@implements IDisposable
 @page "/admin/users"
 @layout AdminLayout
 @using Microsoft.AspNetCore.Components
@@ -187,7 +186,7 @@
             <div class="filter-row-custom mb-6">
                 <div class="search-input-wrapper">
                     <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" />
-                    <input type="text" placeholder="Search by name or email" value="@_searchInput" @oninput="OnSearchInputChanged" class="search-input" />
+                    <input type="text" placeholder="Search by name or email" @bind="SearchText" @bind:event="oninput" class="search-input" />
                 </div>
                 
                 <select class="filter-select" value="@_selectedRole" @onchange="OnRoleSelectChanged">
@@ -205,14 +204,10 @@
                 </select>
 
                 @{
-                    var hasActiveFilters = !string.IsNullOrWhiteSpace(_searchText)
-                        || !string.IsNullOrWhiteSpace(_selectedRole)
-                        || !string.IsNullOrWhiteSpace(_selectedStatus)
-                        || !string.IsNullOrWhiteSpace(_selectedQuotaRisk);
-                    var filterIconColor = hasActiveFilters ? "#575e72" : "#c7c6d5";
+                    var filterIconColor = HasActiveFilters ? "#575e72" : "#c7c6d5";
                     var filterIconStyle = $"font-size: 18px; color: {filterIconColor};";
                 }
-                <button class="filter-btn @(hasActiveFilters ? "" : "muted")" @onclick="ClearFiltersAsync" disabled="@(!hasActiveFilters)" title="@(hasActiveFilters ? "Clear all filters" : "No filters active")">
+                <button class="filter-btn @(HasActiveFilters ? "" : "muted")" @onclick="ClearFilters" disabled="@(!HasActiveFilters)" title="@(HasActiveFilters ? "Clear all filters" : "No filters active")">
                     <MudIcon Icon="@Icons.Material.Outlined.FilterAltOff" Style="@filterIconStyle" />
                 </button>
             </div>
@@ -237,9 +232,11 @@
                 {
                     <div class="d-flex flex-column align-center justify-center py-10" style="text-align: center; gap: 0.5rem;">
                         <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Secondary" />
-                        <div class="font-bold text-lg" style="color: #191c1e;">No users found</div>
-                        <div class="text-sm" style="color: #767586;">Try changing the active filters.</div>
-                        <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="ClearFiltersAsync" Style="text-transform: none; font-size: 12px; margin-top: 0.5rem;">Clear filters</MudButton>
+                        <div class="font-bold text-lg" style="color: #191c1e;">No users match the current filters.</div>
+                        @if (HasActiveFilters)
+                        {
+                            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="ClearFilters" Style="text-transform: none; font-size: 12px; margin-top: 0.5rem;">Clear filters</MudButton>
+                        }
                     </div>
                 }
                 else
@@ -250,19 +247,22 @@
                                 <th>USER</th>
                                 <th>ROLE</th>
                                 <th>CREATED</th>
-                                <th style="width: 50px;"></th>
                             </tr>
                         </thead>
                         <tbody>
                             @foreach (var user in PagedFilteredUsers)
                             {
-                                <tr>
+                                <tr class="user-row"
+                                    tabindex="0"
+                                    role="link"
+                                    aria-label="View details for @user.FullName"
+                                    @onclick="@(() => OpenDetails(user))"
+                                    @onkeydown="@(args => HandleUserRowKeyDown(args, user))">
                                     <td>
-                                        <button type="button" class="user-detail-link" @onclick="@(() => OpenDetails(user))" aria-label="View details for @user.FullName">
                                         <div class="d-flex align-center" style="gap: 0.75rem;">
                                             @if (!string.IsNullOrEmpty(user.AvatarUrl))
                                             {
-                                                <img src="@user.AvatarUrl" class="user-avatar-img" />
+                                                <img src="@user.AvatarUrl" class="user-avatar-img" alt="" />
                                             }
                                             else
                                             {
@@ -273,7 +273,7 @@
                                                     @user.FullName
                                                     @if (IsCurrentAdmin(user))
                                                     {
-                                                        <MudTooltip Text="Current user">
+                                                        <MudTooltip Text="Current signed-in administrator">
                                                             <span class="user-badge-you">You</span>
                                                         </MudTooltip>
                                                     }
@@ -281,41 +281,14 @@
                                                 <div class="user-email">@user.Email</div>
                                             </div>
                                         </div>
-                                        </button>
                                     </td>
                                     <td>
                                         <span class="role-badge @(user.Role.ToLower())">@user.Role.ToUpper()</span>
                                     </td>
                                     <td>
-                                        <span class="last-active-text">@FormatDate(user.CreatedAt)</span>
-                                    </td>
-                                    <td>
-                                        <MudMenu Dense="true" AnchorOrigin="Origin.BottomRight" TransformOrigin="Origin.TopRight">
-                                            <ActivatorContent>
-                                                <MudIconButton Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Style="color: #767586; padding: 4px;" />
-                                            </ActivatorContent>
-                                            <ChildContent>
-                                                <MudMenuItem Icon="@Icons.Material.Filled.Visibility" OnClick="@(() => OpenDetails(user))">View details</MudMenuItem>
-                                                <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => OpenQuotaSheet(user))">Edit quota</MudMenuItem>
-                                                @if (!user.Role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase))
-                                                {
-                                                    @foreach (var role in AvailableRoleNames.Where(role =>
-                                                        !role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase)
-                                                        && !role.Equals(user.Role, StringComparison.OrdinalIgnoreCase)))
-                                                    {
-                                                        <MudMenuItem Icon="@GetRoleIcon(role)" Disabled="@IsRoleChangeDisabled(user, role)" OnClick="@(() => ChangeRoleAsync(user, role))">Change role to @role</MudMenuItem>
-                                                    }
-                                                }
-                                                @if (user.IsActive)
-                                                {
-                                                    <MudMenuItem Icon="@Icons.Material.Filled.Block" Disabled="@IsCurrentAdmin(user)" OnClick="@(() => ToggleActiveAsync(user))">Deactivate</MudMenuItem>
-                                                }
-                                                else
-                                                {
-                                                    <MudMenuItem Icon="@Icons.Material.Filled.CheckCircle" OnClick="@(() => ToggleActiveAsync(user))">Activate</MudMenuItem>
-                                                }
-                                            </ChildContent>
-                                        </MudMenu>
+                                        <time class="last-active-text"
+                                              datetime="@user.CreatedAt.ToUniversalTime().ToString("O")"
+                                              title="@FormatExactTimestamp(user.CreatedAt)">@FormatDate(user.CreatedAt)</time>
                                     </td>
                                 </tr>
                             }
@@ -382,9 +355,13 @@
                             <span style="font-size: 16px; font-weight: 700; color: #191c1e;">Role catalog</span>
                         </div>
                     </div>
-                    <div class="d-flex flex-column align-center justify-center py-6" style="text-align: center; gap: 0.5rem;">
+                    <div class="d-flex flex-column py-2" style="gap: 0.25rem;">
                         <span style="font-size: 20px; font-weight: 800; color: #191c1e;">@_roles.Count</span>
-                        <span style="font-size: 12px; color: #767586;">role@(_roles.Count == 1 ? string.Empty : "s") loaded</span>
+                        <span style="font-size: 12px; color: #767586;">Configured roles</span>
+                        @if (_roles.Count > 0)
+                        {
+                            <span class="widget-detail-text">@RoleCatalogNames</span>
+                        }
                     </div>
                 </div>
 
@@ -394,9 +371,9 @@
                         <MudIcon Icon="@Icons.Material.Outlined.VerifiedUser" Style="color: #10b981; font-size: 20px;" />
                         <span style="font-size: 16px; font-weight: 700; color: #ffffff;">Document inventory</span>
                     </div>
-                    <div class="d-flex flex-column align-center justify-center py-6" style="text-align: center; gap: 0.5rem;">
-                        <span style="font-size: 20px; font-weight: 800; color: #ffffff;">@TotalDocumentCount.ToString("N0")</span>
-                        <span style="font-size: 12px; color: #c7c6d5;">across loaded users</span>
+                    <div class="d-flex flex-column py-2" style="gap: 0.25rem;">
+                        <span style="font-size: 20px; font-weight: 800; color: #ffffff;">@(TotalDocumentCount > 0 ? $"{TotalDocumentCount:N0} documents" : "No documents")</span>
+                        <span style="font-size: 12px; color: #c7c6d5;">@(TotalDocumentCount > 0 ? "Owned by loaded users" : "Loaded users have not uploaded any documents.")</span>
                     </div>
                 </div>
 
@@ -406,9 +383,10 @@
                         <MudIcon Icon="@Icons.Material.Filled.FlashOn" Style="color: #ffffff; font-size: 20px;" />
                         <span style="font-size: 16px; font-weight: 700; color: #ffffff;">Daily token usage</span>
                     </div>
-                    <div class="d-flex flex-column align-center justify-center py-4" style="text-align: center; gap: 0.5rem;">
-                        <span style="font-size: 16px; font-weight: 800; color: #ffffff;">@TotalTokensUsedToday.ToString("N0") / @TotalDailyTokenQuota.ToString("N0")</span>
-                        <span style="font-size: 12px; color: #c7d2fe;">used today by loaded users</span>
+                    <div class="d-flex flex-column py-2" style="gap: 0.4rem;">
+                        <span style="font-size: 16px; font-weight: 800; color: #ffffff;">@TotalTokensUsedToday.ToString("N0") / @TotalDailyTokenQuota.ToString("N0") tokens</span>
+                        <span style="font-size: 12px; color: #c7d2fe;">@(TotalTokensUsedToday > 0 ? "Used today across loaded users." : "No token usage recorded today.")</span>
+                        <MudProgressLinear Value="@TotalTokenUsagePercent" Min="0" Max="100" Size="Size.Small" Rounded="true" Color="Color.Info" Class="token-usage-progress" />
                     </div>
                 </div>
             </div>
@@ -467,9 +445,7 @@
     private bool _showHighUsageTab;
     private bool _isLoading = true;
     private bool _quotaSheetOpen;
-    private string _searchInput = string.Empty;
-    private string? _searchText;
-    private CancellationTokenSource? _searchDebounceCts;
+    private string _searchText = string.Empty;
     private string? _selectedRole;
     private string? _selectedStatus;
     private string? _selectedQuotaRisk;
@@ -478,6 +454,28 @@
     private int _currentPage = 1;
     private string _pageJumpInput = string.Empty;
     private QuotaEditModel _quotaEdit = new();
+
+    private string SearchText
+    {
+        get => _searchText;
+        set
+        {
+            var nextValue = value ?? string.Empty;
+            if (string.Equals(_searchText, nextValue, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _searchText = nextValue;
+            _currentPage = 1;
+            _pageJumpInput = string.Empty;
+        }
+    }
+
+    private bool HasActiveFilters => !string.IsNullOrWhiteSpace(SearchText)
+        || !string.IsNullOrWhiteSpace(_selectedRole)
+        || !string.IsNullOrWhiteSpace(_selectedStatus)
+        || !string.IsNullOrWhiteSpace(_selectedQuotaRisk);
 
     private IEnumerable<UserRow> FilteredUsers => _users
         .Where(MatchesRole)
@@ -505,27 +503,6 @@
     private IEnumerable<UserRow> PagedFilteredUsers => FilteredUsers
         .Skip((DisplayUserPage - 1) * UserPageSize)
         .Take(UserPageSize);
-
-    private IEnumerable<string> ActiveFilters
-    {
-        get
-        {
-            if (!string.IsNullOrWhiteSpace(_selectedRole))
-            {
-                yield return $"Role: {_selectedRole}";
-            }
-
-            if (!string.IsNullOrWhiteSpace(_selectedStatus))
-            {
-                yield return $"Status: {_selectedStatus}";
-            }
-
-            if (!string.IsNullOrWhiteSpace(_selectedQuotaRisk))
-            {
-                yield return $"Quota: {_selectedQuotaRisk}";
-            }
-        }
-    }
 
     protected override async Task OnInitializedAsync()
     {
@@ -587,64 +564,14 @@
 
     }
 
-    private Task OnSearchChanged(string? value)
+    private void ClearFilters()
     {
-        _searchText = value;
-        _currentPage = 1;
-        return Task.CompletedTask;
-    }
-
-    private Task OnRoleChanged(string? value)
-    {
-        _selectedRole = value;
-        _currentPage = 1;
-        return Task.CompletedTask;
-    }
-
-    private Task OnStatusChanged(string? value)
-    {
-        _selectedStatus = value;
-        _currentPage = 1;
-        return Task.CompletedTask;
-    }
-
-    private Task OnQuotaRiskChanged(string? value)
-    {
-        _selectedQuotaRisk = value;
-        _currentPage = 1;
-        return Task.CompletedTask;
-    }
-
-    private Task RemoveFilterAsync(string filter)
-    {
-        if (filter.StartsWith("Role:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedRole = null;
-        }
-        else if (filter.StartsWith("Status:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedStatus = null;
-        }
-        else if (filter.StartsWith("Quota:", StringComparison.OrdinalIgnoreCase))
-        {
-            _selectedQuotaRisk = null;
-        }
-
-        _currentPage = 1;
-        return Task.CompletedTask;
-    }
-
-    private Task ClearFiltersAsync()
-    {
-        CancelSearchDebounce();
-        _searchInput = string.Empty;
-        _searchText = null;
+        SearchText = string.Empty;
         _selectedRole = null;
         _selectedStatus = null;
         _selectedQuotaRisk = null;
         _currentPage = 1;
         _pageJumpInput = string.Empty;
-        return Task.CompletedTask;
     }
 
     private void GoToUserPage(int page)
@@ -709,28 +636,10 @@
         _pageJumpInput = string.Empty;
     }
 
-    private void ApplyQuotaRiskFilter()
-    {
-        _selectedQuotaRisk = QuotaWarning;
-    }
-
     private bool MatchesRole(UserRow user)
     {
         return string.IsNullOrWhiteSpace(_selectedRole)
             || user.Role.Equals(_selectedRole, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private bool IsRoleChangeDisabled(UserRow user, string targetRole)
-    {
-        return user.Role.Equals(targetRole, StringComparison.OrdinalIgnoreCase)
-            || (IsCurrentAdmin(user) && !targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private static string GetRoleIcon(string role)
-    {
-        return role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase)
-            ? Icons.Material.Filled.AdminPanelSettings
-            : Icons.Material.Filled.Badge;
     }
 
     private bool MatchesStatus(UserRow user)
@@ -756,12 +665,12 @@
 
     private bool MatchesSearch(UserRow user)
     {
-        if (string.IsNullOrWhiteSpace(_searchText))
+        if (string.IsNullOrWhiteSpace(SearchText))
         {
             return true;
         }
 
-        var text = _searchText.Trim();
+        var text = SearchText.Trim();
         return user.FullName.Contains(text, StringComparison.OrdinalIgnoreCase)
             || user.Email.Contains(text, StringComparison.OrdinalIgnoreCase);
     }
@@ -771,134 +680,17 @@
         Navigation.NavigateTo($"/admin/users/{user.Id}");
     }
 
+    private void HandleUserRowKeyDown(KeyboardEventArgs args, UserRow user)
+    {
+        if (args.Key is "Enter" or " " or "Spacebar")
+        {
+            OpenDetails(user);
+        }
+    }
+
     private void NavigateToAuditLogs()
     {
         Navigation.NavigateTo("/admin/audit-logs");
-    }
-
-    private async Task ChangeRoleAsync(UserRow user, string targetRole)
-    {
-        if (!AvailableRoleNames.Contains(targetRole, StringComparer.OrdinalIgnoreCase))
-        {
-            Snackbar.Add($"Role '{targetRole}' is not present in the database roles list.", Severity.Error);
-            return;
-        }
-
-        if (IsCurrentAdmin(user) && !targetRole.Equals(AdminRole, StringComparison.OrdinalIgnoreCase))
-        {
-            Snackbar.Add("You cannot demote your own administrator account.", Severity.Error);
-            return;
-        }
-
-        if (user.Role.Equals(targetRole, StringComparison.OrdinalIgnoreCase))
-        {
-            return;
-        }
-
-        var parameters = new DialogParameters
-        {
-            ["Title"] = "Change user role",
-            ["Message"] = $"Change {user.FullName} from {user.Role} to {targetRole}? This affects authorization claims and should be audited.",
-            ["ConfirmText"] = "Change role",
-            ["ConfirmColor"] = Color.Warning,
-            ["IconColor"] = Color.Warning,
-            ["Icon"] = Icons.Material.Filled.AdminPanelSettings
-        };
-
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Change user role", parameters);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false })
-        {
-            _processingUserId = user.Id;
-            try
-            {
-                var previousRole = user.Role;
-                var token = Session.AccessToken;
-                if (string.IsNullOrWhiteSpace(token))
-                {
-                    Snackbar.Add("Authentication required. Please log in again.", Severity.Error);
-                    return;
-                }
-
-                await AdminApi.UpdateRoleAsync(token, user.Id, targetRole);
-                await LoadUsersAsync();
-                Snackbar.Add($"{user.FullName} changed from {previousRole} to {targetRole}. Audit log entry queued.", Severity.Success);
-            }
-            catch (DocumentApiException ex)
-            {
-                Snackbar.Add($"Failed to change role: {ex.Message}", Severity.Error);
-            }
-            catch (Exception ex)
-            {
-                Snackbar.Add($"Unexpected error: {ex.Message}", Severity.Error);
-            }
-            finally
-            {
-                _processingUserId = null;
-            }
-        }
-    }
-
-    private async Task ToggleActiveAsync(UserRow user)
-    {
-        if (IsCurrentAdmin(user) && user.IsActive)
-        {
-            Snackbar.Add("You cannot deactivate your own administrator account.", Severity.Error);
-            return;
-        }
-
-        _processingUserId = user.Id;
-        try
-        {
-            var token = Session.AccessToken;
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                Snackbar.Add("Authentication required. Please log in again.", Severity.Error);
-                return;
-            }
-
-            var activate = !user.IsActive;
-            if (activate)
-            {
-                await AdminApi.ToggleActiveAsync(token, user.Id, true);
-                await LoadUsersAsync();
-                Snackbar.Add($"{user.FullName} has been activated.", Severity.Success);
-            }
-            else
-            {
-                var parameters = new DialogParameters
-                {
-                    ["Title"] = "Deactivate user",
-                    ["Message"] = $"Deactivate {user.FullName}? They will lose access until an administrator restores the account.",
-                    ["ConfirmText"] = "Deactivate",
-                    ["ConfirmationText"] = user.Email,
-                    ["ConfirmColor"] = Color.Error
-                };
-
-                var dialog = await DialogService.ShowAsync<ConfirmDialog>("Deactivate user", parameters);
-                var result = await dialog.Result;
-
-                if (result is { Canceled: false })
-                {
-                    await AdminApi.ToggleActiveAsync(token, user.Id, false);
-                    await LoadUsersAsync();
-                    Snackbar.Add($"{user.FullName} has been deactivated and audit log entry queued.", Severity.Warning);
-                }
-            }
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add($"Failed: {ex.Message}", Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add($"Unexpected error: {ex.Message}", Severity.Error);
-        }
-        finally
-        {
-            _processingUserId = null;
-        }
     }
 
     private void OpenQuotaSheet(UserRow user)
@@ -990,23 +782,6 @@
 
     private bool IsCurrentAdmin(UserRow user) => user.Id == (Session.CurrentUser?.Id ?? Guid.Empty);
 
-    private static string GetQuotaLabel(UserRow user)
-    {
-        return user.TokenUsagePercent >= 100 ? QuotaExceeded : user.TokenUsagePercent >= 85 ? QuotaWarning : QuotaNormal;
-    }
-
-    private static Color GetRoleColor(string role)
-    {
-        return role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase)
-            ? Color.Error
-            : Color.Primary;
-    }
-
-    private static Color GetQuotaChipColor(double usagePercent)
-    {
-        return usagePercent >= 100 ? Color.Error : usagePercent >= 85 ? Color.Warning : Color.Success;
-    }
-
     private static Color GetQuotaProgressColor(double usagePercent)
     {
         return usagePercent >= 100 ? Color.Error : usagePercent >= 85 ? Color.Warning : Color.Success;
@@ -1015,51 +790,14 @@
     private int TotalDocumentCount => _users.Sum(user => user.DocumentCount);
     private long TotalTokensUsedToday => _users.Sum(user => (long)user.TokensUsedToday);
     private long TotalDailyTokenQuota => _users.Sum(user => (long)user.DailyTokenQuota);
+    private double TotalTokenUsagePercent => TotalDailyTokenQuota == 0
+        ? 0
+        : TotalTokensUsedToday * 100d / TotalDailyTokenQuota;
+    private string RoleCatalogNames => string.Join(" • ", AvailableRoleNames);
 
-    private static string FormatDate(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy");
+    private static string FormatDate(DateTime value) => value.ToLocalTime().ToString("MMM d, yyyy");
 
-    private async Task OnSearchInputChanged(ChangeEventArgs e)
-    {
-        _searchInput = e.Value?.ToString() ?? string.Empty;
-        CancelSearchDebounce();
-
-        var debounceCts = new CancellationTokenSource();
-        _searchDebounceCts = debounceCts;
-        try
-        {
-            await Task.Delay(TimeSpan.FromMilliseconds(275), debounceCts.Token);
-            if (debounceCts.IsCancellationRequested)
-            {
-                return;
-            }
-
-            _searchText = _searchInput;
-            _currentPage = 1;
-            await InvokeAsync(StateHasChanged);
-        }
-        catch (OperationCanceledException) when (debounceCts.IsCancellationRequested)
-        {
-        }
-        finally
-        {
-            if (ReferenceEquals(_searchDebounceCts, debounceCts))
-            {
-                _searchDebounceCts = null;
-            }
-
-            debounceCts.Dispose();
-        }
-    }
-
-    private void CancelSearchDebounce()
-    {
-        _searchDebounceCts?.Cancel();
-    }
-
-    public void Dispose()
-    {
-        CancelSearchDebounce();
-    }
+    private static string FormatExactTimestamp(DateTime value) => value.ToLocalTime().ToString("MMM d, yyyy 'at' h:mm:ss tt zzz");
 
     private Task OnRoleSelectChanged(ChangeEventArgs e)
     {
@@ -1334,9 +1072,24 @@
     }
 
     .users-table td {
-        padding: 14px 16px;
+        padding: 10px 16px;
         border-bottom: 1px solid #e0e3e5;
         vertical-align: middle;
+    }
+
+    .users-table tbody .user-row {
+        cursor: pointer;
+        transition: background-color 0.16s ease, box-shadow 0.16s ease;
+    }
+
+    .users-table tbody .user-row:hover {
+        background: #f7f9fb;
+    }
+
+    .users-table tbody .user-row:focus-visible {
+        outline: none;
+        background: #f7f9fb;
+        box-shadow: inset 0 0 0 2px #4648d4;
     }
 
     .users-table tr:last-child td {
@@ -1344,15 +1097,15 @@
     }
 
     .user-avatar-img {
-        width: 38px;
-        height: 38px;
+        width: 34px;
+        height: 34px;
         border-radius: 50%;
         object-fit: cover;
     }
 
     .user-avatar-initials {
-        width: 38px;
-        height: 38px;
+        width: 34px;
+        height: 34px;
         border-radius: 50%;
         display: inline-flex;
         align-items: center;
@@ -1525,6 +1278,18 @@
         box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.03);
     }
 
+    .widget-detail-text {
+        color: #575e72;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.45;
+    }
+
+    .token-usage-progress {
+        margin-top: 2px;
+        opacity: 0.92;
+    }
+
     .widget-badge {
         padding: 2px 8px;
         border-radius: 4px;
@@ -1638,6 +1403,15 @@
 
     .dark-theme .users-table td {
         border-bottom-color: rgba(199, 196, 215, 0.1);
+    }
+
+    .dark-theme .users-table tbody .user-row:hover,
+    .dark-theme .users-table tbody .user-row:focus-visible {
+        background: rgba(114, 220, 242, 0.07);
+    }
+
+    .dark-theme .widget-detail-text {
+        color: #a3a3a3;
     }
 
     .dark-theme .users-table-footer {
