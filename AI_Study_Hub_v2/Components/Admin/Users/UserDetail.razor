@@ -8,6 +8,7 @@
 @inject IDialogService DialogService
 @inject ISnackbar Snackbar
 @inject AdminApiClient AdminApi
+@inject IRoleCatalogService Roles
 @inject AuthSessionState Session
 
 @if (_isLoading)
@@ -46,6 +47,41 @@ else
                 <MudPaper Elevation="0" Class="detail-card">
                     <MudText Typo="Typo.caption">Role</MudText>
                     <MudText Typo="Typo.h5">@_user.Role</MudText>
+                    <MudDivider Class="my-3" />
+                    <MudStack Spacing="2">
+                        <MudSelect T="string"
+                                   Label="Change role"
+                                   Variant="Variant.Outlined"
+                                   Margin="Margin.Dense"
+                                   @bind-Value="_selectedRole"
+                                   Disabled="@(_isRolesLoading || _isUpdatingRole || _roles.Count == 0)">
+                            @foreach (var role in _roles)
+                            {
+                                <MudSelectItem T="string" Value="@role">@role</MudSelectItem>
+                            }
+                        </MudSelect>
+                        <MudButton Variant="Variant.Filled"
+                                   Color="Color.Primary"
+                                   Size="Size.Small"
+                                   FullWidth="true"
+                                   StartIcon="@Icons.Material.Filled.AdminPanelSettings"
+                                   Disabled="@RoleChangeDisabled"
+                                   OnClick="ChangeRoleAsync">
+                            @(_isUpdatingRole ? "Updating role..." : "Save role change")
+                        </MudButton>
+                        @if (_isRolesLoading || _isUpdatingRole)
+                        {
+                            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+                        }
+                        @if (!string.IsNullOrWhiteSpace(_roleCatalogError))
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">@_roleCatalogError</MudText>
+                        }
+                        else if (IsSelfAdminDemotion)
+                        {
+                            <MudText Typo="Typo.caption" Color="Color.Warning">You cannot demote your own administrator account.</MudText>
+                        }
+                    </MudStack>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" md="4">
@@ -81,13 +117,34 @@ else
     [Parameter] public Guid Id { get; set; }
 
     private UserDetailRow? _user;
+    private readonly List<string> _roles = new();
     private bool _isLoading = true;
+    private bool _isRolesLoading;
+    private bool _isUpdatingRole;
+    private string _selectedRole = string.Empty;
+    private string? _roleCatalogError;
     private string? _errorMessage;
+
+    private bool IsSelfAdminDemotion => _user is not null
+        && _user.Id == (Session.CurrentUser?.Id ?? Guid.Empty)
+        && _user.Role.Equals("Admin", StringComparison.OrdinalIgnoreCase)
+        && !_selectedRole.Equals("Admin", StringComparison.OrdinalIgnoreCase);
+
+    private bool RoleChangeDisabled => _user is null
+        || _isRolesLoading
+        || _isUpdatingRole
+        || _roles.Count == 0
+        || string.IsNullOrWhiteSpace(_selectedRole)
+        || !_roles.Contains(_selectedRole, StringComparer.OrdinalIgnoreCase)
+        || _user.Role.Equals(_selectedRole, StringComparison.OrdinalIgnoreCase)
+        || IsSelfAdminDemotion;
 
     protected override async Task OnInitializedAsync()
     {
         try
         {
+            await LoadRolesAsync();
+
             if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
             {
                 _errorMessage = "Authentication required.";
@@ -114,6 +171,12 @@ else
                 TokensUsedToday = dto.TokensUsedToday,
                 DocumentCount = dto.DocumentCount
             };
+
+            _selectedRole = _user.Role;
+        }
+        catch (DocumentApiException ex)
+        {
+            _errorMessage = $"Unable to load user detail: {ex.Message}";
         }
         catch (Exception ex)
         {
@@ -125,7 +188,111 @@ else
         }
     }
 
+    private async Task LoadRolesAsync()
+    {
+        _isRolesLoading = true;
+        _roleCatalogError = null;
+
+        try
+        {
+            var roles = await Roles.ListAsync();
+            _roles.Clear();
+            _roles.AddRange(roles
+                .Select(role => role.RoleName)
+                .Where(role => !string.IsNullOrWhiteSpace(role))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(role => role.Equals("Admin", StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(role => role));
+
+            if (_roles.Count == 0)
+            {
+                _roleCatalogError = "No database roles are available. Role changes are disabled.";
+            }
+        }
+        catch
+        {
+            _roles.Clear();
+            _roleCatalogError = "The role catalog is unavailable. Role changes are disabled.";
+        }
+        finally
+        {
+            _isRolesLoading = false;
+        }
+    }
+
     private void BackToUsers() => Navigation.NavigateTo("/admin/users");
+
+    private async Task ChangeRoleAsync()
+    {
+        if (_user is null || string.IsNullOrWhiteSpace(_selectedRole))
+        {
+            return;
+        }
+
+        if (!_roles.Contains(_selectedRole, StringComparer.OrdinalIgnoreCase))
+        {
+            Snackbar.Add($"Role '{_selectedRole}' is not present in the database roles list.", Severity.Error);
+            return;
+        }
+
+        if (IsSelfAdminDemotion)
+        {
+            Snackbar.Add("You cannot demote your own administrator account.", Severity.Error);
+            return;
+        }
+
+        if (_user.Role.Equals(_selectedRole, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var token = Session.AccessToken;
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(token))
+        {
+            Snackbar.Add("Authentication required. Please log in again.", Severity.Error);
+            return;
+        }
+
+        var previousRole = _user.Role;
+        var targetRole = _selectedRole;
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Change user role",
+            ["Message"] = $"Change {_user.FullName} from {previousRole} to {targetRole}? This changes the user's authorization and access permissions.",
+            ["ConfirmText"] = "Change role",
+            ["ConfirmColor"] = Color.Warning,
+            ["IconColor"] = Color.Warning,
+            ["Icon"] = Icons.Material.Filled.AdminPanelSettings
+        };
+
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Change user role", parameters);
+        var result = await dialog.Result;
+        if (result is not { Canceled: false })
+        {
+            return;
+        }
+
+        _isUpdatingRole = true;
+        try
+        {
+            var updated = await AdminApi.UpdateRoleAsync(token, _user.Id, targetRole);
+            _user.Role = updated.Role;
+            _selectedRole = updated.Role;
+            Snackbar.Add($"{_user.FullName} changed from {previousRole} to {_user.Role}.", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add($"Failed to change role: {ex.Message}", Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Unexpected error while changing role: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isUpdatingRole = false;
+        }
+    }
 
     private async Task DeactivateAsync()
     {
