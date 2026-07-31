@@ -81,6 +81,95 @@ public class DocumentIngestionServiceTests
     }
 
     [Test]
+    public async Task IngestAsync_EmbeddingFailure_DoesNotPublishPartialReplacementOrReadyStatus()
+    {
+        await using var db = CreateDb();
+        var profile = SeedActiveStudent(db);
+        var document = SeedDocument(db, profile.Id);
+        db.DocumentChunks.AddRange(
+            new DocumentChunk { Id = Guid.NewGuid(), DocumentId = document.Id, ChunkIndex = 0, Content = "Old first", TokenCount = 2, CreatedAt = DateTimeOffset.UtcNow },
+            new DocumentChunk { Id = Guid.NewGuid(), DocumentId = document.Id, ChunkIndex = 1, Content = "Old second", TokenCount = 2, CreatedAt = DateTimeOffset.UtcNow });
+        await db.SaveChangesAsync();
+
+        var chunking = new FixedChunkingService(
+        [
+            new DocumentChunkDraft(document.Id, 0, 1, "New first"),
+            new DocumentChunkDraft(document.Id, 1, 1, "New second"),
+        ]);
+        var sut = BuildSut(
+            db,
+            new FakeTextExtractionService([new ExtractedPage(1, "source text")]),
+            embedding: new ThrowOnSecondEmbeddingService(),
+            chunking: chunking);
+
+        var result = await sut.IngestAsync(document.Id, profile.SupabaseUserId);
+
+        result.Success.Should().BeFalse();
+        var reloaded = await db.Documents.SingleAsync(d => d.Id == document.Id);
+        reloaded.Status.Should().Be(DocumentStatus.Failed);
+        var chunks = await db.DocumentChunks.Where(c => c.DocumentId == document.Id).OrderBy(c => c.ChunkIndex).ToListAsync();
+        chunks.Select(chunk => chunk.Content).Should().Equal("Old first", "Old second");
+    }
+
+    [Test]
+    public async Task IngestAsync_WhenNewerOperationClaimsDocument_StaleWorkerReturnsSupersededWithoutPublishing()
+    {
+        await using var db = CreateDb();
+        var profile = SeedActiveStudent(db);
+        var document = SeedDocument(db, profile.Id);
+        db.DocumentChunks.Add(new DocumentChunk
+        {
+            Id = Guid.NewGuid(), DocumentId = document.Id, ChunkIndex = 0, Content = "Prior content",
+            TokenCount = 2, CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+        var newerOperation = Guid.NewGuid();
+        var extraction = new CallbackTextExtractionService(
+            [new ExtractedPage(1, "New source")],
+            () =>
+            {
+                var current = db.Documents.Single(item => item.Id == document.Id);
+                current.IngestionOperationId = newerOperation;
+                current.Status = DocumentStatus.Processing;
+                db.SaveChanges();
+            });
+        var sut = BuildSut(db, extraction);
+
+        var result = await sut.IngestAsync(document.Id, profile.SupabaseUserId);
+
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("superseded");
+        var reloaded = await db.Documents.SingleAsync(item => item.Id == document.Id);
+        reloaded.IngestionOperationId.Should().Be(newerOperation);
+        reloaded.Status.Should().Be(DocumentStatus.Processing);
+        (await db.DocumentChunks.SingleAsync(chunk => chunk.DocumentId == document.Id)).Content.Should().Be("Prior content");
+    }
+
+    [Test]
+    public async Task IngestAsync_CancellationAfterSupersession_IsRethrown()
+    {
+        await using var db = CreateDb();
+        var profile = SeedActiveStudent(db);
+        var document = SeedDocument(db, profile.Id);
+        var newerOperation = Guid.NewGuid();
+        var extraction = new SupersedingCancellationExtractionService(() =>
+        {
+            var current = db.Documents.Single(item => item.Id == document.Id);
+            current.IngestionOperationId = newerOperation;
+            current.Status = DocumentStatus.Processing;
+            db.SaveChanges();
+        });
+        var sut = BuildSut(db, extraction);
+
+        var action = () => sut.IngestAsync(document.Id, profile.SupabaseUserId);
+
+        await action.Should().ThrowAsync<OperationCanceledException>();
+        var reloaded = await db.Documents.SingleAsync(item => item.Id == document.Id);
+        reloaded.IngestionOperationId.Should().Be(newerOperation);
+        reloaded.Status.Should().Be(DocumentStatus.Processing);
+    }
+
+    [Test]
     public async Task IngestAsync_NoExtractableText_MarksFailedAndReturnsFailure()
     {
         await using var db = CreateDb();
@@ -153,7 +242,8 @@ public class DocumentIngestionServiceTests
         IEmbeddingService? embedding = null,
         RagOptions? options = null,
         IImageDescriptionService? imageDescription = null,
-        GroqOptions? groqOptions = null)
+        GroqOptions? groqOptions = null,
+        IChunkingService? chunking = null)
     {
         var ragOptions = options ?? new RagOptions
         {
@@ -166,7 +256,7 @@ public class DocumentIngestionServiceTests
             db,
             storage ?? new FakeStorageReadService(),
             extraction,
-            BuildChunkingService(ragOptions),
+            chunking ?? BuildChunkingService(ragOptions),
             new ConservativeTokenEstimator(),
             embedding ?? new FakeEmbeddingService(ragOptions.EmbeddingDimensions),
             imageDescription ?? new FakeImageDescriptionService(),
@@ -302,6 +392,43 @@ public class DocumentIngestionServiceTests
             throw new InvalidOperationException(_message);
     }
 
+    private sealed class CallbackTextExtractionService : ITextExtractionService
+    {
+        private readonly IReadOnlyList<ExtractedPage> _pages;
+        private readonly Action _onExtract;
+
+        public CallbackTextExtractionService(IReadOnlyList<ExtractedPage> pages, Action onExtract)
+        {
+            _pages = pages;
+            _onExtract = onExtract;
+        }
+
+        public Task<IReadOnlyList<ExtractedPage>> ExtractPagesAsync(
+            Stream fileStream,
+            string mimeType,
+            CancellationToken cancellationToken = default)
+        {
+            _onExtract();
+            return Task.FromResult(_pages);
+        }
+    }
+
+    private sealed class SupersedingCancellationExtractionService : ITextExtractionService
+    {
+        private readonly Action _supersede;
+
+        public SupersedingCancellationExtractionService(Action supersede) => _supersede = supersede;
+
+        public Task<IReadOnlyList<ExtractedPage>> ExtractPagesAsync(
+            Stream fileStream,
+            string mimeType,
+            CancellationToken cancellationToken = default)
+        {
+            _supersede();
+            throw new OperationCanceledException("Simulated cancellation after supersession.", cancellationToken);
+        }
+    }
+
     private sealed class FakeImageDescriptionService : IImageDescriptionService
     {
         public Task<string> DescribeAsync(IReadOnlyList<ExtractedImage> pageImages, CancellationToken cancellationToken = default) =>
@@ -319,5 +446,27 @@ public class DocumentIngestionServiceTests
 
         public Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default) =>
             Task.FromResult(CreateEmbedding(_dimensions));
+    }
+
+    private sealed class ThrowOnSecondEmbeddingService : IEmbeddingService
+    {
+        private int _calls;
+
+        public Task<float[]> GenerateEmbeddingAsync(string text, CancellationToken cancellationToken = default)
+        {
+            _calls++;
+            return _calls == 2
+                ? throw new InvalidOperationException("Ollama unavailable")
+                : Task.FromResult(CreateEmbedding());
+        }
+    }
+
+    private sealed class FixedChunkingService : IChunkingService
+    {
+        private readonly IReadOnlyList<DocumentChunkDraft> _drafts;
+
+        public FixedChunkingService(IReadOnlyList<DocumentChunkDraft> drafts) => _drafts = drafts;
+
+        public IReadOnlyList<DocumentChunkDraft> Chunk(Guid documentId, IReadOnlyList<ExtractedPage> pages) => _drafts;
     }
 }

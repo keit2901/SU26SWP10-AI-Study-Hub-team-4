@@ -6,25 +6,50 @@ namespace AI_Study_Hub_v2.Services;
 
 public static class SystemConfigSeeder
 {
-    public static async Task SeedAsync(AppDbContext db, ILogger logger, CancellationToken cancellationToken = default)
+    private const string EmbeddingModelConfigKey = "ai.embedding_model";
+    private const string LegacyEmbeddingModel = "text-embedding-3-small";
+
+    public static async Task SeedAsync(
+        AppDbContext db,
+        ILogger logger,
+        string embeddingModel = "all-minilm:l6-v2",
+        CancellationToken cancellationToken = default)
     {
+        var legacyEmbeddingConfig = await db.SystemConfigs.SingleOrDefaultAsync(
+            config => config.Key == EmbeddingModelConfigKey,
+            cancellationToken);
+        var upgradedLegacyEmbeddingConfig = legacyEmbeddingConfig is
+        {
+            Value: LegacyEmbeddingModel,
+            DefaultValue: LegacyEmbeddingModel,
+        };
+
+        if (upgradedLegacyEmbeddingConfig)
+        {
+            legacyEmbeddingConfig!.Value = embeddingModel;
+            legacyEmbeddingConfig.DefaultValue = embeddingModel;
+        }
+
         var existing = (await db.SystemConfigs.Select(config => config.Key).ToListAsync(cancellationToken))
             .ToHashSet(StringComparer.Ordinal);
-        var missing = Defaults().Where(config => !existing.Contains(config.Key)).ToArray();
-        if (missing.Length == 0)
+        var missing = Defaults(embeddingModel).Where(config => !existing.Contains(config.Key)).ToArray();
+        if (missing.Length == 0 && !upgradedLegacyEmbeddingConfig)
         {
             return;
         }
 
         db.SystemConfigs.AddRange(missing);
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Seeded {Count} missing system configs.", missing.Length);
+        logger.LogInformation(
+            "Seeded {Count} missing system configs; legacy embedding config upgraded: {Upgraded}.",
+            missing.Length,
+            upgradedLegacyEmbeddingConfig);
     }
 
-    private static SystemConfig[] Defaults() =>
+    private static SystemConfig[] Defaults(string embeddingModel) =>
     [
         new() { Key = "ai.chat_model", Value = "gpt-4o-mini", DefaultValue = "gpt-4o-mini", Category = "Model", DisplayName = "Chat model", Description = "Model identifier used by the RAG answer generation pipeline.", ConfigType = "Text", IsCritical = true },
-        new() { Key = "ai.embedding_model", Value = "text-embedding-3-small", DefaultValue = "text-embedding-3-small", Category = "Model", DisplayName = "Embedding model", Description = "Provider model identifier used to embed document_chunks.", ConfigType = "Text", IsCritical = true },
+        new() { Key = EmbeddingModelConfigKey, Value = embeddingModel, DefaultValue = embeddingModel, Category = "Model", DisplayName = "Embedding model", Description = "Ollama model identifier used to embed document_chunks.", ConfigType = "Text", IsCritical = true },
         new() { Key = "rag.chunk_size", Value = "700", DefaultValue = "700", Category = "Retrieval", DisplayName = "Chunk size", Description = "Maximum characters per legacy source chunk before embedding.", ConfigType = "Number", IsCritical = true },
         new() { Key = "rag.chunk_overlap", Value = "70", DefaultValue = "70", Category = "Retrieval", DisplayName = "Chunk overlap", Description = "Character overlap between consecutive fixed-v1 chunks only; semantic-v1 uses structural overlap.", ConfigType = "Number", IsCritical = true },
         new() { Key = "rag.semantic_target_tokens", Value = "144", DefaultValue = "144", Category = "Retrieval", DisplayName = "Semantic v2 target tokens", Description = "Estimated token target for semantic-v2 chunks.", ConfigType = "Number", IsCritical = true },

@@ -33,6 +33,12 @@ public sealed class Document
 
     public DocumentStatus Status { get; set; } = DocumentStatus.Uploading;
 
+    /// <summary>
+    /// Opaque ownership token for the currently running ingestion attempt. A new
+    /// attempt supersedes an older one by replacing this value.
+    /// </summary>
+    public Guid? IngestionOperationId { get; set; }
+
     /// <summary>Moderator review outcome. <c>None</c> until the moderator explicitly acts.</summary>
     public DocumentReviewStatus ReviewStatus { get; set; }
 

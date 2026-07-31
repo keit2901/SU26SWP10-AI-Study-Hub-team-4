@@ -53,4 +53,62 @@ public sealed class SystemConfigSeederTests
         (await db.SystemConfigs.SingleAsync(c => c.Key == "auth.allow_self_registration")).Value.Should().Be("false");
         (await db.SystemConfigs.SingleAsync(c => c.Key == "ai.chat_model")).Value.Should().Be("custom-model");
     }
+
+    [Test]
+    public async Task SeedAsync_UsesConfiguredOllamaModelForMissingEmbeddingMetadata_WithoutOverwritingExistingRow()
+    {
+        using var db = TestDb.CreateInMemory();
+        db.SystemConfigs.Add(new SystemConfig
+        {
+            Key = "ai.embedding_model", Value = "existing-production-model", DefaultValue = "existing-production-model",
+            Category = "Model", DisplayName = "Embedding model", ConfigType = "Text", IsCritical = true, CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        await SystemConfigSeeder.SeedAsync(db, NullLogger.Instance, "all-minilm:l6-v2");
+
+        (await db.SystemConfigs.SingleAsync(c => c.Key == "ai.embedding_model")).Value.Should().Be("existing-production-model");
+
+        using var freshDb = TestDb.CreateInMemory();
+        await SystemConfigSeeder.SeedAsync(freshDb, NullLogger.Instance, "all-minilm:l6-v2");
+        (await freshDb.SystemConfigs.SingleAsync(c => c.Key == "ai.embedding_model")).Value.Should().Be("all-minilm:l6-v2");
+    }
+
+    [Test]
+    public async Task SeedAsync_ExactLegacyEmbeddingValueAndDefault_UpgradesBothIdempotently()
+    {
+        using var db = TestDb.CreateInMemory();
+        db.SystemConfigs.Add(new SystemConfig
+        {
+            Key = "ai.embedding_model", Value = "text-embedding-3-small", DefaultValue = "text-embedding-3-small",
+            Category = "Model", DisplayName = "Embedding model", ConfigType = "Text", IsCritical = true, CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        await SystemConfigSeeder.SeedAsync(db, NullLogger.Instance, "all-minilm:l6-v2");
+        var upgraded = await db.SystemConfigs.SingleAsync(c => c.Key == "ai.embedding_model");
+        upgraded.Value.Should().Be("all-minilm:l6-v2");
+        upgraded.DefaultValue.Should().Be("all-minilm:l6-v2");
+
+        await SystemConfigSeeder.SeedAsync(db, NullLogger.Instance, "all-minilm:l6-v2");
+        (await db.SystemConfigs.SingleAsync(c => c.Key == "ai.embedding_model")).Value.Should().Be("all-minilm:l6-v2");
+    }
+
+    [Test]
+    public async Task SeedAsync_LegacyDefaultWithCustomValue_PreservesTheCustomValue()
+    {
+        using var db = TestDb.CreateInMemory();
+        db.SystemConfigs.Add(new SystemConfig
+        {
+            Key = "ai.embedding_model", Value = "custom-production-model", DefaultValue = "text-embedding-3-small",
+            Category = "Model", DisplayName = "Embedding model", ConfigType = "Text", IsCritical = true, CreatedAt = DateTimeOffset.UtcNow,
+        });
+        await db.SaveChangesAsync();
+
+        await SystemConfigSeeder.SeedAsync(db, NullLogger.Instance, "all-minilm:l6-v2");
+
+        var preserved = await db.SystemConfigs.SingleAsync(c => c.Key == "ai.embedding_model");
+        preserved.Value.Should().Be("custom-production-model");
+        preserved.DefaultValue.Should().Be("text-embedding-3-small");
+    }
 }
