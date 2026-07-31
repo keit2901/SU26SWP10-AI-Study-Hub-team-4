@@ -355,13 +355,15 @@
                             <span style="font-size: 16px; font-weight: 700; color: #191c1e;">Role catalog</span>
                         </div>
                     </div>
-                    <div class="d-flex flex-column py-2" style="gap: 0.25rem;">
-                        <span style="font-size: 20px; font-weight: 800; color: #191c1e;">@_roles.Count</span>
-                        <span style="font-size: 12px; color: #767586;">Configured roles</span>
-                        @if (_roles.Count > 0)
+                    <div class="d-flex flex-column py-2" style="gap: 0.5rem;">
+                        @foreach (var role in RoleSummaries)
                         {
-                            <span class="widget-detail-text">@RoleCatalogNames</span>
+                            <div class="d-flex align-center justify-space-between" style="gap: 0.75rem;">
+                                <span class="role-badge @role.BadgeClass">@role.RoleName.ToUpperInvariant()</span>
+                                <span style="font-size: 13px; font-weight: 700; color: #191c1e;">@role.UserCount</span>
+                            </div>
                         }
+                        <span style="font-size: 12px; color: #767586; border-top: 1px solid #e0e3e5; padding-top: 0.5rem;">@RoleSummaryFooter</span>
                     </div>
                 </div>
 
@@ -493,6 +495,33 @@
         .OrderBy(role => role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
         .ThenBy(role => role)
         .ToList();
+
+    private IReadOnlyList<RoleSummary> RoleSummaries
+    {
+        get
+        {
+            var userCounts = _users
+                .Where(user => !string.IsNullOrWhiteSpace(user.Role))
+                .GroupBy(user => user.Role.Trim(), StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(group => group.Key, group => group.Count(), StringComparer.OrdinalIgnoreCase);
+
+            IEnumerable<string> roleNames = _roles.Count > 0
+                ? _roles
+                    .Select(role => role.RoleName.Trim())
+                    .Where(role => role.Length > 0)
+                    .Concat(userCounts.Keys)
+                : userCounts.Keys;
+
+            return roleNames
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(role => role.Equals(AdminRole, StringComparison.OrdinalIgnoreCase) ? 0 : 1)
+                .ThenBy(role => role, StringComparer.OrdinalIgnoreCase)
+                .Select(role => new RoleSummary(role, userCounts.GetValueOrDefault(role), role.ToLowerInvariant()))
+                .ToList();
+        }
+    }
+
+    private string RoleSummaryFooter => $"{RoleSummaries.Count} role types · {_users.Count} users loaded";
 
     private int FilteredUsersCount => FilteredUsers.Count();
 
@@ -793,8 +822,6 @@
     private double TotalTokenUsagePercent => TotalDailyTokenQuota == 0
         ? 0
         : TotalTokensUsedToday * 100d / TotalDailyTokenQuota;
-    private string RoleCatalogNames => string.Join(" • ", AvailableRoleNames);
-
     private static string FormatDate(DateTime value) => value.ToLocalTime().ToString("MMM d, yyyy");
 
     private static string FormatExactTimestamp(DateTime value) => value.ToLocalTime().ToString("MMM d, yyyy 'at' h:mm:ss tt zzz");
@@ -816,6 +843,8 @@
     }
 
     private sealed record RoleOption(string RoleName, string? Description);
+
+    private sealed record RoleSummary(string RoleName, int UserCount, string BadgeClass);
 
     private sealed class UserRow
     {
