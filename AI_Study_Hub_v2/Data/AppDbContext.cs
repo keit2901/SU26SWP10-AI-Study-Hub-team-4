@@ -51,6 +51,8 @@ public class AppDbContext : DbContext
 
     public DbSet<DocumentEscalationItem> DocumentEscalationItems => Set<DocumentEscalationItem>();
 
+    public DbSet<UserNotification> UserNotifications => Set<UserNotification>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
