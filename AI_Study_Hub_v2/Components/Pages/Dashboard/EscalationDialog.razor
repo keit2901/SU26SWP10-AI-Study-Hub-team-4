@@ -24,17 +24,17 @@
                           Required="true"
                           HelperText="Explain why this folder needs admin attention" />
 
-            <!-- Rejected Documents List -->
+            <!-- Documents selected for escalation -->
             <div>
                 <div class="font-bold mb-2" style="font-size: 13px; color: #191c1e;">
-                    Rejected Documents in this Folder
+                    Documents for escalation
                     <span class="text-sm ml-1" style="color: #767586; font-weight: 500;">(@_rejectedDocs.Count)</span>
                 </div>
                 <MudPaper Class="pa-2" Style="max-height: 240px; overflow-y: auto; border: 1px solid #e0e3e5; border-radius: 8px;">
                     @if (_rejectedDocs.Count == 0)
                     {
                         <div class="pa-4 text-center" style="color: #767586; font-size: 13px;">
-                            No rejected documents found in this folder.
+                            No documents are available for escalation.
                         </div>
                     }
                     else
