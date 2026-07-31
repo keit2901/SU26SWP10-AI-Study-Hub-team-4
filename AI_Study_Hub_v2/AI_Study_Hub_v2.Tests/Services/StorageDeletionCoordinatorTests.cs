@@ -22,7 +22,7 @@ public sealed class StorageDeletionCoordinatorTests
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
         storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, document.StoragePath, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException("storage unavailable"));
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         var act = () => sut.DeleteOwnedDocumentAsync(document.Id, user.Id, CancellationToken.None);
 
@@ -41,7 +41,7 @@ public sealed class StorageDeletionCoordinatorTests
         storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, document.StoragePath, It.IsAny<CancellationToken>()))
             .Callback(() => db.Documents.Any(d => d.Id == document.Id).Should().BeTrue())
             .Returns(Task.CompletedTask);
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         (await sut.DeleteOwnedDocumentAsync(document.Id, user.Id, CancellationToken.None)).Should().BeTrue();
         (await sut.DeleteOwnedDocumentAsync(document.Id, user.Id, CancellationToken.None)).Should().BeFalse();
@@ -59,7 +59,7 @@ public sealed class StorageDeletionCoordinatorTests
         var other = SeedUser(db, 0);
         var document = SeedDocument(db, owner.Id, 10);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         (await sut.DeleteOwnedDocumentAsync(document.Id, other.Id, CancellationToken.None)).Should().BeFalse();
         (await db.Documents.CountAsync()).Should().Be(1);
@@ -77,7 +77,7 @@ public sealed class StorageDeletionCoordinatorTests
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
         storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, first.StoragePath, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
         storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, second.StoragePath, It.IsAny<CancellationToken>())).ThrowsAsync(new HttpRequestException("storage unavailable"));
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         var act = () => sut.DeleteOwnedFolderAsync(folder.Id, user.Id, CancellationToken.None);
 
@@ -97,7 +97,7 @@ public sealed class StorageDeletionCoordinatorTests
         var second = SeedDocument(db, user.Id, 200, folder.Id);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
         storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         (await sut.DeleteOwnedFolderAsync(folder.Id, user.Id, CancellationToken.None)).Should().BeTrue();
 
@@ -117,7 +117,7 @@ public sealed class StorageDeletionCoordinatorTests
         var storage = new Mock<ISupabaseStorageClient>();
         storage.SetupSequence(s => s.DeleteAsync(DocumentService.BucketName, document.StoragePath, It.IsAny<CancellationToken>()))
             .ThrowsAsync(new HttpRequestException()).Returns(Task.CompletedTask);
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         var act = () => sut.DeleteOwnedFolderAsync(folder.Id, user.Id, CancellationToken.None);
         await act.Should().ThrowAsync<HttpRequestException>();
@@ -134,7 +134,7 @@ public sealed class StorageDeletionCoordinatorTests
         var user = SeedUser(db, 0);
         var folder = SeedFolder(db, user.Id);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         (await sut.DeleteOwnedFolderAsync(folder.Id, user.Id, CancellationToken.None)).Should().BeTrue();
         (await db.Folders.CountAsync()).Should().Be(0);
@@ -152,7 +152,7 @@ public sealed class StorageDeletionCoordinatorTests
         var foreignDocument = SeedDocument(db, foreignOwner.Id, 50, folder.Id);
         var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
         storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, ownedDocument.StoragePath, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         (await sut.DeleteOwnedFolderAsync(folder.Id, owner.Id, CancellationToken.None)).Should().BeTrue();
 
@@ -162,6 +162,95 @@ public sealed class StorageDeletionCoordinatorTests
         (await db.Users.SingleAsync(u => u.Id == owner.Id)).StorageUsedBytes.Should().Be(0);
         (await db.Users.SingleAsync(u => u.Id == foreignOwner.Id)).StorageUsedBytes.Should().Be(50);
         storage.Verify(s => s.DeleteAsync(DocumentService.BucketName, foreignDocument.StoragePath, It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Test]
+    public async Task DeleteOwnedDocumentAsync_RejectedFile_PreservesApprovedPublicSiblingAndEscalationHistory()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db, 200);
+        var folder = SeedFolder(db, user.Id);
+        folder.ShareStatus = FolderStatus.Approved;
+        var approved = SeedDocument(db, user.Id, 100, folder.Id);
+        approved.ReviewStatus = DocumentReviewStatus.Approved;
+        var rejected = SeedDocument(db, user.Id, 100, folder.Id);
+        rejected.ReviewStatus = DocumentReviewStatus.Rejected;
+        var escalation = new DocumentEscalation
+        {
+            Id = Guid.NewGuid(), FolderId = folder.Id, EscalatedByUserId = user.Id,
+            Reason = "review", CreatedAt = DateTimeOffset.UtcNow
+        };
+        var escalationItem = new DocumentEscalationItem
+        {
+            Id = Guid.NewGuid(), EscalationId = escalation.Id, DocumentId = rejected.Id, RejectReason = "review"
+        };
+        db.AddRange(escalation, escalationItem);
+        await db.SaveChangesAsync();
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        storage.Setup(client => client.DeleteAsync(DocumentService.BucketName, rejected.StoragePath, It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
+
+        (await sut.DeleteOwnedDocumentAsync(rejected.Id, user.Id, CancellationToken.None)).Should().BeTrue();
+
+        (await db.Documents.AnyAsync(document => document.Id == approved.Id)).Should().BeTrue();
+        (await db.Folders.SingleAsync(item => item.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.Approved);
+        (await db.DocumentEscalationItems.SingleAsync(item => item.Id == escalationItem.Id)).DocumentId.Should().BeNull();
+    }
+
+    [Test]
+    public async Task DeleteOwnedDocumentAsync_LastApprovedFile_RecomputesFolderFromRemainingFiles()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db, 600);
+        var pendingFolder = SeedFolder(db, user.Id);
+        pendingFolder.ShareStatus = FolderStatus.Approved;
+        var pendingApproved = SeedDocument(db, user.Id, 100, pendingFolder.Id);
+        pendingApproved.ReviewStatus = DocumentReviewStatus.Approved;
+        var pendingRemainder = SeedDocument(db, user.Id, 100, pendingFolder.Id);
+        pendingRemainder.ReviewStatus = DocumentReviewStatus.None;
+        var rejectedFolder = SeedFolder(db, user.Id);
+        rejectedFolder.ShareStatus = FolderStatus.Approved;
+        var rejectedApproved = SeedDocument(db, user.Id, 100, rejectedFolder.Id);
+        rejectedApproved.ReviewStatus = DocumentReviewStatus.Approved;
+        var rejectedRemainder = SeedDocument(db, user.Id, 100, rejectedFolder.Id);
+        rejectedRemainder.ReviewStatus = DocumentReviewStatus.Rejected;
+        var emptyFolder = SeedFolder(db, user.Id);
+        emptyFolder.ShareStatus = FolderStatus.Approved;
+        var finalApproved = SeedDocument(db, user.Id, 100, emptyFolder.Id);
+        finalApproved.ReviewStatus = DocumentReviewStatus.Approved;
+        await db.SaveChangesAsync();
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(client => client.DeleteAsync(DocumentService.BucketName, It.IsAny<string>(), It.IsAny<CancellationToken>())).Returns(Task.CompletedTask);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
+
+        await sut.DeleteOwnedDocumentAsync(pendingApproved.Id, user.Id, CancellationToken.None);
+        await sut.DeleteOwnedDocumentAsync(rejectedApproved.Id, user.Id, CancellationToken.None);
+        await sut.DeleteOwnedDocumentAsync(finalApproved.Id, user.Id, CancellationToken.None);
+
+        (await db.Folders.SingleAsync(item => item.Id == pendingFolder.Id)).ShareStatus.Should().Be(FolderStatus.PendingShare);
+        (await db.Folders.SingleAsync(item => item.Id == rejectedFolder.Id)).ShareStatus.Should().Be(FolderStatus.Rejected);
+        (await db.Folders.SingleAsync(item => item.Id == emptyFolder.Id)).ShareStatus.Should().Be(FolderStatus.None);
+    }
+
+    [Test]
+    public async Task DeleteDocumentAsync_EscalatedDocument_IsBlockedForOwnerAndPrivilegedDeletion()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var user = SeedUser(db, 100);
+        var document = SeedDocument(db, user.Id, 100);
+        document.ReviewStatus = DocumentReviewStatus.Escalated;
+        await db.SaveChangesAsync();
+        var storage = new Mock<ISupabaseStorageClient>(MockBehavior.Strict);
+        var sut = new StorageDeletionCoordinator(db, storage.Object,
+            NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
+
+        var ownerDelete = () => sut.DeleteOwnedDocumentAsync(document.Id, user.Id, CancellationToken.None);
+        var privilegedDelete = () => sut.DeletePrivilegedDocumentAsync(document.Id, CancellationToken.None);
+
+        (await ownerDelete.Should().ThrowAsync<DocumentException>()).Which.Code.Should().Be("document_under_admin_review");
+        (await privilegedDelete.Should().ThrowAsync<DocumentException>()).Which.Code.Should().Be("document_under_admin_review");
+        (await db.Documents.AnyAsync(item => item.Id == document.Id)).Should().BeTrue();
+        storage.VerifyNoOtherCalls();
     }
 
     [Test]
@@ -175,7 +264,7 @@ public sealed class StorageDeletionCoordinatorTests
         storage.Setup(s => s.DeleteAsync(DocumentService.BucketName, document.StoragePath, It.IsAny<CancellationToken>()))
             .Callback(() => cts.Cancel())
             .Returns(Task.CompletedTask);
-        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance);
+        var sut = new StorageDeletionCoordinator(db, storage.Object, NullLogger<StorageDeletionCoordinator>.Instance, new FolderPublicationStateService());
 
         var act = () => sut.DeleteOwnedDocumentAsync(document.Id, user.Id, cts.Token);
 

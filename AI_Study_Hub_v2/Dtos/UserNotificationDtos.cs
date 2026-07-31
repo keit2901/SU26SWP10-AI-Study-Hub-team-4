@@ -12,7 +12,8 @@ public sealed record UserNotificationFeedItemDto(
     string Title,
     string Message,
     DateTimeOffset CreatedAt,
-    DateTimeOffset? ReadAt);
+    DateTimeOffset? ReadAt,
+    Guid? DocumentId = null);
 
 public sealed record UserNotificationFeedDto(
     IReadOnlyList<UserNotificationFeedItemDto> Items,

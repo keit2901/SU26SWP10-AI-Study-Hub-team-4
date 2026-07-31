@@ -57,6 +57,7 @@ public sealed class DocumentService : IDocumentService
     private readonly ILogger<DocumentService> _logger;
     private readonly IStorageDeletionCoordinator _deletionCoordinator;
     private readonly IPlanCapacityGuard _capacityGuard;
+    private readonly IFolderPublicationStateService _publicationState;
 
     public DocumentService(
         AppDbContext db,
@@ -65,7 +66,8 @@ public sealed class DocumentService : IDocumentService
         ILogger<DocumentService> logger,
         IDocumentIngestionService? ingestion,
         IStorageDeletionCoordinator deletionCoordinator,
-        IPlanCapacityGuard capacityGuard)
+        IPlanCapacityGuard capacityGuard,
+        IFolderPublicationStateService publicationState)
     {
         _db = db;
         _storage = storage;
@@ -74,6 +76,7 @@ public sealed class DocumentService : IDocumentService
         _logger = logger;
         _deletionCoordinator = deletionCoordinator;
         _capacityGuard = capacityGuard;
+        _publicationState = publicationState;
     }
 
     public async Task<DocumentDto> UploadAsync(
@@ -91,6 +94,11 @@ public sealed class DocumentService : IDocumentService
 
         var folderSchema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
         var documentSchema = await GetDocumentSchemaCapabilitiesAsync(cancellationToken);
+        if (!documentSchema.HasReviewStatusColumn || (request.FolderId.HasValue && !folderSchema.HasFullModernShareFlowColumns))
+        {
+            throw new DocumentException(503, "migration_required",
+                "Document moderation is temporarily unavailable until the per-file moderation schema is applied.");
+        }
 
         // 1. Resolve the caller's domain user (public.users) from the GoTrue id.
         var profile = await _db.Users
@@ -215,6 +223,8 @@ public sealed class DocumentService : IDocumentService
                 PageCount = null,
                 Status = IsIngestionCandidate(canonicalContentType) ? DocumentStatus.Processing : DocumentStatus.Ready,
                 ErrorMessage = null,
+                ReviewStatus = DocumentReviewStatus.None,
+                ModerationGeneration = 0,
                 CreatedAt = now,
                 UpdatedAt = now,
             };
@@ -248,10 +258,16 @@ public sealed class DocumentService : IDocumentService
 
                         if (folderSchema.HasFullModernShareFlowColumns)
                         {
-                            var folder = await _db.Folders.SingleAsync(
+                            var folder = await _db.Folders
+                                .Include(f => f.Documents)
+                                .SingleAsync(
                                 f => f.Id == targetFolderId && f.UserId == profile.Id,
                                 cancellationToken);
-                            folder.UpdatedAt = now;
+                            if (IsShareActive(folder))
+                            {
+                                doc.ModerationGeneration = 1;
+                            }
+                            _publicationState.Recompute(folder, folder.Documents.Append(doc), now);
                         }
                         else
                         {
@@ -387,7 +403,10 @@ public sealed class DocumentService : IDocumentService
         if (query.FolderId.HasValue)
         {
             q = q.Where(d => d.FolderId == query.FolderId.Value &&
-                            (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)));
+                            (d.UserId == profile.Id || (d.Folder != null
+                                && d.Folder.ShareStatus == FolderStatus.Approved
+                                && d.Status == DocumentStatus.Ready
+                                && d.ReviewStatus == DocumentReviewStatus.Approved)));
         }
         else
         {
@@ -431,7 +450,10 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null
+                && d.Folder.ShareStatus == FolderStatus.Approved
+                && d.Status == DocumentStatus.Ready
+                && d.ReviewStatus == DocumentReviewStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 
@@ -453,27 +475,64 @@ public sealed class DocumentService : IDocumentService
             ?? throw new DocumentException(404, "user_not_found",
                 "Authenticated user has no profile in public.users.");
 
-        var doc = await _db.Documents
-            .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
-            ?? throw new DocumentException(404, "document_not_found",
-                "Document does not exist or does not belong to the caller.");
-
-        if (folderId.HasValue)
+        await using var transaction = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : null;
+        try
         {
-            var folderOwned = await _db.Folders
-                .AsNoTracking()
-                .AnyAsync(f => f.Id == folderId.Value && f.UserId == profile.Id, cancellationToken);
-            if (!folderOwned)
+            var doc = await _db.Documents
+                .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken)
+                ?? throw new DocumentException(404, "document_not_found",
+                    "Document does not exist or does not belong to the caller.");
+            if (doc.FolderId == folderId)
             {
-                throw new DocumentException(404, "folder_not_found",
-                    "Folder does not exist or does not belong to the caller.");
+                if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+                return ToDto(doc, signedUrl: null);
             }
+            if (doc.ReviewStatus == DocumentReviewStatus.Escalated)
+                throw new DocumentException(409, "document_escalated", "Escalated documents cannot be moved until resolved.");
+
+            var sourceFolderId = doc.FolderId;
+            Folder? destination = null;
+            if (folderId.HasValue)
+            {
+                destination = await _db.Folders.Include(folder => folder.Documents)
+                    .SingleOrDefaultAsync(folder => folder.Id == folderId.Value && folder.UserId == profile.Id, cancellationToken)
+                    ?? throw new DocumentException(404, "folder_not_found", "Folder does not exist or does not belong to the caller.");
+                if (folderId != sourceFolderId)
+                {
+                    if (destination.Documents.Count >= MaxDocumentsPerFolder)
+                        throw new DocumentException(409, "folder_full", $"This folder already has {destination.Documents.Count} document(s), which is the maximum ({MaxDocumentsPerFolder}).");
+                    if (destination.Documents.Any(item => item.Id != doc.Id && string.Equals(item.FileName, doc.FileName, StringComparison.OrdinalIgnoreCase)))
+                        throw new DocumentException(409, "duplicate_file", $"A file named \"{doc.FileName}\" already exists in this folder.");
+                }
+            }
+
+            Folder? source = sourceFolderId.HasValue
+                ? await _db.Folders.Include(folder => folder.Documents).SingleOrDefaultAsync(folder => folder.Id == sourceFolderId.Value, cancellationToken)
+                : null;
+            var now = DateTimeOffset.UtcNow;
+            doc.FolderId = folderId;
+            doc.ReviewStatus = DocumentReviewStatus.None;
+            if (destination is not null && IsShareActive(destination))
+            {
+                doc.ModerationGeneration++;
+            }
+            doc.ErrorMessage = null;
+            doc.UpdatedAt = now;
+            if (source is not null && source.Id != folderId)
+                _publicationState.Recompute(source, source.Documents.Where(item => item.Id != doc.Id), now);
+            if (destination is not null)
+                _publicationState.Recompute(destination, destination.Documents.Where(item => item.Id != doc.Id).Append(doc), now);
+            await _db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null) await transaction.CommitAsync(cancellationToken);
+            return ToDto(doc, signedUrl: null);
         }
-
-        doc.FolderId = folderId;
-        await _db.SaveChangesAsync(cancellationToken);
-
-        return ToDto(doc, signedUrl: null);
+        catch
+        {
+            if (transaction is not null) await transaction.RollbackAsync(CancellationToken.None);
+            throw;
+        }
     }
 
     public async Task<DocumentDto> RenameAsync(
@@ -540,7 +599,9 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null
+                && d.Folder.ShareStatus == FolderStatus.Approved && d.Status == DocumentStatus.Ready
+                && d.ReviewStatus == DocumentReviewStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 
@@ -577,7 +638,9 @@ public sealed class DocumentService : IDocumentService
 
         var doc = await _db.Documents
             .AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null && d.Folder.ShareStatus == FolderStatus.Approved)), cancellationToken)
+            .FirstOrDefaultAsync(d => d.Id == documentId && (d.UserId == profile.Id || (d.Folder != null
+                && d.Folder.ShareStatus == FolderStatus.Approved && d.Status == DocumentStatus.Ready
+                && d.ReviewStatus == DocumentReviewStatus.Approved)), cancellationToken)
             ?? throw new DocumentException(404, "document_not_found",
                 "Document does not exist or does not belong to the caller.");
 
@@ -633,6 +696,9 @@ public sealed class DocumentService : IDocumentService
         "application/vnd.openxmlformats-officedocument.presentationml.presentation" => true,
         _ => false,
     };
+
+    private static bool IsShareActive(Folder folder) => folder.ShareStatus is
+        FolderStatus.PendingShare or FolderStatus.Approved;
 
     private async Task<DocumentSchemaCapabilities> GetDocumentSchemaCapabilitiesAsync(CancellationToken cancellationToken)
     {
@@ -751,6 +817,7 @@ public sealed class DocumentService : IDocumentService
         PageCount = doc.PageCount,
         Status = doc.Status,
         ErrorMessage = doc.ErrorMessage,
+        ModerationReason = doc.ErrorMessage,
         CreatedAt = doc.CreatedAt,
         UpdatedAt = doc.UpdatedAt,
         DownloadUrl = signedUrl,

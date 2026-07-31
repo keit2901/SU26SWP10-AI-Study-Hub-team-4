@@ -88,6 +88,10 @@
     .folder-card-subject { margin-bottom: 4px; }
     .folder-card-semester { font-size: 11px !important; color: #94a3b8; margin-bottom: 2px; }
     .folder-card-docs { font-size: 11px !important; color: #94a3b8; display: flex; align-items: center; gap: 4px; }
+    .folder-public-state { margin-top: 10px; padding-top: 10px; border-top: 1px solid #eef2f7; display: flex; align-items: flex-start; gap: 7px; color: #64748b; font-size: 11px; font-weight: 700; line-height: 1.35; }
+    .folder-public-state.is-public { color: #047857; }
+    .folder-public-state.is-pending { color: #a16207; }
+    .folder-public-state.is-rejected { color: #b91c1c; }
     .document-table-section { padding: 0 32px 32px; position: relative; }
     .document-table { border: 1px solid #e2e8f0; border-radius: 12px; overflow: visible; width: 100%; }
     .document-table .mud-table-container { overflow: visible; }
@@ -124,6 +128,11 @@
     .doc-name { font-weight: 600; color: #1e293b; font-size: 13px; }
     .table-actions { display: inline-flex; align-items: center; justify-content: center; gap: 2px; width: 100%; min-width: 58px; }
     .table-actions .mud-icon-button { width: 28px; height: 28px; padding: 4px; }
+    .document-review-state { display: flex; flex-direction: column; align-items: flex-start; gap: 5px; }
+    .document-review-note { color: #64748b; font-size: 10px; font-weight: 650; line-height: 1.35; }
+    .document-review-reason { max-width: 100%; color: #b91c1c; font-size: 10px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .delete-rejected-file-btn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; border: 1px solid #fecaca; border-radius: 8px; background: #fff7f7; color: #b91c1c; padding: 5px 8px; font-size: 10px; font-weight: 800; cursor: pointer; white-space: normal; line-height: 1.2; }
+    .delete-rejected-file-btn:hover { border-color: #ef4444; background: #fef2f2; }
     .recent-folders-list { display: flex; flex-direction: column; gap: 8px; }
     .recent-folder-card { display: flex; align-items: center; gap: 12px; padding: 12px !important; border-radius: 10px; border: 1px solid #e2e8f0; cursor: pointer; transition: all 0.2s; background: #fff; }
     .recent-folder-card:hover { transform: translateX(4px); }
@@ -378,7 +387,11 @@ else
                                         <MudText Class="folder-card-semester">@folder.Semester</MudText>
                                         <div class="folder-card-docs">
                                             <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
-                                            <span>@folder.DocumentCount documents</span>
+                                            <span>@GetFolderReviewCounts(folder).Approved approved public</span>
+                                        </div>
+                                        <div class="folder-public-state @GetFolderPublicStateClass(folder)">
+                                            <MudIcon Icon="@GetFolderPublicStateIcon(folder)" Size="Size.Small" />
+                                            <span>@GetFolderPublicStateText(folder)</span>
                                         </div>
                                         <span @onclick:stopPropagation>
                                             <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz" Size="Size.Small" Class="folder-card-menu-btn" OnClick="@(() => ToggleFolderMenu(folder.Id))" />
@@ -399,7 +412,7 @@ else
                                                     <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" Color="@(folder.ShareStatus == Data.Entities.FolderStatus.Approved ? Color.Primary : folder.ShareStatus == Data.Entities.FolderStatus.PendingShare ? Color.Warning : Color.Default)" />
                                                     <span>@GetShareButtonText(folder)</span>
                                                 </div>
-                                                @if (folder.ShareStatus == Data.Entities.FolderStatus.Rejected)
+                                                @if (folder.ShareStatus == Data.Entities.FolderStatus.Rejected && GetFolderReviewCounts(folder).Approved == 0)
                                                 {
                                                     <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowRejectionActionsAsync(folder); })">
                                                         <MudIcon Icon="@Icons.Material.Filled.Feedback" Size="Size.Small" Color="Color.Warning" />
@@ -591,9 +604,9 @@ else
                             <col style="width: 9%" />
                             <col style="width: 12%" />
                             <col style="width: 9%" />
-                            <col style="width: 11%" />
+                            <col style="width: 15%" />
                             <col style="width: 10%" />
-                            <col style="width: 16%" />
+                            <col style="width: 12%" />
                         </ColGroup>
                         <HeaderContent>
                             <MudTh Class="table-header-cell" Style="text-align: center;">
@@ -654,13 +667,20 @@ else
                                 <MudText Typo="Typo.body2">@FormatFileSize(context.FileSizeBytes)</MudText>
                             </MudTd>
                             <MudTd Class="table-cell">
-                                <MudChip T="string"
-                                         Size="Size.Small"
-                                         Color="@GetStatusColor(context.Status)"
-                                         Variant="Variant.Filled"
-                                         Icon="@GetStatusIcon(context.Status)">
-                                    @GetStatusText(context.Status)
-                                </MudChip>
+                                <div class="document-review-state">
+                                    <MudChip T="string"
+                                             Size="Size.Small"
+                                             Color="@GetReviewStatusColor(context.ReviewStatus)"
+                                             Variant="Variant.Filled"
+                                             Icon="@GetReviewStatusIcon(context.ReviewStatus)">
+                                        @GetReviewStatusLabel(context.ReviewStatus)
+                                    </MudChip>
+                                    <span class="document-review-note">@GetReviewVisibilityText(context.ReviewStatus)</span>
+                                    @if (context.ReviewStatus == DocumentReviewStatus.Rejected && !string.IsNullOrWhiteSpace(GetDocumentReviewReason(context)))
+                                    {
+                                        <span class="document-review-reason" title="@GetDocumentReviewReason(context)">@GetDocumentReviewReason(context)</span>
+                                    }
+                                </div>
                             </MudTd>
                             <MudTd Class="table-cell">
                                 <MudText Typo="Typo.body2">@context.CreatedAt.ToLocalTime().ToString("dd/MM/yyyy")</MudText>
@@ -677,11 +697,24 @@ else
                                                    OnClick="@(() => ShowMoveDocumentDialogAsync(context))"
                                                    title="Move document"
                                                    aria-label="Move document" />
-                                    <MudIconButton Icon="@Icons.Material.Filled.Delete"
-                                                   Size="Size.Small"
-                                                   Color="Color.Error"
-                                                   OnClick="@(() => ConfirmDeleteDocumentAsync(context))"
-                                                   title="Delete document" />
+                                    @if (context.ReviewStatus == DocumentReviewStatus.Rejected)
+                                    {
+                                        <button type="button"
+                                                class="delete-rejected-file-btn"
+                                                title="Upload a corrected file, then delete this rejected copy"
+                                                @onclick="() => ConfirmDeleteDocumentAsync(context, true)">
+                                            <MudIcon Icon="@Icons.Material.Filled.DeleteForever" Size="Size.Small" />
+                                            <span>Delete rejected file</span>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <MudIconButton Icon="@Icons.Material.Filled.Delete"
+                                                       Size="Size.Small"
+                                                       Color="Color.Error"
+                                                       OnClick="@(() => ConfirmDeleteDocumentAsync(context))"
+                                                       title="Delete document" />
+                                    }
                                 </div>
                             </MudTd>
                         </RowTemplate>
@@ -762,7 +795,7 @@ else
                                 <div class="recent-folder-info">
                                     <MudText Class="recent-folder-name">@folder.Name</MudText>
                                     <MudText Class="recent-folder-meta">
-                                        <span>@folder.DocumentCount documents</span>
+                                        <span>@GetFolderReviewCounts(folder).Approved approved public</span>
                                         @if (!string.IsNullOrWhiteSpace(folder.LastAccessText))
                                         {
                                             <span>·</span>
@@ -851,7 +884,7 @@ else
         .ToList();
 
     private List<string> _statusOptions => _documents
-        .Select(d => GetStatusText(d.Status))
+        .Select(d => GetReviewStatusLabel(d.ReviewStatus))
         .Where(value => !string.IsNullOrWhiteSpace(value))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
@@ -890,7 +923,7 @@ else
 
             if (!string.IsNullOrWhiteSpace(_filterStatusQuery))
             {
-                query = query.Where(d => GetStatusText(d.Status).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
+                query = query.Where(d => GetReviewStatusLabel(d.ReviewStatus).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
             }
 
             var createdFrom = ParseDocumentLocalDateTimeFilter(_filterCreatedFrom);
@@ -1462,20 +1495,23 @@ else
         }
     }
 
-    private async Task ConfirmDeleteDocumentAsync(DocumentDto doc)
+    private async Task ConfirmDeleteDocumentAsync(DocumentDto doc, bool rejectedFile = false)
     {
         if (doc is null) return;
+        var message = rejectedFile
+            ? $"Delete rejected file \"{doc.FileName}\"? Upload the corrected file as a new document first if you still need it. This deletes only this file; the folder and approved files stay unchanged."
+            : $"Delete \"{doc.FileName}\"? This cannot be undone.";
         var parameters = new DialogParameters
         {
-            ["Title"] = "Delete document?",
-            ["Message"] = $"Delete \"{doc.FileName}\"? This cannot be undone.",
-            ["ConfirmText"] = "Delete",
+            ["Title"] = rejectedFile ? "Delete rejected file?" : "Delete document?",
+            ["Message"] = message,
+            ["ConfirmText"] = rejectedFile ? "Delete rejected file" : "Delete",
             ["ConfirmColor"] = Color.Error,
             ["Icon"] = Icons.Material.Filled.DeleteForever,
             ["IconColor"] = Color.Error,
         };
         var options = new DialogOptions { CloseOnEscapeKey = true };
-        var dialogRef = await Dialogs.ShowAsync<ConfirmDialog>("Delete document", parameters, options);
+        var dialogRef = await Dialogs.ShowAsync<ConfirmDialog>(rejectedFile ? "Delete rejected file" : "Delete document", parameters, options);
         var result = await dialogRef.Result;
         if (result is null || result.Canceled) return;
         await DeleteDocumentAsync(doc);
@@ -1488,17 +1524,7 @@ else
         try
         {
             await DocumentsApi.DeleteAsync(Session.AccessToken!, doc.Id);
-            _documents = _documents.Where(d => d.Id != doc.Id).ToList();
-            if (_filteredDocuments.Count == 0 && _currentPage > 1)
-            {
-                _currentPage--;
-            }
-            if (doc.FolderId.HasValue)
-            {
-                var folder = _folders.FirstOrDefault(f => f.Id == doc.FolderId.Value);
-                if (folder is not null && folder.DocumentCount > 0)
-                    folder.DocumentCount--;
-            }
+            await RefreshLibraryStateAsync();
             Snackbar.Add($"Deleted \"{doc.FileName}\".", Severity.Success);
             StateHasChanged();
         }
@@ -1519,6 +1545,25 @@ else
         {
             _loading = false;
             StateHasChanged();
+        }
+    }
+
+    private async Task RefreshLibraryStateAsync()
+    {
+        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+
+        var docsTask = DocumentsApi.ListAsync(Session.AccessToken!);
+        var foldersTask = FoldersApi.ListAsync(Session.AccessToken!);
+        await Task.WhenAll(docsTask, foldersTask);
+        _documents = docsTask.Result.OrderByDescending(document => document.UpdatedAt).ToList();
+        _folders = foldersTask.Result
+            .OrderByDescending(folder => folder.IsFavorite)
+            .ThenByDescending(folder => folder.UpdatedAt)
+            .ToList();
+
+        if (_filteredDocuments.Count == 0 && _currentPage > 1)
+        {
+            _currentPage--;
         }
     }
 
@@ -1606,6 +1651,104 @@ else
         DocumentStatus.Failed => "Failed",
         _ => status.ToString(),
     };
+
+    private static Color GetReviewStatusColor(DocumentReviewStatus status) => status switch
+    {
+        DocumentReviewStatus.Approved => Color.Success,
+        DocumentReviewStatus.None => Color.Warning,
+        DocumentReviewStatus.Escalated => Color.Info,
+        DocumentReviewStatus.Rejected => Color.Error,
+        _ => Color.Default,
+    };
+
+    private static string GetReviewStatusIcon(DocumentReviewStatus status) => status switch
+    {
+        DocumentReviewStatus.Approved => Icons.Material.Filled.Public,
+        DocumentReviewStatus.None => Icons.Material.Filled.Schedule,
+        DocumentReviewStatus.Escalated => Icons.Material.Filled.AdminPanelSettings,
+        DocumentReviewStatus.Rejected => Icons.Material.Filled.Block,
+        _ => Icons.Material.Filled.Lock,
+    };
+
+    private static string GetReviewStatusLabel(DocumentReviewStatus status) => status switch
+    {
+        DocumentReviewStatus.Approved => "Approved / Public",
+        DocumentReviewStatus.None => "Awaiting moderator review",
+        DocumentReviewStatus.Escalated => "Awaiting Admin",
+        DocumentReviewStatus.Rejected => "Rejected",
+        _ => "Private",
+    };
+
+    private static string GetReviewVisibilityText(DocumentReviewStatus status) => status switch
+    {
+        DocumentReviewStatus.Approved => "Visible in the public folder",
+        DocumentReviewStatus.None => "Private until a moderator approves it",
+        DocumentReviewStatus.Escalated => "Private while Admin reviews the escalation",
+        DocumentReviewStatus.Rejected => "Private — upload a corrected file, then optionally delete this copy",
+        _ => "Private",
+    };
+
+    private static string? GetDocumentReviewReason(DocumentDto document)
+    {
+        if (!string.IsNullOrWhiteSpace(document.ModerationReason)) return document.ModerationReason;
+        var propertyNames = new[] { "AdminReviewReason", "RejectionReason", "ReviewReason", "HumanReviewReason" };
+        foreach (var propertyName in propertyNames)
+        {
+            var value = document.GetType().GetProperty(propertyName)?.GetValue(document)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value)) return value;
+        }
+
+        return document.ReviewStatus == DocumentReviewStatus.Rejected
+            ? document.ErrorMessage
+            : null;
+    }
+
+    private (int Approved, int Pending, int Escalated, int Rejected) GetFolderReviewCounts(FolderDto folder)
+    {
+        var documents = _documents.Where(document => document.FolderId == folder.Id).ToList();
+        return (
+            documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Approved),
+            documents.Count(document => document.ReviewStatus == DocumentReviewStatus.None),
+            documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Escalated),
+            documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Rejected));
+    }
+
+    private string GetFolderPublicStateText(FolderDto folder)
+    {
+        var counts = GetFolderReviewCounts(folder);
+        var awaiting = counts.Pending + counts.Escalated;
+
+        if (counts.Approved > 0 && awaiting > 0)
+            return $"{counts.Approved} approved, {awaiting} awaiting review";
+        if (counts.Approved > 0)
+            return $"Public — {counts.Approved} approved file{(counts.Approved == 1 ? string.Empty : "s")}";
+        if ((folder.ShareStatus is FolderStatus.PendingShare or FolderStatus.Approved) && awaiting > 0)
+            return "Awaiting moderation";
+        if (counts.Rejected > 0)
+            return "No public files — rejected items";
+        return "Private";
+    }
+
+    private string GetFolderPublicStateClass(FolderDto folder)
+    {
+        var counts = GetFolderReviewCounts(folder);
+        if (counts.Approved > 0) return "is-public";
+        if ((folder.ShareStatus is FolderStatus.PendingShare or FolderStatus.Approved) && counts.Pending + counts.Escalated > 0) return "is-pending";
+        if (counts.Rejected > 0) return "is-rejected";
+        return string.Empty;
+    }
+
+    private string GetFolderPublicStateIcon(FolderDto folder)
+    {
+        var cssClass = GetFolderPublicStateClass(folder);
+        return cssClass switch
+        {
+            "is-public" => Icons.Material.Filled.Public,
+            "is-pending" => Icons.Material.Filled.Schedule,
+            "is-rejected" => Icons.Material.Filled.PublicOff,
+            _ => Icons.Material.Filled.Lock,
+        };
+    }
 
     private static string GetShortFileName(string fileName, int maxLength)
     {

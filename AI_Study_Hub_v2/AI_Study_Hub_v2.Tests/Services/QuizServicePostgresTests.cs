@@ -6,10 +6,9 @@ using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Rag;
+using AI_Study_Hub_v2.Tests.Support;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using Moq;
@@ -20,8 +19,6 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture, Category("Postgres"), NonParallelizable]
 public sealed class QuizServicePostgresTests
 {
-    private const string PreReSyncMigration = "20260706184528_AddDocumentEscalation";
-    private const string ReSyncPlanMigration = "20260709165701_ReSyncPlanFkAndConstraints";
     private readonly ConcurrentBag<Guid> _quizIds = [];
     private readonly ConcurrentBag<Guid> _sessionIds = [];
     private readonly ConcurrentBag<Guid> _userIds = [];
@@ -51,8 +48,7 @@ public sealed class QuizServicePostgresTests
 
         await BootstrapAuthPrerequisiteAsync();
         await using var db = CreateDb();
-        await MigrateWithReSyncCompatibilityAsync(db);
-        await ApplyFolderModelDriftCompatibilityAsync(db);
+        await PostgresTestDatabase.BootstrapAsync(db);
     }
 
     [TearDown]
@@ -240,35 +236,6 @@ public sealed class QuizServicePostgresTests
         await using var command = new NpgsqlCommand("CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);", connection);
         await command.ExecuteNonQueryAsync();
     }
-
-    private static async Task MigrateWithReSyncCompatibilityAsync(AppDbContext db)
-    {
-        var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
-        if (!appliedMigrations.Contains(ReSyncPlanMigration))
-        {
-            if (!appliedMigrations.Contains(PreReSyncMigration))
-            {
-                await db.Database.GetService<IMigrator>().MigrateAsync(PreReSyncMigration);
-            }
-
-            await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE IF EXISTS public.payment_transactions DROP CONSTRAINT IF EXISTS \"FK_payment_transactions_users_user_id\"");
-        }
-
-        await db.Database.MigrateAsync();
-    }
-
-    private static Task ApplyFolderModelDriftCompatibilityAsync(AppDbContext db) => db.Database.ExecuteSqlRawAsync("""
-        ALTER TABLE public.folders
-            ADD COLUMN IF NOT EXISTS share_review_source varchar(32) NULL,
-            ADD COLUMN IF NOT EXISTS ai_review_reason varchar(2000) NULL,
-            ADD COLUMN IF NOT EXISTS ai_review_confidence double precision NULL,
-            ADD COLUMN IF NOT EXISTS ai_review_failure_count integer NOT NULL DEFAULT 0,
-            ADD COLUMN IF NOT EXISTS human_review_reason varchar(2000) NULL,
-            ADD COLUMN IF NOT EXISTS requires_human_review boolean NOT NULL DEFAULT false,
-            ADD COLUMN IF NOT EXISTS appeal_requested_at timestamp with time zone NULL,
-            ADD COLUMN IF NOT EXISTS appeal_message varchar(2000) NULL;
-        """);
 
     private async Task InsertAuthUserAsync(Guid authUserId)
     {

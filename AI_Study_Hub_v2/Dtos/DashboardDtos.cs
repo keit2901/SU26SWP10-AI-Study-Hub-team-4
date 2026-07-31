@@ -14,7 +14,8 @@ public record AdminDashboardStatsDto(
     int PendingCount,
     long DailyTokensUsed,
     long DailyTokenQuota,
-    int PendingEscalationCount = 0
+    int PendingEscalationCount = 0,
+    int PendingEscalatedDocumentCount = 0
 );
 
 public record UserDashboardStatsDto(

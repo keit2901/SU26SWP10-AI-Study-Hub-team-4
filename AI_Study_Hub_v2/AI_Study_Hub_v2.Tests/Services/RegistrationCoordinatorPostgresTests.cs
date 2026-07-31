@@ -5,11 +5,10 @@ using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Supabase;
+using AI_Study_Hub_v2.Tests.Support;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Npgsql;
@@ -25,8 +24,6 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture, Category("Postgres"), NonParallelizable]
 public sealed class RegistrationCoordinatorPostgresTests
 {
-    private const string PreReSyncMigration = "20260706184528_AddDocumentEscalation";
-    private const string ReSyncPlanMigration = "20260709165701_ReSyncPlanFkAndConstraints";
     private NpgsqlDataSource? _dataSource;
     private DbContextOptions<AppDbContext>? _baseOptions;
     private readonly ConcurrentBag<Guid> _operationIds = [];
@@ -50,8 +47,7 @@ public sealed class RegistrationCoordinatorPostgresTests
         await BootstrapAuthAsync();
         _baseOptions = new DbContextOptionsBuilder<AppDbContext>().UseNpgsql(_dataSource, options => options.UseVector()).Options;
         await using var db = CreateDb();
-        await MigrateCompatibilityAsync(db);
-        await ApplyFolderDriftColumnsAsync(db);
+        await PostgresTestDatabase.BootstrapAsync(db);
     }
 
     [SetUp]
@@ -579,9 +575,6 @@ public sealed class RegistrationCoordinatorPostgresTests
         }
         await transaction.RollbackAsync();
     }
-    private static async Task MigrateCompatibilityAsync(AppDbContext db) { var applied = await db.Database.GetAppliedMigrationsAsync(); if (!applied.Contains(ReSyncPlanMigration)) { if (!applied.Contains(PreReSyncMigration)) await db.Database.GetService<IMigrator>().MigrateAsync(PreReSyncMigration); await db.Database.ExecuteSqlRawAsync("ALTER TABLE IF EXISTS public.payment_transactions DROP CONSTRAINT IF EXISTS \"FK_payment_transactions_users_user_id\""); } await db.Database.MigrateAsync(); }
-    private static Task ApplyFolderDriftColumnsAsync(AppDbContext db) => db.Database.ExecuteSqlRawAsync("ALTER TABLE public.folders ADD COLUMN IF NOT EXISTS share_review_source varchar(32), ADD COLUMN IF NOT EXISTS ai_review_reason varchar(2000), ADD COLUMN IF NOT EXISTS ai_review_confidence double precision, ADD COLUMN IF NOT EXISTS ai_review_failure_count integer NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS human_review_reason varchar(2000), ADD COLUMN IF NOT EXISTS requires_human_review boolean NOT NULL DEFAULT false, ADD COLUMN IF NOT EXISTS appeal_requested_at timestamp with time zone, ADD COLUMN IF NOT EXISTS appeal_message varchar(2000)");
-
     private sealed class Host(ServiceProvider provider, IServiceScope scope, RegistrationCoordinator coordinator) : IAsyncDisposable { public RegistrationCoordinator Coordinator { get; } = coordinator; public async ValueTask DisposeAsync() { scope.Dispose(); await provider.DisposeAsync(); } }
     private sealed class AllowPolicy : ISelfRegistrationPolicy { public Task EnsureAllowedAsync(CancellationToken cancellationToken = default) => Task.CompletedTask; }
     private sealed class ProfileCommitFaultInterceptor : SaveChangesInterceptor { public override ValueTask<InterceptionResult<int>> SavingChangesAsync(DbContextEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default) { if (eventData.Context?.ChangeTracker.Entries<RegistrationOperation>().Any(entry => entry.Entity.Status == RegistrationOperation.ProfileCommitted) == true) throw new DbUpdateException("profile commit fault"); return ValueTask.FromResult(result); } }

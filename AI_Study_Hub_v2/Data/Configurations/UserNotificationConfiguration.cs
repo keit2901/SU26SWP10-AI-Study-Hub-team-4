@@ -10,15 +10,17 @@ public sealed class UserNotificationConfiguration : IEntityTypeConfiguration<Use
     {
         builder.ToTable("user_notifications", table =>
         {
-            table.HasCheckConstraint("ck_user_notifications_kind", "kind = 'FolderModerationFinal'");
-            table.HasCheckConstraint("ck_user_notifications_outcome", "outcome IN ('Approved', 'Rejected')");
+            table.HasCheckConstraint("ck_user_notifications_kind", "kind IN ('FolderModerationFinal', 'DocumentModerationFinal', 'EscalationResolved')");
+            table.HasCheckConstraint("ck_user_notifications_outcome", "outcome IN ('Approved', 'Rejected', 'Mixed')");
             table.HasCheckConstraint("ck_user_notifications_submission_number", "submission_number >= 0");
         });
 
         builder.HasKey(notification => notification.Id);
         builder.Property(notification => notification.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");
         builder.Property(notification => notification.RecipientUserId).HasColumnName("recipient_user_id").IsRequired();
+        builder.Property(notification => notification.EventKey).HasColumnName("event_key").HasMaxLength(200).IsRequired();
         builder.Property(notification => notification.FolderId).HasColumnName("folder_id").IsRequired();
+        builder.Property(notification => notification.DocumentId).HasColumnName("document_id");
         builder.Property(notification => notification.SubmissionNumber).HasColumnName("submission_number").IsRequired();
         builder.Property(notification => notification.Kind).HasColumnName("kind").HasConversion<string>().HasMaxLength(32).IsRequired();
         builder.Property(notification => notification.Outcome).HasColumnName("outcome").HasConversion<string>().HasMaxLength(16).IsRequired();
@@ -28,7 +30,7 @@ public sealed class UserNotificationConfiguration : IEntityTypeConfiguration<Use
         builder.Property(notification => notification.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("CURRENT_TIMESTAMP").IsRequired();
         builder.Property(notification => notification.ReadAt).HasColumnName("read_at");
 
-        builder.HasIndex(notification => new { notification.RecipientUserId, notification.FolderId, notification.SubmissionNumber }).IsUnique();
+        builder.HasIndex(notification => notification.EventKey).IsUnique();
         builder.HasIndex(notification => new { notification.RecipientUserId, notification.CreatedAt })
             .HasDatabaseName("ix_user_notifications_recipient_created_at");
         builder.HasIndex(notification => notification.RecipientUserId)
@@ -37,5 +39,6 @@ public sealed class UserNotificationConfiguration : IEntityTypeConfiguration<Use
 
         builder.HasOne(notification => notification.RecipientUser).WithMany().HasForeignKey(notification => notification.RecipientUserId).OnDelete(DeleteBehavior.Cascade);
         builder.HasOne(notification => notification.Folder).WithMany().HasForeignKey(notification => notification.FolderId).OnDelete(DeleteBehavior.Cascade);
+        builder.HasOne(notification => notification.Document).WithMany().HasForeignKey(notification => notification.DocumentId).OnDelete(DeleteBehavior.SetNull);
     }
 }

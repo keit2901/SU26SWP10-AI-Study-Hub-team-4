@@ -48,7 +48,10 @@ public sealed class CommunityService : ICommunityService
             .FirstOrDefaultAsync(f => f.Id == folderId, ct)
             ?? throw new CommunityException(404, "folder_not_found", "Folder not found.");
 
-        if (folder.ShareStatus != FolderStatus.Approved)
+        if (folder.ShareStatus != FolderStatus.Approved || !await _db.Documents.AnyAsync(document =>
+                document.FolderId == folderId
+                && document.Status == DocumentStatus.Ready
+                && document.ReviewStatus == DocumentReviewStatus.Approved, ct))
         {
             throw new CommunityException(400, "folder_not_shared",
                 "Only approved folders can be reported.");

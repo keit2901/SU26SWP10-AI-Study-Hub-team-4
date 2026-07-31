@@ -205,7 +205,9 @@ public sealed class RagSearchService : IRagSearchService
         RagSearchRequest request)
     {
         query = query.Where(c =>
-            (c.Document.UserId == userId || (c.Document.Folder != null && c.Document.Folder.ShareStatus == FolderStatus.Approved)) &&
+            (c.Document.UserId == userId || (c.Document.Folder != null
+                && c.Document.Folder.ShareStatus == FolderStatus.Approved
+                && c.Document.ReviewStatus == DocumentReviewStatus.Approved)) &&
             c.Document.Status == DocumentStatus.Ready &&
             c.EmbeddingModel == _currentModel);
 

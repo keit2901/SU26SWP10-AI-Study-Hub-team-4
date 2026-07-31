@@ -64,6 +64,22 @@ public sealed class EscalationApiClient
         throw new InvalidOperationException();
     }
 
+    public async Task<DocumentEscalationDto> ResolveItemsAsync(
+        string accessToken,
+        Guid id,
+        ResolveEscalationItemsRequest request,
+        CancellationToken ct = default)
+    {
+        using var req = CreateAuth(HttpMethod.Patch, $"api/admin/escalations/{id}/resolve-items", accessToken);
+        req.Content = JsonContent.Create(request);
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<DocumentEscalationDto>(cancellationToken: ct)
+                ?? throw new DocumentApiException(500, "empty_response", "Empty response");
+        await ThrowError(resp, ct);
+        throw new InvalidOperationException();
+    }
+
     private static HttpRequestMessage CreateAuth(HttpMethod m, string url, string token)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(token);

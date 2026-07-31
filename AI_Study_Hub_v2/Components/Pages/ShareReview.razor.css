@@ -13,7 +13,7 @@
 }
 
 .owner-shell {
-    width: min(680px, 100%);
+    width: min(920px, 100%);
 }
 
 .page-enter {
@@ -90,12 +90,40 @@
     margin-top: .25rem;
 }
 
+.ai-advisory {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .35rem;
+    margin-top: .55rem;
+    padding: .35rem .65rem;
+    border: 1px solid rgba(114, 220, 242, .22);
+    border-radius: 999px;
+    background: rgba(114, 220, 242, .08);
+    color: #9de9f7;
+    font-size: .72rem;
+    line-height: 1.25;
+}
+
+.ai-advisory :deep(.mud-icon-root) {
+    font-size: .9rem;
+}
+
+.ai-advisory strong {
+    color: rgba(244, 242, 255, .68);
+    font-weight: 600;
+}
+
 .folder-decision {
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 1.5rem;
     padding: 1.25rem;
+}
+
+.review-guidance {
+    margin-top: 1rem;
 }
 
 .folder-actions {
@@ -130,6 +158,99 @@
     justify-content: center;
 }
 
+.owner-files {
+    margin-top: 1.25rem;
+}
+
+.owner-files-heading {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-bottom: .85rem;
+}
+
+.owner-file-list {
+    display: grid;
+    gap: .75rem;
+}
+
+.owner-file-card {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.1rem;
+}
+
+.owner-file-main {
+    display: flex;
+    align-items: flex-start;
+    gap: .85rem;
+    min-width: 0;
+}
+
+.owner-file-icon {
+    display: grid;
+    place-items: center;
+    width: 2.3rem;
+    height: 2.3rem;
+    flex: 0 0 auto;
+    border: 1px solid rgba(114, 220, 242, .18);
+    border-radius: 10px;
+    background: rgba(114, 220, 242, .08);
+    color: #8edff0;
+}
+
+.owner-file-copy {
+    min-width: 0;
+}
+
+.owner-file-badges {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: .45rem;
+    margin-top: .55rem;
+}
+
+.visibility-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: .3rem;
+    padding: .27rem .55rem;
+    border-radius: 999px;
+    font-size: .69rem;
+    font-weight: 700;
+}
+
+.visibility-badge :deep(.mud-icon-root) {
+    font-size: .8rem;
+}
+
+.visibility-badge.public {
+    background: rgba(52, 199, 89, .1);
+    color: #77dda0;
+}
+
+.visibility-badge.private {
+    background: rgba(199, 196, 215, .08);
+    color: rgba(244, 242, 255, .68);
+}
+
+.owner-file-feedback {
+    display: grid;
+    gap: .2rem;
+    margin-top: .65rem;
+    padding: .6rem .7rem;
+    border-left: 2px solid rgba(140, 124, 255, .65);
+    border-radius: 0 8px 8px 0;
+    background: rgba(140, 124, 255, .07);
+    color: rgba(244, 242, 255, .78);
+    font-size: .76rem;
+    line-height: 1.4;
+}
+
 @keyframes pageRise {
     from { opacity: 0; transform: translateY(14px); }
     to { opacity: 1; transform: translateY(0); }
@@ -150,6 +271,27 @@
     .document-actions,
     .folder-actions {
         justify-content: flex-start;
+    }
+
+    .document-actions :deep(.mud-button-root) {
+        flex: 1 1 8.5rem;
+    }
+
+    .ai-advisory {
+        border-radius: 10px;
+    }
+
+    .owner-files-heading {
+        align-items: flex-start;
+    }
+
+    .owner-file-card {
+        align-items: stretch;
+        flex-direction: column;
+    }
+
+    .owner-file-card :deep(.mud-button-root) {
+        width: 100%;
     }
 
     .glass-card {
