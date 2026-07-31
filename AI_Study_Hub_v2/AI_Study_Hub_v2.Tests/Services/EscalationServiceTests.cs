@@ -10,7 +10,7 @@ namespace AI_Study_Hub_v2.Tests.Services;
 public sealed class EscalationServiceTests
 {
     [Test]
-    public async Task CreateAsync_ActiveModerator_ValidatesThenEscalatesOnlyListedFolderDocuments()
+    public async Task CreateAsync_FromUnreviewedDocument_SucceedsAndKeepsFolderPending()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var moderator = SeedUser(db, 3, "Moderator");
@@ -22,6 +22,7 @@ public sealed class EscalationServiceTests
 
         result.EscalationStatus.Should().Be("Pending");
         (await db.Documents.SingleAsync(d => d.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Escalated);
+        (await db.Folders.SingleAsync(f => f.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.PendingShare);
         db.AuditLogs.Should().ContainSingle(log => log.Action == "ESCALATION_CREATED" && !log.AfterJson!.Contains("Reason for"));
     }
 
@@ -64,6 +65,56 @@ public sealed class EscalationServiceTests
         (await secondAttempt.Should().ThrowAsync<AdminException>())
             .Which.Code.Should().Be("pending_escalation_exists");
         db.DocumentEscalations.Should().ContainSingle();
+    }
+
+    [Test]
+    public async Task ResolveAsync_PartialApprovalLeavesSiblingAndFolderPending()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, 3, "Moderator");
+        var admin = SeedUser(db, 1, "Admin");
+        var folder = SeedFolder(db, moderator.Id);
+        var escalatedDocument = SeedDocument(db, moderator.Id, folder.Id);
+        var sibling = SeedDocument(db, moderator.Id, folder.Id);
+        var escalation = await CreateSut(db).CreateAsync(moderator.Id, Request(folder.Id, escalatedDocument.Id));
+
+        await CreateSut(db).ResolveAsync(
+            escalation.Id,
+            new ResolveEscalationRequest { Status = "Approved" },
+            admin.Id);
+
+        (await db.Documents.SingleAsync(item => item.Id == escalatedDocument.Id)).ReviewStatus
+            .Should().Be(DocumentReviewStatus.Approved);
+        (await db.Documents.SingleAsync(item => item.Id == sibling.Id)).ReviewStatus
+            .Should().Be(DocumentReviewStatus.None);
+        (await db.Folders.SingleAsync(item => item.Id == folder.Id)).ShareStatus
+            .Should().Be(FolderStatus.PendingShare);
+    }
+
+    [Test]
+    public async Task ResolveAsync_WhenFolderIsNoLongerPending_DoesNotMutateEscalationOrDocuments()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, 3, "Moderator");
+        var admin = SeedUser(db, 1, "Admin");
+        var folder = SeedFolder(db, moderator.Id);
+        var document = SeedDocument(db, moderator.Id, folder.Id);
+        var escalation = await CreateSut(db).CreateAsync(moderator.Id, Request(folder.Id, document.Id));
+        folder.ShareStatus = FolderStatus.Rejected;
+        await db.SaveChangesAsync();
+
+        Func<Task> act = () => CreateSut(db).ResolveAsync(
+            escalation.Id,
+            new ResolveEscalationRequest { Status = "Approved" },
+            admin.Id);
+
+        (await act.Should().ThrowAsync<AdminException>()).Which.Code.Should().Be("folder_not_pending_share");
+        (await db.DocumentEscalations.SingleAsync(item => item.Id == escalation.Id)).EscalationStatus
+            .Should().Be("Pending");
+        (await db.Documents.SingleAsync(item => item.Id == document.Id)).ReviewStatus
+            .Should().Be(DocumentReviewStatus.Escalated);
+        (await db.Folders.SingleAsync(item => item.Id == folder.Id)).ShareStatus
+            .Should().Be(FolderStatus.Rejected);
     }
 
     [Test]

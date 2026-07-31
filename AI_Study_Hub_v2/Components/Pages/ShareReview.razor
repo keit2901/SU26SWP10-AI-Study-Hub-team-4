@@ -152,11 +152,9 @@
                         </MudAlert>
                         <div class="owner-actions">
                             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
-                                       Disabled="@_ownerActionBusy" OnClick="ResubmitAsync">Resubmit</MudButton>
-                            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
-                                       Disabled="@_ownerActionBusy" OnClick="DeleteFolderAsync">Delete</MudButton>
+                                       Disabled="@_ownerActionBusy" OnClick="ResubmitAsync">Resubmit for review</MudButton>
                             <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Lock"
-                                       Disabled="@_ownerActionBusy" OnClick="KeepPrivate">Keep private</MudButton>
+                                       Disabled="@_ownerActionBusy" OnClick="KeepPrivate">Keep folder private</MudButton>
                         </div>
                     </MudPaper>
                     break;
@@ -377,38 +375,6 @@
         catch (Exception ex)
         {
             Snackbar.Add(ex is InvalidOperationException ? ex.Message : "Unable to resubmit this folder.", Severity.Error);
-        }
-        finally
-        {
-            _ownerActionBusy = false;
-        }
-    }
-
-    private async Task DeleteFolderAsync()
-    {
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete Folder", new DialogParameters
-        {
-            ["Title"] = "Delete this folder?",
-            ["Message"] = $"Delete '{_folder?.Name}' and its contents permanently?",
-            ["ConfirmText"] = "Delete"
-        });
-        var result = await dialog.Result;
-        if (result is not { Canceled: false }) return;
-
-        _ownerActionBusy = true;
-        try
-        {
-            await FoldersApi.DeleteAsync(RequireToken(), FolderId);
-            Snackbar.Add("Folder deleted.", Severity.Success);
-            GoToFolder();
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(MapApiError(ex, "Unable to delete this folder."), Severity.Error);
-        }
-        catch (Exception ex)
-        {
-            Snackbar.Add(ex is InvalidOperationException ? ex.Message : "Unable to delete this folder.", Severity.Error);
         }
         finally
         {

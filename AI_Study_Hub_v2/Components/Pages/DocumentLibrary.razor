@@ -1818,7 +1818,6 @@ else
     {
         var parameters = new DialogParameters
         {
-            ["FolderId"] = folder.Id,
             ["FolderName"] = folder.Name
         };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
@@ -1831,9 +1830,6 @@ else
         {
             case "Resubmit":
                 await RequestShareAsync(folder);
-                break;
-            case "Delete":
-                await ConfirmDeleteFolderAsync(folder);
                 break;
             case "KeepPrivate":
                 break;
