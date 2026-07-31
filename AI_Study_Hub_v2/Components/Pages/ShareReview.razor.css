@@ -1,4 +1,24 @@
-.page-enter { animation: pageRise .42s ease both; }
+.share-review-page {
+    min-height: 100vh;
+    width: 100%;
+    box-sizing: border-box;
+    padding: 2rem 1.5rem;
+    background: var(--mud-palette-background);
+    font-family: 'Hanken Grotesk', sans-serif;
+}
+
+.review-shell {
+    width: min(980px, 100%);
+    margin: 0 auto;
+}
+
+.owner-shell {
+    width: min(680px, 100%);
+}
+
+.page-enter {
+    animation: pageRise .42s ease both;
+}
 
 .glass-card {
     background: rgba(255,255,246,0.04);
@@ -7,26 +27,107 @@
     border-radius: 16px;
 }
 
-.severity-badge {
-    font-size: 0.75rem; font-weight: 700; padding: 0.3rem 0.75rem;
-    border-radius: 9999px; display: inline-flex; align-items: center; gap: 0.25rem;
-    text-transform: uppercase; letter-spacing: 0.03em;
-}
-.severity-low { background: rgba(22,163,74,0.1); color: #16a34a; border: 1px solid rgba(22,163,74,0.2); }
-.severity-medium { background: rgba(217,119,6,0.1); color: #d97706; border: 1px solid rgba(217,119,6,0.2); }
-.severity-high { background: rgba(186,26,26,0.1); color: #ba1a1a; border: 1px solid rgba(186,26,26,0.2); }
-
-.decision-panel .mud-radio:has(input:checked) {
-    animation: decisionPulse 0.4s ease;
+.review-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1.5rem;
+    margin-bottom: 1.5rem;
 }
 
-.slide-out { animation: slideOutLeft 0.4s ease forwards; }
+.review-title {
+    font-weight: 800;
+    overflow-wrap: anywhere;
+}
 
-.celebration-bg { position: relative; overflow: hidden; }
-.celebration-bg::before {
-    content: '';
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; z-index: 999;
-    animation: confettiBurst 2s ease-out forwards;
+.review-subtitle,
+.document-name {
+    font-weight: 700;
+}
+
+.document-list {
+    overflow: hidden;
+}
+
+.document-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 1rem 1.15rem;
+    border-bottom: 1px solid rgba(199,196,215,0.08);
+}
+
+.document-row:last-child {
+    border-bottom: 0;
+}
+
+.document-copy,
+.document-actions,
+.folder-actions,
+.owner-actions {
+    display: flex;
+    align-items: center;
+    gap: .75rem;
+}
+
+.document-copy {
+    min-width: 0;
+}
+
+.document-name {
+    overflow-wrap: anywhere;
+}
+
+.document-actions,
+.folder-actions,
+.owner-actions {
+    flex-wrap: wrap;
+}
+
+.decision-reason {
+    display: block;
+    margin-top: .25rem;
+}
+
+.folder-decision {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+    padding: 1.25rem;
+}
+
+.folder-actions {
+    justify-content: flex-end;
+    flex-shrink: 0;
+}
+
+.owner-heading {
+    margin-bottom: 1.5rem;
+    text-align: center;
+}
+
+.owner-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 2rem;
+    text-align: center;
+}
+
+.state-icon {
+    font-size: 3rem;
+}
+
+.reason-box {
+    width: 100%;
+    text-align: left;
+}
+
+.owner-actions {
+    justify-content: center;
 }
 
 @keyframes pageRise {
@@ -34,22 +135,24 @@
     to { opacity: 1; transform: translateY(0); }
 }
 
-@keyframes decisionPulse {
-    0% { box-shadow: none; }
-    50% { box-shadow: 0 0 0 3px rgba(70,72,212,0.3); }
-    100% { box-shadow: none; }
-}
+@media (max-width: 760px) {
+    .share-review-page {
+        padding: 1.25rem .85rem;
+    }
 
-@keyframes slideOutLeft {
-    to { transform: translateX(-100%); opacity: 0; max-height: 0; margin: 0; padding: 0; overflow: hidden; }
-}
+    .review-header,
+    .document-row,
+    .folder-decision {
+        align-items: stretch;
+        flex-direction: column;
+    }
 
-@keyframes confettiBurst {
-    0% { background: radial-gradient(circle at 20% 0%, #4648d4 2px, transparent 2px), radial-gradient(circle at 80% 10%, #00bcd4 3px, transparent 3px), radial-gradient(circle at 40% 5%, #16a34a 2px, transparent 2px), radial-gradient(circle at 60% 15%, #d97706 2px, transparent 2px), radial-gradient(circle at 90% 0%, #ba1a1a 3px, transparent 3px); opacity: 1; }
-    100% { background: none; opacity: 0; }
-}
+    .document-actions,
+    .folder-actions {
+        justify-content: flex-start;
+    }
 
-@media (max-width: 600px) {
-    .severity-badge { font-size: 0.7rem; padding: 0.2rem 0.5rem; }
-    .glass-card { border-radius: 12px; }
+    .glass-card {
+        border-radius: 12px;
+    }
 }

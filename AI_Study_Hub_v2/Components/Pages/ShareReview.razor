@@ -1,452 +1,501 @@
 @page "/share-review/{FolderId:guid}"
-@implements IDisposable
-@using Microsoft.AspNetCore.Components
-@using MudBlazor
+@using AI_Study_Hub_v2.Components.Pages.Dashboard
+@using AI_Study_Hub_v2.Components.Shared
+@using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
+@using Microsoft.AspNetCore.Components
+@using MudBlazor
 @inject NavigationManager Navigation
 @inject ISnackbar Snackbar
 @inject AuthSessionState Session
 @inject FolderApiClient FoldersApi
+@inject AdminDashboardApiClient DashboardApi
+@inject EscalationApiClient EscalationApi
 @inject IDialogService DialogService
 
 <PageTitle>Share Review — AI Study Hub</PageTitle>
 
-<div class="@(_currentStep == 3 ? "celebration-bg" : "")" style="min-height: 100vh; padding: 2rem 1.5rem; width: 100%; box-sizing: border-box; background: var(--mud-palette-background); font-family: 'Hanken Grotesk', sans-serif;">
+<div class="share-review-page">
     @if (_isLoading)
     {
-        <MudStack Spacing="3" Class="page-enter">
-            <MudSkeleton Height="280px" Animation="Animation.Wave" />
+        <MudStack Spacing="3" Class="page-enter review-shell">
             <MudSkeleton Height="120px" Animation="Animation.Wave" />
-            <MudSkeleton Height="200px" Animation="Animation.Wave" />
+            <MudSkeleton Height="220px" Animation="Animation.Wave" />
         </MudStack>
     }
     else if (_error is not null)
     {
-        <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="glass-card">@_error</MudAlert>
+        <div class="review-shell page-enter">
+            <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="glass-card">@_error</MudAlert>
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoBackToSafePage" Class="mt-3">
+                Go back
+            </MudButton>
+        </div>
     }
-    else if (_summary is null)
+    else if (_isModeratorMode)
     {
-        <MudAlert Severity="Severity.Info" Class="glass-card">No data available.</MudAlert>
-    }
-    else
-    {
-        @if (_currentStep == 1)
-        {
-            <div class="page-enter" style="max-width: 720px; margin: 0 auto;">
-                <MudStack AlignItems="AlignItems.Center" Style="text-align: center;">
-                    <MudText Typo="Typo.overline" Color="Color.Secondary">Share Review</MudText>
-                    <MudText Typo="Typo.h3" Style="font-weight: 800;">@_summary.FolderName</MudText>
-                </MudStack>
-
-                <MudPaper Elevation="0" Class="glass-card d-flex flex-column pa-6 mt-6" Style="gap: 1.5rem;">
-                    <MudStack AlignItems="AlignItems.Center" Style="text-align: center;">
-                        <span style="font-size: 2.5rem;">⚡</span>
-                        <MudText Typo="Typo.h4" Style="font-weight: 800;">@_summary.HealthScore.ToString("F0")% Ready</MudText>
-                        <MudText Typo="Typo.body1" Color="Color.Secondary">
-                            @(_summary.FlaggedFiles > 0 ? $"{_summary.FlaggedFiles} file{(_summary.FlaggedFiles > 1 ? "s" : "")} need{(_summary.FlaggedFiles == 1 ? "s" : "")} your review" : "All files reviewed!")
-                        </MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            It will take about @(_summary.EstimatedMinutes) minute@(_summary.EstimatedMinutes > 1 ? "s" : "")
-                        </MudText>
-                    </MudStack>
-
-                    <MudProgressLinear Value="@_summary.HealthScore" Color="Color.Primary" Size="Size.Large" Rounded="true" />
-
-                    <div style="text-align: center;">
-                        @if (_summary.BlockedFiles == _summary.TotalFiles && _summary.TotalFiles > 0)
-                        {
-                            <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="mb-3">This folder cannot be shared. All files violate guidelines.</MudAlert>
-                        }
-                        else if (_summary.FlaggedFiles > 0)
-                        {
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
-                                       StartIcon="@Icons.Material.Filled.PlayArrow" OnClick="StartReview"
-                                       Style="background: #4648d4; border-radius: 12px; font-weight: 700; padding: 0.75rem 2rem;">
-                                Start Review (@(_summary.FlaggedFiles) file@(_summary.FlaggedFiles > 1 ? "s" : ""))
-                            </MudButton>
-                        }
-                        else
-                        {
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
-                                       StartIcon="@Icons.Material.Filled.Celebration" OnClick="StartReview"
-                                       Style="background: #4648d4; border-radius: 12px; font-weight: 700;">
-                                View Summary
-                            </MudButton>
-                        }
-                    </div>
-
-                    <div style="display: flex; justify-content: center; gap: 1.5rem; flex-wrap: wrap;">
-                        <MudStack AlignItems="AlignItems.Center"><span style="font-size: 1.25rem;">✅</span><MudText Typo="Typo.body2" Style="font-weight: 600;">@_summary.CleanFiles clean</MudText><MudText Typo="Typo.caption" Color="Color.Secondary">auto-approved</MudText></MudStack>
-                        <MudStack AlignItems="AlignItems.Center"><span style="font-size: 1.25rem;">⚠️</span><MudText Typo="Typo.body2" Style="font-weight: 600; color: #d97706;">@_summary.FlaggedFiles flagged</MudText><MudText Typo="Typo.caption" Color="Color.Secondary">needs review</MudText></MudStack>
-                        <MudStack AlignItems="AlignItems.Center"><span style="font-size: 1.25rem;">🚫</span><MudText Typo="Typo.body2" Style="font-weight: 600; color: #ba1a1a;">@_summary.BlockedFiles blocked</MudText><MudText Typo="Typo.caption" Color="Color.Secondary">cannot share</MudText></MudStack>
-                    </div>
-                </MudPaper>
-
-                <MudPaper Elevation="0" Class="glass-card pa-4 mt-6">
-                    <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center">
-                        <MudText Typo="Typo.subtitle2" Style="font-weight: 600;">What happened?</MudText>
-                        <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" OnClick="ToggleLearnMore" Style="text-transform: none;">Learn how we review →</MudButton>
-                    </MudStack>
-                    @if (_showLearnMore)
-                    {
-                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">
-                            Our AI reviewed your folder to keep the community safe. @_summary.CleanFiles file@(_summary.CleanFiles > 1 ? "s are" : " is") clean and ready. @(_summary.FlaggedFiles) file@(_summary.FlaggedFiles > 1 ? "s have" : " has") content that may violate community guidelines. Please review and decide what to share.
-                        </MudText>
-                    }
-                    <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-                        Our AI checks for exam leaks, harmful content, copyright issues, and dangerous URLs. Your decisions help train the AI to be smarter.
+        <div class="review-shell page-enter">
+            <header class="review-header">
+                <div>
+                    <MudText Typo="Typo.overline" Color="Color.Secondary">Moderator review</MudText>
+                    <MudText Typo="Typo.h3" Class="review-title">@_summary?.FolderName</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Review each document before making the final folder decision.
                     </MudText>
-                </MudPaper>
-            </div>
-        }
-        else if (_currentStep == 2 && _currentFileIndex < _flaggedFiles.Count)
-        {
-            var file = _flaggedFiles[_currentFileIndex];
-            var verdict = ShareReviewVerdicts.All;
-            var isLastFile = _currentFileIndex + 1 >= _flaggedFiles.Count;
-
-            <div class="page-enter" style="max-width: 900px; margin: 0 auto;">
-                <MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
-                    <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoBack" Style="text-transform: none;">Back</MudButton>
-                    <MudText Typo="Typo.body1" Style="font-weight: 600;">File @(_currentFileIndex + 1) of @_flaggedFiles.Count — @file.FileName</MudText>
-                    <div style="width: 80px;"></div>
-                </MudStack>
-
-                @if (_saveDraftMessage is not null)
-                {
-                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-2">@_saveDraftMessage</MudText>
-                }
-
-                <div class="d-flex align-center mb-4" style="gap: 1rem;">
-                    <span class="severity-badge severity-@file.Severity.ToString().ToLower()">@file.Severity.ToString().ToUpper() SEVERITY</span>
-                    <MudText Typo="Typo.body2" Color="Color.Secondary">· AI Confidence: @(file.AiConfidence * 100).ToString("F0")%</MudText>
-                    @if (_disputedFiles.Contains(file.DocumentId))
-                    {
-                        <MudChip T="string" Text="⏳ Awaiting admin review (1-24h)" Color="Color.Warning" Size="Size.Small" Variant="Variant.Outlined" />
-                    }
                 </div>
+                <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoToQueue">
+                    Back to queue
+                </MudButton>
+            </header>
 
-                <MudPaper Elevation="0" Class="glass-card pa-4 mb-4">
-                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 0.75rem;">
-                        <MudText Typo="Typo.caption">📄 @file.FileName</MudText>
-                        <MudText Typo="Typo.caption">@file.SubjectCode</MudText>
-                        <MudText Typo="Typo.caption">@(file.FileSizeBytes / 1024.0 / 1024.0).ToString("F1") MB</MudText>
-                        <MudText Typo="Typo.caption">@file.PageCount pages</MudText>
-                        <MudText Typo="Typo.caption">By @file.OwnerName</MudText>
-                    </div>
+            @if (_documents.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="glass-card mb-4">
+                    No documents are currently waiting for a moderation decision in this folder.
+                </MudAlert>
+            }
+            else
+            {
+                <MudPaper Elevation="0" Class="glass-card document-list mb-4">
+                    @foreach (var document in _documents)
+                    {
+                        var decision = GetDocumentDecision(document.Id);
+                        <article class="document-row">
+                            <div class="document-copy">
+                                <MudIcon Icon="@Icons.Material.Filled.Description" Color="Color.Primary" />
+                                <div>
+                                    <MudText Typo="Typo.subtitle2" Class="document-name">@document.FileName</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        @document.SubjectCode · @document.Semester · @FormatFileSize(document.FileSizeBytes)
+                                    </MudText>
+                                    @if (!string.IsNullOrWhiteSpace(decision?.Reason))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Error" Class="decision-reason">@decision.Reason</MudText>
+                                    }
+                                </div>
+                            </div>
+                            <div class="document-actions">
+                                @if (decision is not null)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined"
+                                             Color="@(decision.Approved ? Color.Success : Color.Error)">
+                                        @(decision.Approved ? "Approved" : "Rejected")
+                                    </MudChip>
+                                }
+                                <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.OpenInNew"
+                                           Disabled="@IsBusy(document.Id)" OnClick="() => OpenDocumentAsync(document)">
+                                    Open
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Success" Size="Size.Small"
+                                           Disabled="@(IsBusy(document.Id) || decision is not null)" OnClick="() => ApproveDocumentAsync(document)">
+                                    Approve
+                                </MudButton>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Error" Size="Size.Small"
+                                           Disabled="@(IsBusy(document.Id) || decision is not null)" OnClick="() => RejectDocumentAsync(document)">
+                                    Reject
+                                </MudButton>
+                            </div>
+                        </article>
+                    }
                 </MudPaper>
+            }
 
-                @if (file.AiReason is not null)
-                {
-                    <MudPaper Elevation="0" Class="pa-4 mb-4" Style="background: rgba(217,119,6,0.06); border: 1px solid rgba(217,119,6,0.15); border-radius: 12px;">
-                        <MudText Typo="Typo.body2" Style="font-weight: 600; color: #d97706;">⚠ Signal detected: "@file.AiReason"</MudText>
-                        @if (file.AiContextSnippet is not null)
-                        {
-                            <MudPaper Elevation="0" Class="pa-3 mt-3" Style="background: rgba(0,0,0,0.2); border-radius: 8px; font-family: monospace; font-size: 0.85rem; color: #c7c6d5;">
-                                ...@file.AiContextSnippet...
-                            </MudPaper>
-                        }
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
-                            📊 @(file.AiConfidence * 100).ToString("F0")% likely educational · Low risk
+            <MudPaper Elevation="0" Class="glass-card folder-decision">
+                <div>
+                    <MudText Typo="Typo.h6" Class="review-subtitle">Folder decision</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Approve for Community, reject with a clear reason, or escalate rejected documents to an administrator.
+                    </MudText>
+                </div>
+                <div class="folder-actions">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Flag"
+                               Disabled="@(_folderBusy || !_documentDecisions.Values.Any(x => !x.Approved))" OnClick="EscalateAsync">
+                        Escalate
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@_folderBusy" OnClick="RejectFolderAsync">
+                        Reject folder
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" Disabled="@_folderBusy" OnClick="ApproveFolderAsync">
+                        Approve folder
+                    </MudButton>
+                </div>
+            </MudPaper>
+        </div>
+    }
+    else if (_folder is not null)
+    {
+        <div class="review-shell owner-shell page-enter">
+            <MudStack AlignItems="AlignItems.Center" Class="owner-heading">
+                <MudText Typo="Typo.overline" Color="Color.Secondary">Share status</MudText>
+                <MudText Typo="Typo.h3" Class="review-title">@_folder.Name</MudText>
+            </MudStack>
+
+            @switch (_folder.ShareStatus)
+            {
+                case FolderStatus.PendingShare:
+                    <MudPaper Elevation="0" Class="glass-card owner-state">
+                        <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Color="Color.Warning" Class="state-icon" />
+                        <MudText Typo="Typo.h5" Class="review-subtitle">Waiting for moderator review</MudText>
+                        <MudText Typo="Typo.body1" Color="Color.Secondary">
+                            Your folder has been submitted. A moderator will review it before it can appear in Community.
                         </MudText>
+                        <MudButton Variant="Variant.Outlined" OnClick="GoToFolder">Back to my documents</MudButton>
                     </MudPaper>
-                }
-                else if (!file.IsBlocked)
-                {
-                    <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="mb-4">This file appears clean. No issues detected.</MudAlert>
-                }
-
-                <MudPaper Elevation="0" Class="glass-card pa-4 mb-4">
-                    <MudText Typo="Typo.subtitle2" Class="mb-2" Style="font-weight: 600;">Preview</MudText>
-                    <MudPaper Elevation="0" Class="pa-3" Style="background: rgba(0,0,0,0.15); border-radius: 8px; max-height: 150px; overflow: hidden;">
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Style="font-family: monospace; font-size: 0.8rem;">Document preview will load when backend provides signed URL.</MudText>
+                    break;
+                case FolderStatus.Rejected:
+                    <MudPaper Elevation="0" Class="glass-card owner-state">
+                        <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Class="state-icon" />
+                        <MudText Typo="Typo.h5" Class="review-subtitle">Sharing request rejected</MudText>
+                        <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Class="reason-box">
+                            <strong>Moderator reason:</strong><br />@GetOwnerRejectionReason()
+                        </MudAlert>
+                        <div class="owner-actions">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
+                                       Disabled="@_ownerActionBusy" OnClick="ResubmitAsync">Resubmit</MudButton>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Delete"
+                                       Disabled="@_ownerActionBusy" OnClick="DeleteFolderAsync">Delete</MudButton>
+                            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Lock"
+                                       Disabled="@_ownerActionBusy" OnClick="KeepPrivate">Keep private</MudButton>
+                        </div>
                     </MudPaper>
-                    <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Primary" StartIcon="@Icons.Material.Filled.OpenInNew" OnClick="() => ViewFullDocument(file)" Style="text-transform: none; margin-top: 0.5rem;">View Full Document</MudButton>
-                </MudPaper>
-
-                <MudPaper Elevation="0" Class="glass-card pa-4 mb-4 decision-panel">
-                    <MudText Typo="Typo.subtitle1" Style="font-weight: 600;" Class="mb-3">Your Decision</MudText>
-                    @if (file.AiConfidence < 0.5)
-                    {
-                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Class="mb-3">🤔 AI is uncertain — recommend Human Review</MudAlert>
-                    }
-                    else if (file.AiConfidence >= 0.7)
-                    {
-                        <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="mb-3">💡 AI recommends: Mark as Educational — @(file.AiConfidence * 100).ToString("F0")% likely safe</MudAlert>
-                    }
-
-                    <MudRadioGroup @bind-Value="_selectedDecision" T="string" Class="mb-3">
-                        @foreach (var v in verdict)
-                        {
-                            <MudRadio Value="@v.Decision.ToString()" Color="Color.Primary">
-                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                                    <MudIcon Icon="@v.Icon" Size="Size.Small" />
-                                    <MudText Typo="Typo.body2" Style="font-weight: 500;">@v.Label</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">— @v.Description</MudText>
-                                </MudStack>
-                            </MudRadio>
-                        }
-                    </MudRadioGroup>
-
-                    <MudTextField @bind-Value="_decisionNote" Label="Add a note (optional)" Variant="Variant.Outlined" Lines="2" />
-
-                    @if (_selectedDecision == "Delete")
-                    {
-                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Dense="true" Class="mt-2">
-                            @if (_isOnlyCopy)
-                            {
-                                <span>⚠️ This is the only copy. <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Warning" OnClick="() => ConfirmDeleteSingle(file)" Style="text-transform: none;">Delete permanently?</MudButton></span>
-                            }
-                            else
-                            {
-                                <span>🗑 Delete "@file.FileName"? <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Warning" OnClick="() => ConfirmDeleteSingle(file)" Style="text-transform: none;">Confirm</MudButton></span>
-                            }
-                        </MudAlert>
-                    }
-
-                    @if (!string.IsNullOrEmpty(_decisionError))
-                    { <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">@_decisionError</MudAlert> }
-                </MudPaper>
-
-                <div class="d-flex justify-space-between align-center">
-                    <div style="display: flex; gap: 0.5rem;">
-                        @for (int i = 0; i < _flaggedFiles.Count; i++)
-                        {<span style="width: 8px; height: 8px; border-radius: 50%; background: @(i < _currentFileIndex ? "#4648d4" : i == _currentFileIndex ? "#00bcd4" : "#3a3a4a");"></span>}
-                    </div>
-                    <div style="display: flex; gap: 0.75rem;">
-                        @if (!isLastFile)
-                        {<MudButton Variant="Variant.Text" OnClick="SkipAllConfirm" Style="text-transform: none;">Skip All →</MudButton>}
-                        <MudButton Variant="Variant.Text" OnClick="SkipFile" Style="text-transform: none;">Skip →</MudButton>
-                        @if (isLastFile)
-                        {
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="ResolveAllConfirm" Disabled="@_isSubmitting" Style="text-transform: none;">Resolve All &amp; Share</MudButton>
-                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="SubmitAll" Disabled="@_isSubmitting" Style="text-transform: none;">Submit →</MudButton>
-                        }
-                        else
-                        {<MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="NextFile" Disabled="@_isSubmitting" Style="text-transform: none;">Next →</MudButton>}
-                    </div>
-                </div>
-            </div>
-        }
-        else if (_currentStep == 3)
-        {
-            <div class="page-enter" style="max-width: 560px; margin: 0 auto; text-align: center;">
-                <MudStack AlignItems="AlignItems.Center" Spacing="4">
-                    <span style="font-size: 4rem;">✨</span>
-                    <MudText Typo="Typo.h3" Style="font-weight: 800;">All Clear!</MudText>
-                    <MudText Typo="Typo.body1" Color="Color.Secondary">Your folder is ready to share</MudText>
-
-                    <div style="display: flex; justify-content: center; gap: 2rem;">
-                        <MudStack AlignItems="AlignItems.Center"><span style="font-size: 1.5rem;">✅</span><MudText Typo="Typo.body2" Style="font-weight: 600;">@_summary.CleanFiles clean</MudText></MudStack>
-                        <MudStack AlignItems="AlignItems.Center"><span style="font-size: 1.5rem;">✅</span><MudText Typo="Typo.body2" Style="font-weight: 600;">@_decisions.Count reviewed</MudText></MudStack>
-                    </div>
-                    @if (_deletedCount > 0)
-                    {<MudText Typo="Typo.body2" Color="Color.Secondary">@_deletedCount deleted</MudText>}
-
-                    <span style="display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.5rem 1rem; border-radius: 9999px; background: rgba(70,72,212,0.1); color: #4648d4; font-weight: 600;">📁 @_summary.FolderName → Community</span>
-
-                    <MudStack Row="true" Spacing="2">
-                        <MudButton Variant="Variant.Outlined" OnClick="GoToFolder" Style="text-transform: none;">← Back to Folder</MudButton>
-                        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Share" OnClick="ConfirmPublish" Disabled="@_isPublishing" Style="text-transform: none; background: #4648d4;">📤 Share to Community</MudButton>
-                    </MudStack>
-
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">🤖 AI feedback recorded. Future reviews will be smarter.</MudText>
-
-                    @if (_undoSeconds > 0)
-                    {
-                        <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined" Style="border-radius: 12px;">
-                            ⏳ Undo available — @_undoSeconds s remaining
-                            <MudButton Variant="Variant.Text" Size="Size.Small" Color="Color.Warning" OnClick="UndoPublish" Style="margin-left: 0.5rem;">Undo &amp; Unshare</MudButton>
-                        </MudAlert>
-                    }
-                </MudStack>
-            </div>
-        }
+                    break;
+                case FolderStatus.Approved:
+                    <MudPaper Elevation="0" Class="glass-card owner-state">
+                        <MudIcon Icon="@Icons.Material.Filled.Public" Color="Color.Success" Class="state-icon" />
+                        <MudText Typo="Typo.h5" Class="review-subtitle">Published to Community</MudText>
+                        <MudText Typo="Typo.body1" Color="Color.Secondary">
+                            This folder is public and available in Community.
+                        </MudText>
+                        <div class="owner-actions">
+                            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="GoToCommunity">Open Community</MudButton>
+                            <MudButton Variant="Variant.Outlined" OnClick="GoToFolder">Back to my documents</MudButton>
+                        </div>
+                    </MudPaper>
+                    break;
+                default:
+                    <MudPaper Elevation="0" Class="glass-card owner-state">
+                        <MudIcon Icon="@Icons.Material.Filled.Lock" Color="Color.Secondary" Class="state-icon" />
+                        <MudText Typo="Typo.h5" Class="review-subtitle">Private folder</MudText>
+                        <MudText Typo="Typo.body1" Color="Color.Secondary">This folder is not currently submitted for Community sharing.</MudText>
+                        <MudButton Variant="Variant.Outlined" OnClick="GoToFolder">Back to my documents</MudButton>
+                    </MudPaper>
+                    break;
+            }
+        </div>
     }
 </div>
 
 @code {
     [Parameter] public Guid FolderId { get; set; }
+    [SupplyParameterFromQuery(Name = "mode")] public string? Mode { get; set; }
 
+    private FolderDto? _folder;
     private ShareReviewSummaryDto? _summary;
-    private List<ShareReviewFileDto> _flaggedFiles = new();
+    private readonly List<DocumentDto> _documents = new();
+    private readonly Dictionary<Guid, DocumentDecision> _documentDecisions = new();
     private bool _isLoading = true;
+    private bool _folderBusy;
+    private bool _ownerActionBusy;
+    private Guid? _busyDocumentId;
     private string? _error;
-    private int _currentStep = 1;
-    private int _currentFileIndex;
-    private string _selectedDecision = "MarkEducational";
-    private string _decisionNote = string.Empty;
-    private string? _decisionError;
-    private bool _isSubmitting;
-    private bool _isPublishing;
-    private int _deletedCount;
-    private int _undoSeconds;
-    private bool _showLearnMore;
-    private bool _isOnlyCopy;
-    private string? _saveDraftMessage;
-    private readonly List<VerdictItem> _decisions = new();
-    private readonly HashSet<Guid> _disputedFiles = new();
-    private System.Timers.Timer? _undoTimer;
-    private System.Timers.Timer? _draftTimer;
 
-    protected override async Task OnInitializedAsync()
+    private bool _isModeratorMode => string.Equals(Mode, "moderator", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnParametersSetAsync()
     {
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _error = null;
         try
         {
-            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            var token = RequireToken();
+            if (_isModeratorMode)
             {
-                _error = "Please log in first.";
-                return;
+                var summaryTask = FoldersApi.GetReviewerShareReviewAsync(token, FolderId);
+                var documentsTask = DashboardApi.GetPendingModerationDocumentsAsync(token, FolderId);
+                await Task.WhenAll(summaryTask, documentsTask);
+                _summary = await summaryTask;
+                _documents.Clear();
+                _documents.AddRange(await documentsTask);
             }
-            _summary = await FoldersApi.GetShareReviewAsync(Session.AccessToken, FolderId);
-            _flaggedFiles = _summary.Files
-                .Where(f => f.Severity != ShareReviewSeverity.Low && !f.IsBlocked)
-                .OrderByDescending(f => f.Severity)
-                .ToList();
-            if (_flaggedFiles.Count == 0) _currentStep = 3;
-            StartDraftTimer();
+            else
+            {
+                _folder = await FoldersApi.GetAsync(token, FolderId);
+            }
         }
-        catch (Exception) { _error = "Unable to load review. Please try again."; }
-        finally { _isLoading = false; }
-    }
-
-    private void StartDraftTimer()
-    {
-        _draftTimer = new System.Timers.Timer(30000);
-        _draftTimer.Elapsed += async (_, _) => { _saveDraftMessage = $"Auto-saved at {DateTime.Now:HH:mm:ss}"; await InvokeAsync(StateHasChanged); };
-        _draftTimer.Start();
-    }
-
-    private void ToggleLearnMore() => _showLearnMore = !_showLearnMore;
-
-    private void StartReview()
-    {
-        if (_flaggedFiles.Count == 0) { _currentStep = 3; return; }
-        _currentStep = 2; _currentFileIndex = 0;
-        _selectedDecision = "MarkEducational"; _decisionNote = string.Empty; _decisionError = null;
-    }
-
-    private void GoBack()
-    {
-        if (_currentFileIndex > 0) { _currentFileIndex--; return; }
-        _currentStep = 1;
-    }
-
-    private void NextFile()
-    {
-        if (string.IsNullOrWhiteSpace(_selectedDecision)) { _decisionError = "Please select a decision before continuing."; return; }
-        SaveCurrentDecision();
-        _currentFileIndex++; _selectedDecision = "MarkEducational"; _decisionNote = string.Empty; _decisionError = null;
-        CheckOnlyCopy();
-    }
-
-    private void SkipFile()
-    {
-        _currentFileIndex++; _selectedDecision = "MarkEducational"; _decisionNote = string.Empty; _decisionError = null;
-    }
-
-    private async Task SkipAllConfirm()
-    {
-        var parameters = new DialogParameters { ["Title"] = "Skip remaining files?", ["Message"] = $"Skip remaining {_flaggedFiles.Count - _currentFileIndex - 1} files? They will remain flagged.", ["ConfirmText"] = "Skip All" };
-        var dlg = await DialogService.ShowAsync<ConfirmDialog>("Skip All", parameters);
-        if ((await dlg.Result) is { Canceled: false }) { _currentStep = 3; }
-    }
-
-    private async Task ResolveAllConfirm()
-    {
-        for (int i = _currentFileIndex; i < _flaggedFiles.Count; i++)
+        catch (DocumentApiException ex)
         {
-            _currentFileIndex = i; _selectedDecision = "MarkEducational"; SaveCurrentDecision();
+            _error = MapApiError(ex, "Unable to load this share review.");
         }
-        await SubmitAll();
-    }
-
-    private void ConfirmDeleteSingle(ShareReviewFileDto file)
-    {
-        _isOnlyCopy = true; // Simplified — real logic would check document copies
-        Snackbar.Add($"Delete \"{file.FileName}\"?", Severity.Warning, config => { config.Action = "Undo (30s)"; });
-    }
-
-    private void ViewFullDocument(ShareReviewFileDto file)
-    {
-        Snackbar.Add($"Opening {file.FileName} in viewer...", Severity.Info);
-    }
-
-    private void CheckOnlyCopy() { _isOnlyCopy = _flaggedFiles.Count == 1; }
-
-    private async Task SubmitAll()
-    {
-        if (!string.IsNullOrWhiteSpace(_selectedDecision)) SaveCurrentDecision();
-        if (_decisions.Count == 0) { _currentStep = 3; return; }
-
-        var parameters = new DialogParameters
+        catch (InvalidOperationException ex)
         {
-            ["Title"] = "Confirm Your Decisions",
-            ["Message"] = $"You have made {_decisions.Count} decision(s). After confirmation, changes cannot be undone after 30 seconds.",
-            ["ConfirmText"] = "Confirm & Share"
-        };
-        var dlg = await DialogService.ShowAsync<ConfirmDialog>("Confirm", parameters);
-        if ((await dlg.Result) is { Canceled: true }) return;
+            _error = ex.Message;
+        }
+        catch
+        {
+            _error = "Unable to load this share review. Please try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
 
+    private string RequireToken()
+    {
         if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
-        { Snackbar.Add("Session expired.", Severity.Error); return; }
+            throw new InvalidOperationException("Please log in to open this page.");
+        return Session.AccessToken;
+    }
 
-        _isSubmitting = true;
+    private async Task OpenDocumentAsync(DocumentDto document)
+    {
+        await RunDocumentActionAsync(document.Id, async token =>
+        {
+            var url = await DashboardApi.GetModerationDocumentSignedUrlAsync(token, document.Id);
+            if (string.IsNullOrWhiteSpace(url))
+                throw new InvalidOperationException("A document link could not be created.");
+            Navigation.NavigateTo(url, forceLoad: true);
+        }, "Unable to open this document.");
+    }
+
+    private async Task ApproveDocumentAsync(DocumentDto document)
+    {
+        await RunDocumentActionAsync(document.Id, async token =>
+        {
+            await DashboardApi.ApproveDocumentAsync(token, document.Id);
+            _documentDecisions[document.Id] = new DocumentDecision(true, null);
+            Snackbar.Add($"Document '{document.FileName}' approved.", Severity.Success);
+        }, "Unable to approve this document.");
+    }
+
+    private async Task RejectDocumentAsync(DocumentDto document)
+    {
+        var dialog = await DialogService.ShowAsync<ModeratorRejectReasonDialog>(
+            "Reject Document",
+            new DialogParameters { ["DialogTitle"] = "Reject Document", ["ItemName"] = document.FileName },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string reason) return;
+
+        await RunDocumentActionAsync(document.Id, async token =>
+        {
+            await DashboardApi.RejectDocumentAsync(token, document.Id, reason);
+            _documentDecisions[document.Id] = new DocumentDecision(false, reason);
+            Snackbar.Add($"Document '{document.FileName}' rejected.", Severity.Warning);
+        }, "Unable to reject this document.");
+    }
+
+    private async Task ApproveFolderAsync()
+    {
+        await RunFolderActionAsync(async token =>
+        {
+            await FoldersApi.ApproveShareAsync(token, FolderId);
+            Snackbar.Add("Folder approved for Community.", Severity.Success);
+            GoToQueue();
+        }, "Unable to approve this folder.");
+    }
+
+    private async Task RejectFolderAsync()
+    {
+        var dialog = await DialogService.ShowAsync<ModeratorRejectReasonDialog>(
+            "Reject Folder Share",
+            new DialogParameters { ["DialogTitle"] = "Reject Folder Share", ["ItemName"] = _summary?.FolderName ?? "Folder" },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data is not string reason) return;
+
+        await RunFolderActionAsync(async token =>
+        {
+            await FoldersApi.RejectShareAsync(token, FolderId, new RejectFolderShareRequest { Reason = reason });
+            Snackbar.Add("Folder sharing request rejected.", Severity.Warning);
+            GoToQueue();
+        }, "Unable to reject this folder.");
+    }
+
+    private async Task EscalateAsync()
+    {
+        var rejectedDocuments = _documents
+            .Where(document => _documentDecisions.TryGetValue(document.Id, out var decision) && !decision.Approved)
+            .Select(document => new EscalationDialog.RejectedDocItem
+            {
+                DocumentId = document.Id,
+                FileName = document.FileName,
+                RejectReason = _documentDecisions[document.Id].Reason ?? "Rejected by moderator."
+            })
+            .ToList();
+
+        if (rejectedDocuments.Count == 0)
+        {
+            Snackbar.Add("Reject at least one document before escalating.", Severity.Warning);
+            return;
+        }
+
+        var dialog = await DialogService.ShowAsync<EscalationDialog>(
+            "Escalate to Admin",
+            new DialogParameters
+            {
+                ["FolderName"] = _summary?.FolderName ?? "Folder",
+                ["FolderId"] = FolderId,
+                ["RejectedDocuments"] = rejectedDocuments
+            },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is not { Canceled: false } || result.Data is not EscalationDialog.EscalationDialogResult data) return;
+
+        await RunFolderActionAsync(async token =>
+        {
+            await EscalationApi.CreateAsync(token, new CreateEscalationRequest
+            {
+                FolderId = FolderId,
+                Reason = data.Reason,
+                Items = data.Items
+            });
+            Snackbar.Add("Folder escalated to an administrator.", Severity.Success);
+            GoToQueue();
+        }, "Unable to escalate this folder.");
+    }
+
+    private async Task ResubmitAsync()
+    {
+        _ownerActionBusy = true;
         try
         {
-            var resp = await FoldersApi.ApplyShareReviewAsync(Session.AccessToken, FolderId, new ApplyDecisionsRequest { Verdicts = _decisions });
-            _deletedCount = resp.DeletedCount; _currentStep = 3;
+            var token = RequireToken();
+            _folder = await FoldersApi.RequestShareAsync(token, FolderId);
+            Snackbar.Add("Folder resubmitted for moderator review.", Severity.Success);
         }
-        catch (Exception) { Snackbar.Add("Failed to apply decisions. Please try again.", Severity.Error); }
-        finally { _isSubmitting = false; }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapApiError(ex, "Unable to resubmit this folder."), Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex is InvalidOperationException ? ex.Message : "Unable to resubmit this folder.", Severity.Error);
+        }
+        finally
+        {
+            _ownerActionBusy = false;
+        }
     }
 
-    private void SaveCurrentDecision()
+    private async Task DeleteFolderAsync()
     {
-        var existing = _decisions.FirstOrDefault(d => d.DocumentId == _flaggedFiles[_currentFileIndex].DocumentId);
-        if (existing is not null) _decisions.Remove(existing);
-        _decisions.Add(new VerdictItem { DocumentId = _flaggedFiles[_currentFileIndex].DocumentId, Decision = _selectedDecision, Note = string.IsNullOrWhiteSpace(_decisionNote) ? null : _decisionNote });
+        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Delete Folder", new DialogParameters
+        {
+            ["Title"] = "Delete this folder?",
+            ["Message"] = $"Delete '{_folder?.Name}' and its contents permanently?",
+            ["ConfirmText"] = "Delete"
+        });
+        var result = await dialog.Result;
+        if (result is not { Canceled: false }) return;
+
+        _ownerActionBusy = true;
+        try
+        {
+            await FoldersApi.DeleteAsync(RequireToken(), FolderId);
+            Snackbar.Add("Folder deleted.", Severity.Success);
+            GoToFolder();
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapApiError(ex, "Unable to delete this folder."), Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex is InvalidOperationException ? ex.Message : "Unable to delete this folder.", Severity.Error);
+        }
+        finally
+        {
+            _ownerActionBusy = false;
+        }
     }
 
-    private async Task ConfirmPublish()
+    private void KeepPrivate()
     {
-        var parameters = new DialogParameters { ["Title"] = "Share to Community?", ["Message"] = $"Your folder \"{_summary?.FolderName}\" will appear publicly. All students can browse, rate, and copy it.", ["ConfirmText"] = "Share Now" };
-        var dlg = await DialogService.ShowAsync<ConfirmDialog>("Confirm", parameters);
-        if ((await dlg.Result) is { Canceled: true }) return;
-        await PublishToCommunity();
+        Snackbar.Add("Folder remains private.", Severity.Info);
+        GoToFolder();
     }
 
-    private async Task PublishToCommunity()
+    private async Task RunDocumentActionAsync(Guid documentId, Func<string, Task> action, string fallbackMessage)
     {
-        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken)) { Snackbar.Add("Session expired.", Severity.Error); return; }
-        _isPublishing = true;
-        try { await FoldersApi.RetryShareReviewAsync(Session.AccessToken, FolderId); Snackbar.Add("Folder shared to Community!", Severity.Success); StartUndoTimer(); }
-        catch (Exception) { Snackbar.Add("Failed to share. Please try again.", Severity.Error); }
-        finally { _isPublishing = false; }
+        _busyDocumentId = documentId;
+        try
+        {
+            await action(RequireToken());
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapApiError(ex, fallbackMessage), Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex is InvalidOperationException ? ex.Message : fallbackMessage, Severity.Error);
+        }
+        finally
+        {
+            _busyDocumentId = null;
+        }
     }
 
+    private async Task RunFolderActionAsync(Func<string, Task> action, string fallbackMessage)
+    {
+        _folderBusy = true;
+        try
+        {
+            await action(RequireToken());
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapApiError(ex, fallbackMessage), Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add(ex is InvalidOperationException ? ex.Message : fallbackMessage, Severity.Error);
+        }
+        finally
+        {
+            _folderBusy = false;
+        }
+    }
+
+    private static string MapApiError(DocumentApiException ex, string fallback) => ex.StatusCode switch
+    {
+        401 => "Your session has expired. Please log in again.",
+        403 => "You do not have permission to perform this action.",
+        404 => "This folder or document could not be found.",
+        409 => "This item was changed by another reviewer. Return to the queue and refresh before trying again.",
+        _ => string.IsNullOrWhiteSpace(ex.Message) ? fallback : ex.Message
+    };
+
+    private string GetOwnerRejectionReason() =>
+        FirstNonEmpty(_folder?.StudentFeedbackReason, _folder?.HumanReviewReason)
+        ?? "The moderator did not provide a reason.";
+
+    private static string? FirstNonEmpty(params string?[] values) =>
+        values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+
+    private DocumentDecision? GetDocumentDecision(Guid documentId) =>
+        _documentDecisions.GetValueOrDefault(documentId);
+
+    private bool IsBusy(Guid documentId) => _busyDocumentId == documentId;
+
+    private static string FormatFileSize(long bytes) => bytes switch
+    {
+        >= 1_048_576 => $"{bytes / 1_048_576d:F1} MB",
+        >= 1_024 => $"{bytes / 1_024d:F1} KB",
+        _ => $"{bytes} B"
+    };
+
+    private void GoBackToSafePage() => Navigation.NavigateTo(_isModeratorMode ? "/dashboard/share-reviews" : "/documents");
+    private void GoToQueue() => Navigation.NavigateTo("/dashboard/share-reviews");
     private void GoToFolder() => Navigation.NavigateTo("/documents");
+    private void GoToCommunity() => Navigation.NavigateTo("/community");
 
-    private void StartUndoTimer()
-    {
-        _undoSeconds = 30; _undoTimer = new System.Timers.Timer(1000);
-        _undoTimer.Elapsed += (_, _) => { _undoSeconds--; if (_undoSeconds <= 0) { _undoTimer?.Stop(); _undoTimer?.Dispose(); } InvokeAsync(StateHasChanged); };
-        _undoTimer.Start();
-    }
-
-    private async Task UndoPublish()
-    {
-        _undoTimer?.Stop(); _undoTimer?.Dispose();
-        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken)) { Snackbar.Add("Session expired.", Severity.Error); return; }
-        try
-        {
-            var result = await FoldersApi.RollbackShareAsync(Session.AccessToken, FolderId);
-            if (result.CanUndo) { _undoSeconds = 0; Snackbar.Add("Share undone.", Severity.Info); }
-            else { Snackbar.Add("Too late to undo.", Severity.Warning); }
-        }
-        catch (Exception) { Snackbar.Add("Failed to undo.", Severity.Error); }
-    }
-
-    public void Dispose() { _undoTimer?.Dispose(); _draftTimer?.Dispose(); }
+    private sealed record DocumentDecision(bool Approved, string? Reason);
 }

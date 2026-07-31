@@ -13,12 +13,15 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture]
 public class FolderServiceTests
 {
-    private static FolderService BuildSut(AppDbContext db, IPlanCapacityGuard? capacityGuard = null)
+    private static FolderService BuildSut(
+        AppDbContext db,
+        IPlanCapacityGuard? capacityGuard = null)
     {
         var storage = Mock.Of<ISupabaseStorageClient>();
         return new FolderService(db, NullLogger<FolderService>.Instance,
             new StorageDeletionCoordinator(db, storage, NullLogger<StorageDeletionCoordinator>.Instance),
-            Mock.Of<IAuditLogService>(), new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(), Mock.Of<ISharedFolderCopyCoordinator>());
+            Mock.Of<IAuditLogService>(), new FolderShareAiModerator(), capacityGuard ?? Mock.Of<IPlanCapacityGuard>(),
+            Mock.Of<ISharedFolderCopyCoordinator>());
     }
 
     private static User SeedActiveStudent(AppDbContext db, Guid? supabaseUserId = null, bool isActive = true)
@@ -54,6 +57,24 @@ public class FolderServiceTests
         return folder;
     }
 
+    private static User SeedShareReviewer(AppDbContext db, int roleId, bool isActive = true)
+    {
+        var user = new User
+        {
+            Id = Guid.NewGuid(),
+            RoleId = roleId,
+            SupabaseUserId = Guid.NewGuid(),
+            Username = $"r{Guid.NewGuid():N}"[..10],
+            FullName = "Share Reviewer",
+            IsActive = isActive,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        };
+        db.Users.Add(user);
+        db.SaveChanges();
+        return user;
+    }
+
     private static void SeedDocument(AppDbContext db, Guid userId, Guid folderId, string fileName = "doc.pdf")
     {
         db.Documents.Add(new Document
@@ -68,6 +89,31 @@ public class FolderServiceTests
             SubjectCode = "SWP391",
             Semester = "SU26",
             Status = DocumentStatus.Ready,
+            CreatedAt = DateTimeOffset.UtcNow,
+            UpdatedAt = DateTimeOffset.UtcNow,
+        });
+        db.SaveChanges();
+    }
+
+    private static void SeedReviewDocument(
+        AppDbContext db,
+        Guid userId,
+        Guid folderId,
+        DocumentReviewStatus reviewStatus)
+    {
+        db.Documents.Add(new Document
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            FolderId = folderId,
+            FileName = $"{Guid.NewGuid():N}.pdf",
+            StoragePath = $"users/{userId:N}/2026/{Guid.NewGuid():N}.pdf",
+            FileSizeBytes = 1024,
+            MimeType = "application/pdf",
+            SubjectCode = "SWP391",
+            Semester = "SU26",
+            Status = DocumentStatus.Ready,
+            ReviewStatus = reviewStatus,
             CreatedAt = DateTimeOffset.UtcNow,
             UpdatedAt = DateTimeOffset.UtcNow,
         });
@@ -329,5 +375,141 @@ public class FolderServiceTests
 
         var list = await sut.ListPersonalSharedAsync(me.SupabaseUserId);
         list.Should().BeEmpty();
+    }
+
+    [TestCase(2, true, 403, "share_reviewer_role_required")]
+    [TestCase(3, false, 403, "user_inactive")]
+    [TestCase(1, false, 403, "user_inactive")]
+    [TestCase(99, true, 403, "share_reviewer_role_required")]
+    public async Task ApproveFolderShareAsync_NonReviewerOrInactiveProfile_DeniesWithoutMutation(
+        int roleId,
+        bool isActive,
+        int expectedStatusCode,
+        string expectedCode)
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
+        SeedReviewDocument(db, owner.Id, folder.Id, DocumentReviewStatus.Approved);
+        var caller = SeedShareReviewer(db, roleId, isActive);
+        var sut = BuildSut(db);
+
+        var act = () => sut.ApproveFolderShareAsync(caller.SupabaseUserId, folder.Id);
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(expectedStatusCode);
+        exception.Which.Code.Should().Be(expectedCode);
+        (await db.Folders.AsNoTracking().SingleAsync(item => item.Id == folder.Id))
+            .ShareStatus.Should().Be(FolderStatus.PendingShare);
+    }
+
+    [Test]
+    public async Task ApproveFolderShareAsync_MissingProfile_DeniesWithoutReadingOrMutatingFolder()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
+        SeedReviewDocument(db, owner.Id, folder.Id, DocumentReviewStatus.Approved);
+        var sut = BuildSut(db);
+
+        var act = () => sut.ApproveFolderShareAsync(Guid.NewGuid(), folder.Id);
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(404);
+        exception.Which.Code.Should().Be("user_not_found");
+        (await db.Folders.AsNoTracking().SingleAsync(item => item.Id == folder.Id))
+            .ShareStatus.Should().Be(FolderStatus.PendingShare);
+    }
+
+    [Test]
+    public async Task ApproveFolderShareAsync_ActiveModerator_ApprovesFolderImmediately()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var moderator = SeedShareReviewer(db, roleId: 3);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
+        SeedReviewDocument(db, owner.Id, folder.Id, DocumentReviewStatus.Approved);
+        var sut = BuildSut(db);
+
+        var result = await sut.ApproveFolderShareAsync(moderator.SupabaseUserId, folder.Id);
+
+        result.ShareStatus.Should().Be(FolderStatus.Approved);
+        result.SharedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
+        result.ShareReviewSource.Should().Be("HUMAN");
+    }
+
+    [Test]
+    public async Task RejectFolderShareAsync_ActiveAdmin_RequiresAndNormalizesReason()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var admin = SeedShareReviewer(db, roleId: 1);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var result = await sut.RejectFolderShareAsync(
+            admin.SupabaseUserId,
+            folder.Id,
+            new RejectFolderShareRequest { Reason = "  Missing citations  " });
+
+        result.ShareStatus.Should().Be(FolderStatus.Rejected);
+        result.HumanReviewReason.Should().Be("Missing citations");
+    }
+
+    [Test]
+    public async Task ReviewActions_NonPendingFolder_ReturnConflictWithoutMutation()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var admin = SeedShareReviewer(db, roleId: 1);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.Approved;
+        db.SaveChanges();
+        var sut = BuildSut(db);
+
+        var approve = () => sut.ApproveFolderShareAsync(admin.SupabaseUserId, folder.Id);
+        var reject = () => sut.RejectFolderShareAsync(
+            admin.SupabaseUserId, folder.Id, new RejectFolderShareRequest { Reason = "Reason" });
+        var autoCheck = () => sut.AutoCheckFolderShareAsync(admin.SupabaseUserId, folder.Id);
+
+        (await approve.Should().ThrowAsync<DocumentException>()).Which.StatusCode.Should().Be(409);
+        (await reject.Should().ThrowAsync<DocumentException>()).Which.Code.Should().Be("folder_not_pending_share");
+        (await autoCheck.Should().ThrowAsync<DocumentException>()).Which.Code.Should().Be("folder_not_pending_share");
+        (await db.Folders.AsNoTracking().SingleAsync(item => item.Id == folder.Id))
+            .ShareStatus.Should().Be(FolderStatus.Approved);
+    }
+
+    [Test]
+    public async Task ApproveFolderShareAsync_HiddenUnreviewedOrRejectedDocument_BlocksApproval()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var moderator = SeedShareReviewer(db, roleId: 3);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.PendingShare;
+        db.SaveChanges();
+        for (var index = 0; index < 25; index++)
+        {
+            SeedReviewDocument(db, owner.Id, folder.Id, DocumentReviewStatus.Approved);
+        }
+        SeedReviewDocument(db, owner.Id, folder.Id, DocumentReviewStatus.None);
+        SeedReviewDocument(db, owner.Id, folder.Id, DocumentReviewStatus.Rejected);
+        var sut = BuildSut(db);
+
+        var act = () => sut.ApproveFolderShareAsync(moderator.SupabaseUserId, folder.Id);
+
+        var exception = await act.Should().ThrowAsync<DocumentException>();
+        exception.Which.StatusCode.Should().Be(409);
+        exception.Which.Code.Should().Be("folder_documents_not_fully_approved");
+        (await db.Folders.AsNoTracking().SingleAsync(item => item.Id == folder.Id))
+            .ShareStatus.Should().Be(FolderStatus.PendingShare);
     }
 }
