@@ -751,8 +751,7 @@
     {
         var parameters = new DialogParameters
         {
-            ["FolderId"] = folder.Id,
-            ["FolderName"] = folder.Name,
+            ["FolderName"] = folder.Name
         };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
         var dialogRef = await DialogService.ShowAsync<RejectedFolderActions>("Folder Rejected", parameters, options);
@@ -764,52 +763,8 @@
             case "Resubmit":
                 await RequestShareAsync(folder);
                 break;
-            case "Delete":
-                await ConfirmDeleteFolderAsync(folder);
-                break;
             case "KeepPrivate":
                 break;
-        }
-    }
-
-    private async Task ConfirmDeleteFolderAsync(FolderDto folder)
-    {
-        var documentText = folder.DocumentCount == 1 ? "1 document" : $"{folder.DocumentCount} documents";
-        var parameters = new DialogParameters
-        {
-            ["Title"] = "Delete folder?",
-            ["Message"] = $"Delete \"{folder.Name}\"? This will also delete {documentText} inside it. This cannot be undone.",
-            ["ConfirmText"] = "Delete",
-            ["ConfirmColor"] = Color.Error,
-            ["Icon"] = Icons.Material.Filled.DeleteForever,
-            ["IconColor"] = Color.Error,
-        };
-        var dialogRef = await DialogService.ShowAsync<ConfirmDialog>(
-            "Delete folder",
-            parameters,
-            new DialogOptions { CloseOnEscapeKey = true });
-        var result = await dialogRef.Result;
-        if (result is null || result.Canceled) return;
-
-        await DeleteFolderAsync(folder);
-    }
-
-    private async Task DeleteFolderAsync(FolderDto folder)
-    {
-        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
-
-        try
-        {
-            await FoldersApi.DeleteAsync(Session.AccessToken, folder.Id);
-            _personalFolders.RemoveAll(item => item.Id == folder.Id);
-            _allCommunityFolders.RemoveAll(item => item.Id == folder.Id);
-            if (_selectedFolderId == folder.Id) _selectedFolderId = null;
-            Snackbar.Add($"Deleted \"{folder.Name}\".", Severity.Success);
-            StateHasChanged();
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
         }
     }
 

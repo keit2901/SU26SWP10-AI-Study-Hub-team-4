@@ -167,12 +167,13 @@ public sealed class EscalationService : IEscalationService
         if (escalation.EscalationStatus != "Pending")
             throw new AdminException(409, "already_resolved", $"Escalation has already been resolved as '{escalation.EscalationStatus}'.");
 
-        var previousStatus = escalation.EscalationStatus;
-        escalation.EscalationStatus = resolutionStatus;
-        escalation.AdminResponse = adminResponse;
-        escalation.ResolvedByUserId = resolver.Id;
-        escalation.ResolvedAt = DateTimeOffset.UtcNow;
+        if (escalation.Folder.ShareStatus != FolderStatus.PendingShare)
+        {
+            throw new AdminException(409, "folder_not_pending_share",
+                "The folder is no longer pending share review; the escalation cannot be resolved.");
+        }
 
+        var previousStatus = escalation.EscalationStatus;
         var itemIds = escalation.Items.Select(item => item.DocumentId).ToList();
         var documents = await _db.Documents
             .Where(document => itemIds.Contains(document.Id) && document.FolderId == escalation.FolderId)
@@ -183,7 +184,15 @@ public sealed class EscalationService : IEscalationService
                 "Escalation documents no longer match the folder; no resolution was applied.");
         }
 
-        var now = escalation.ResolvedAt.Value;
+        var folderDocuments = await _db.Documents
+            .Where(document => document.FolderId == escalation.FolderId)
+            .ToListAsync(ct);
+
+        var now = DateTimeOffset.UtcNow;
+        escalation.EscalationStatus = resolutionStatus;
+        escalation.AdminResponse = adminResponse;
+        escalation.ResolvedByUserId = resolver.Id;
+        escalation.ResolvedAt = now;
         foreach (var document in documents)
         {
             document.ReviewStatus = resolutionStatus == "Approved"
@@ -195,10 +204,15 @@ public sealed class EscalationService : IEscalationService
         escalation.Folder.UpdatedAt = now;
         if (resolutionStatus == "Approved")
         {
-            escalation.Folder.ShareStatus = FolderStatus.Approved;
-            escalation.Folder.SharedAt = now;
-            escalation.Folder.ShareReviewSource = "ADMIN_ESCALATION_APPROVED";
-            escalation.Folder.RequiresHumanReview = false;
+            var allDocumentsApproved = folderDocuments.All(document =>
+                document.ReviewStatus == DocumentReviewStatus.Approved);
+            if (allDocumentsApproved)
+            {
+                escalation.Folder.ShareStatus = FolderStatus.Approved;
+                escalation.Folder.SharedAt = now;
+                escalation.Folder.ShareReviewSource = "ADMIN_ESCALATION_APPROVED";
+                escalation.Folder.RequiresHumanReview = false;
+            }
         }
         else
         {
