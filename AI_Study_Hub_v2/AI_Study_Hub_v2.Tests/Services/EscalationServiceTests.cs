@@ -26,6 +26,39 @@ public sealed class EscalationServiceTests
         db.AuditLogs.Should().ContainSingle(log => log.Action == "ESCALATION_CREATED" && !log.AfterJson!.Contains("Reason for"));
     }
 
+    [TestCase(DocumentReviewStatus.Approved)]
+    [TestCase(DocumentReviewStatus.Escalated)]
+    public async Task CreateAsync_NonUnreviewedDocument_IsRejectedWithoutMutation(DocumentReviewStatus initialStatus)
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, 3, "Moderator");
+        var folder = SeedFolder(db, moderator.Id);
+        var unreviewedDocument = SeedDocument(db, moderator.Id, folder.Id);
+        var ineligibleDocument = SeedDocument(db, moderator.Id, folder.Id);
+        ineligibleDocument.ReviewStatus = initialStatus;
+        await db.SaveChangesAsync();
+        var request = new CreateEscalationRequest
+        {
+            FolderId = folder.Id,
+            Reason = "Reason for escalation",
+            Items = new List<EscalationItemRequest>
+            {
+                new() { DocumentId = unreviewedDocument.Id, RejectReason = "Needs admin review" },
+                new() { DocumentId = ineligibleDocument.Id, RejectReason = "Already reviewed" }
+            }
+        };
+
+        Func<Task> act = () => CreateSut(db).CreateAsync(moderator.Id, request);
+
+        (await act.Should().ThrowAsync<AdminException>()).Which.Code.Should().Be("escalation_document_not_eligible");
+        (await db.Documents.SingleAsync(document => document.Id == unreviewedDocument.Id)).ReviewStatus
+            .Should().Be(DocumentReviewStatus.None);
+        (await db.Documents.SingleAsync(document => document.Id == ineligibleDocument.Id)).ReviewStatus
+            .Should().Be(initialStatus);
+        (await db.Folders.SingleAsync(item => item.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.PendingShare);
+        db.DocumentEscalations.Should().BeEmpty();
+    }
+
     [Test]
     public async Task CreateAsync_StudentOrInvalidDocumentOwnership_DeniesWithoutMutation()
     {
@@ -89,6 +122,7 @@ public sealed class EscalationServiceTests
             .Should().Be(DocumentReviewStatus.None);
         (await db.Folders.SingleAsync(item => item.Id == folder.Id)).ShareStatus
             .Should().Be(FolderStatus.PendingShare);
+        (await db.UserNotifications.CountAsync()).Should().Be(0);
     }
 
     [Test]
@@ -126,7 +160,7 @@ public sealed class EscalationServiceTests
         var folder = SeedFolder(db, moderator.Id);
         var document = SeedDocument(db, moderator.Id, folder.Id);
         var audit = new AuditLogService(db);
-        var sut = new EscalationService(db, audit);
+        var sut = new EscalationService(db, audit, new UserNotificationService(db));
         var escalation = await sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
 
         var moderatorAttempt = () => sut.ResolveAsync(escalation.Id, new ResolveEscalationRequest { Status = "Approved" }, moderator.Id);
@@ -140,6 +174,7 @@ public sealed class EscalationServiceTests
         persistedFolder.SharedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
         persistedFolder.ShareReviewSource.Should().Be("ADMIN_ESCALATION_APPROVED");
         (await db.Documents.SingleAsync(d => d.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
+        (await db.UserNotifications.SingleAsync()).Outcome.Should().Be(UserNotificationOutcome.Approved);
     }
 
     [Test]
@@ -166,9 +201,10 @@ public sealed class EscalationServiceTests
         persistedFolder.ShareStatus.Should().Be(FolderStatus.Rejected);
         persistedFolder.HumanReviewReason.Should().Be("Not valid.");
         (await db.Documents.SingleAsync(d => d.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Rejected);
+        (await db.UserNotifications.SingleAsync()).Outcome.Should().Be(UserNotificationOutcome.Rejected);
     }
 
-    private static EscalationService CreateSut(Data.AppDbContext db) => new(db, new AuditLogService(db));
+    private static EscalationService CreateSut(Data.AppDbContext db) => new(db, new AuditLogService(db), new UserNotificationService(db));
 
     private static CreateEscalationRequest Request(Guid folderId, Guid documentId) => new()
     {

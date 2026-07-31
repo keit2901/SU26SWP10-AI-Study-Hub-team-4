@@ -1,4 +1,5 @@
 using AI_Study_Hub_v2.Data.Entities;
+using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Supabase;
 using AI_Study_Hub_v2.Tests.Support;
@@ -64,6 +65,9 @@ public class DashboardModerationStateTests
         db.ChangeTracker.Clear();
         (await db.Documents.SingleAsync(item => item.Id == document.Id)).ReviewStatus
             .Should().Be(DocumentReviewStatus.Approved);
+        var notification = await db.UserNotifications.SingleAsync();
+        notification.RecipientUserId.Should().Be(moderator.Id);
+        notification.Outcome.Should().Be(UserNotificationOutcome.Approved);
     }
 
     [Test]
@@ -81,6 +85,9 @@ public class DashboardModerationStateTests
         var stored = await db.Documents.SingleAsync(item => item.Id == document.Id);
         stored.ReviewStatus.Should().Be(DocumentReviewStatus.Rejected);
         stored.ErrorMessage.Should().Be("Invalid material");
+        var notification = await db.UserNotifications.SingleAsync();
+        notification.RecipientUserId.Should().Be(admin.Id);
+        notification.Outcome.Should().Be(UserNotificationOutcome.Rejected);
     }
 
     [Test]
@@ -196,25 +203,49 @@ public class DashboardModerationStateTests
             .Should().Be("https://example.test/signed");
     }
 
-    [Test]
-    public async Task Ai_review_requires_pending_folder_and_persists_audit_with_the_final_save()
+    [TestCase(FolderShareModerationOutcome.AutoApproved, DocumentAiAdvisoryOutcome.Approve)]
+    [TestCase(FolderShareModerationOutcome.NeedsHumanReview, DocumentAiAdvisoryOutcome.NeedsHumanReview)]
+    [TestCase(FolderShareModerationOutcome.AutoRejected, DocumentAiAdvisoryOutcome.Reject)]
+    public async Task Ai_review_returns_advisory_without_mutating_human_moderation_state(
+        FolderShareModerationOutcome aiOutcome,
+        DocumentAiAdvisoryOutcome expectedAdvisoryOutcome)
     {
         await using var db = CreateModerationDb();
         var moderator = AddUser(db, Role.ModeratorRoleName, true);
         var document = AddDocument(db, moderator, FolderStatus.PendingShare);
+        document.ErrorMessage = "Existing document diagnostic";
+        var folder = document.Folder!;
+        folder.ShareReviewSource = "HUMAN_REQUEST";
+        var sharedAt = DateTimeOffset.UtcNow.AddDays(-1);
+        folder.SharedAt = sharedAt;
+        var originalDocumentUpdatedAt = document.UpdatedAt;
+        var originalFolderUpdatedAt = folder.UpdatedAt;
         await db.SaveChangesAsync();
         var ai = new Mock<IFolderShareAiModerator>();
         ai.Setup(moderatorService => moderatorService.Evaluate(It.IsAny<Folder>(), It.IsAny<IReadOnlyList<Document>>(), It.IsAny<IReadOnlyList<string>>()))
-            .Returns(new FolderShareModerationDecision(FolderShareModerationOutcome.AutoApproved, "Safe", 0.9));
+            .Returns(new FolderShareModerationDecision(aiOutcome, "AI recommendation", 0.9));
         var audit = new Mock<IAuditLogService>();
         var service = CreateService(db, aiModerator: ai.Object, audit: audit.Object);
 
         var result = await service.AiReviewDocumentAsync(moderator.SupabaseUserId, document.Id, CancellationToken.None);
 
-        result!.ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
-        audit.Verify(service => service.Add(moderator.Id, "DOCUMENT_AI_APPROVED", "Document", document.Id.ToString(), "Low", null, null, null, null, null), Times.Once);
+        result!.ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        result.AdvisoryOutcome.Should().Be(expectedAdvisoryOutcome);
+        result.ReviewSource.Should().Be("AI_ADVISORY");
+        result.Message.Should().Be("AI recommendation");
+        result.Confidence.Should().Be(0.9);
+        audit.Verify(service => service.Add(moderator.Id, "DOCUMENT_AI_REVIEWED", "Document", document.Id.ToString(), "Low", null, null, null, null, null), Times.Once);
         db.ChangeTracker.Clear();
-        (await db.Documents.SingleAsync(item => item.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
+        var storedDocument = await db.Documents.SingleAsync(item => item.Id == document.Id);
+        var storedFolder = await db.Folders.SingleAsync(item => item.Id == document.FolderId);
+        storedDocument.ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        storedDocument.ErrorMessage.Should().Be("Existing document diagnostic");
+        storedDocument.UpdatedAt.Should().Be(originalDocumentUpdatedAt);
+        storedFolder.ShareStatus.Should().Be(FolderStatus.PendingShare);
+        storedFolder.ShareReviewSource.Should().Be("HUMAN_REQUEST");
+        storedFolder.SharedAt.Should().Be(sharedAt);
+        storedFolder.UpdatedAt.Should().Be(originalFolderUpdatedAt);
+        (await db.UserNotifications.CountAsync()).Should().Be(0);
     }
 
     [Test]
@@ -330,7 +361,8 @@ public class DashboardModerationStateTests
             db,
             storage ?? Mock.Of<ISupabaseStorageClient>(),
             audit ?? Mock.Of<IAuditLogService>(),
-            aiModerator ?? Mock.Of<IFolderShareAiModerator>());
+            aiModerator ?? Mock.Of<IFolderShareAiModerator>(),
+            new UserNotificationService(db));
 
     private static User AddUser(Data.AppDbContext db, string roleName, bool isActive)
     {

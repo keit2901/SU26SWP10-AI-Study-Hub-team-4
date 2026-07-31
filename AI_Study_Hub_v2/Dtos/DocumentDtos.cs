@@ -76,9 +76,21 @@ public sealed class DocumentDto
     public string? AppealMessage { get; set; }
 }
 
+/// <summary>
+/// Advisory result from the AI review scan. This outcome never changes the
+/// persisted human moderation state represented by <see cref="DocumentReviewStatus"/>.
+/// </summary>
+public enum DocumentAiAdvisoryOutcome
+{
+    Approve = 0,
+    NeedsHumanReview = 1,
+    Reject = 2
+}
+
 public sealed record DocumentAiReviewResultDto(
     Guid DocumentId,
     DocumentReviewStatus ReviewStatus,
+    DocumentAiAdvisoryOutcome AdvisoryOutcome,
     string ReviewSource,
     string Message,
     double Confidence);

@@ -1,19 +1,39 @@
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
 @inject AI_Study_Hub_v2.Services.PlanApiClient PlanApi
+@inject AI_Study_Hub_v2.Services.IUserNotificationService Notifications
 @inject IDialogService DialogService
 @inject NavigationManager Nav
 @using AI_Study_Hub_v2.Components.Pages
+@using AI_Study_Hub_v2.Data.Entities
+@using AI_Study_Hub_v2.Dtos
+@using System.IdentityModel.Tokens.Jwt
+@using System.Security.Claims
 @implements IDisposable
 
 @if (Session.IsAuthenticated)
 {
     <div class="uam-wrapper">
-        <button type="button" class="uam-notification-btn" title="Notifications">
-            <MudIcon Icon="@Icons.Material.Filled.NotificationsNone" Size="Size.Small" />
+        <button type="button"
+                class="uam-notification-btn"
+                title="@NotificationButtonLabel"
+                aria-label="@NotificationButtonLabel"
+                aria-haspopup="true"
+                aria-expanded="@_notificationsOpen"
+                @onclick="ToggleNotificationsAsync">
+            <MudIcon Icon="@(_notificationsOpen ? Icons.Material.Filled.Notifications : Icons.Material.Filled.NotificationsNone)" Size="Size.Small" />
+            @if (_unreadCount > 0)
+            {
+                <span class="uam-notification-badge" aria-hidden="true">@FormatUnreadCount()</span>
+            }
         </button>
 
-        <button type="button" class="uam-trigger-btn" @onclick="ToggleMenu">
+        <button type="button"
+                class="uam-trigger-btn"
+                aria-label="Open account menu"
+                aria-haspopup="true"
+                aria-expanded="@_open"
+                @onclick="ToggleMenu">
             <div class="uam-trigger-avatar" title="@DisplayName">
                 <span class="user-avatar-initials">@GetInitials()</span>
             </div>
@@ -22,9 +42,75 @@
             </div>
         </button>
 
+        @if (_open || _notificationsOpen)
+        {
+            <div class="uam-backdrop" @onclick="CloseAllMenus"></div>
+        }
+
+        @if (_notificationsOpen)
+        {
+            <div class="uam-popup uam-notifications-popup" role="region" aria-label="Notifications">
+                <div class="uam-notifications-header">
+                    <div>
+                        <strong>Notifications</strong>
+                        @if (_unreadCount > 0)
+                        {
+                            <span>@_unreadCount unread</span>
+                        }
+                    </div>
+                    @if (_notificationsLoading)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" aria-label="Loading notifications" />
+                    }
+                </div>
+
+                @if (!string.IsNullOrWhiteSpace(_notificationError))
+                {
+                    <div class="uam-notification-alert" role="status">
+                        @_notificationError
+                    </div>
+                }
+
+                @if (_notificationsLoading && _notificationFeed is null)
+                {
+                    <div class="uam-notification-state" role="status">Loading notifications…</div>
+                }
+                else if (NotificationItems.Count == 0)
+                {
+                    <div class="uam-notification-state">
+                        <MudIcon Icon="@Icons.Material.Filled.NotificationsNone" Size="Size.Medium" />
+                        <span>No notifications yet.</span>
+                    </div>
+                }
+                else
+                {
+                    <div class="uam-notification-list">
+                        @foreach (var item in NotificationItems)
+                        {
+                            var isUnread = item.ReadAt is null;
+                            var isApproved = item.Outcome == UserNotificationOutcome.Approved;
+                            <button type="button"
+                                    class="uam-notification-item @(isUnread ? "is-unread" : null)"
+                                    aria-label="@($"{item.Title}. {item.Message}")"
+                                    disabled="@_notificationOperationBusy"
+                                    @onclick="() => OpenNotificationAsync(item)">
+                                <span class="uam-notification-icon @(isApproved ? "is-approved" : "is-rejected")">
+                                    <MudIcon Icon="@(isApproved ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)" Size="Size.Small" />
+                                </span>
+                                <span class="uam-notification-copy">
+                                    <span class="uam-notification-title">@item.Title</span>
+                                    <span class="uam-notification-message">@item.Message</span>
+                                    <span class="uam-notification-time">@FormatNotificationTime(item.CreatedAt)</span>
+                                </span>
+                            </button>
+                        }
+                    </div>
+                }
+            </div>
+        }
+
         @if (_open)
         {
-            <div class="uam-backdrop" @onclick="CloseMenu"></div>
             <div class="uam-popup">
                 <button class="uam-item" @onclick="OpenProfileDialogAsync">
                     <MudIcon Icon="@Icons.Material.Filled.Person" Size="Size.Small" />
@@ -59,6 +145,7 @@
     }
 
     .uam-notification-btn {
+        position: relative;
         width: 2.6rem;
         height: 2.6rem;
         display: inline-flex;
@@ -77,6 +164,18 @@
         background: rgba(245, 242, 255, 0.96);
         border-color: rgba(94, 92, 230, 0.2);
         color: #4f46d9;
+    }
+
+    .uam-notification-btn:focus-visible, .uam-trigger-btn:focus-visible,
+    .uam-notification-item:focus-visible, .uam-item:focus-visible {
+        outline: 3px solid rgba(94, 92, 230, 0.24); outline-offset: 2px;
+    }
+
+    .uam-notification-badge {
+        position: absolute; top: -0.28rem; right: -0.28rem; min-width: 1.15rem; height: 1.15rem;
+        padding: 0 0.25rem; display: inline-flex; align-items: center; justify-content: center;
+        border: 2px solid #fff; border-radius: 999px; background: #dc2626; color: #fff;
+        font-size: 0.64rem; font-weight: 800; line-height: 1; box-shadow: 0 4px 10px rgba(220, 38, 38, 0.28);
     }
 
     .uam-trigger-btn {
@@ -160,6 +259,48 @@
         animation: uamIn 140ms cubic-bezier(0.22, 1, 0.36, 1) both;
     }
 
+    .uam-notifications-popup { right: 3.5rem; width: min(23rem, calc(100vw - 2rem)); padding: 0; overflow: hidden; }
+
+    .uam-notifications-header { min-height: 3.4rem; padding: 0.8rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; border-bottom: 1px solid rgba(206, 202, 224, 0.6); }
+
+    .uam-notifications-header > div { display: flex; align-items: baseline; gap: 0.45rem; }
+
+    .uam-notifications-header strong { color: #1e1934; font-size: 0.95rem; }
+
+    .uam-notifications-header span { color: #746c8f; font-size: 0.72rem; font-weight: 600; }
+
+    .uam-notification-list { max-height: min(26rem, 65vh); overflow-y: auto; padding: 0.35rem; }
+
+    .uam-notification-item { width: 100%; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 0.7rem; padding: 0.75rem; border: 0; border-radius: 12px; background: transparent; color: #1e1934; cursor: pointer; text-align: left; font-family: inherit; transition: background 120ms ease; }
+
+    .uam-notification-item:hover { background: rgba(79, 70, 229, 0.06); }
+
+    .uam-notification-item.is-unread { background: rgba(94, 92, 230, 0.07); }
+
+    .uam-notification-item:disabled { cursor: wait; opacity: 0.68; }
+
+    .uam-notification-icon { width: 1.5rem; display: inline-flex; align-items: center; justify-content: center; }
+
+    .uam-notification-icon.is-approved { color: #15803d; }
+
+    .uam-notification-icon.is-rejected { color: #dc2626; }
+
+    .uam-notification-copy { min-width: 0; display: flex; flex-direction: column; gap: 0.15rem; }
+
+    .uam-notification-title { color: #1e1934; font-size: 0.84rem; font-weight: 700; line-height: 1.35; }
+
+    .uam-notification-message { display: -webkit-box; overflow: hidden; color: #655f76; font-size: 0.76rem; line-height: 1.4; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+
+    .uam-notification-time { color: #8a849b; font-size: 0.68rem; font-weight: 500; }
+
+    .uam-notification-state { min-height: 8rem; padding: 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.55rem; color: #746c8f; font-size: 0.8rem; text-align: center; }
+
+    .uam-notification-alert { padding: 0.65rem 1rem; border-bottom: 1px solid rgba(220, 38, 38, 0.12); background: rgba(220, 38, 38, 0.06); color: #b42318; font-size: 0.76rem; }
+
+    @@media (max-width: 520px) {
+        .uam-notifications-popup { position: fixed; top: 4.5rem; right: 1rem; left: 1rem; width: auto; }
+    }
+
     @@keyframes uamIn {
         from { opacity: 0; transform: translateY(-6px) scale(0.96); }
         to   { opacity: 1; transform: translateY(0) scale(1); }
@@ -237,6 +378,22 @@
 @code {
     private bool _open;
     private bool _planLoading;
+    private bool _notificationsOpen;
+    private bool _notificationsLoading;
+    private string? _notificationError;
+    private UserNotificationFeedDto? _notificationFeed;
+    private Guid? _notificationUserId;
+    private bool _notificationOperationBusy;
+    private bool _disposed;
+
+    private IReadOnlyList<UserNotificationFeedItemDto> NotificationItems =>
+        _notificationFeed?.Items ?? [];
+
+    private int _unreadCount => _notificationFeed?.UnreadCount ?? 0;
+
+    private string NotificationButtonLabel => _unreadCount > 0
+        ? $"Notifications, {_unreadCount} unread"
+        : "Notifications";
 
     protected override void OnInitialized()
     {
@@ -245,6 +402,13 @@
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (TryGetSupabaseUserId(out var currentUserId)
+            && _notificationUserId != currentUserId
+            && !_notificationOperationBusy)
+        {
+            await LoadNotificationsAsync(forceRefresh: false);
+        }
+
         if (_planLoading
             || !Session.IsAuthenticated
             || Session.CurrentPlanSnapshot is not null)
@@ -307,10 +471,212 @@
             : name[..Math.Min(2, name.Length)].ToUpperInvariant();
     }
 
-    private void ToggleMenu() => _open = !_open;
+    private void ToggleMenu()
+    {
+        _notificationsOpen = false;
+        _open = !_open;
+    }
+
     private void CloseMenu() => _open = false;
 
-    private void OnSessionChanged() => InvokeAsync(StateHasChanged);
+    private void CloseNotifications() => _notificationsOpen = false;
+
+    private void CloseAllMenus()
+    {
+        CloseMenu();
+        CloseNotifications();
+    }
+
+    private async void OnSessionChanged()
+    {
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                if (!TryGetSupabaseUserId(out var currentUserId)
+                    || (_notificationUserId.HasValue && _notificationUserId != currentUserId))
+                {
+                    ResetNotificationState();
+                }
+
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+        }
+        catch
+        {
+            if (!_disposed)
+            {
+                _notificationError = "Notifications are unavailable right now.";
+            }
+        }
+    }
+
+    private async Task ToggleNotificationsAsync()
+    {
+        if (_notificationsOpen)
+        {
+            CloseNotifications();
+            return;
+        }
+
+        CloseMenu();
+        _notificationsOpen = true;
+        StateHasChanged();
+        await LoadNotificationsAsync(forceRefresh: true);
+    }
+
+    private async Task LoadNotificationsAsync(bool forceRefresh)
+    {
+        if (_disposed
+            || _notificationOperationBusy
+            || !TryGetSupabaseUserId(out var requestedUserId))
+        {
+            return;
+        }
+
+        if (!forceRefresh
+            && _notificationFeed is not null
+            && _notificationUserId == requestedUserId)
+        {
+            return;
+        }
+
+        _notificationOperationBusy = true;
+        _notificationsLoading = true;
+        _notificationError = null;
+        _notificationUserId = requestedUserId;
+        try
+        {
+            var feed = await Notifications.GetMineAsync(requestedUserId, 10, CancellationToken.None);
+            if (IsCurrentSession(requestedUserId))
+            {
+                _notificationFeed = feed;
+            }
+        }
+        catch
+        {
+            if (IsCurrentSession(requestedUserId))
+            {
+                _notificationError = "Notifications are unavailable right now.";
+            }
+        }
+        finally
+        {
+            _notificationsLoading = false;
+            _notificationOperationBusy = false;
+            if (!_disposed)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private async Task OpenNotificationAsync(UserNotificationFeedItemDto item)
+    {
+        if (_notificationOperationBusy) return;
+
+        if (!TryGetSupabaseUserId(out var userId))
+        {
+            ResetNotificationState();
+            return;
+        }
+
+        _notificationOperationBusy = true;
+        try
+        {
+            await Notifications.MarkReadAsync(userId, item.Id, CancellationToken.None);
+
+            if (!IsCurrentSession(userId)) return;
+
+            MarkNotificationReadLocally(item.Id);
+            CloseNotifications();
+            Nav.NavigateTo($"/share-review/{item.FolderId}");
+        }
+        catch (UserNotificationException ex) when (ex.Code == "notification_not_found")
+        {
+            if (IsCurrentSession(userId))
+            {
+                RemoveNotificationLocally(item.Id);
+                _notificationError = "That notification is no longer available.";
+            }
+        }
+        catch
+        {
+            if (IsCurrentSession(userId))
+            {
+                _notificationError = "We could not open that notification. Please try again.";
+            }
+        }
+        finally
+        {
+            _notificationOperationBusy = false;
+            if (!_disposed)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private void MarkNotificationReadLocally(Guid notificationId)
+    {
+        if (_notificationFeed is null) return;
+
+        var wasUnread = _notificationFeed.Items.Any(item => item.Id == notificationId && item.ReadAt is null);
+        var items = _notificationFeed.Items
+            .Select(item => item.Id == notificationId ? item with { ReadAt = DateTimeOffset.UtcNow } : item)
+            .ToList();
+        _notificationFeed = new UserNotificationFeedDto(
+            items,
+            wasUnread ? Math.Max(0, _notificationFeed.UnreadCount - 1) : _notificationFeed.UnreadCount);
+    }
+
+    private void RemoveNotificationLocally(Guid notificationId)
+    {
+        if (_notificationFeed is null) return;
+
+        var removedUnread = _notificationFeed.Items.Any(item => item.Id == notificationId && item.ReadAt is null);
+        _notificationFeed = new UserNotificationFeedDto(
+            _notificationFeed.Items.Where(item => item.Id != notificationId).ToList(),
+            removedUnread ? Math.Max(0, _notificationFeed.UnreadCount - 1) : _notificationFeed.UnreadCount);
+    }
+
+    private bool IsCurrentSession(Guid userId) =>
+        !_disposed
+        && TryGetSupabaseUserId(out var currentUserId)
+        && currentUserId == userId;
+
+    private bool TryGetSupabaseUserId(out Guid userId)
+    {
+        userId = Guid.Empty;
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken)) return false;
+
+        try
+        {
+            var token = new JwtSecurityTokenHandler().ReadJwtToken(Session.AccessToken);
+            var subject = token.Claims.FirstOrDefault(claim => claim.Type is "sub" or ClaimTypes.NameIdentifier)?.Value;
+            return Guid.TryParse(subject, out userId);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private void ResetNotificationState()
+    {
+        _notificationsOpen = false;
+        _notificationError = null;
+        _notificationFeed = null;
+        _notificationUserId = null;
+    }
+
+    private string FormatUnreadCount() => _unreadCount > 9 ? "9+" : _unreadCount.ToString();
+
+    private static string FormatNotificationTime(DateTimeOffset createdAt) =>
+        createdAt.ToLocalTime().ToString("MMM d, h:mm tt");
 
     private async Task OpenProfileDialogAsync()
     {
@@ -356,6 +722,7 @@
 
     public void Dispose()
     {
+        _disposed = true;
         Session.OnChange -= OnSessionChanged;
     }
 }

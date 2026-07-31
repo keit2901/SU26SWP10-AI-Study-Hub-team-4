@@ -16,6 +16,7 @@ public sealed class FolderService : IFolderService
     private readonly IFolderShareAiModerator _shareAiModerator;
     private readonly IPlanCapacityGuard _capacityGuard;
     private readonly ISharedFolderCopyCoordinator _copyCoordinator;
+    private readonly IUserNotificationService _notifications;
 
     public FolderService(
         AppDbContext db,
@@ -24,7 +25,8 @@ public sealed class FolderService : IFolderService
         IAuditLogService audit,
         IFolderShareAiModerator shareAiModerator,
         IPlanCapacityGuard capacityGuard,
-        ISharedFolderCopyCoordinator copyCoordinator)
+        ISharedFolderCopyCoordinator copyCoordinator,
+        IUserNotificationService notifications)
     {
         _db = db;
         _logger = logger;
@@ -33,6 +35,7 @@ public sealed class FolderService : IFolderService
         _shareAiModerator = shareAiModerator;
         _capacityGuard = capacityGuard;
         _copyCoordinator = copyCoordinator;
+        _notifications = notifications;
     }
 
     public async Task<IReadOnlyList<FolderDto>> ListAsync(
@@ -1108,10 +1111,12 @@ WHERE folder_id = {folderId}", cancellationToken);
                 .Select(f => new
                 {
                     f.Id,
+                    f.UserId,
                     f.Name,
                     f.Description,
                     f.IsFavorite,
                     f.ShareStatus,
+                    ShareSubmissionCount = schema.HasShareSubmissionCountColumn ? f.ShareSubmissionCount : 0,
                     f.Icon,
                     f.CreatedAt
                 })
@@ -1156,6 +1161,7 @@ WHERE id = {folderId}", cancellationToken);
         await EnsureFolderDocumentsApprovedAsync(folderId, cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
+        var previousStatus = folder.ShareStatus;
         folder.ShareStatus = FolderStatus.Approved;
         folder.SharedAt = now;
         folder.UpdatedAt = now;
@@ -1170,6 +1176,7 @@ WHERE id = {folderId}", cancellationToken);
             folder.StudentFeedbackReason = null;
         }
 
+        _notifications.StageFolderModerationFinal(folder, previousStatus, rejectionReason: null, now);
         await _db.SaveChangesAsync(cancellationToken);
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
@@ -1197,10 +1204,12 @@ WHERE id = {folderId}", cancellationToken);
                 .Select(f => new
                 {
                     f.Id,
+                    f.UserId,
                     f.Name,
                     f.Description,
                     f.IsFavorite,
                     f.ShareStatus,
+                    ShareSubmissionCount = schema.HasShareSubmissionCountColumn ? f.ShareSubmissionCount : 0,
                     ShareFailureCount = schema.HasShareFailureCountColumn ? f.ShareFailureCount : 0,
                     f.Icon,
                     f.CreatedAt
@@ -1211,25 +1220,52 @@ WHERE id = {folderId}", cancellationToken);
 
             EnsurePendingShare(folderInfo.ShareStatus, "rejected");
 
-            var nowCompatibility = DateTimeOffset.UtcNow;
-            if (schema.HasShareFailureCountColumn)
+            if (!schema.HasShareSubmissionCountColumn)
             {
-                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+                throw new DocumentException(503, "notification_staging_requires_modern_schema",
+                    "Folder moderation is temporarily unavailable while the notification migration updates the local schema.");
+            }
+
+            var nowCompatibility = DateTimeOffset.UtcNow;
+            await using var transaction = await _db.Database.BeginTransactionAsync(cancellationToken);
+            try
+            {
+                var updated = schema.HasShareFailureCountColumn
+                    ? await _db.Database.ExecuteSqlInterpolatedAsync($@"
 UPDATE folders
 SET share_status = {(int)FolderStatus.Rejected},
     shared_at = NULL,
     share_failure_count = share_failure_count + 1,
     updated_at = {nowCompatibility}
-WHERE id = {folderId}", cancellationToken);
-            }
-            else
-            {
-                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+WHERE id = {folderId} AND share_status = {(int)FolderStatus.PendingShare}", cancellationToken)
+                    : await _db.Database.ExecuteSqlInterpolatedAsync($@"
 UPDATE folders
 SET share_status = {(int)FolderStatus.Rejected},
     shared_at = NULL,
     updated_at = {nowCompatibility}
-WHERE id = {folderId}", cancellationToken);
+WHERE id = {folderId} AND share_status = {(int)FolderStatus.PendingShare}", cancellationToken);
+
+                if (updated != 1)
+                {
+                    throw new DocumentException(409, "folder_not_pending_share",
+                        "Only folders with status Pending Share can be rejected.");
+                }
+
+                _notifications.StageFolderModerationFinal(new Folder
+                {
+                    Id = folderInfo.Id,
+                    UserId = folderInfo.UserId,
+                    Name = folderInfo.Name,
+                    ShareStatus = FolderStatus.Rejected,
+                    ShareSubmissionCount = folderInfo.ShareSubmissionCount
+                }, FolderStatus.PendingShare, rejectionReason, nowCompatibility);
+                await _db.SaveChangesAsync(cancellationToken);
+                await transaction.CommitAsync(cancellationToken);
+            }
+            catch
+            {
+                await transaction.RollbackAsync(CancellationToken.None);
+                throw;
             }
 
             var countCompatibility = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
@@ -1242,6 +1278,7 @@ WHERE id = {folderId}", cancellationToken);
                 IsFavorite = folderInfo.IsFavorite,
                 ShareStatus = FolderStatus.Rejected,
                 SharedAt = null,
+                ShareSubmissionCount = folderInfo.ShareSubmissionCount,
                 ShareFailureCount = schema.HasShareFailureCountColumn ? folderInfo.ShareFailureCount + 1 : 0,
                 HumanReviewReason = rejectionReason,
                 Icon = folderInfo.Icon,
@@ -1259,6 +1296,7 @@ WHERE id = {folderId}", cancellationToken);
         EnsurePendingShare(folder.ShareStatus, "rejected");
 
         var now = DateTimeOffset.UtcNow;
+        var previousStatus = folder.ShareStatus;
         folder.ShareStatus = FolderStatus.Rejected;
         folder.SharedAt = null;
         folder.ShareReviewSource = "HUMAN";
@@ -1270,6 +1308,7 @@ WHERE id = {folderId}", cancellationToken);
 
         folder.ShareFailureCount += 1;
 
+        _notifications.StageFolderModerationFinal(folder, previousStatus, rejectionReason, now);
         await _db.SaveChangesAsync(cancellationToken);
 
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
