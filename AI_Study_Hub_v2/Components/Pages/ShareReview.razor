@@ -105,12 +105,12 @@
                 <div>
                     <MudText Typo="Typo.h6" Class="review-subtitle">Folder decision</MudText>
                     <MudText Typo="Typo.body2" Color="Color.Secondary">
-                        Approve for Community, reject with a clear reason, or escalate rejected documents to an administrator.
+                        Approve for Community, reject with a clear reason, or escalate non-approved documents to an administrator.
                     </MudText>
                 </div>
                 <div class="folder-actions">
                     <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Flag"
-                               Disabled="@(_folderBusy || !_documentDecisions.Values.Any(x => !x.Approved))" OnClick="EscalateAsync">
+                               Disabled="@_folderBusy" OnClick="EscalateAsync">
                         Escalate
                     </MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Error" Disabled="@_folderBusy" OnClick="RejectFolderAsync">
@@ -320,19 +320,19 @@
 
     private async Task EscalateAsync()
     {
-        var rejectedDocuments = _documents
-            .Where(document => _documentDecisions.TryGetValue(document.Id, out var decision) && !decision.Approved)
+        var eligibleDocuments = _documents
+            .Where(IsEligibleForEscalation)
             .Select(document => new EscalationDialog.RejectedDocItem
             {
                 DocumentId = document.Id,
                 FileName = document.FileName,
-                RejectReason = _documentDecisions[document.Id].Reason ?? "Rejected by moderator."
+                RejectReason = GetEscalationDocumentReason(document)
             })
             .ToList();
 
-        if (rejectedDocuments.Count == 0)
+        if (eligibleDocuments.Count == 0)
         {
-            Snackbar.Add("Reject at least one document before escalating.", Severity.Warning);
+            Snackbar.Add("All documents are approved. There are no documents available for escalation.", Severity.Info);
             return;
         }
 
@@ -342,7 +342,7 @@
             {
                 ["FolderName"] = _summary?.FolderName ?? "Folder",
                 ["FolderId"] = FolderId,
-                ["RejectedDocuments"] = rejectedDocuments
+                ["RejectedDocuments"] = eligibleDocuments
             },
             new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true });
         var result = await dialog.Result;
@@ -482,6 +482,27 @@
 
     private DocumentDecision? GetDocumentDecision(Guid documentId) =>
         _documentDecisions.GetValueOrDefault(documentId);
+
+    private bool IsEligibleForEscalation(DocumentDto document)
+    {
+        var localDecision = GetDocumentDecision(document.Id);
+        return localDecision?.Approved != true
+            && (localDecision is not null || document.ReviewStatus != DocumentReviewStatus.Approved);
+    }
+
+    private string GetEscalationDocumentReason(DocumentDto document)
+    {
+        var localDecision = GetDocumentDecision(document.Id);
+        if (!string.IsNullOrWhiteSpace(localDecision?.Reason))
+            return localDecision.Reason;
+
+        if (document.ReviewStatus == DocumentReviewStatus.Rejected)
+            return string.IsNullOrWhiteSpace(document.ErrorMessage)
+                ? "Rejected during moderator review."
+                : document.ErrorMessage;
+
+        return "Requires administrator review.";
+    }
 
     private bool IsBusy(Guid documentId) => _busyDocumentId == documentId;
 
