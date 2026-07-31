@@ -29,17 +29,6 @@ else if (_authorized)
             <MudBreadcrumbs Items="@_breadcrumbs" Separator="/" Class="admin-breadcrumbs" />
             <MudSpacer />
             
-            <div class="d-flex align-center me-3 flex-wrap" style="gap: 0.75rem;">
-                <div class="supabase-status-badge">
-                    <span class="status-pulse-dot"></span>
-                    <span class="status-badge-text">Supabase connected</span>
-                </div>
-                <div class="refresh-badge d-flex align-center">
-                    <MudIcon Icon="@Icons.Material.Filled.History" Size="Size.Small" Class="me-1" Style="font-size: 14px; opacity: 0.7;" />
-                    <span style="font-size: 11px; opacity: 0.7;">Refreshed @DateTime.Now.ToString("HH:mm")</span>
-                </div>
-            </div>
-
             <MudTooltip Text="Toggle theme">
                 <MudIconButton Icon="@ThemeIcon" Color="Color.Inherit" OnClick="ToggleTheme" />
             </MudTooltip>
@@ -51,16 +40,28 @@ else if (_authorized)
                     </MudBadge>
                 </ActivatorContent>
                 <ChildContent>
+                    @if (_notificationsLoaded)
+                    {
                     <MudMenuItem Icon="@Icons.Material.Filled.Flag" OnClick="@(() => Navigation.NavigateTo("/admin/escalations"))">@_moderationCount escalations pending</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.ReportProblem" OnClick="@(() => Navigation.NavigateTo("/admin/dashboard"))">@_failedCount failed processing jobs</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.DataUsage" OnClick="@(() => Navigation.NavigateTo("/admin/users"))">Review user quotas</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Tune" OnClick="@(() => Navigation.NavigateTo("/admin/settings"))">System settings</MudMenuItem>
+                    }
+                    else if (_notificationLoadFailed)
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.ErrorOutline" Disabled="true">Notification counts unavailable</MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Refresh" OnClick="LoadNotificationsAsync">Retry notification counts</MudMenuItem>
+                    }
+                    else
+                    {
+                        <MudMenuItem Icon="@Icons.Material.Filled.HourglassTop" Disabled="true">Loading notification counts…</MudMenuItem>
+                    }
                 </ChildContent>
             </MudMenu>
 
             <div class="admin-topbar-profile">
                 <MudButton Variant="Variant.Text" Color="Color.Inherit" Class="admin-profile-button" StartIcon="@Icons.Material.Filled.AdminPanelSettings">
-                    <MudHidden Breakpoint="Breakpoint.SmAndDown">System Admin</MudHidden>
+                    <MudHidden Breakpoint="Breakpoint.SmAndDown">@AdminIdentity</MudHidden>
                 </MudButton>
                 <MudTooltip Text="Logout">
                     <MudIconButton Icon="@Icons.Material.Filled.Logout"
@@ -96,7 +97,6 @@ else if (_authorized)
                     <MudNavLink Href="/admin/community-reports" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Community Reports</MudNavLink>
                     <MudNavLink Href="/admin/documents" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Description">Document Library</MudNavLink>
                     <MudNavLink Href="/admin/escalations" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Flag">Escalations</MudNavLink>
-                    <MudNavLink Href="/dashboard" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.FolderShared">Folder Moderation</MudNavLink>
                 </MudNavGroup>
                 <MudNavGroup Title="Governance" Icon="@Icons.Material.Filled.Policy" Expanded="true">
                     <MudNavLink Href="/admin/settings" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Tune">AI System Settings</MudNavLink>
@@ -128,12 +128,14 @@ else if (_authorized)
 
 @code {
     private bool _drawerOpen = true;
-    private bool _isDarkMode = false;
+    private bool _isDarkMode = true;
     private bool _checkingAccess = true;
     private bool _authorized;
     private List<BreadcrumbItem> _breadcrumbs = new();
     private int _moderationCount;
     private int _failedCount;
+    private bool _notificationsLoaded;
+    private bool _notificationLoadFailed;
 
     private string NotificationBadge => (_moderationCount + _failedCount) > 0 ? (_moderationCount + _failedCount).ToString() : null!;
 
@@ -143,9 +145,7 @@ else if (_authorized)
         Session.CurrentUser?.Email
         ?? Session.CurrentUser?.Username
         ?? Session.CurrentUser?.FullName
-        ?? "Administrator";
-
-    private string AdminRole => Session.CurrentUser?.Role ?? "Admin";
+        ?? string.Empty;
 
     private readonly MudTheme _theme = new()
     {
@@ -235,17 +235,27 @@ else if (_authorized)
         try
         {
             if (string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                _notificationLoadFailed = true;
+                await InvokeAsync(StateHasChanged);
                 return;
+            }
 
             var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
             _moderationCount = stats.PendingEscalationCount;
             _failedCount = stats.TotalFailedJobs;
+            _notificationsLoaded = true;
+            _notificationLoadFailed = false;
             await InvokeAsync(StateHasChanged);
         }
         catch (Exception ex)
         {
-            // Non-critical: notifications are best-effort, UI still works without them
+            _moderationCount = 0;
+            _failedCount = 0;
+            _notificationsLoaded = false;
+            _notificationLoadFailed = true;
             Logger.LogWarning(ex, "Failed to load admin notification badges");
+            await InvokeAsync(StateHasChanged);
         }
     }
 
@@ -438,52 +448,6 @@ else if (_authorized)
 
     .mud-menu-activator, .mud-badge-root, .mud-badge-wrapper {
         overflow: visible !important;
-    }
-
-    .supabase-status-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.5rem;
-        background-color: rgba(70, 72, 212, 0.2);
-        padding: 0.25rem 0.75rem;
-        border-radius: 9999px;
-        border: 1px solid rgba(70, 72, 212, 0.3);
-    }
-
-    .status-pulse-dot {
-        width: 0.5rem;
-        height: 0.5rem;
-        border-radius: 9999px;
-        background-color: #22c55e;
-        display: inline-block;
-        animation: status-pulse-anim 2s infinite;
-    }
-
-    @@keyframes status-pulse-anim {
-        0% {
-            transform: scale(0.95);
-            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.7);
-        }
-        70% {
-            transform: scale(1);
-            box-shadow: 0 0 0 4px rgba(34, 197, 94, 0);
-        }
-        100% {
-            transform: scale(0.95);
-            box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
-        }
-    }
-
-    .status-badge-text {
-        font-size: 10px;
-        font-weight: 700;
-        color: #ffffff;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }
-
-    .refresh-badge {
-        color: #e0e3e5;
     }
 
     .admin-profile-button {
@@ -767,4 +731,48 @@ else if (_authorized)
             padding: 6rem 2rem 2.75rem;
         }
     }
+
+    .dark-theme {
+        --admin-bg: #0b0b14;
+        --admin-surface: #12121f;
+        --admin-border: rgba(190, 196, 255, .14);
+        --admin-text: #f4f2ff;
+        --admin-muted: #aaa8bf;
+        --admin-accent: #8c7cff;
+        --admin-cyan: #72dcf2;
+    }
+
+    .dark-theme .admin-main-content {
+        background: radial-gradient(circle at 88% 5%, rgba(114, 220, 242, .07), transparent 24rem), radial-gradient(circle at 30% -5%, rgba(140, 124, 255, .09), transparent 28rem), var(--admin-bg);
+    }
+
+    .dark-theme .admin-page-frame { width: min(100%, 1480px); margin-inline: auto; }
+    .dark-theme .admin-topbar, .dark-theme .admin-sidebar { background: rgba(11, 11, 20, .96) !important; border-color: var(--admin-border) !important; backdrop-filter: blur(18px); }
+    .dark-theme .admin-sidebar-header { min-height: 78px; border-color: var(--admin-border); }
+    .dark-theme .admin-nav-menu .mud-nav-link.active { background: rgba(140, 124, 255, .16) !important; color: var(--admin-text) !important; box-shadow: inset 3px 0 var(--admin-cyan); }
+    .dark-theme .admin-nav-menu .mud-nav-link:not(.active):hover, .dark-theme .admin-footer-link:hover { background: rgba(255, 255, 255, .045) !important; }
+    .dark-theme .admin-open-queue-btn { background: var(--admin-accent) !important; color: #090812 !important; text-transform: none; letter-spacing: 0; }
+
+    .dark-theme :is(h1, h2, h3, .page-title, .benchmark-title, .benchmark-section-title, .config-title, .audit-preview-title, .user-name, .doc-title-text, .owner-name, .col-title, .kpi-value, .benchmark-kpi-value) { color: var(--admin-text) !important; }
+    .dark-theme :is(.page-desc, .benchmark-subtitle, .benchmark-section-caption, .refresh-status, .kpi-label, .kpi-subtext, .config-key, .config-desc-label, .audit-preview-desc, .user-email, .doc-meta-text, .owner-email, .col-subtitle, .col-meta-label, .footer-count, .pagination-info, .last-updated-text) { color: var(--admin-muted) !important; }
+
+    .dark-theme :is(.kpi-card-custom, .benchmark-kpi-card, .benchmark-card, .config-card, .audit-preview-card, .audit-list-card, .audit-row-custom, .users-table-container, .document-table-container, .bottom-status-footer, .widget-card, .report-header, .report-list, .detail-card, .detail-tabs-card, .actor-summary-section, .total-events-badge) { background: rgba(18, 18, 31, .9) !important; border: 1px solid var(--admin-border) !important; border-radius: 10px !important; box-shadow: none !important; color: var(--admin-text) !important; }
+    .dark-theme :is(.users-table, .document-table, .audit-table) { min-width: 720px; color: var(--admin-text); }
+    .dark-theme :is(.users-table-container, .document-table-container, .audit-table-container) { overflow-x: auto; }
+    .dark-theme :is(.users-table th, .document-table th, .audit-table th) { background: rgba(255, 255, 255, .025) !important; color: var(--admin-muted) !important; border-color: var(--admin-border) !important; }
+    .dark-theme :is(.users-table td, .document-table td, .audit-table td, .users-table-footer, .pagination-bar-custom) { background: transparent !important; color: var(--admin-text) !important; border-color: var(--admin-border) !important; }
+    .dark-theme :is(.search-input, .filter-select, .filter-btn, .custom-date-picker, .custom-input, .custom-textarea, .pagination-jump-input, .footer-page-jump-input, .pag-btn, .pagination-btn, .preset-btn, .header-outline-btn) { background-color: var(--admin-surface) !important; border-color: var(--admin-border) !important; color: var(--admin-text) !important; box-shadow: none !important; }
+    .dark-theme :is(input, select, textarea, button, a, .mud-button-root, .mud-icon-button):focus-visible { outline: 2px solid var(--admin-cyan) !important; outline-offset: 2px; }
+    .dark-theme :is(.search-input, .filter-select, .custom-date-picker, .custom-input, .custom-textarea):focus { border-color: var(--admin-cyan) !important; }
+    .dark-theme .page-enter { animation-duration: .28s; }
+
+    @@media (max-width: 767px) {
+        .admin-page-frame { padding: 5rem .75rem 1.5rem; }
+        .dark-theme :is(.filter-row-custom, .page-header-row, .header-actions) { align-items: stretch; }
+        .dark-theme :is(.search-input-wrapper, .filter-select, .date-range-wrapper) { width: 100%; min-width: 0 !important; }
+        .dark-theme :is(.header-actions, .date-inputs) { width: 100%; flex-wrap: wrap; }
+        .dark-theme :is(.header-actions > *, .date-inputs > input) { flex: 1 1 10rem; }
+    }
+
+    @@media (prefers-reduced-motion: reduce) { .page-enter { animation: none !important; } }
 </style>

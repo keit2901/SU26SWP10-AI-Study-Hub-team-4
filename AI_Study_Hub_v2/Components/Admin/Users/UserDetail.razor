@@ -30,15 +30,13 @@ else
             <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
                 <MudAvatar Size="Size.Large" Color="Color.Primary">@_user.Initials</MudAvatar>
                 <div>
-                    <MudText Typo="Typo.overline" Color="Color.Secondary">Profile detail</MudText>
+                    <MudText Typo="Typo.overline" Class="detail-kicker">Account · Access</MudText>
                     <MudText Typo="Typo.h4">@_user.FullName</MudText>
                     <MudText Typo="Typo.body2" Color="Color.Secondary">@_user.Email</MudText>
                 </div>
             </MudStack>
             <MudStack Row="true" Spacing="1" Style="flex-wrap: wrap;">
                 <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="BackToUsers">Back</MudButton>
-                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Edit" OnClick="EditUser">Edit</MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Warning" StartIcon="@Icons.Material.Filled.LockReset" OnClick="ResetPasswordAsync">Reset password</MudButton>
                 <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Block" Disabled="@(!_user.IsActive)" OnClick="DeactivateAsync">Deactivate</MudButton>
             </MudStack>
         </MudStack>
@@ -52,8 +50,8 @@ else
             </MudItem>
             <MudItem xs="12" md="4">
                 <MudPaper Elevation="0" Class="detail-card">
-                    <MudText Typo="Typo.caption">Student code</MudText>
-                    <MudText Typo="Typo.h5">@DisplayValue(_user.StudentCode)</MudText>
+                    <MudText Typo="Typo.caption">Created</MudText>
+                    <MudText Typo="Typo.h5">@FormatDate(_user.CreatedAt)</MudText>
                 </MudPaper>
             </MudItem>
             <MudItem xs="12" md="4">
@@ -65,34 +63,16 @@ else
         </MudGrid>
 
         <MudPaper Elevation="0" Class="detail-tabs-card">
-            <MudTabs Rounded="true" Elevation="0" TabPanelsClass="pa-4">
-                <MudTabPanel Text="Overview" Icon="@Icons.Material.Filled.AccountCircle">
-                    <MudGrid>
-                        <MudItem xs="12" md="6">
-                            <MudList T="string" Dense="true">
-                                <MudListSubheader>Profile fields</MudListSubheader>
-                                <MudListItem Text="ID" SecondaryText="@_user.Id.ToString()" />
-                                <MudListItem Text="Full name" SecondaryText="@_user.FullName" />
-                                <MudListItem Text="Email" SecondaryText="@_user.Email" />
-                                <MudListItem Text="Created at" SecondaryText="@FormatDateTime(_user.CreatedAt)" />
-                            </MudList>
-                        </MudItem>
-                        <MudItem xs="12" md="6">
-                            <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                                Connect this page to Supabase to read profiles, auth metadata, and authorization claims.
-                            </MudAlert>
-                        </MudItem>
-                    </MudGrid>
-                </MudTabPanel>
-
-                <MudTabPanel Text="Documents" Icon="@Icons.Material.Filled.Description">
-                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Document details are not yet available for individual users.</MudAlert>
-                </MudTabPanel>
-
-                <MudTabPanel Text="Activity" Icon="@Icons.Material.Filled.History">
-                    <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">Activity timeline is not yet available for individual users.</MudAlert>
-                </MudTabPanel>
-            </MudTabs>
+            <MudList T="string" Dense="true" Class="pa-4">
+                <MudListSubheader>Loaded account data</MudListSubheader>
+                <MudListItem Text="ID" SecondaryText="@_user.Id.ToString()" />
+                <MudListItem Text="Full name" SecondaryText="@_user.FullName" />
+                <MudListItem Text="Email" SecondaryText="@_user.Email" />
+                <MudListItem Text="Created" SecondaryText="@FormatDateTime(_user.CreatedAt)" />
+                <MudListItem Text="Documents" SecondaryText="@_user.DocumentCount.ToString("N0")" />
+                <MudListItem Text="Daily token quota" SecondaryText="@_user.DailyTokenQuota.ToString("N0")" />
+                <MudListItem Text="Tokens used today" SecondaryText="@_user.TokensUsedToday.ToString("N0")" />
+            </MudList>
         </MudPaper>
     </MudStack>
 }
@@ -125,12 +105,14 @@ else
             _user = new UserDetailRow
             {
                 Id = dto.Id,
-                FullName = dto.FullName,
+                FullName = string.IsNullOrWhiteSpace(dto.FullName) ? dto.Username : dto.FullName,
                 Email = dto.Username,
-                StudentCode = string.Empty,
                 Role = dto.Role,
                 CreatedAt = dto.CreatedAt.UtcDateTime,
-                IsActive = dto.IsActive
+                IsActive = dto.IsActive,
+                DailyTokenQuota = dto.DailyTokenQuota,
+                TokensUsedToday = dto.TokensUsedToday,
+                DocumentCount = dto.DocumentCount
             };
         }
         catch (Exception ex)
@@ -144,34 +126,6 @@ else
     }
 
     private void BackToUsers() => Navigation.NavigateTo("/admin/users");
-
-    private void EditUser()
-    {
-        Snackbar.Add("Edit profile is not yet implemented.", Severity.Info);
-    }
-
-    private async Task ResetPasswordAsync()
-    {
-        if (_user is null) return;
-
-        var parameters = new DialogParameters
-        {
-            ["Title"] = "Reset password",
-            ["Message"] = $"Send a password reset link to {_user.Email}?",
-            ["ConfirmText"] = "Send link",
-            ["ConfirmColor"] = Color.Warning,
-            ["IconColor"] = Color.Warning,
-            ["Icon"] = Icons.Material.Filled.LockReset
-        };
-
-        var dialog = await DialogService.ShowAsync<ConfirmDialog>("Reset password", parameters);
-        var result = await dialog.Result;
-
-        if (result is { Canceled: false })
-        {
-            Snackbar.Add($"Password reset is not yet implemented.", Severity.Info);
-        }
-    }
 
     private async Task DeactivateAsync()
     {
@@ -215,38 +169,36 @@ else
         }
     }
 
-    private static string DisplayValue(string value) => string.IsNullOrWhiteSpace(value) ? "Not assigned" : value;
-
     private static string FormatDate(DateTime value) => value.ToString("MMM dd, yyyy");
 
     private static string FormatDateTime(DateTime value) => value.ToLocalTime().ToString("MMM dd, yyyy HH:mm");
-
-    private static Color GetDocumentColor(string status)
-    {
-        return status switch
-        {
-            "Indexed" => Color.Success,
-            "Processing" => Color.Warning,
-            "Rejected" => Color.Error,
-            _ => Color.Default
-        };
-    }
 
     private sealed class UserDetailRow
     {
         public Guid Id { get; set; }
         public string FullName { get; set; } = string.Empty;
         public string Email { get; set; } = string.Empty;
-        public string StudentCode { get; set; } = string.Empty;
         public string Role { get; set; } = string.Empty;
         public DateTime CreatedAt { get; set; }
         public bool IsActive { get; set; }
+        public long DailyTokenQuota { get; set; }
+        public long TokensUsedToday { get; set; }
+        public int DocumentCount { get; set; }
 
-        public string Initials => string.Join(string.Empty, FullName
+        public string Initials => GetInitials(FullName, Email);
+    }
+
+    private static string GetInitials(string? fullName, string? email)
+    {
+        var initials = string.Concat((fullName ?? string.Empty)
             .Split(' ', StringSplitOptions.RemoveEmptyEntries)
             .Take(2)
             .Select(part => part[0]))
             .ToUpperInvariant();
+
+        return string.IsNullOrEmpty(initials)
+            ? (email ?? string.Empty).Trim().FirstOrDefault().ToString().ToUpperInvariant()
+            : initials;
     }
 }
 
@@ -257,18 +209,16 @@ else
 
     .detail-card,
     .detail-tabs-card {
-        border-radius: 24px;
-        border: 1px solid rgba(15, 118, 110, .12);
-        background: rgba(255, 252, 246, .88);
+        border-radius: 10px;
+        border: 1px solid rgba(190, 196, 255, .14);
+        background: rgba(18, 18, 31, .9);
     }
 
     .detail-card {
         padding: 1.25rem;
     }
 
-    .activity-timeline {
-        max-width: 760px;
-    }
+    .detail-kicker { color: #72dcf2 !important; letter-spacing: .09em; }
 
     @@keyframes pageRise {
         from {

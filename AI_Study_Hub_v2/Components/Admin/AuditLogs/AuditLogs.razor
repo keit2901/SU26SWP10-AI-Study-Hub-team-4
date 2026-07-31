@@ -1,7 +1,7 @@
 @namespace AI_Study_Hub_v2.Components.Admin.AuditLogs
 @page "/admin/audit-logs"
 @layout AdminLayout
-@implements IDisposable
+@implements IAsyncDisposable
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @inject ISnackbar Snackbar
@@ -10,22 +10,19 @@
 
 <div class="audit-page">
     <div class="breadcrumbs-container">
-        GOVERNANCE > AUDIT LOGS
+        Governance · Traceability
     </div>
 
     <div class="page-header-row">
         <div>
             <h1 class="page-title">Audit Logs</h1>
-            <p class="page-desc">Review administrator actions, user security events, moderation decisions, configuration changes, and before/after JSON payloads.</p>
+            <p class="page-desc">Review the latest 200 loaded administrator actions, security events, moderation decisions, configuration changes, and before/after JSON payloads.</p>
+            <span class="refresh-status">@RefreshStatus</span>
         </div>
         <div class="header-actions">
-            <button class="header-outline-btn" @onclick="Reload">
+            <button class="header-outline-btn" @onclick="Reload" disabled="@(_isLoading || _isRefreshing)">
                 <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
                 <span>REFRESH</span>
-            </button>
-            <button class="header-filled-btn" disabled title="Export not available">
-                <MudIcon Icon="@Icons.Material.Filled.Download" Size="Size.Small" />
-                <span>EXPORT NOT AVAILABLE</span>
             </button>
         </div>
     </div>
@@ -34,7 +31,7 @@
     <div class="filter-row-custom mb-6">
         <div class="search-input-wrapper">
             <input type="text" class="search-input" placeholder="Search action, actor, entity, IP, or JSON..."
-                   value="@_searchText" @oninput="OnSearchInput" />
+                   value="@_searchInput" @oninput="OnSearchInput" />
             <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" Size="Size.Small" />
         </div>
         <select class="filter-select" value="@_selectedAction" @onchange="OnActionChanged">
@@ -108,8 +105,8 @@
     }
 
     <div class="total-events-badge mb-6">
-        <span class="total-label">@(_selectedCategory == "All" ? "TOTAL EVENTS" : _categories.First(c => c.Key == _selectedCategory).Label.ToUpper())</span>
-        <span class="total-value">@_logs.Count</span>
+        <span class="total-label">@(_selectedCategory == "All" ? "LOADED EVENTS" : $"LOADED {_categories.First(c => c.Key == _selectedCategory).Label.ToUpper()}")</span>
+        <span class="total-value">@SelectedCategoryCount</span>
     </div>
 
     <div class="category-tab-bar mb-6">
@@ -141,16 +138,16 @@
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 0.75rem;">
                 @foreach (var group in actorGroups)
                 {
-                    <div class="actor-card @(_selectedActor == group.Actor ? "actor-active" : "")" @onclick="@(() => { _selectedActor = group.Actor; })" style="cursor: pointer; padding: 0.75rem; border: 1px solid rgba(199, 196, 215, 0.2); border-radius: 8px; transition: all 0.2s; background: @(_selectedActor == group.Actor ? "rgba(70, 72, 212, 0.04)" : "#fafbfc");">
-                        <div style="font-size: 13px; font-weight: 600; color: #191c1e; margin-bottom: 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">@group.Actor</div>
-                        <div style="font-size: 20px; font-weight: 800; color: #191c1e; line-height: 1;">@group.Count</div>
-                        <div style="font-size: 10px; color: #767586; margin-top: 2px;">actions</div>
+                    <button type="button" class="actor-card @(_selectedActor == group.Actor ? "actor-active" : "")" aria-pressed="@(_selectedActor == group.Actor)" @onclick="@(() => { _selectedActor = group.Actor; })">
+                        <span class="actor-card-name">@group.Actor</span>
+                        <span class="actor-card-count">@group.Count</span>
+                        <span class="actor-card-label">actions</span>
                         @if (group.HighCount > 0)
                         {
-                            <div style="font-size: 10px; color: #ba1a1a; font-weight: 600; margin-top: 4px;">⚠ @group.HighCount HIGH</div>
+                            <span class="actor-card-high">⚠ @group.HighCount HIGH</span>
                         }
-                        <div style="font-size: 10px; color: #9ca3af; margin-top: 2px;">Last: @group.LastAt.ToString("HH:mm")</div>
-                    </div>
+                        <span class="actor-card-last">Last: @group.LastAt.ToString("HH:mm")</span>
+                    </button>
                 }
             </div>
         </div>
@@ -193,6 +190,10 @@
     </div>
 
     <!-- List Items -->
+    @if (!string.IsNullOrWhiteSpace(_errorMessage) && _hasLoaded)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-6">@_errorMessage</MudAlert>
+    }
     @if (_isLoading)
     {
         <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-bottom: 1.5rem;">
@@ -202,7 +203,7 @@
             }
         </div>
     }
-    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    else if (!string.IsNullOrWhiteSpace(_errorMessage) && !_hasLoaded)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-6">@_errorMessage</MudAlert>
     }
@@ -221,42 +222,42 @@
                 @foreach (var log in FilteredLogs)
                 {
                     <div class="audit-row-custom">
-                        <div class="audit-row-summary" @onclick="@(() => ToggleExpand(log.Id))">
+                        <button type="button" class="audit-row-summary" @onclick="@(() => ToggleExpand(log.Id))" aria-expanded="@IsExpanded(log.Id)" aria-controls="@GetDetailId(log.Id)">
                             <!-- Col 1: Action Badge & Date -->
-                            <div>
+                            <span>
                                 <span class="action-badge-custom @GetActionClass(log.Action)">@log.Action</span>
-                                <div class="col-subtitle">@FormatDateTime(log.CreatedAt)</div>
-                            </div>
+                                <span class="col-subtitle">@FormatDateTime(log.CreatedAt)</span>
+                            </span>
                             
                             <!-- Col 2: Actor & IP -->
-                            <div>
-                                <div class="col-title">@log.ActorEmail</div>
-                                <div class="col-subtitle">@log.IpAddress</div>
-                            </div>
+                            <span>
+                                <span class="col-title">@log.ActorEmail</span>
+                                <span class="col-subtitle">@log.IpAddress</span>
+                            </span>
 
                             <!-- Col 3: Target Entity & ID -->
-                            <div>
-                                <div class="col-title">@log.EntityName</div>
-                                <div class="col-subtitle">@log.EntityId</div>
-                            </div>
+                            <span>
+                                <span class="col-title">@log.EntityName</span>
+                                <span class="col-subtitle">@log.EntityId</span>
+                            </span>
 
                             <!-- Col 4: Severity Badge -->
-                            <div>
+                            <span>
                                 <span class="col-meta-label">SEVERITY</span>
                                 <span class="severity-badge-custom severity-@log.Severity.ToLowerInvariant()">@log.Severity</span>
-                            </div>
+                            </span>
 
                             <!-- Col 5: Request ID & Expand -->
-                            <div class="req-wrapper">
+                            <span class="req-wrapper">
                                 <span class="col-meta-label">REQUEST</span>
                                 <span class="req-value">@log.RequestId</span>
                                 <MudIcon Icon="@(IsExpanded(log.Id) ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)" Size="Size.Small" Style="color: #767586; margin-left: auto;" />
-                            </div>
-                        </div>
+                            </span>
+                        </button>
 
                         @if (IsExpanded(log.Id))
                         {
-                            <div class="audit-row-details">
+                            <div id="@GetDetailId(log.Id)" class="audit-row-details">
                                 <div class="details-grid">
                                     <div>
                                         <span class="details-section-title">Before</span>
@@ -277,10 +278,6 @@
                 }
             </div>
 
-            <!-- Pagination Footer -->
-            <div class="pagination-row-custom">
-                <span class="pagination-info">Showing @FilteredLogs.Count() events</span>
-            </div>
         </div>
     }
 </div>
@@ -298,7 +295,7 @@
     .breadcrumbs-container {
         font-size: 11px;
         font-weight: 700;
-        color: #4648d4;
+        color: #72dcf2;
         letter-spacing: 0.05em;
         text-transform: uppercase;
         margin-bottom: 0.5rem;
@@ -326,6 +323,11 @@
         font-size: 14px;
         color: #575e72;
         margin: 4px 0 0 0;
+    }
+
+    .refresh-status {
+        font-size: 12px;
+        color: #767586;
     }
 
     .header-actions {
@@ -727,10 +729,25 @@
     .audit-row-summary {
         display: grid;
         grid-template-columns: 2fr 2.5fr 2.5fr 1.5fr 1.5fr;
+        width: 100%;
+        border: 0;
+        background: transparent;
         padding: 1rem 1.25rem;
         align-items: center;
         cursor: pointer;
         gap: 1rem;
+        color: inherit;
+        font: inherit;
+        text-align: left;
+    }
+
+    .audit-row-summary > span:not(.req-wrapper) {
+        display: block;
+    }
+
+    .audit-row-summary:focus-visible {
+        outline: 2px solid #72dcf2;
+        outline-offset: -2px;
     }
 
     @@media (max-width: 768px) {
@@ -883,52 +900,6 @@
         max-height: 250px;
     }
 
-    /* Pagination Footer */
-    .pagination-row-custom {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        margin-top: 1.5rem;
-        font-size: 13px;
-        font-weight: 600;
-        color: #767586;
-        padding-top: 0.5rem;
-    }
-
-    .pagination-controls {
-        display: flex;
-        align-items: center;
-        gap: 6px;
-    }
-
-    .pag-btn {
-        width: 32px;
-        height: 32px;
-        border-radius: 6px;
-        border: 1px solid #c7c6d5;
-        background: #ffffff;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        color: #575e72;
-    }
-
-    .pag-btn:disabled {
-        opacity: 0.4;
-        cursor: not-allowed;
-    }
-
-    .pag-active {
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: #4648d4;
-        font-weight: 700;
-    }
-
     /* Dark theme overrides */
     .dark-theme .kpi-card-custom,
     .dark-theme .audit-row-custom,
@@ -937,7 +908,6 @@
     .dark-theme .custom-date-picker,
     .dark-theme .filter-btn,
     .dark-theme .audit-list-card,
-    .dark-theme .pag-btn,
     .dark-theme .header-outline-btn {
         background-color: #1e2124 !important;
         border-color: rgba(255, 255, 255, 0.08) !important;
@@ -947,7 +917,6 @@
     .dark-theme .page-title,
     .dark-theme .kpi-value,
     .dark-theme .col-title,
-    .dark-theme .pag-active,
     .dark-theme .audit-row-summary:hover {
         color: #f8fafc !important;
     }
@@ -959,7 +928,6 @@
     .dark-theme .details-section-title,
     .dark-theme .col-subtitle,
     .dark-theme .col-meta-label,
-    .dark-theme .pagination-info,
     .dark-theme .page-desc,
     .dark-theme .kpi-label,
     .dark-theme .kpi-subtext {
@@ -1033,6 +1001,64 @@
         background: rgba(70, 72, 212, 0.02) !important;
     }
 
+    .actor-card {
+        display: block;
+        width: 100%;
+        padding: 0.75rem;
+        border: 1px solid rgba(199, 196, 215, 0.2);
+        border-radius: 8px;
+        background: #fafbfc;
+        color: #191c1e;
+        cursor: pointer;
+        font: inherit;
+        text-align: left;
+        transition: all 0.2s;
+    }
+
+    .actor-card-name,
+    .actor-card-count,
+    .actor-card-label,
+    .actor-card-high,
+    .actor-card-last {
+        display: block;
+    }
+
+    .actor-card-name {
+        margin-bottom: 4px;
+        overflow: hidden;
+        color: #191c1e;
+        font-size: 13px;
+        font-weight: 600;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .actor-card-count {
+        color: #191c1e;
+        font-size: 20px;
+        font-weight: 800;
+        line-height: 1;
+    }
+
+    .actor-card-label,
+    .actor-card-last {
+        margin-top: 2px;
+        color: #767586;
+        font-size: 10px;
+    }
+
+    .actor-card-high {
+        margin-top: 4px;
+        color: #ba1a1a;
+        font-size: 10px;
+        font-weight: 600;
+    }
+
+    .actor-card:focus-visible {
+        outline: 2px solid #72dcf2;
+        outline-offset: 2px;
+    }
+
     .actor-active {
         border-color: rgba(70, 72, 212, 0.4) !important;
         background: rgba(70, 72, 212, 0.06) !important;
@@ -1051,8 +1077,34 @@
     }
 
     .dark-theme .actor-card {
-        border-color: rgba(255, 255, 255, 0.06);
+        border-color: #475569;
         background: #1e2124;
+        color: #f8fafc;
+    }
+
+    .dark-theme .actor-card:hover {
+        border-color: #7dd3fc !important;
+        background: #252b37 !important;
+    }
+
+    .dark-theme .actor-card.actor-active {
+        border-color: #a5b4fc !important;
+        background: #303b67 !important;
+        color: #ffffff;
+    }
+
+    .dark-theme .actor-card-name,
+    .dark-theme .actor-card-count {
+        color: #f8fafc;
+    }
+
+    .dark-theme .actor-card-label,
+    .dark-theme .actor-card-last {
+        color: #cbd5e1;
+    }
+
+    .dark-theme .actor-card-high {
+        color: #fca5a5;
     }
 
     @@keyframes pageRise {
@@ -1076,6 +1128,8 @@
     private readonly List<AuditLogRow> _logs = new();
     private readonly HashSet<string> _expandedRequests = new();
     private bool _isLoading = true;
+    private bool _isRefreshing;
+    private string _searchInput = "";
     private string? _searchText;
     private string? _selectedAction;
     private string? _selectedActor;
@@ -1086,9 +1140,21 @@
     private DateTime? _selectedDate;
     private string? _selectedDateString;
     private string? _errorMessage;
-    private bool _loadStarted;
+    private bool _hasLoaded;
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly PeriodicTimer _pollTimer = new(TimeSpan.FromSeconds(30));
+    private Task? _pollTask;
+    private CancellationTokenSource? _searchDebounceCts;
+    private DateTimeOffset? _lastSuccessfulRefreshUtc;
 
     private string _selectedCategory = "All";
+    private int SelectedCategoryCount => _selectedCategory == "All"
+        ? _logs.Count
+        : _categories.First(category => category.Key == _selectedCategory).Count;
+    private string RefreshStatus => _lastSuccessfulRefreshUtc is null
+        ? "Waiting for the first successful refresh."
+        : $"Last refreshed {_lastSuccessfulRefreshUtc.Value.ToLocalTime():dd/MM/yyyy HH:mm:ss}.";
 
     private static readonly Dictionary<string, string[]> _categoryActions = new()
     {
@@ -1207,6 +1273,7 @@
     protected override void OnInitialized()
     {
         Session.OnChange += HandleSessionChanged;
+        _pollTask = PollAsync();
         if (Session.IsAuthenticated)
         {
             _ = Reload();
@@ -1215,7 +1282,7 @@
 
     private void HandleSessionChanged()
     {
-        if (Session.IsAuthenticated && !_loadStarted)
+        if (Session.IsAuthenticated)
         {
             _ = InvokeAsync(Reload);
         }
@@ -1228,13 +1295,28 @@
             return;
         }
 
-        _loadStarted = true;
-        _isLoading = true;
-        _errorMessage = null;
+        bool entered;
+        try
+        {
+            entered = await _refreshGate.WaitAsync(0, _lifetimeCts.Token);
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!entered)
+        {
+            return;
+        }
+
+        _isLoading = !_hasLoaded;
+        _isRefreshing = true;
+        await InvokeAsync(StateHasChanged);
 
         try
         {
-            var rows = await AdminApi.ListAuditLogsAsync(Session.AccessToken);
+            var rows = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 200, _lifetimeCts.Token);
             _logs.Clear();
             _logs.AddRange(rows.Select(log => new AuditLogRow(
                 log.Id.ToString(),
@@ -1249,15 +1331,30 @@
                 log.BeforeJson ?? "{}",
                 log.AfterJson ?? "{}",
                 log.ContextJson ?? "{}")));
+            _expandedRequests.IntersectWith(_logs.Select(log => log.Id));
+            _hasLoaded = true;
+            _lastSuccessfulRefreshUtc = DateTimeOffset.UtcNow;
+            _errorMessage = null;
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // Expected while disposal cancels a pending refresh.
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Unable to load audit logs: {ex.Message}";
+            _errorMessage = _hasLoaded
+                ? $"Unable to refresh audit logs. Showing the last successful data: {ex.Message}"
+                : $"Unable to load audit logs: {ex.Message}";
         }
         finally
         {
             _isLoading = false;
-            await InvokeAsync(StateHasChanged);
+            _isRefreshing = false;
+            _refreshGate.Release();
+            if (!_lifetimeCts.IsCancellationRequested)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
@@ -1275,9 +1372,37 @@
 
     private bool IsExpanded(string requestId) => _expandedRequests.Contains(requestId);
 
-    private void OnSearchInput(ChangeEventArgs args)
+    private static string GetDetailId(string logId) => $"audit-detail-{logId}";
+
+    private async Task OnSearchInput(ChangeEventArgs args)
     {
-        _searchText = args.Value?.ToString() ?? "";
+        _searchInput = args.Value?.ToString() ?? "";
+        _searchDebounceCts?.Cancel();
+        var debounceCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+        _searchDebounceCts = debounceCts;
+        try
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(275), debounceCts.Token);
+            if (!ReferenceEquals(_searchDebounceCts, debounceCts))
+            {
+                return;
+            }
+
+            _searchText = string.IsNullOrWhiteSpace(_searchInput) ? null : _searchInput;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) when (debounceCts.IsCancellationRequested)
+        {
+            // A newer keystroke or component disposal superseded this debounce.
+        }
+        finally
+        {
+            if (ReferenceEquals(_searchDebounceCts, debounceCts))
+            {
+                _searchDebounceCts = null;
+            }
+            debounceCts.Dispose();
+        }
     }
 
     private void OnActionChanged(ChangeEventArgs args)
@@ -1350,6 +1475,8 @@
     private Task ClearFiltersAsync()
     {
         _selectedCategory = "All";
+        _searchDebounceCts?.Cancel();
+        _searchInput = "";
         _searchText = null;
         _selectedAction = null;
         _selectedActor = null;
@@ -1443,8 +1570,32 @@
         string AfterJson,
         string ContextJson);
 
-    public void Dispose()
+    private async Task PollAsync()
+    {
+        try
+        {
+            while (await _pollTimer.WaitForNextTickAsync(_lifetimeCts.Token))
+            {
+                await InvokeAsync(Reload);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // Expected while the component is disposed.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
     {
         Session.OnChange -= HandleSessionChanged;
+        _searchDebounceCts?.Cancel();
+        _lifetimeCts.Cancel();
+        _pollTimer.Dispose();
+        if (_pollTask is not null)
+        {
+            await _pollTask;
+        }
+        await _refreshGate.WaitAsync();
+        _refreshGate.Dispose();
     }
 }

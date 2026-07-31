@@ -1,6 +1,7 @@
 @namespace AI_Study_Hub_v2.Components.Admin.Benchmarks
 @page "/admin/benchmarks"
 @layout AdminLayout
+@implements IAsyncDisposable
 @using AI_Study_Hub_v2.Components.Admin.Shared
 @using AI_Study_Hub_v2.Dtos
 @using AI_Study_Hub_v2.Services
@@ -12,22 +13,28 @@
 <div class="benchmarks-page page-enter">
     <div class="d-flex justify-space-between align-center mb-6 flex-wrap" style="gap: 1rem;">
         <div>
-            <div class="benchmark-kicker mb-1">Governance / Benchmark History</div>
+            <div class="benchmark-kicker mb-1">Governance · Quality</div>
             <h2 class="benchmark-title">Benchmark History</h2>
-            <p class="benchmark-subtitle">Track quality, latency, and regression alerts from manual and automated benchmark runs.</p>
+            <p class="benchmark-subtitle">Track quality and latency from stored manual and automated benchmark runs.</p>
+            <span class="benchmark-section-caption">@RefreshStatus</span>
         </div>
         <div class="d-flex align-center flex-wrap" style="gap: 0.75rem;">
-            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" Disabled="@_isBusy" OnClick="LoadAsync">
+            <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" Disabled="@_isBusy" OnClick="RefreshAsync">
                 Refresh
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PlayArrow" Disabled="@_isBusy" OnClick="RunManualAsync">
-                Run Manual
+                Run manual
             </MudButton>
             <MudButton Variant="Variant.Filled" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Schedule" Disabled="@_isBusy" OnClick="RunAutomationAsync">
-                Run Automated
+                Run automated
             </MudButton>
         </div>
     </div>
+
+    @if (!string.IsNullOrWhiteSpace(_errorMessage) && _hasLoaded)
+    {
+        <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mb-4">@_errorMessage</MudAlert>
+    }
 
     @if (_isLoading)
     {
@@ -46,7 +53,7 @@
             </MudItem>
         </MudGrid>
     }
-    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    else if (!string.IsNullOrWhiteSpace(_errorMessage) && !_hasLoaded)
     {
         <MudAlert Severity="Severity.Error" Variant="Variant.Filled">@_errorMessage</MudAlert>
     }
@@ -70,8 +77,8 @@
             </div>
             <div class="benchmark-kpi-card @(Latest?.AlertTriggered == true ? "alert" : string.Empty)">
                 <div class="benchmark-kpi-label">Regression</div>
-                <div class="benchmark-kpi-value">@(Latest?.AlertTriggered == true ? "Alert" : "Stable")</div>
-                <div class="benchmark-kpi-sub">Triggers above 10% drop</div>
+                <div class="benchmark-kpi-value">@(Latest is null ? "No runs" : Latest.AlertTriggered ? "Alert" : "Stable")</div>
+                <div class="benchmark-kpi-sub">Reported by the latest stored run</div>
             </div>
         </div>
 
@@ -108,7 +115,7 @@
 
         <MudPaper Elevation="0" Class="benchmark-card mt-6">
             <h3 class="benchmark-section-title">Recent runs</h3>
-            <span class="benchmark-section-caption">Benchmark history persisted in the database</span>
+            <span class="benchmark-section-caption">Latest 24 stored runs</span>
 
             <MudTable Items="@_history" Dense="true" Hover="true" Class="mt-4">
                 <HeaderContent>
@@ -158,8 +165,24 @@
     private string[] _labels = [];
     private List<ChartSeries<double>> _runMixSeries = new();
     private readonly string[] _runMixLabels = ["Manual", "Automated"];
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+    private readonly PeriodicTimer _pollTimer = new(TimeSpan.FromSeconds(30));
+    private Task? _pollTask;
+    private bool _hasLoaded;
+    private bool _isBenchmarkRunning;
+    private DateTimeOffset? _lastSuccessfulRefreshUtc;
 
     private BenchmarkHistoryItemDto? Latest => _history.OrderByDescending(x => x.RunAt).FirstOrDefault();
+    private string RefreshStatus => _lastSuccessfulRefreshUtc is null
+        ? "Waiting for the first successful refresh."
+        : $"Last refreshed {_lastSuccessfulRefreshUtc.Value.ToLocalTime():dd/MM/yyyy HH:mm:ss}.";
+
+    protected override void OnInitialized()
+    {
+        Session.OnChange += HandleSessionChanged;
+        _pollTask = PollAsync();
+    }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -169,7 +192,17 @@
         }
     }
 
-    private async Task LoadAsync()
+    private void HandleSessionChanged()
+    {
+        if (Session.IsAuthenticated)
+        {
+            _ = InvokeAsync(RefreshAsync);
+        }
+    }
+
+    private Task RefreshAsync() => LoadAsync();
+
+    private async Task LoadAsync(bool waitForActiveRefresh = false)
     {
         if (string.IsNullOrWhiteSpace(Session.AccessToken))
         {
@@ -179,34 +212,76 @@
             return;
         }
 
-        _isLoading = true;
-        _errorMessage = null;
+        if (_isBenchmarkRunning)
+        {
+            return;
+        }
+
+        bool entered;
+        try
+        {
+            entered = await _refreshGate.WaitAsync(
+                waitForActiveRefresh ? Timeout.InfiniteTimeSpan : TimeSpan.Zero,
+                _lifetimeCts.Token);
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            return;
+        }
+
+        if (!entered)
+        {
+            return;
+        }
+
+        if (_isBenchmarkRunning)
+        {
+            _refreshGate.Release();
+            return;
+        }
+
+        _isLoading = !_hasLoaded;
+        _isBusy = true;
         await InvokeAsync(StateHasChanged);
 
         try
         {
-            _history = (await BenchmarkApi.GetHistoryAsync(Session.AccessToken, 24)).ToList();
+            _history = (await BenchmarkApi.GetHistoryAsync(Session.AccessToken, 24, _lifetimeCts.Token)).ToList();
             BuildCharts();
+            _hasLoaded = true;
+            _lastSuccessfulRefreshUtc = DateTimeOffset.UtcNow;
+            _errorMessage = null;
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // Expected while disposal cancels a pending refresh.
         }
         catch (Exception ex)
         {
-            _errorMessage = ex.Message;
+            _errorMessage = _hasLoaded
+                ? $"Unable to refresh benchmark history. Showing the last successful data: {ex.Message}"
+                : ex.Message;
         }
         finally
         {
             _isLoading = false;
-            await InvokeAsync(StateHasChanged);
+            _isBusy = false;
+            _refreshGate.Release();
+            if (!_lifetimeCts.IsCancellationRequested)
+            {
+                await InvokeAsync(StateHasChanged);
+            }
         }
     }
 
     private Task RunManualAsync() =>
         RunActionAsync(
-            async () => await BenchmarkApi.RunManualAsync(Session.AccessToken!),
+            async () => await BenchmarkApi.RunManualAsync(Session.AccessToken!, cancellationToken: _lifetimeCts.Token),
             "Manual benchmark completed.");
 
     private Task RunAutomationAsync() =>
         RunActionAsync(
-            async () => await BenchmarkApi.RunAutomationAsync(Session.AccessToken!),
+            async () => await BenchmarkApi.RunAutomationAsync(Session.AccessToken!, _lifetimeCts.Token),
             "Automated benchmark completed and stored.");
 
     private async Task RunActionAsync(Func<Task> action, string successMessage)
@@ -217,12 +292,23 @@
             return;
         }
 
+        if (_isBusy || _isBenchmarkRunning)
+        {
+            return;
+        }
+
         _isBusy = true;
+        _isBenchmarkRunning = true;
+        var completed = false;
         try
         {
             await action();
+            completed = true;
             Snackbar.Add(successMessage, Severity.Success);
-            await LoadAsync();
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // Expected while component disposal cancels an in-flight benchmark run.
         }
         catch (Exception ex)
         {
@@ -231,6 +317,12 @@
         finally
         {
             _isBusy = false;
+            _isBenchmarkRunning = false;
+        }
+
+        if (completed && !_lifetimeCts.IsCancellationRequested)
+        {
+            await LoadAsync(waitForActiveRefresh: true);
         }
     }
 
@@ -288,6 +380,34 @@
 
         return $"{item.ModelName} • {item.RunAt.ToLocalTime():dd/MM HH:mm}";
     }
+
+    private async Task PollAsync()
+    {
+        try
+        {
+            while (await _pollTimer.WaitForNextTickAsync(_lifetimeCts.Token))
+            {
+                await InvokeAsync(RefreshAsync);
+            }
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // Expected while the component is disposed.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        Session.OnChange -= HandleSessionChanged;
+        _lifetimeCts.Cancel();
+        _pollTimer.Dispose();
+        if (_pollTask is not null)
+        {
+            await _pollTask;
+        }
+        await _refreshGate.WaitAsync();
+        _refreshGate.Dispose();
+    }
 }
 
 <style>
@@ -302,7 +422,7 @@
     .benchmark-kicker {
         font-size: 11px;
         font-weight: 800;
-        color: #4648d4;
+        color: #72dcf2;
         text-transform: uppercase;
         letter-spacing: 0.08em;
     }
@@ -332,8 +452,8 @@
     .benchmark-card {
         background: #ffffff;
         border: 1px solid rgba(199, 196, 215, 0.3);
-        border-radius: 14px;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        border-radius: 10px;
+        box-shadow: none;
     }
 
     .benchmark-kpi-card {
