@@ -54,7 +54,7 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
         Guid supabaseUserId,
         CancellationToken cancellationToken = default)
     {
-        Document? document = null;
+        Guid? operationId = null;
 
         try
         {
@@ -66,16 +66,19 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
                 return Failure(documentId, "Authenticated user has no profile in public.users.");
             }
 
-            document = await _db.Documents
+            var document = await _db.Documents
+                .AsNoTracking()
                 .FirstOrDefaultAsync(d => d.Id == documentId && d.UserId == profile.Id, cancellationToken);
             if (document is null)
             {
                 return Failure(documentId, "Document does not exist or does not belong to the caller.");
             }
 
-            document.Status = DocumentStatus.Processing;
-            document.ErrorMessage = null;
-            await _db.SaveChangesAsync(cancellationToken);
+            operationId = Guid.NewGuid();
+            if (!await TryClaimAsync(document.Id, profile.Id, operationId.Value, cancellationToken))
+            {
+                return Failure(documentId, "Document does not exist or does not belong to the caller.");
+            }
 
             using var fileStream = await _storageRead.OpenReadAsync(document, cancellationToken);
             var pages = await _textExtraction.ExtractPagesAsync(fileStream, document.MimeType, cancellationToken);
@@ -87,13 +90,11 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
             if (totalImages > maxImages && _groqOptions.SkipImagesWhenLimitExceeded)
             {
                 _logger.LogWarning(
-                    "Document {DocumentId} has {TotalImages} images, exceeding limit of {MaxImages}. " +
-                    "Truncating to first {MaxImages} images.",
+                    "Document {DocumentId} has {TotalImages} images, exceeding limit of {MaxImages}. Truncating to first {MaxImages} images.",
                     document.Id, totalImages, maxImages, maxImages);
             }
 
             var remainingBudget = maxImages;
-
             foreach (var page in pages)
             {
                 if (page.Images?.Count > 0)
@@ -138,111 +139,33 @@ public sealed class DocumentIngestionService : IDocumentIngestionService
                 throw new InvalidOperationException("No chunks were produced from the extracted text.");
             }
 
-          var now = DateTimeOffset.UtcNow;
-var successfulChunkIndices = new HashSet<int>();
-var successfulChunkCount = 0;
-var failedChunkCount = 0;
+            var now = DateTimeOffset.UtcNow;
+            var preparedChunks = new List<(DocumentChunkDraft Draft, float[] Embedding)>(drafts.Count);
 
-foreach (var draft in drafts)
-{
-    float[] embedding;
+            // Do not modify chunks until every embedding succeeds. A failed re-ingestion
+            // therefore keeps its prior complete chunk set rather than publishing a partial one.
+            foreach (var draft in drafts)
+            {
+                var embedding = await _embedding.GenerateEmbeddingAsync(draft.Content, cancellationToken);
+                if (embedding.Length != _options.EmbeddingDimensions)
+                {
+                    throw new InvalidOperationException(
+                        $"Embedding dimensions mismatch. Expected {_options.EmbeddingDimensions}, got {embedding.Length}.");
+                }
 
-    try
-    {
-        embedding = await _embedding.GenerateEmbeddingAsync(draft.Content, cancellationToken);
+                preparedChunks.Add((draft, embedding));
+            }
 
-        if (embedding.Length != _options.EmbeddingDimensions)
-        {
-            throw new InvalidOperationException(
-                $"Embedding dimensions mismatch. Expected {_options.EmbeddingDimensions}, got {embedding.Length}.");
-        }
-    }
-    catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
-    {
-        failedChunkCount++;
+            if (!await TryPublishAsync(document.Id, operationId.Value, pages.Count, preparedChunks, now, cancellationToken))
+            {
+                return Superseded(document.Id);
+            }
 
-        _logger.LogWarning(
-            ex,
-            "Skipping chunk {ChunkIndex} for document {DocumentId} because embedding generation failed.",
-            draft.ChunkIndex,
-            document.Id);
+            _logger.LogInformation(
+                "Document ingested: id={DocumentId} chunks={ChunkCount} pages={PageCount} imagesSkipped={ImagesSkipped}",
+                document.Id, preparedChunks.Count, pages.Count, imagesSkipped);
 
-        continue;
-    }
-
-    var existingChunk = await _db.DocumentChunks
-        .FirstOrDefaultAsync(
-            c => c.DocumentId == document.Id && c.ChunkIndex == draft.ChunkIndex,
-            cancellationToken);
-
-    if (existingChunk is null)
-    {
-        _db.DocumentChunks.Add(new DocumentChunk
-        {
-            Id = Guid.NewGuid(),
-    DocumentId = document.Id,
-    ChunkIndex = draft.ChunkIndex,
-    PageNumber = draft.PageNumber,
-    Content = draft.Content,
-    TokenCount = _tokenEstimator.Estimate(draft.Content),
-    Embedding = new Vector(embedding),
-    EmbeddingModel = _currentEmbeddingModel,
-    CreatedAt = now,
-
-        });
-    }
-    else
-    {
-        existingChunk.PageNumber = draft.PageNumber;
-existingChunk.Content = draft.Content;
-existingChunk.TokenCount = _tokenEstimator.Estimate(draft.Content);
-existingChunk.Embedding = new Vector(embedding);
-existingChunk.EmbeddingModel = _currentEmbeddingModel;
-    }
-
-    await _db.SaveChangesAsync(cancellationToken);
-
-    successfulChunkIndices.Add(draft.ChunkIndex);
-    successfulChunkCount++;
-}
-
-if (successfulChunkCount == 0)
-{
-    document.PageCount = pages.Count;
-    document.Status = DocumentStatus.Failed;
-    document.ErrorMessage = "No chunks could be embedded.";
-
-    await _db.SaveChangesAsync(cancellationToken);
-
-    return Failure(document.Id, document.ErrorMessage);
-}
-
-var successfulChunkIndexList = successfulChunkIndices.ToList();
-
-var staleChunks = await _db.DocumentChunks
-    .Where(c => c.DocumentId == document.Id && !successfulChunkIndexList.Contains(c.ChunkIndex))
-    .ToListAsync(cancellationToken);
-
-_db.DocumentChunks.RemoveRange(staleChunks);
-
-document.PageCount = pages.Count;
-document.Status = DocumentStatus.Ready;
-document.ErrorMessage = null;
-
-await _db.SaveChangesAsync(cancellationToken);
-
-_logger.LogInformation(
-    "Document ingested: id={DocumentId} chunks={ChunkCount} pages={PageCount} failedChunks={FailedChunkCount}",
-    document.Id,
-    successfulChunkCount,
-    document.PageCount,
-    failedChunkCount);
-
-return new DocumentIngestionResult(
-    document.Id,
-    successfulChunkCount,
-    Success: true,
-    ErrorMessage: null);
+            return new DocumentIngestionResult(document.Id, preparedChunks.Count, Success: true, ErrorMessage: null);
         }
         catch (Exception ex)
         {
@@ -250,29 +173,34 @@ return new DocumentIngestionResult(
             _logger.LogWarning(ex, "Document ingestion failed: id={DocumentId}", documentId);
             var message = isCancellation ? "Ingestion was canceled or timed out." : TrimError(ex.Message);
 
-            if (document is not null)
+            if (isCancellation)
+            {
+                if (operationId is Guid ownedOperationId)
+                {
+                    try
+                    {
+                        await TryMarkFailedAsync(documentId, ownedOperationId, message, CancellationToken.None);
+                    }
+                    catch (Exception saveEx)
+                    {
+                        _logger.LogError(saveEx, "Failed to persist ingestion failure state for document {DocumentId}.", documentId);
+                    }
+                }
+
+                throw;
+            }
+
+            if (operationId is Guid failureOperationId)
             {
                 try
                 {
-                    _db.ChangeTracker.Clear();
-                    var failedDocument = await _db.Documents
-                        .FirstOrDefaultAsync(d => d.Id == document.Id, CancellationToken.None);
-                    if (failedDocument is not null)
-                    {
-                        failedDocument.Status = DocumentStatus.Failed;
-                        failedDocument.ErrorMessage = message;
-                        await _db.SaveChangesAsync(CancellationToken.None);
-                    }
+                    if (!await TryMarkFailedAsync(documentId, failureOperationId, message, CancellationToken.None))
+                        return Superseded(documentId);
                 }
                 catch (Exception saveEx)
                 {
-                    _logger.LogError(saveEx, "Failed to persist ingestion failure state for document {DocumentId}.", document.Id);
+                    _logger.LogError(saveEx, "Failed to persist ingestion failure state for document {DocumentId}.", documentId);
                 }
-            }
-
-            if (isCancellation)
-            {
-                throw;
             }
 
             return Failure(documentId, message);
@@ -281,6 +209,119 @@ return new DocumentIngestionResult(
 
     private static DocumentIngestionResult Failure(Guid documentId, string errorMessage) =>
         new(documentId, ChunkCount: 0, Success: false, ErrorMessage: errorMessage);
+
+    private static DocumentIngestionResult Superseded(Guid documentId) =>
+        Failure(documentId, "Ingestion was superseded by a newer operation.");
+
+    private async Task<bool> TryClaimAsync(Guid documentId, Guid userId, Guid operationId, CancellationToken cancellationToken)
+    {
+        if (_db.Database.IsRelational())
+        {
+            return await _db.Documents
+                .Where(document => document.Id == documentId && document.UserId == userId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(document => document.IngestionOperationId, operationId)
+                    .SetProperty(document => document.Status, DocumentStatus.Processing)
+                    .SetProperty(document => document.ErrorMessage, (string?)null), cancellationToken) == 1;
+        }
+
+        var document = await _db.Documents
+            .FirstOrDefaultAsync(item => item.Id == documentId && item.UserId == userId, cancellationToken);
+        if (document is null)
+            return false;
+
+        document.IngestionOperationId = operationId;
+        document.Status = DocumentStatus.Processing;
+        document.ErrorMessage = null;
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
+
+    private async Task<bool> TryPublishAsync(
+        Guid documentId,
+        Guid operationId,
+        int pageCount,
+        IReadOnlyList<(DocumentChunkDraft Draft, float[] Embedding)> preparedChunks,
+        DateTimeOffset createdAt,
+        CancellationToken cancellationToken)
+    {
+        _db.ChangeTracker.Clear();
+        await using var transaction = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(cancellationToken)
+            : null;
+
+        try
+        {
+            var document = _db.Database.IsRelational()
+                ? await _db.Documents.FromSqlInterpolated($"SELECT * FROM documents WHERE id = {documentId} FOR UPDATE")
+                    .SingleOrDefaultAsync(cancellationToken)
+                : await _db.Documents.SingleOrDefaultAsync(item => item.Id == documentId, cancellationToken);
+            if (document is null || document.IngestionOperationId != operationId)
+            {
+                if (transaction is not null)
+                    await transaction.RollbackAsync(CancellationToken.None);
+                return false;
+            }
+
+            var existingChunks = await _db.DocumentChunks
+                .Where(chunk => chunk.DocumentId == documentId)
+                .ToListAsync(cancellationToken);
+            _db.DocumentChunks.RemoveRange(existingChunks);
+            _db.DocumentChunks.AddRange(preparedChunks.Select(item => new DocumentChunk
+            {
+                Id = Guid.NewGuid(),
+                DocumentId = documentId,
+                ChunkIndex = item.Draft.ChunkIndex,
+                PageNumber = item.Draft.PageNumber,
+                Content = item.Draft.Content,
+                TokenCount = _tokenEstimator.Estimate(item.Draft.Content),
+                Embedding = new Vector(item.Embedding),
+                EmbeddingModel = _currentEmbeddingModel,
+                CreatedAt = createdAt,
+            }));
+
+            document.PageCount = pageCount;
+            document.Status = DocumentStatus.Ready;
+            document.ErrorMessage = null;
+            document.IngestionOperationId = null;
+            await _db.SaveChangesAsync(cancellationToken);
+            if (transaction is not null)
+                await transaction.CommitAsync(cancellationToken);
+            return true;
+        }
+        catch
+        {
+            if (transaction is not null)
+            {
+                try { await transaction.RollbackAsync(CancellationToken.None); } catch { }
+            }
+            throw;
+        }
+    }
+
+    private async Task<bool> TryMarkFailedAsync(Guid documentId, Guid operationId, string errorMessage, CancellationToken cancellationToken)
+    {
+        _db.ChangeTracker.Clear();
+        if (_db.Database.IsRelational())
+        {
+            return await _db.Documents
+                .Where(document => document.Id == documentId && document.IngestionOperationId == operationId)
+                .ExecuteUpdateAsync(setters => setters
+                    .SetProperty(document => document.Status, DocumentStatus.Failed)
+                    .SetProperty(document => document.ErrorMessage, errorMessage)
+                    .SetProperty(document => document.IngestionOperationId, (Guid?)null), cancellationToken) == 1;
+        }
+
+        var document = await _db.Documents.SingleOrDefaultAsync(item => item.Id == documentId, cancellationToken);
+        if (document is null || document.IngestionOperationId != operationId)
+            return false;
+
+        document.Status = DocumentStatus.Failed;
+        document.ErrorMessage = errorMessage;
+        document.IngestionOperationId = null;
+        await _db.SaveChangesAsync(cancellationToken);
+        return true;
+    }
 
     private static string TrimError(string errorMessage)
     {

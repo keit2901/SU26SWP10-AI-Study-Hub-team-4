@@ -4,6 +4,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -13,9 +14,11 @@ using Pgvector;
 namespace AI_Study_Hub_v2.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260801000000_AddDocumentIngestionOperationOwnership")]
+    partial class AddDocumentIngestionOperationOwnership
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -472,15 +475,13 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("file_size_bytes");
 
-                    b.Property<int>("ModerationGeneration")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("moderation_generation");
-
                     b.Property<Guid?>("FolderId")
                         .HasColumnType("uuid")
                         .HasColumnName("folder_id");
+
+                    b.Property<Guid?>("IngestionOperationId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("ingestion_operation_id");
 
                     b.Property<string>("MimeType")
                         .IsRequired()
@@ -491,10 +492,6 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Property<int?>("PageCount")
                         .HasColumnType("integer")
                         .HasColumnName("page_count");
-
-                    b.Property<Guid?>("IngestionOperationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("ingestion_operation_id");
 
                     b.Property<int>("ReviewStatus")
                         .ValueGeneratedOnAdd()
@@ -552,7 +549,6 @@ namespace AI_Study_Hub_v2.Migrations
 
                     b.ToTable("documents", null, t =>
                         {
-                            t.HasCheckConstraint("ck_documents_moderation_generation_non_negative", "moderation_generation >= 0");
                             t.HasCheckConstraint("ck_documents_ingestion_operation_id", "ingestion_operation_id IS NULL OR ingestion_operation_id <> '00000000-0000-0000-0000-000000000000'::uuid");
                         });
                 });
@@ -671,10 +667,7 @@ namespace AI_Study_Hub_v2.Migrations
 
                     b.HasIndex("ResolvedByUserId");
 
-                    b.ToTable("document_escalations", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_document_escalations_status", "escalation_status IN ('Pending', 'Resolved')");
-                        });
+                    b.ToTable("document_escalations", (string)null);
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.DocumentEscalationItem", b =>
@@ -685,24 +678,7 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
-                    b.Property<string>("AdminResponse")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("admin_response");
-
-                    b.Property<string>("DocumentFileName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("document_file_name");
-
-                    b.Property<int>("DocumentModerationGeneration")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("document_moderation_generation");
-
-                    b.Property<Guid?>("DocumentId")
+                    b.Property<Guid>("DocumentId")
                         .HasColumnType("uuid")
                         .HasColumnName("document_id");
 
@@ -716,42 +692,13 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("character varying(2000)")
                         .HasColumnName("reject_reason");
 
-                    b.Property<DateTimeOffset?>("ResolvedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("resolved_at");
-
-                    b.Property<Guid?>("ResolvedByUserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("resolved_by_user_id");
-
-                    b.Property<string>("ResolutionStatus")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasMaxLength(16)
-                        .HasColumnType("character varying(16)")
-                        .HasDefaultValue("Pending")
-                        .HasColumnName("resolution_status");
-
                     b.HasKey("Id");
 
-                    b.HasIndex("DocumentId")
-                        .IsUnique()
-                        .HasDatabaseName("ux_document_escalation_items_pending_document")
-                        .HasFilter("document_id IS NOT NULL AND resolution_status = 'Pending'");
+                    b.HasIndex("DocumentId");
 
                     b.HasIndex("EscalationId");
 
-                    b.HasIndex("ResolutionStatus", "DocumentModerationGeneration")
-                        .HasDatabaseName("ix_document_escalation_items_status_generation");
-
-                    b.HasIndex("ResolvedByUserId");
-
-                    b.ToTable("document_escalation_items", null, t =>
-                        {
-                            t.HasCheckConstraint("ck_document_escalation_items_generation_non_negative", "document_moderation_generation >= 0");
-
-                            t.HasCheckConstraint("ck_document_escalation_items_resolution_status", "resolution_status IN ('Pending', 'Approved', 'Rejected')");
-                        });
+                    b.ToTable("document_escalation_items", (string)null);
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Folder", b =>
@@ -762,6 +709,30 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnName("id")
                         .HasDefaultValueSql("gen_random_uuid()");
 
+                    b.Property<double?>("AiReviewConfidence")
+                        .HasColumnType("double precision")
+                        .HasColumnName("ai_review_confidence");
+
+                    b.Property<int>("AiReviewFailureCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("ai_review_failure_count");
+
+                    b.Property<string>("AiReviewReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("ai_review_reason");
+
+                    b.Property<string>("AppealMessage")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("appeal_message");
+
+                    b.Property<DateTimeOffset?>("AppealRequestedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("appeal_requested_at");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("timestamp with time zone")
@@ -771,6 +742,11 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Property<string>("Description")
                         .HasColumnType("text")
                         .HasColumnName("description");
+
+                    b.Property<string>("HumanReviewReason")
+                        .HasMaxLength(2000)
+                        .HasColumnType("character varying(2000)")
+                        .HasColumnName("human_review_reason");
 
                     b.Property<string>("Icon")
                         .HasMaxLength(50)
@@ -789,41 +765,11 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("name");
 
-                    b.Property<int>("ShareStatus")
+                    b.Property<bool>("RequiresHumanReview")
                         .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("share_status");
-
-                    b.Property<DateTimeOffset?>("SharedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("shared_at");
-
-                    b.Property<string>("ShareReviewSource")
-                        .HasMaxLength(32)
-                        .HasColumnType("character varying(32)")
-                        .HasColumnName("share_review_source");
-
-                    b.Property<string>("AiReviewReason")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("ai_review_reason");
-
-                    b.Property<double?>("AiReviewConfidence")
-                        .HasColumnType("double precision")
-                        .HasColumnName("ai_review_confidence");
-
-                    b.Property<int>("AiReviewFailureCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("ai_review_failure_count");
-
-                    b.Property<int>("ShareSubmissionCount")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("integer")
-                        .HasDefaultValue(0)
-                        .HasColumnName("share_submission_count");
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("requires_human_review");
 
                     b.Property<int>("ShareFailureCount")
                         .ValueGeneratedOnAdd()
@@ -831,30 +777,31 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("share_failure_count");
 
-                    b.Property<string>("HumanReviewReason")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("human_review_reason");
+                    b.Property<string>("ShareReviewSource")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("share_review_source");
+
+                    b.Property<int>("ShareStatus")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("share_status");
+
+                    b.Property<int>("ShareSubmissionCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("share_submission_count");
+
+                    b.Property<DateTimeOffset?>("SharedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("shared_at");
 
                     b.Property<string>("StudentFeedbackReason")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)")
                         .HasColumnName("student_feedback_reason");
-
-                    b.Property<bool>("RequiresHumanReview")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("boolean")
-                        .HasDefaultValue(false)
-                        .HasColumnName("requires_human_review");
-
-                    b.Property<DateTimeOffset?>("AppealRequestedAt")
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("appeal_requested_at");
-
-                    b.Property<string>("AppealMessage")
-                        .HasMaxLength(2000)
-                        .HasColumnType("character varying(2000)")
-                        .HasColumnName("appeal_message");
 
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .ValueGeneratedOnAdd()
@@ -1022,10 +969,6 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("character varying(100)")
                         .HasColumnName("display_name");
 
-                    b.Property<string>("FeatureFlagsJson")
-                        .HasColumnType("jsonb")
-                        .HasColumnName("feature_flags_json");
-
                     b.Property<bool>("IsActive")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("boolean")
@@ -1105,11 +1048,6 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasDefaultValue(0)
                         .HasColumnName("current_question_index");
 
-                    b.Property<string>("ErrorCode")
-                        .HasMaxLength(50)
-                        .HasColumnType("character varying(50)")
-                        .HasColumnName("error_code");
-
                     b.Property<string>("QuestionsJson")
                         .IsRequired()
                         .ValueGeneratedOnAdd()
@@ -1180,54 +1118,6 @@ namespace AI_Study_Hub_v2.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("quizzes", (string)null);
-                });
-
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.QuizAttempt", b =>
-                {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("uuid")
-                        .HasColumnName("id")
-                        .HasDefaultValueSql("gen_random_uuid()");
-
-                    b.Property<string>("AnswersJson")
-                        .IsRequired()
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("jsonb")
-                        .HasColumnName("answers_json")
-                        .HasDefaultValueSql("'[]'::jsonb");
-
-                    b.Property<DateTimeOffset>("CreatedAt")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("timestamp with time zone")
-                        .HasColumnName("created_at")
-                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-                    b.Property<Guid>("QuizId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("quiz_id");
-
-                    b.Property<int>("Score")
-                        .HasColumnType("integer")
-                        .HasColumnName("score");
-
-                    b.Property<int>("Total")
-                        .HasColumnType("integer")
-                        .HasColumnName("total");
-
-                    b.Property<Guid>("UserId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("user_id");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("CreatedAt");
-
-                    b.HasIndex("QuizId");
-
-                    b.HasIndex("UserId");
-
-                    b.ToTable("quiz_attempts", (string)null);
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.RegistrationOperation", b =>
@@ -1652,16 +1542,6 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
-                    b.Property<Guid?>("DocumentId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("document_id");
-
-                    b.Property<string>("EventKey")
-                        .IsRequired()
-                        .HasMaxLength(200)
-                        .HasColumnType("character varying(200)")
-                        .HasColumnName("event_key");
-
                     b.Property<Guid>("FolderId")
                         .HasColumnType("uuid")
                         .HasColumnName("folder_id");
@@ -1710,11 +1590,6 @@ namespace AI_Study_Hub_v2.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("DocumentId");
-
-                    b.HasIndex("EventKey")
-                        .IsUnique();
-
                     b.HasIndex("FolderId");
 
                     b.HasIndex("RecipientUserId")
@@ -1724,11 +1599,14 @@ namespace AI_Study_Hub_v2.Migrations
                     b.HasIndex("RecipientUserId", "CreatedAt")
                         .HasDatabaseName("ix_user_notifications_recipient_created_at");
 
+                    b.HasIndex("RecipientUserId", "FolderId", "SubmissionNumber")
+                        .IsUnique();
+
                     b.ToTable("user_notifications", null, t =>
                         {
-                            t.HasCheckConstraint("ck_user_notifications_kind", "kind IN ('FolderModerationFinal', 'DocumentModerationFinal', 'EscalationResolved')");
+                            t.HasCheckConstraint("ck_user_notifications_kind", "kind = 'FolderModerationFinal'");
 
-                            t.HasCheckConstraint("ck_user_notifications_outcome", "outcome IN ('Approved', 'Rejected', 'Mixed')");
+                            t.HasCheckConstraint("ck_user_notifications_outcome", "outcome IN ('Approved', 'Rejected')");
 
                             t.HasCheckConstraint("ck_user_notifications_submission_number", "submission_number >= 0");
                         });
@@ -1902,7 +1780,7 @@ namespace AI_Study_Hub_v2.Migrations
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.Folder", "Folder")
                         .WithMany()
                         .HasForeignKey("FolderId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .OnDelete(DeleteBehavior.NoAction)
                         .IsRequired();
 
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "ResolvedByUser")
@@ -1922,12 +1800,8 @@ namespace AI_Study_Hub_v2.Migrations
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.Document", "Document")
                         .WithMany()
                         .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
-                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "ResolvedByUser")
-                        .WithMany()
-                        .HasForeignKey("ResolvedByUserId")
-                        .OnDelete(DeleteBehavior.NoAction);
+                        .OnDelete(DeleteBehavior.NoAction)
+                        .IsRequired();
 
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.DocumentEscalation", "Escalation")
                         .WithMany("Items")
@@ -1938,8 +1812,6 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Navigation("Document");
 
                     b.Navigation("Escalation");
-
-                    b.Navigation("ResolvedByUser");
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Folder", b =>
@@ -2018,25 +1890,6 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Navigation("User");
                 });
 
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.QuizAttempt", b =>
-                {
-                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Quiz", "Quiz")
-                        .WithMany("Attempts")
-                        .HasForeignKey("QuizId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.HasOne("AI_Study_Hub_v2.Data.Entities.User", "User")
-                        .WithMany()
-                        .HasForeignKey("UserId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
-                    b.Navigation("Quiz");
-
-                    b.Navigation("User");
-                });
-
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.SharedFolderCopyOperation", b =>
                 {
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.User", null)
@@ -2059,11 +1912,6 @@ namespace AI_Study_Hub_v2.Migrations
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.UserNotification", b =>
                 {
-                    b.HasOne("AI_Study_Hub_v2.Data.Entities.Document", "Document")
-                        .WithMany()
-                        .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.SetNull);
-
                     b.HasOne("AI_Study_Hub_v2.Data.Entities.Folder", "Folder")
                         .WithMany()
                         .HasForeignKey("FolderId")
@@ -2077,8 +1925,6 @@ namespace AI_Study_Hub_v2.Migrations
                         .IsRequired();
 
                     b.Navigation("Folder");
-
-                    b.Navigation("Document");
 
                     b.Navigation("RecipientUser");
                 });
@@ -2122,11 +1968,6 @@ namespace AI_Study_Hub_v2.Migrations
                     b.Navigation("Documents");
 
                     b.Navigation("Reactions");
-                });
-
-            modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Quiz", b =>
-                {
-                    b.Navigation("Attempts");
                 });
 
             modelBuilder.Entity("AI_Study_Hub_v2.Data.Entities.Role", b =>

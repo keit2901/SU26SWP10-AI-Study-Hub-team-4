@@ -11,6 +11,9 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.ToTable("documents", table =>
         {
             table.HasCheckConstraint("ck_documents_moderation_generation_non_negative", "moderation_generation >= 0");
+            table.HasCheckConstraint(
+                "ck_documents_ingestion_operation_id",
+                "ingestion_operation_id IS NULL OR ingestion_operation_id <> '00000000-0000-0000-0000-000000000000'::uuid");
         });
 
         builder.HasKey(d => d.Id);
@@ -66,6 +69,9 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
             .HasColumnType("public.document_status")
             .HasDefaultValue(DocumentStatus.Uploading)
             .IsRequired();
+
+        builder.Property(d => d.IngestionOperationId)
+            .HasColumnName("ingestion_operation_id");
 
         builder.Property(d => d.ReviewStatus)
             .HasColumnName("review_status")

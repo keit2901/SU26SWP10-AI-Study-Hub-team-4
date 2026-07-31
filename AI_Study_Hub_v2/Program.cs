@@ -12,6 +12,8 @@ using AI_Study_Hub_v2.Services.Rag;
 using AI_Study_Hub_v2.Services.Rag.Benchmarking;
 using AI_Study_Hub_v2.Services.Supabase;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
@@ -59,7 +61,14 @@ builder.Services
     .Bind(builder.Configuration.GetSection(EmbeddingOptions.SectionName))
     .Validate(EmbeddingOptions.IsSupported, "Embedding:Provider must be Ollama or Fake.")
     .ValidateOnStart();
-builder.Services.Configure<OllamaOptions>(builder.Configuration.GetSection("Ollama"));
+builder.Services
+    .AddOptions<OllamaOptions>()
+    .Bind(builder.Configuration.GetSection("Ollama"))
+    .Validate(options => OllamaOptions.HasValidBaseUrl(options.BaseUrl), "Ollama:BaseUrl must be an absolute HTTP or HTTPS URL.")
+    .Validate(options => !string.IsNullOrWhiteSpace(options.Model), "Ollama:Model is required.")
+    .Validate(options => options.TimeoutSeconds is >= 1 and <= 120, "Ollama:TimeoutSeconds must be between 1 and 120.")
+    .Validate(options => options.MaxRetries is >= 1 and <= 5, "Ollama:MaxRetries must be between 1 and 5.")
+    .ValidateOnStart();
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
@@ -220,10 +229,8 @@ builder.Services.AddScoped<IEmbeddingService>(sp =>
 
     return ActivatorUtilities.CreateInstance<CachingEmbeddingService>(sp, inner);
 });
-if (embeddingBootstrap.UsesOllama)
-{
-    builder.Services.AddHostedService<OllamaHealthCheck>();
-}
+builder.Services.AddHealthChecks()
+    .AddCheck<OllamaHealthCheck>("ollama", tags: ["dependency", "ollama"]);
 // Sprint 3 services ----------------------------------------------------------
 builder.Services.AddScoped<IAiAnswerReportService, AiAnswerReportService>();
 builder.Services.AddScoped<IQuizService, QuizService>();
@@ -438,7 +445,8 @@ using (var scope = app.Services.CreateScope())
 
         await SeedDefaultAdminAsync(db, goTrue, seedOptions, startupLogger);
         await SeedDefaultModeratorAsync(db, goTrue, seedOptions, startupLogger);
-        await SystemConfigSeeder.SeedAsync(db, startupLogger);
+        var ollamaOptions = scope.ServiceProvider.GetRequiredService<IOptions<OllamaOptions>>().Value;
+        await SystemConfigSeeder.SeedAsync(db, startupLogger, ollamaOptions.Model);
         await SeedDefaultPlansAsync(db, startupLogger);
         await SeedDefaultProStudentAsync(db, goTrue, seedOptions, startupLogger);
     }
@@ -475,6 +483,16 @@ app.UseAuthorization();
 app.UseAntiforgery();
 
 app.UseRateLimiter();
+
+// Liveness intentionally has no external dependency checks. Railway can use it
+// without recycling the app while Ollama is temporarily unavailable.
+app.MapHealthChecks("/health/live", new HealthCheckOptions { Predicate = _ => false });
+app.MapHealthChecks("/health/ollama", new HealthCheckOptions
+{
+    Predicate = registration => registration.Tags.Contains("ollama"),
+})
+    .RequireAuthorization(new AuthorizeAttribute { Roles = Role.AdminRoleName })
+    .RequireRateLimiting("admin");
 
 app.MapControllers();
 app.MapRazorComponents<App>()
