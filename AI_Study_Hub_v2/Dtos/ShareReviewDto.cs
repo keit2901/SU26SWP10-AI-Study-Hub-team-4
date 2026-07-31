@@ -1,10 +1,11 @@
 using System.ComponentModel.DataAnnotations;
+using AI_Study_Hub_v2.Data.Entities;
 
 namespace AI_Study_Hub_v2.Dtos;
 
 // ── Enums ──
 
-public enum ShareReviewSeverity { Low, Medium, High }
+public enum ShareReviewSeverity { Low, Medium, High, NoAiReview }
 
 public enum ShareReviewDecision { Keep, MarkEducational, Delete, Rename, HumanReview }
 
@@ -35,6 +36,29 @@ public sealed record ShareReviewFileDto(
     string? AiContextSnippet,
     double AiConfidence,
     bool IsBlocked);
+
+// ── Moderator pending queue ──
+
+public sealed record PendingShareDocumentDto(
+    Guid Id,
+    string FileName,
+    DocumentStatus Status,
+    DocumentReviewStatus ReviewStatus);
+
+public sealed record PendingShareFolderDto(
+    Guid Id,
+    string Name,
+    string OwnerName,
+    string SubjectCode,
+    string Semester,
+    int DocumentCount,
+    DateTimeOffset SubmittedAt,
+    int ShareSubmissionCount,
+    int ShareFailureCount,
+    string? AppealMessage,
+    string? StudentFeedbackReason,
+    string? HumanReviewReason,
+    IReadOnlyList<PendingShareDocumentDto> Documents);
 
 // ── User Decisions ──
 

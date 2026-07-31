@@ -54,7 +54,10 @@ public record UserAnalyticsDto(
     System.Collections.Generic.List<AnalyticsDocumentDto> RecentDocuments,
     int TotalDocumentCount = 0,
     int Page = 1,
-    int PageSize = 0
+    int PageSize = 0,
+    int PendingUnreviewedCount = 0,
+    int RejectedDocumentCount = 0,
+    bool AllDocumentsApproved = false
 );
 
 public record AnalyticsIssueDto(

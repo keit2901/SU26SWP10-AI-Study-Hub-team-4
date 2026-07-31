@@ -160,7 +160,7 @@
                                 <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Size="Size.Small" />
                             </div>
                             <div class="personal-status-content">
-                                <div class="personal-status-label">Pending Review</div>
+                                <div class="personal-status-label">Waiting for Moderator Review</div>
                                 <div class="personal-status-value">@_pendingPersonalShareCount</div>
                                 <p class="personal-status-note">Folders waiting for moderator review.</p>
                             </div>
@@ -168,22 +168,12 @@
 
                         <div class="personal-status-card rejected">
                             <div class="personal-status-icon">
-                                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Size="Size.Small" />
+                                <MudIcon Icon="@Icons.Material.Filled.Block" Size="Size.Small" />
                             </div>
                             <div class="personal-status-content">
-                                <div class="personal-status-label">AI Failed</div>
-                                <div class="personal-status-value">@_personalAiFailedFolders.Count</div>
-                                <p class="personal-status-note">Rejected by AI review.</p>
-                            </div>
-                        </div>
-                        <div class="personal-status-card rejected">
-                            <div class="personal-status-icon">
-                                <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" />
-                            </div>
-                            <div class="personal-status-content">
-                                <div class="personal-status-label">Moderator Rejected</div>
-                                <div class="personal-status-value">@_personalModeratorRejectedFolders.Count</div>
-                                <p class="personal-status-note">Rejected after moderator review.</p>
+                                <div class="personal-status-label">Rejected</div>
+                                <div class="personal-status-value">@_personalFailedFolders.Count</div>
+                                <p class="personal-status-note">Folders not approved for community sharing.</p>
                             </div>
                         </div>
                     </div>
@@ -290,9 +280,8 @@
                                                 <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
                                                     <option value="">All Status</option>
                                                     <option value="Shared">Shared</option>
-                                                    <option value="Pending Review">Pending Review</option>
-                                                    <option value="AI Failed">AI Failed</option>
-                                                    <option value="Moderator Rejected">Moderator Rejected</option>
+                                                    <option value="Waiting for moderator review">Waiting for moderator review</option>
+                                                    <option value="Rejected">Rejected</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -368,25 +357,21 @@
                                             </MudTd>
                                             <MudTd Class="table-cell">
                                                 <div class="table-actions" style="display:flex; gap:0.35rem; flex-wrap:wrap;">
-                                                    <MudIconButton Icon="@Icons.Material.Filled.FactCheck"
-                                                                   Size="Size.Small"
-                                                                   Color="Color.Info"
-                                                                   Disabled="@(!HasReviewFeedback(context))"
-                                                                   OnClick="@(() => OpenReviewFeedbackDialogAsync(context))"
-                                                                   title="View review feedback" />
-                                                    <MudIconButton Icon="@Icons.Material.Filled.Feedback"
-                                                                   Size="Size.Small"
-                                                                   Color="Color.Warning"
-                                                                   Disabled="@(!CanShowFeedbackAction(context))"
-                                                                   OnClick="@(() => HandleFeedbackActionAsync(context))"
-                                                                   title="Send feedback" />
-                                                    @if (CanResubmitShare(context))
+                                                    @if (context.ShareStatus == Data.Entities.FolderStatus.Rejected)
                                                     {
-                                                        <MudIconButton Icon="@Icons.Material.Filled.Refresh"
+                                                        <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz"
                                                                        Size="Size.Small"
-                                                                       Color="Color.Success"
-                                                                       OnClick="@(() => RequestShareAsync(context))"
-                                                                       title="Share again" />
+                                                                       Color="Color.Warning"
+                                                                       OnClick="@(() => ShowRejectionActionsAsync(context))"
+                                                                       title="Folder actions" />
+                                                    }
+                                                    else if (HasReviewFeedback(context))
+                                                    {
+                                                        <MudIconButton Icon="@Icons.Material.Filled.FactCheck"
+                                                                       Size="Size.Small"
+                                                                       Color="Color.Info"
+                                                                       OnClick="@(() => OpenReviewFeedbackDialogAsync(context))"
+                                                                       title="View review feedback" />
                                                     }
                                                 </div>
                                             </MudTd>
@@ -516,18 +501,6 @@
     private List<FolderDto> _personalFailedFolders => _personalFolders
         .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Rejected)
         .OrderByDescending(folder => folder.UpdatedAt)
-        .ToList();
-
-    private List<FolderDto> _personalAiFailedFolders => _personalFolders
-        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-            && string.Equals(folder.ShareReviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase))
-        .OrderByDescending(GetPersonalActivityTimestamp)
-        .ToList();
-
-    private List<FolderDto> _personalModeratorRejectedFolders => _personalFolders
-        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-            && !string.Equals(folder.ShareReviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase))
-        .OrderByDescending(GetPersonalActivityTimestamp)
         .ToList();
 
     private List<FolderDto> _personalPendingModeratorFolders => _personalFolders
@@ -774,43 +747,65 @@
         }
     }
 
-    private async Task ShowHumanReviewDialogAsync(FolderDto folder)
+    private async Task ShowRejectionActionsAsync(FolderDto folder)
     {
-        if (!CanRequestHumanReview(folder)) return;
-
         var parameters = new DialogParameters
         {
+            ["FolderId"] = folder.Id,
             ["FolderName"] = folder.Name,
-            ["FailCount"] = folder.ShareFailureCount,
-            ["LatestReason"] = GetLatestReasonPreview(folder),
         };
         var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialogRef = await DialogService.ShowAsync<AppealFolderShareDialog>("Send Feedback", parameters, options);
+        var dialogRef = await DialogService.ShowAsync<RejectedFolderActions>("Folder Rejected", parameters, options);
         var result = await dialogRef.Result;
         if (result is null || result.Canceled) return;
 
-        if (result.Data is AppealFolderShareDialog.AppealFolderShareDialogResult feedback)
+        switch (result.Data as string)
         {
-            await RequestHumanReviewAsync(folder, feedback);
+            case "Resubmit":
+                await RequestShareAsync(folder);
+                break;
+            case "Delete":
+                await ConfirmDeleteFolderAsync(folder);
+                break;
+            case "KeepPrivate":
+                break;
         }
     }
 
-    private async Task RequestHumanReviewAsync(FolderDto folder, AppealFolderShareDialog.AppealFolderShareDialogResult feedback)
+    private async Task ConfirmDeleteFolderAsync(FolderDto folder)
+    {
+        var documentText = folder.DocumentCount == 1 ? "1 document" : $"{folder.DocumentCount} documents";
+        var parameters = new DialogParameters
+        {
+            ["Title"] = "Delete folder?",
+            ["Message"] = $"Delete \"{folder.Name}\"? This will also delete {documentText} inside it. This cannot be undone.",
+            ["ConfirmText"] = "Delete",
+            ["ConfirmColor"] = Color.Error,
+            ["Icon"] = Icons.Material.Filled.DeleteForever,
+            ["IconColor"] = Color.Error,
+        };
+        var dialogRef = await DialogService.ShowAsync<ConfirmDialog>(
+            "Delete folder",
+            parameters,
+            new DialogOptions { CloseOnEscapeKey = true });
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled) return;
+
+        await DeleteFolderAsync(folder);
+    }
+
+    private async Task DeleteFolderAsync(FolderDto folder)
     {
         if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
 
         try
         {
-            var updated = await FoldersApi.AppealShareReviewAsync(
-                Session.AccessToken!,
-                folder.Id,
-                new AppealFolderShareRequest
-                {
-                    Reason = feedback.Reason,
-                    Description = feedback.Description
-                });
-            ReplacePersonalFolder(updated);
-            Snackbar.Add("Feedback sent. Your folder is back in the moderator queue.", Severity.Info);
+            await FoldersApi.DeleteAsync(Session.AccessToken, folder.Id);
+            _personalFolders.RemoveAll(item => item.Id == folder.Id);
+            _allCommunityFolders.RemoveAll(item => item.Id == folder.Id);
+            if (_selectedFolderId == folder.Id) _selectedFolderId = null;
+            Snackbar.Add($"Deleted \"{folder.Name}\".", Severity.Success);
+            StateHasChanged();
         }
         catch (DocumentApiException ex)
         {
@@ -1098,22 +1093,6 @@
             new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Medium, FullWidth = true });
     }
 
-    private async Task HandleFeedbackActionAsync(FolderDto folder)
-    {
-        if (folder.ShareStatus != Data.Entities.FolderStatus.Rejected)
-        {
-            return;
-        }
-
-        if (folder.ShareFailureCount < 2)
-        {
-            Snackbar.Add("Feedback becomes available after this folder fails review 2 times.", Severity.Info);
-            return;
-        }
-
-        await ShowHumanReviewDialogAsync(folder);
-    }
-
     private void ShowComingSoon()
     {
         Snackbar.Add("Coming soon", Severity.Info);
@@ -1295,15 +1274,14 @@
         return folder.ShareStatus switch
         {
             Data.Entities.FolderStatus.Approved => "Shared",
-            Data.Entities.FolderStatus.PendingShare => "Pending Review",
-            Data.Entities.FolderStatus.Rejected when string.Equals(folder.ShareReviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase) => "AI Failed",
-            Data.Entities.FolderStatus.Rejected => "Moderator Rejected",
+            Data.Entities.FolderStatus.PendingShare => "Waiting for moderator review",
+            Data.Entities.FolderStatus.Rejected => "Rejected",
             _ => "Private"
         };
     }
 
     private static string GetFolderDisplayName(FolderDto folder) =>
-        $"{folder.Name} (Fail {folder.ShareFailureCount} times)";
+        folder.Name;
 
     private static (string Bg, string Color, string DotColor) GetPersonalShareStatusBadgeStyles(FolderDto folder)
     {
@@ -1321,27 +1299,8 @@
         };
     }
 
-    private static bool CanRequestHumanReview(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-        && folder.ShareFailureCount >= 2;
-
-    private static bool CanShowFeedbackAction(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Rejected;
-
-    private static bool CanAttemptFeedback(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-        && folder.ShareFailureCount >= 2;
-
-    private static bool CanResubmitShare(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Rejected;
-
     private static bool HasReviewFeedback(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Approved
-        || folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-        || !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
-        || !string.IsNullOrWhiteSpace(folder.AiReviewReason)
-        || !string.IsNullOrWhiteSpace(folder.StudentFeedbackReason)
-        || !string.IsNullOrWhiteSpace(folder.AppealMessage);
+        folder.ShareStatus == Data.Entities.FolderStatus.Approved;
 
     private static bool IsHumanReviewPending(FolderDto folder) =>
         folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
@@ -1351,7 +1310,8 @@
     {
         return statusFilter switch
         {
-            "Pending Review" => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare,
+            "Waiting for moderator review" => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare,
+            "Rejected" => folder.ShareStatus == Data.Entities.FolderStatus.Rejected,
             _ => GetPersonalShareStatusText(folder) == statusFilter
         };
     }
@@ -1364,9 +1324,7 @@
     private static string GetShareFailureReason(FolderDto folder) =>
         !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
             ? folder.HumanReviewReason
-            : !string.IsNullOrWhiteSpace(folder.AiReviewReason)
-                ? folder.AiReviewReason
-                : "This folder was not approved for community sharing.";
+            : "This folder was not approved for community sharing.";
 
     private static string GetPendingModeratorMessage(FolderDto folder) =>
         string.IsNullOrWhiteSpace(folder.AppealMessage)
@@ -1383,12 +1341,8 @@
         return folder.ShareStatus switch
         {
             Data.Entities.FolderStatus.Approved => $"Shared on {timestamp}",
-            Data.Entities.FolderStatus.PendingShare when string.Equals(folder.ShareReviewSource, "STUDENT_FEEDBACK", StringComparison.OrdinalIgnoreCase)
-                => $"Feedback sent on {timestamp}",
             Data.Entities.FolderStatus.PendingShare => $"Waiting for moderator review since {timestamp}",
-            Data.Entities.FolderStatus.Rejected when string.Equals(folder.ShareReviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase)
-                => $"AI review failed on {timestamp}",
-            Data.Entities.FolderStatus.Rejected => $"Moderator rejected on {timestamp}",
+            Data.Entities.FolderStatus.Rejected => $"Review rejected on {timestamp}",
             _ => $"Updated on {timestamp}"
         };
     }
@@ -1397,13 +1351,10 @@
     {
         var reason = !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
             ? folder.HumanReviewReason
-            : !string.IsNullOrWhiteSpace(folder.AiReviewReason)
-                ? folder.AiReviewReason
-                : !string.IsNullOrWhiteSpace(folder.StudentFeedbackReason)
-                    ? folder.StudentFeedbackReason
-                    : !string.IsNullOrWhiteSpace(folder.AppealMessage)
-                        ? folder.AppealMessage
-                        : null;
+            : folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
+                && !string.IsNullOrWhiteSpace(folder.AppealMessage)
+                    ? folder.AppealMessage
+                    : null;
 
         if (folder.ShareStatus == Data.Entities.FolderStatus.Approved)
         {

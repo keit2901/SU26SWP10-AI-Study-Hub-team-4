@@ -9,342 +9,124 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture]
 public sealed class EscalationServiceTests
 {
-    // ── P1: FK constraint — EscalatedByUserId MUST be User.Id (local PK), NOT SupabaseUserId ──
-
     [Test]
-    public async Task CreateAsync_UsesLocalUserId_NotSupabaseUserId()
+    public async Task CreateAsync_ActiveModerator_ValidatesThenEscalatesOnlyListedFolderDocuments()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
-        var moderator = SeedUser(db, roleId: 3, "Moderator"); // role 3 = Moderator
+        var moderator = SeedUser(db, 3, "Moderator");
         var folder = SeedFolder(db, moderator.Id);
-        var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
+        var document = SeedDocument(db, moderator.Id, folder.Id);
+        var sut = CreateSut(db);
 
-        var request = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "This rejection is incorrect.",
-            Items = new List<EscalationItemRequest>
-            {
-                new() { DocumentId = doc.Id, RejectReason = "Content looks fine." }
-            }
-        };
+        var result = await sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
 
-        // Act — pass User.Id (local PK)
-        var result = await sut.CreateAsync(moderator.Id, request);
-
-        // Assert — EscalatedByUserId stored correctly as User.Id
-        var persisted = await db.DocumentEscalations
-            .Include(e => e.Items)
-            .FirstAsync(e => e.Id == result.Id);
-        persisted.EscalatedByUserId.Should().Be(moderator.Id);
-        persisted.EscalatedByUserId.Should().NotBe(moderator.SupabaseUserId);
-        persisted.EscalationStatus.Should().Be("Pending");
-        persisted.Items.Should().HaveCount(1);
-        persisted.Items.First().DocumentId.Should().Be(doc.Id);
+        result.EscalationStatus.Should().Be("Pending");
+        (await db.Documents.SingleAsync(d => d.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Escalated);
+        db.AuditLogs.Should().ContainSingle(log => log.Action == "ESCALATION_CREATED" && !log.AfterJson!.Contains("Reason for"));
     }
 
     [Test]
-    public async Task CreateAsync_PersistsMultipleItems()
+    public async Task CreateAsync_StudentOrInvalidDocumentOwnership_DeniesWithoutMutation()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
-        var moderator = SeedUser(db, roleId: 3, "Moderator");
+        var student = SeedUser(db, 2, "Student");
+        var moderator = SeedUser(db, 3, "Moderator");
         var folder = SeedFolder(db, moderator.Id);
-        var doc1 = SeedDocument(db, moderator.Id, folder.Id);
-        var doc2 = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
+        var foreign = SeedDocument(db, student.Id, null);
+        var sut = CreateSut(db);
 
-        var request = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "Both docs are fine.",
-            Items = new List<EscalationItemRequest>
-            {
-                new() { DocumentId = doc1.Id, RejectReason = "Doc1 reject reason" },
-                new() { DocumentId = doc2.Id, RejectReason = "Doc2 reject reason" }
-            }
-        };
+        var studentAttempt = () => sut.CreateAsync(student.Id, Request(folder.Id, foreign.Id));
+        (await studentAttempt.Should().ThrowAsync<AdminException>()).Which.Code.Should().Be("share_reviewer_role_required");
 
-        var result = await sut.CreateAsync(moderator.Id, request);
-
-        result.Items.Should().HaveCount(2);
-        result.EscalatedByName.Should().Be(moderator.FullName);
+        var moderatorAttempt = () => sut.CreateAsync(moderator.Id, Request(folder.Id, foreign.Id));
+        (await moderatorAttempt.Should().ThrowAsync<AdminException>()).Which.Code.Should().Be("escalation_item_not_in_folder");
+        db.DocumentEscalations.Should().BeEmpty();
+        (await db.Documents.SingleAsync(d => d.Id == foreign.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.None);
     }
 
-    // ── P1: GetAllAsync returns ALL statuses (fixed resolved-disappear bug) ──
-
     [Test]
-    public async Task GetAllAsync_ReturnsAllStatuses_IncludingResolved()
+    public async Task CreateAsync_DuplicateDocumentOrExistingPendingEscalation_IsRejectedWithoutExtraMutation()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
-        var moderator = SeedUser(db, roleId: 3, "Moderator");
+        var moderator = SeedUser(db, 3, "Moderator");
         var folder = SeedFolder(db, moderator.Id);
-        var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
+        var document = SeedDocument(db, moderator.Id, folder.Id);
+        var sut = CreateSut(db);
 
-        // Create 2 escalations
-        var req = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "Test",
-            Items = new List<EscalationItemRequest>
-            {
-                new() { DocumentId = doc.Id, RejectReason = "Reason" }
-            }
-        };
-        var e1 = await sut.CreateAsync(moderator.Id, req);
-        var e2 = await sut.CreateAsync(moderator.Id, req);
+        var duplicate = Request(folder.Id, document.Id);
+        duplicate.Items.Add(new EscalationItemRequest { DocumentId = document.Id, RejectReason = "Duplicate" });
+        Func<Task> duplicateAttempt = () => sut.CreateAsync(moderator.Id, duplicate);
+        (await duplicateAttempt.Should().ThrowAsync<AdminException>())
+            .Which.Code.Should().Be("duplicate_escalation_document");
 
-        // Resolve one
-        await sut.ResolveAsync(e1.Id, new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid." }, Guid.NewGuid());
-
-        // Act
-        var all = await sut.GetAllAsync();
-
-        // Assert — includes both pending and resolved
-        all.Should().HaveCount(2);
-        all.Should().Contain(e => e.EscalationStatus == "Pending");
-        all.Should().Contain(e => e.EscalationStatus == "Approved" && e.AdminResponse == "Valid.");
+        await sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
+        Func<Task> secondAttempt = () => sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
+        (await secondAttempt.Should().ThrowAsync<AdminException>())
+            .Which.Code.Should().Be("pending_escalation_exists");
+        db.DocumentEscalations.Should().ContainSingle();
     }
 
     [Test]
-    public async Task GetPendingAsync_OnlyReturnsPendingStatus()
+    public async Task ResolveAsync_OnlyActiveAdminCanResolveAndApprovedPublishesFolderImmediately()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
-        var moderator = SeedUser(db, roleId: 3, "Moderator");
+        var moderator = SeedUser(db, 3, "Moderator");
+        var admin = SeedUser(db, 1, "Admin");
         var folder = SeedFolder(db, moderator.Id);
-        var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
+        var document = SeedDocument(db, moderator.Id, folder.Id);
+        var audit = new AuditLogService(db);
+        var sut = new EscalationService(db, audit);
+        var escalation = await sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
 
-        var req = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "Test",
-            Items = new List<EscalationItemRequest> { new() { DocumentId = doc.Id, RejectReason = "R" } }
-        };
-        var e1 = await sut.CreateAsync(moderator.Id, req);
-        var e2 = await sut.CreateAsync(moderator.Id, req);
-        await sut.ResolveAsync(e1.Id, new ResolveEscalationRequest { Status = "Rejected", AdminResponse = "No." }, Guid.NewGuid());
+        var moderatorAttempt = () => sut.ResolveAsync(escalation.Id, new ResolveEscalationRequest { Status = "Approved" }, moderator.Id);
+        (await moderatorAttempt.Should().ThrowAsync<AdminException>()).Which.Code.Should().Be("admin_role_required");
 
-        var pending = await sut.GetPendingAsync();
-
-        pending.Should().HaveCount(1);
-        pending.First().EscalationStatus.Should().Be("Pending");
-    }
-
-    // ── P1: GetMyAsync filters by EscalatedByUserId ──
-
-    [Test]
-    public async Task GetMyAsync_FiltersOnlyOwnEscalations()
-    {
-        await using var db = TestDb.CreateInMemoryWithDocuments();
-        var mod1 = SeedUser(db, roleId: 3, "Moderator One");
-        var mod2 = SeedUser(db, roleId: 3, "Moderator Two");
-        var folder = SeedFolder(db, mod1.Id);
-        var doc = SeedDocument(db, mod1.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
-
-        var req = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "Test",
-            Items = new List<EscalationItemRequest> { new() { DocumentId = doc.Id, RejectReason = "R" } }
-        };
-        await sut.CreateAsync(mod1.Id, req);
-        await sut.CreateAsync(mod1.Id, req);
-        await sut.CreateAsync(mod2.Id, req);
-
-        var mod1Escalations = await sut.GetMyAsync(mod1.Id);
-        var mod2Escalations = await sut.GetMyAsync(mod2.Id);
-
-        mod1Escalations.Should().HaveCount(2);
-        mod2Escalations.Should().HaveCount(1);
-        mod1Escalations.All(e => e.EscalatedByName == mod1.FullName).Should().BeTrue();
-    }
-
-    [Test]
-    public async Task GetMyAsync_UserWithNoEscalations_ReturnsEmpty()
-    {
-        await using var db = TestDb.CreateInMemoryWithDocuments();
-        var user = SeedUser(db, roleId: 3, "No Escalator");
-        var sut = new EscalationService(db, new AuditLogService(db));
-
-        var result = await sut.GetMyAsync(user.Id);
-
-        result.Should().BeEmpty();
-    }
-
-    // ── Resolve flow ──
-
-    [Test]
-    public async Task ResolveAsync_Approved_SetsStatusResponseAndResolvedAt()
-    {
-        await using var db = TestDb.CreateInMemoryWithDocuments();
-        var moderator = SeedUser(db, roleId: 3, "Moderator");
-        var folder = SeedFolder(db, moderator.Id);
-        var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
-
-        var req = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "Please review.",
-            Items = new List<EscalationItemRequest> { new() { DocumentId = doc.Id, RejectReason = "R" } }
-        };
-        var created = await sut.CreateAsync(moderator.Id, req);
-
-        var resolveReq = new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Escalation valid." };
-        var resolved = await sut.ResolveAsync(created.Id, resolveReq, Guid.NewGuid());
+        var resolved = await sut.ResolveAsync(escalation.Id, new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid." }, admin.Id);
 
         resolved.EscalationStatus.Should().Be("Approved");
-        resolved.AdminResponse.Should().Be("Escalation valid.");
-        resolved.ResolvedAt.Should().NotBeNull();
+        var persistedFolder = await db.Folders.SingleAsync(f => f.Id == folder.Id);
+        persistedFolder.ShareStatus.Should().Be(FolderStatus.Approved);
+        persistedFolder.SharedAt.Should().BeCloseTo(DateTimeOffset.UtcNow, TimeSpan.FromSeconds(5));
+        persistedFolder.ShareReviewSource.Should().Be("ADMIN_ESCALATION_APPROVED");
+        (await db.Documents.SingleAsync(d => d.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
     }
 
     [Test]
-    public async Task ResolveAsync_Rejected_SetsStatusCorrectly()
+    public async Task ResolveAsync_InvalidOrStaleResolution_DoesNotMutateFolderOrDocuments()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
-        var moderator = SeedUser(db, roleId: 3, "Moderator");
+        var moderator = SeedUser(db, 3, "Moderator");
+        var admin = SeedUser(db, 1, "Admin");
         var folder = SeedFolder(db, moderator.Id);
-        var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
+        var document = SeedDocument(db, moderator.Id, folder.Id);
+        var sut = CreateSut(db);
+        var escalation = await sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
 
-        var req = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "Bad reject.",
-            Items = new List<EscalationItemRequest> { new() { DocumentId = doc.Id, RejectReason = "R" } }
-        };
-        var created = await sut.CreateAsync(moderator.Id, req);
+        Func<Task> invalidAttempt = () => sut.ResolveAsync(escalation.Id, new ResolveEscalationRequest { Status = "Anything" }, admin.Id);
+        (await invalidAttempt.Should().ThrowAsync<AdminException>())
+            .Which.Code.Should().Be("invalid_escalation_status");
+        (await db.Documents.SingleAsync(d => d.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Escalated);
 
-        var resolved = await sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Rejected" }, Guid.NewGuid());
-
-        resolved.EscalationStatus.Should().Be("Rejected");
+        await sut.ResolveAsync(escalation.Id, new ResolveEscalationRequest { Status = "Rejected", AdminResponse = "  Not valid.  " }, admin.Id);
+        Func<Task> staleAttempt = () => sut.ResolveAsync(escalation.Id, new ResolveEscalationRequest { Status = "Approved" }, admin.Id);
+        (await staleAttempt.Should().ThrowAsync<AdminException>())
+            .Which.Code.Should().Be("already_resolved");
+        var persistedFolder = await db.Folders.SingleAsync(f => f.Id == folder.Id);
+        persistedFolder.ShareStatus.Should().Be(FolderStatus.Rejected);
+        persistedFolder.HumanReviewReason.Should().Be("Not valid.");
+        (await db.Documents.SingleAsync(d => d.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Rejected);
     }
 
-    [Test]
-    public async Task ResolveAsync_NotFoundId_Throws404()
+    private static EscalationService CreateSut(Data.AppDbContext db) => new(db, new AuditLogService(db));
+
+    private static CreateEscalationRequest Request(Guid folderId, Guid documentId) => new()
     {
-        await using var db = TestDb.CreateInMemoryWithDocuments();
-        var sut = new EscalationService(db, new AuditLogService(db));
+        FolderId = folderId,
+        Reason = "Reason for escalation",
+        Items = new List<EscalationItemRequest> { new() { DocumentId = documentId, RejectReason = "Needs admin review" } }
+    };
 
-        var act = () => sut.ResolveAsync(Guid.NewGuid(), new ResolveEscalationRequest { Status = "Approved" }, Guid.NewGuid());
-
-        var ex = await act.Should().ThrowAsync<AdminException>();
-        ex.Which.StatusCode.Should().Be(404);
-    }
-
-    // ── Helpers ──
-
-    private static User SeedUser(Data.AppDbContext db, int roleId, string fullName)
-    {
-        var user = new User
-        {
-            Id = Guid.NewGuid(),
-            RoleId = roleId,
-            SupabaseUserId = Guid.NewGuid(),
-            Username = $"u{Guid.NewGuid():N}"[..12],
-            FullName = fullName,
-            IsActive = true,
-            DailyTokenQuota = 25_000,
-            TokenUsageDate = DateOnly.FromDateTime(DateTime.UtcNow),
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
-        db.Users.Add(user);
-        db.SaveChanges();
-        return user;
-    }
-
-    private static Folder SeedFolder(Data.AppDbContext db, Guid userId)
-    {
-        var folder = new Folder
-        {
-            Id = Guid.NewGuid(),
-            UserId = userId,
-            Name = "Test Folder",
-            ShareStatus = FolderStatus.PendingShare,
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
-        db.Folders.Add(folder);
-        db.SaveChanges();
-        return folder;
-    }
-
-    private static Document SeedDocument(Data.AppDbContext db, Guid userId, Guid folderId)
-    {
-        var doc = new Document
-        {
-            Id = Guid.NewGuid(),
-            UserId = userId,
-            FolderId = folderId,
-            FileName = "test.pdf",
-            Status = DocumentStatus.Ready,
-            StoragePath = $"docs/{Guid.NewGuid():N}.pdf",
-            FileSizeBytes = 1024,
-            MimeType = "application/pdf",
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow,
-        };
-        db.Documents.Add(doc);
-        db.SaveChanges();
-        return doc;
-    }
-
-    // ── Audit log tests ──
-
-    [Test]
-    public async Task CreateAsync_WritesAuditLogEntry()
-    {
-        await using var db = TestDb.CreateInMemoryWithDocuments();
-        var moderator = SeedUser(db, roleId: 3, "Moderator");
-        var folder = SeedFolder(db, moderator.Id);
-        var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
-
-        var request = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "Test escalation.",
-            Items = new List<EscalationItemRequest>
-            {
-                new() { DocumentId = doc.Id, RejectReason = "Doc fine." }
-            }
-        };
-
-        var result = await sut.CreateAsync(moderator.Id, request);
-        await db.SaveChangesAsync();
-
-        db.AuditLogs.Should().ContainSingle(log =>
-            log.Action == "ESCALATION_CREATED"
-            && log.EntityType == "DocumentEscalation"
-            && log.ActorUserId == moderator.Id);
-    }
-
-    [Test]
-    public async Task ResolveAsync_WritesAuditLogEntry()
-    {
-        await using var db = TestDb.CreateInMemoryWithDocuments();
-        var moderator = SeedUser(db, roleId: 3, "Moderator");
-        var folder = SeedFolder(db, moderator.Id);
-        var doc = SeedDocument(db, moderator.Id, folder.Id);
-        var sut = new EscalationService(db, new AuditLogService(db));
-
-        var req = new CreateEscalationRequest
-        {
-            FolderId = folder.Id,
-            Reason = "Please review.",
-            Items = new List<EscalationItemRequest> { new() { DocumentId = doc.Id, RejectReason = "R" } }
-        };
-        var created = await sut.CreateAsync(moderator.Id, req);
-
-        await sut.ResolveAsync(created.Id, new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid." }, Guid.NewGuid());
-        await db.SaveChangesAsync();
-
-        db.AuditLogs.Should().Contain(log =>
-            log.Action == "ESCALATION_RESOLVED"
-            && log.EntityType == "DocumentEscalation");
-    }
+    private static User SeedUser(Data.AppDbContext db, int roleId, string name) { var user = new User { Id = Guid.NewGuid(), RoleId = roleId, SupabaseUserId = Guid.NewGuid(), Username = $"u{Guid.NewGuid():N}"[..12], FullName = name, IsActive = true, DailyTokenQuota = 25_000, TokenUsageDate = DateOnly.FromDateTime(DateTime.UtcNow), CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }; db.Users.Add(user); db.SaveChanges(); return user; }
+    private static Folder SeedFolder(Data.AppDbContext db, Guid userId) { var folder = new Folder { Id = Guid.NewGuid(), UserId = userId, Name = "Folder", ShareStatus = FolderStatus.PendingShare, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }; db.Folders.Add(folder); db.SaveChanges(); return folder; }
+    private static Document SeedDocument(Data.AppDbContext db, Guid userId, Guid? folderId) { var document = new Document { Id = Guid.NewGuid(), UserId = userId, FolderId = folderId, FileName = "test.pdf", StoragePath = $"docs/{Guid.NewGuid():N}.pdf", MimeType = "application/pdf", SubjectCode = "SWP391", Semester = "SU26", Status = DocumentStatus.Ready, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow }; db.Documents.Add(document); db.SaveChanges(); return document; }
 }

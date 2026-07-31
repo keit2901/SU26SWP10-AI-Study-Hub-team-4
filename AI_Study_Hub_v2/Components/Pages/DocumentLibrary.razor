@@ -399,21 +399,6 @@ else
                                                     <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" Color="@(folder.ShareStatus == Data.Entities.FolderStatus.Approved ? Color.Primary : folder.ShareStatus == Data.Entities.FolderStatus.PendingShare ? Color.Warning : Color.Default)" />
                                                     <span>@GetShareButtonText(folder)</span>
                                                 </div>
-                                                @if (CanRequestHumanReview(folder))
-                                                {
-                                                    <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowHumanReviewDialogAsync(folder); })">
-                                                        <MudIcon Icon="@Icons.Material.Filled.Gavel" Size="Size.Small" Color="Color.Info" />
-                                                        <span>Review by human</span>
-                                                    </div>
-                                                }
-                                                @if (string.Equals(folder.ShareReviewSource, "AI", StringComparison.OrdinalIgnoreCase) 
-                                                    && (folder.AiReviewFailureCount >= 1 || folder.ShareStatus == Data.Entities.FolderStatus.PendingShare))
-                                                {
-                                                    <div class="folder-card-dropdown-item" @onclick="@(() => { CloseFolderMenu(); Nav.NavigateTo($"/share-review/{folder.Id}"); })">
-                                                        <MudIcon Icon="@Icons.Material.Filled.RateReview" Size="Size.Small" Color="Color.Primary" />
-                                                        <span>Review &amp; Share</span>
-                                                    </div>
-                                                }
                                                 @if (folder.ShareStatus == Data.Entities.FolderStatus.Rejected)
                                                 {
                                                     <div class="folder-card-dropdown-item" @onclick="@(async () => { CloseFolderMenu(); await ShowRejectionActionsAsync(folder); })">
@@ -1734,7 +1719,7 @@ else
         var result = await dialogRef.Result;
         if (result is null || result.Canceled) return;
 
-        var action = ((dynamic)result.Data)?.Action as string;
+        var action = result.Data as string;
         switch (action)
         {
             case "Resubmit":
@@ -1743,86 +1728,30 @@ else
             case "Delete":
                 await ConfirmDeleteFolderAsync(folder);
                 break;
+            case "KeepPrivate":
+                break;
         }
     }
-
-    private async Task ShowHumanReviewDialogAsync(FolderDto folder)
-    {
-        if (!CanRequestHumanReview(folder)) return;
-
-        var parameters = new DialogParameters
-        {
-            ["FolderName"] = folder.Name,
-            ["LatestReason"] = folder.AiReviewReason,
-        };
-        var options = new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true };
-        var dialogRef = await Dialogs.ShowAsync<AppealFolderShareDialog>("Review by human", parameters, options);
-        var result = await dialogRef.Result;
-        if (result is null || result.Canceled) return;
-        var message = (result.Data as AppealFolderShareDialog.AppealFolderShareDialogResult)?.Reason;
-        await RequestHumanReviewAsync(folder, message);
-    }
-
-    private async Task RequestHumanReviewAsync(FolderDto folder, string? message)
-    {
-        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
-
-        try
-        {
-            var updated = await FoldersApi.AppealShareReviewAsync(
-                Session.AccessToken!,
-                folder.Id,
-                new AppealFolderShareRequest { Message = message });
-            var idx = _folders.FindIndex(f => f.Id == folder.Id);
-            if (idx >= 0)
-            {
-                _folders[idx] = updated;
-                _folders = _folders.OrderByDescending(f => f.IsFavorite).ThenByDescending(f => f.UpdatedAt).ToList();
-                StateHasChanged();
-            }
-
-            Snackbar.Add("Human review requested. Your folder is now waiting for moderator review.", Severity.Info);
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
-        }
-    }
-
-    private static bool CanRequestHumanReview(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Rejected
-        && folder.AiReviewFailureCount >= 2
-        && !string.Equals(folder.ShareReviewSource, "HUMAN", StringComparison.OrdinalIgnoreCase);
 
     private static string GetShareButtonText(FolderDto folder)
     {
-        if (folder.ShareStatus == Data.Entities.FolderStatus.PendingShare && folder.AppealRequestedAt.HasValue)
-        {
-            return "Human Review Pending";
-        }
-
         return folder.ShareStatus switch
         {
-            Data.Entities.FolderStatus.PendingShare => "Human Review Pending",
+            Data.Entities.FolderStatus.PendingShare => "Waiting for moderator review",
             Data.Entities.FolderStatus.Approved => "Shared",
-            Data.Entities.FolderStatus.Rejected => "Share Again",
+            Data.Entities.FolderStatus.Rejected => "Resubmit",
             _ => "Share"
         };
     }
 
     private static string GetShareDecisionMessage(FolderDto folder)
     {
-        var reason = string.IsNullOrWhiteSpace(folder.AiReviewReason)
-            ? string.Empty
-            : $" Reason: {folder.AiReviewReason}";
-
         return folder.ShareStatus switch
         {
-            Data.Entities.FolderStatus.Approved => $"AI approved this folder for community sharing.{reason}",
-            Data.Entities.FolderStatus.Rejected when folder.AiReviewFailureCount >= 2 => $"AI did not approve this folder after {folder.AiReviewFailureCount} review attempts. Human review is now available.{reason}",
-            Data.Entities.FolderStatus.Rejected => $"AI did not approve this folder. You can try sharing again.{reason}",
-            Data.Entities.FolderStatus.PendingShare => $"Human review requested. Your folder is waiting in the moderator queue.{reason}",
-            _ => $"Share request submitted.{reason}"
+            Data.Entities.FolderStatus.Approved => "Folder approved for community sharing.",
+            Data.Entities.FolderStatus.Rejected => "Folder was not approved for community sharing. You can resubmit it when ready.",
+            Data.Entities.FolderStatus.PendingShare => "Share request submitted. Your folder is waiting for moderator review.",
+            _ => "Share request submitted."
         };
     }
 

@@ -1,14 +1,9 @@
 @page "/dashboard/share-reviews"
 @layout DashboardLayout
 @using AI_Study_Hub_v2.Components.Layout
-@using AI_Study_Hub_v2.Data
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
-@using Microsoft.EntityFrameworkCore
-@using System.Data
-@inject AppDbContext DbContext
 @inject AuthSessionState Session
-@inject AuthPersistenceService AuthPersistence
 @inject FolderApiClient FolderApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
@@ -22,7 +17,7 @@
             <div>
                 <h1 style="font-size: 1.7rem; font-weight: 800; color: #111827; letter-spacing: -0.03em; margin: 0;">Share Review Queue</h1>
                 <p style="margin: 0.35rem 0 0; color: #64748b; font-size: 0.95rem;">
-                    Review folders submitted by students, then choose AI-assisted review or decide manually.
+                    Review folders submitted by students, inspect their documents, then decide manually.
                 </p>
             </div>
             <div style="display: inline-flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
@@ -68,9 +63,9 @@
                     <div style="margin-top: 0.3rem; color: #64748b; font-size: 0.84rem;">Folders submitted by students and waiting for review.</div>
                 </div>
                 <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.1rem 1.2rem;">
-                    <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase;">AI Assist</div>
-                    <div style="margin-top: 0.35rem; font-size: 1.85rem; font-weight: 800; color: #111827;">On Demand</div>
-                    <div style="margin-top: 0.3rem; color: #64748b; font-size: 0.84rem;">Use `Auto Check` only when you want AI help before deciding.</div>
+                    <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase;">Document Review</div>
+                    <div style="margin-top: 0.35rem; font-size: 1.85rem; font-weight: 800; color: #111827;">Open Queue</div>
+                    <div style="margin-top: 0.3rem; color: #64748b; font-size: 0.84rem;">Open a folder to inspect every submitted document before deciding.</div>
                 </div>
                 <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 1rem; padding: 1.1rem 1.2rem;">
                     <div style="font-size: 0.72rem; font-weight: 800; color: #64748b; letter-spacing: 0.08em; text-transform: uppercase;">Manual Control</div>
@@ -129,10 +124,10 @@
                                                     style="@GetFeedbackActionStyle(isBusy, HasStudentFeedback(item))">
                                                 View Feedback
                                             </button>
-                                            <button @onclick="() => AutoCheckAsync(item.Id)"
+                                            <button @onclick="() => OpenReview(item.Id)"
                                                     disabled="@isBusy"
                                                     style="@GetActionStyle(isBusy, "#eef2ff", "#4338ca", "#c7d2fe")">
-                                                AI Review
+                                                Open Review
                                             </button>
                                             <button @onclick="() => ApproveAsync(item.Id)"
                                                     disabled="@isBusy"
@@ -157,12 +152,11 @@
 </main>
 
 @code {
-    private readonly List<PendingShareQueueItem> _pendingFolders = new();
+    private readonly List<PendingShareFolderDto> _pendingFolders = new();
     private bool _loading = true;
     private bool _isAuthorized = true;
     private bool _isRefreshing;
     private Guid? _busyFolderId;
-    private bool _hasFeedbackColumns;
 
     private static string HeaderCellStyle =>
         "padding: 0.85rem 1rem; text-align: left; color: #64748b; font-size: 0.72rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; border-bottom: 1px solid #e2e8f0; white-space: nowrap;";
@@ -181,76 +175,21 @@
         _isRefreshing = true;
         try
         {
-            if (!Session.IsAuthenticated)
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
             {
-                var restored = await AuthPersistence.TryRestoreAsync();
-                if (restored is not null)
-                {
-                    Session.Set(restored);
-                }
-            }
-
-            if (!Session.IsAuthenticated || Session.CurrentUser is null)
-            {
-                Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
-                return;
-            }
-
-            _isAuthorized = Session.CurrentUser.Role?.Equals(Role.ModeratorRoleName, StringComparison.OrdinalIgnoreCase) == true
-                || Session.CurrentUser.Role?.Equals(Role.AdminRoleName, StringComparison.OrdinalIgnoreCase) == true;
-
-            if (!_isAuthorized)
-            {
+                _isAuthorized = false;
                 _pendingFolders.Clear();
                 return;
             }
 
-            var currentUserId = Session.CurrentUser.Id;
             _pendingFolders.Clear();
-
-            _hasFeedbackColumns = await HasFeedbackColumnsAsync();
-
-            List<PendingShareQueueItem> rows;
-            if (_hasFeedbackColumns)
-            {
-                rows = await DbContext.Folders
-                    .AsNoTracking()
-                    .Where(folder => folder.ShareStatus == FolderStatus.PendingShare && folder.UserId != currentUserId)
-                    .OrderByDescending(folder => folder.UpdatedAt)
-                    .Select(folder => new PendingShareQueueItem(
-                        folder.Id,
-                        folder.Name,
-                        folder.User != null ? (folder.User.FullName ?? folder.User.Username) : "Unknown",
-                        folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
-                        folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
-                        folder.Documents.Count,
-                        folder.UpdatedAt,
-                        folder.AppealMessage,
-                        folder.StudentFeedbackReason,
-                        folder.ShareFailureCount))
-                    .ToListAsync();
-            }
-            else
-            {
-                rows = await DbContext.Folders
-                    .AsNoTracking()
-                    .Where(folder => folder.ShareStatus == FolderStatus.PendingShare && folder.UserId != currentUserId)
-                    .OrderByDescending(folder => folder.UpdatedAt)
-                    .Select(folder => new PendingShareQueueItem(
-                        folder.Id,
-                        folder.Name,
-                        folder.User != null ? (folder.User.FullName ?? folder.User.Username) : "Unknown",
-                        folder.Documents.Select(document => document.SubjectCode).FirstOrDefault() ?? "N/A",
-                        folder.Documents.Select(document => document.Semester).FirstOrDefault() ?? "N/A",
-                        folder.Documents.Count,
-                        folder.UpdatedAt,
-                        null,
-                        null,
-                        0))
-                    .ToListAsync();
-            }
-
-            _pendingFolders.AddRange(rows);
+            _pendingFolders.AddRange(await FolderApi.GetPendingShareReviewQueueAsync(Session.AccessToken));
+            _isAuthorized = true;
+        }
+        catch (DocumentApiException ex) when (ex.StatusCode is StatusCodes.Status401Unauthorized or StatusCodes.Status403Forbidden)
+        {
+            _isAuthorized = false;
+            _pendingFolders.Clear();
         }
         catch (Exception ex)
         {
@@ -263,43 +202,8 @@
         }
     }
 
-    private string BuildLoginReturnUrl()
-    {
-        var relativePath = Nav.ToBaseRelativePath(Nav.Uri);
-        var currentPath = string.IsNullOrWhiteSpace(relativePath)
-            ? "/dashboard/share-reviews"
-            : "/" + relativePath;
-
-        return $"/login?returnUrl={Uri.EscapeDataString(currentPath)}";
-    }
-
-    private async Task AutoCheckAsync(Guid folderId)
-    {
-        await RunActionAsync(folderId, async () =>
-        {
-            if (string.IsNullOrWhiteSpace(Session.AccessToken))
-            {
-                Snackbar.Add("Authentication required.", Severity.Error);
-                return;
-            }
-
-            var result = await FolderApi.AutoCheckShareAsync(Session.AccessToken, folderId);
-            if (result.ShareStatus == FolderStatus.Approved)
-            {
-                Snackbar.Add("AI approved this folder for sharing.", Severity.Success);
-            }
-            else if (result.ShareStatus == FolderStatus.Rejected)
-            {
-                Snackbar.Add(string.IsNullOrWhiteSpace(result.AiReviewReason)
-                    ? "AI rejected this folder."
-                    : result.AiReviewReason, Severity.Warning);
-            }
-            else
-            {
-                Snackbar.Add("AI review finished. The folder still needs moderator review.", Severity.Info);
-            }
-        });
-    }
+    private void OpenReview(Guid folderId) =>
+        Nav.NavigateTo($"/share-review/{folderId}?mode=moderator");
 
     private async Task ApproveAsync(Guid folderId)
     {
@@ -316,7 +220,7 @@
         });
     }
 
-    private async Task RejectAsync(PendingShareQueueItem item)
+    private async Task RejectAsync(PendingShareFolderDto item)
     {
         var dialog = await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Shared.ModeratorRejectReasonDialog>(
             "Reject Folder Share",
@@ -385,14 +289,14 @@
             : GetActionStyle(false, "#ffffff", "#94a3b8", "#e2e8f0");
     }
 
-    private static bool HasStudentFeedback(PendingShareQueueItem item) =>
+    private static bool HasStudentFeedback(PendingShareFolderDto item) =>
         !string.IsNullOrWhiteSpace(item.StudentFeedbackReason)
         || !string.IsNullOrWhiteSpace(item.AppealMessage);
 
-    private static string GetFolderDisplayName(PendingShareQueueItem item) =>
+    private static string GetFolderDisplayName(PendingShareFolderDto item) =>
         $"{item.Name} (Fail {item.ShareFailureCount} times)";
 
-    private async Task OpenFeedbackAsync(PendingShareQueueItem item)
+    private async Task OpenFeedbackAsync(PendingShareFolderDto item)
     {
         if (!HasStudentFeedback(item))
         {
@@ -417,56 +321,4 @@
             new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
     }
 
-    private async Task<bool> HasFeedbackColumnsAsync()
-    {
-        var connection = DbContext.Database.GetDbConnection();
-        var shouldClose = connection.State != ConnectionState.Open;
-        if (shouldClose)
-        {
-            await connection.OpenAsync();
-        }
-
-        try
-        {
-            await using var command = connection.CreateCommand();
-            command.CommandText = @"
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'folders';
-                ";
-
-            var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            await using var reader = await command.ExecuteReaderAsync();
-            while (await reader.ReadAsync())
-            {
-                if (!reader.IsDBNull(0))
-                {
-                    columns.Add(reader.GetString(0));
-                }
-            }
-
-            return columns.Contains("appeal_message")
-                && columns.Contains("student_feedback_reason")
-                && columns.Contains("share_failure_count");
-        }
-        finally
-        {
-            if (shouldClose)
-            {
-                await connection.CloseAsync();
-            }
-        }
-    }
-
-    private sealed record PendingShareQueueItem(
-        Guid Id,
-        string Name,
-        string OwnerName,
-        string SubjectCode,
-        string Semester,
-        int DocumentCount,
-        DateTimeOffset SubmittedAt,
-        string? AppealMessage,
-        string? StudentFeedbackReason,
-        int ShareFailureCount);
 }

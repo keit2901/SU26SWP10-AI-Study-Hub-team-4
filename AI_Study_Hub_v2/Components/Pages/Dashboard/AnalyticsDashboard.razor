@@ -2,14 +2,11 @@
 @layout AI_Study_Hub_v2.Components.Layout.DashboardLayout
 @using AI_Study_Hub_v2.Components.Layout
 @using AI_Study_Hub_v2.Dtos
-@using AI_Study_Hub_v2.Data
-@using Microsoft.EntityFrameworkCore
-@inject AI_Study_Hub_v2.Services.IDashboardService DashboardService
+@inject AI_Study_Hub_v2.Services.AdminDashboardApiClient DashboardApi
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
 @inject AI_Study_Hub_v2.Services.FolderApiClient FolderApi
 @inject NavigationManager Nav
-@inject AppDbContext DbContext
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
 @inject IDialogService DialogService
@@ -702,23 +699,15 @@
         isLoading = true;
         try
         {
-            if (FolderId.HasValue)
+            if (string.IsNullOrWhiteSpace(Session.AccessToken))
             {
-                var folder = await DbContext.Folders
-                    .AsNoTracking()
-                    .Where(f => f.Id == FolderId.Value)
-                    .Select(f => new { f.Name, f.ShareStatus })
-                    .FirstOrDefaultAsync();
-                FolderName = folder?.Name ?? string.Empty;
-                _folderShareStatus = folder?.ShareStatus ?? FolderStatus.None;
-            }
-            else
-            {
-                FolderName = string.Empty;
-                _folderShareStatus = FolderStatus.None;
+                Nav.NavigateTo(BuildLoginReturnUrl(), replace: true);
+                return;
             }
 
-            var analytics = await DashboardService.GetAdminAnalyticsAsync(FolderId, _currentPage, _pageSize);
+            var analytics = await DashboardApi.GetModerationAnalyticsAsync(Session.AccessToken, FolderId, _currentPage, _pageSize);
+            FolderName = FolderId.HasValue ? analytics.RecentDocuments.FirstOrDefault()?.FolderName ?? string.Empty : string.Empty;
+            _folderShareStatus = FolderId.HasValue ? FolderStatus.PendingShare : FolderStatus.None;
             totalDocuments = analytics.TotalDocuments;
             storageUsedMb = analytics.StorageUsedMb;
 
@@ -731,23 +720,24 @@
             _totalDocumentCount = analytics.TotalDocumentCount > 0 ? analytics.TotalDocumentCount : (documentsList?.Count ?? 0);
             if (analytics.PageSize > 0) _pageSize = Math.Min(DefaultPageSize, analytics.PageSize);
 
-            // Compute folder-level document review status for button locking
+            // These are whole-scope aggregates, not the current pagination slice.
             if (FolderId.HasValue)
             {
-                var statuses = await DbContext.Documents
-                    .AsNoTracking()
-                    .Where(d => d.FolderId == FolderId.Value)
-                    .Select(d => d.ReviewStatus)
-                    .ToListAsync();
-
-                _allDocumentsReviewed = statuses.All(s => s != Data.Entities.DocumentReviewStatus.None);
-                _hasRejectedDocument = statuses.Any(s => s == Data.Entities.DocumentReviewStatus.Rejected);
+                _allDocumentsReviewed = analytics.AllDocumentsApproved ||
+                    (analytics.PendingUnreviewedCount == 0 && analytics.RejectedDocumentCount > 0);
+                _hasRejectedDocument = analytics.RejectedDocumentCount > 0;
             }
             else
             {
                 _allDocumentsReviewed = false;
                 _hasRejectedDocument = false;
             }
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(ex.StatusCode is 401 or 403
+                ? "You are not authorized to access moderation analytics."
+                : ex.Message, Severity.Error);
         }
         finally
         {

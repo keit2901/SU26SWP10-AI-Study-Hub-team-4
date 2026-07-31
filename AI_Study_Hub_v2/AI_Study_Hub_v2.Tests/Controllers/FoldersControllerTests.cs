@@ -4,6 +4,7 @@ using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 
@@ -195,5 +196,107 @@ public class FoldersControllerTests
         var obj = result.Result.Should().BeOfType<ObjectResult>().Subject;
         obj.StatusCode.Should().Be(401);
         obj.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("missing_user_id");
+    }
+
+    [Test]
+    public async Task ShareReviewActions_ForwardAuthenticatedSubjectAndCancellationToken()
+    {
+        var callerId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var cancellationToken = new CancellationTokenSource().Token;
+        var dto = SampleFolder(folderId);
+        var svc = new Mock<IFolderService>();
+        svc.Setup(service => service.ApproveFolderShareAsync(callerId, folderId, cancellationToken))
+            .ReturnsAsync(dto);
+        svc.Setup(service => service.RejectFolderShareAsync(
+                callerId,
+                folderId,
+                It.IsAny<RejectFolderShareRequest>(),
+                cancellationToken))
+            .ReturnsAsync(dto);
+        svc.Setup(service => service.AutoCheckFolderShareAsync(callerId, folderId, cancellationToken))
+            .ReturnsAsync(dto);
+        var sut = BuildSut(svc.Object, Principal(callerId, useSubInsteadOfNameId: true));
+
+        (await sut.ApproveShare(folderId, cancellationToken)).Result.Should().BeOfType<OkObjectResult>();
+        (await sut.RejectShare(folderId, new RejectFolderShareRequest { Reason = "reason" }, cancellationToken))
+            .Result.Should().BeOfType<OkObjectResult>();
+        (await sut.AutoCheckShare(folderId, cancellationToken)).Result.Should().BeOfType<OkObjectResult>();
+
+        svc.VerifyAll();
+    }
+
+    [Test]
+    public void ShareReviewActions_KeepAdminModeratorRoleAuthorization()
+    {
+        foreach (var methodName in new[]
+        {
+            nameof(FoldersController.ApproveShare),
+            nameof(FoldersController.RejectShare),
+            nameof(FoldersController.AutoCheckShare),
+        })
+        {
+            var authorize = typeof(FoldersController)
+                .GetMethod(methodName)!
+                .GetCustomAttributes(typeof(AuthorizeAttribute), inherit: true)
+                .Cast<AuthorizeAttribute>()
+                .Single();
+
+            authorize.Roles.Should().Be("Admin,Moderator");
+        }
+    }
+
+    [Test]
+    public async Task GetReviewerShareReview_ForwardsAuthenticatedReviewerToDedicatedServiceMethod()
+    {
+        var callerId = Guid.NewGuid();
+        var folderId = Guid.NewGuid();
+        var reviews = new Mock<IShareReviewService>();
+        reviews.Setup(service => service.GetReviewerReviewAsync(folderId, callerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new ShareReviewSummaryDto(folderId, "Folder", 0, 0, 0, 0, 0, 1, Array.Empty<ShareReviewFileDto>()));
+        var controller = new FoldersController(Mock.Of<IFolderService>(), reviews.Object, NullLogger<FoldersController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = Principal(callerId) } }
+        };
+
+        var result = await controller.GetReviewerShareReview(folderId, CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        var authorize = typeof(FoldersController).GetMethod(nameof(FoldersController.GetReviewerShareReview))!
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().Single();
+        authorize.Roles.Should().Be("Admin,Moderator");
+    }
+
+    [Test]
+    public async Task GetPendingShareReviewQueue_ForwardsSubjectAndMapsServiceErrors()
+    {
+        var callerId = Guid.NewGuid();
+        var item = new PendingShareFolderDto(
+            Guid.NewGuid(), "Folder", "Owner", "SWP391", "SU26", 1, DateTimeOffset.UtcNow,
+            1, 0, null, null, null, Array.Empty<PendingShareDocumentDto>());
+        var reviews = new Mock<IShareReviewService>();
+        reviews.Setup(service => service.GetPendingReviewerQueueAsync(callerId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new[] { item });
+        var controller = new FoldersController(Mock.Of<IFolderService>(), reviews.Object, NullLogger<FoldersController>.Instance)
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext { User = Principal(callerId, useSubInsteadOfNameId: true) } }
+        };
+
+        var result = await controller.GetPendingShareReviewQueue(CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>().Which.Value.Should().BeEquivalentTo(new[] { item });
+        var authorize = typeof(FoldersController).GetMethod(nameof(FoldersController.GetPendingShareReviewQueue))!
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true).Cast<AuthorizeAttribute>().Single();
+        authorize.Roles.Should().Be("Admin,Moderator");
+
+        reviews.Reset();
+        reviews.Setup(service => service.GetPendingReviewerQueueAsync(callerId, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new AdminException(403, "share_reviewer_role_required", "forbidden"));
+
+        var forbidden = await controller.GetPendingShareReviewQueue(CancellationToken.None);
+
+        var error = forbidden.Result.Should().BeOfType<ObjectResult>().Subject;
+        error.StatusCode.Should().Be(StatusCodes.Status403Forbidden);
+        error.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("share_reviewer_role_required");
     }
 }

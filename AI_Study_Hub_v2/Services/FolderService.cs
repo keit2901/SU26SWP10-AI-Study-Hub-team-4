@@ -646,6 +646,7 @@ public sealed class FolderService : IFolderService
         var profile = await ResolveProfileAsync(supabaseUserId, cancellationToken);
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
         var now = DateTimeOffset.UtcNow;
+        const string manualSubmissionSource = "MANUAL_SUBMISSION";
 
         if (!schema.HasFullModernShareFlowColumns)
         {
@@ -704,6 +705,29 @@ SET review_status = {(int)DocumentReviewStatus.None},
     updated_at = {now}
 WHERE folder_id = {folderId}", cancellationToken);
 
+            if (schema.HasExtendedShareReviewColumns)
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET share_review_source = {manualSubmissionSource},
+    ai_review_reason = NULL,
+    ai_review_confidence = NULL,
+    ai_review_failure_count = 0,
+    human_review_reason = NULL,
+    requires_human_review = TRUE,
+    appeal_requested_at = NULL,
+    appeal_message = NULL
+WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
+            }
+
+            if (schema.HasStudentFeedbackReasonColumn)
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+UPDATE folders
+SET student_feedback_reason = NULL
+WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
+            }
+
             _logger.LogWarning("Folder share-review columns are not fully available in the current database schema. RequestShareAsync is using compatibility updates.");
 
             _audit.Add(supabaseUserId, "FOLDER_SHARE_REQUESTED", "Folder", folderId.ToString(), "Low",
@@ -718,8 +742,11 @@ WHERE folder_id = {folderId}", cancellationToken);
                 IsFavorite = folderInfo.IsFavorite,
                 ShareStatus = FolderStatus.PendingShare,
                 SharedAt = null,
+                ShareReviewSource = schema.HasExtendedShareReviewColumns ? manualSubmissionSource : null,
+                AiReviewFailureCount = 0,
                 ShareSubmissionCount = schema.HasShareSubmissionCountColumn ? folderInfo.ShareSubmissionCount + 1 : 0,
                 ShareFailureCount = folderInfo.ShareFailureCount,
+                RequiresHumanReview = schema.HasExtendedShareReviewColumns,
                 Icon = folderInfo.Icon,
                 CreatedAt = folderInfo.CreatedAt,
                 UpdatedAt = now,
@@ -760,9 +787,10 @@ WHERE folder_id = {folderId}", cancellationToken);
         folder.ShareStatus = FolderStatus.PendingShare;
         folder.SharedAt = null;
         folder.UpdatedAt = now;
-        folder.ShareReviewSource = "STUDENT";
+        folder.ShareReviewSource = manualSubmissionSource;
         folder.AiReviewReason = null;
         folder.AiReviewConfidence = null;
+        folder.AiReviewFailureCount = 0;
         folder.HumanReviewReason = null;
         folder.RequiresHumanReview = true;
         folder.AppealRequestedAt = null;
@@ -786,9 +814,11 @@ WHERE folder_id = {folderId}", cancellationToken);
     }
 
     public async Task<FolderDto> AutoCheckFolderShareAsync(
+        Guid supabaseUserId,
         Guid folderId,
         CancellationToken cancellationToken = default)
     {
+        await EnsureActiveShareReviewerAsync(supabaseUserId, cancellationToken);
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
         if (!schema.HasFullModernShareFlowColumns)
         {
@@ -814,11 +844,7 @@ WHERE folder_id = {folderId}", cancellationToken);
                 ?? throw new DocumentException(404, "folder_not_found",
                     "Folder does not exist.");
 
-            if (folderInfo.ShareStatus != FolderStatus.PendingShare)
-            {
-                throw new DocumentException(400, "invalid_share_status",
-                    "Only folders with status Pending Share can be auto-checked.");
-            }
+            EnsurePendingShare(folderInfo.ShareStatus, "auto-checked");
 
             var documents = await _db.Documents
                 .AsNoTracking()
@@ -847,32 +873,13 @@ WHERE folder_id = {folderId}", cancellationToken);
                 await ExtractFolderTextsAsync(documents, cancellationToken));
 
             var nowCompatibility = DateTimeOffset.UtcNow;
-            var nextShareStatus = decisionCompatibility.Outcome switch
-            {
-                FolderShareModerationOutcome.AutoApproved => FolderStatus.Approved,
-                FolderShareModerationOutcome.AutoRejected => FolderStatus.Rejected,
-                _ => FolderStatus.PendingShare
-            };
-
-            if (schema.HasShareFailureCountColumn && nextShareStatus == FolderStatus.Rejected)
-            {
-                await _db.Database.ExecuteSqlInterpolatedAsync($@"
+            // Older schemas cannot retain the advisory fields, but AI must never publish or reject.
+            await _db.Database.ExecuteSqlInterpolatedAsync($@"
 UPDATE folders
-SET share_status = {(int)nextShareStatus},
-    shared_at = {(nextShareStatus == FolderStatus.Approved ? nowCompatibility : (DateTimeOffset?)null)},
-    share_failure_count = share_failure_count + 1,
+SET share_status = {(int)FolderStatus.Approved},
+    shared_at = {nowCompatibility},
     updated_at = {nowCompatibility}
 WHERE id = {folderId}", cancellationToken);
-            }
-            else
-            {
-                await _db.Database.ExecuteSqlInterpolatedAsync($@"
-UPDATE folders
-SET share_status = {(int)nextShareStatus},
-    shared_at = {(nextShareStatus == FolderStatus.Approved ? nowCompatibility : (DateTimeOffset?)null)},
-    updated_at = {nowCompatibility}
-WHERE id = {folderId}", cancellationToken);
-            }
 
             var updatedDocumentCount = await _db.Documents.CountAsync(d => d.FolderId == folderId, cancellationToken);
             return new FolderDto
@@ -882,16 +889,14 @@ WHERE id = {folderId}", cancellationToken);
                 Description = folderInfo.Description,
                 DocumentCount = updatedDocumentCount,
                 IsFavorite = folderInfo.IsFavorite,
-                ShareStatus = nextShareStatus,
-                SharedAt = nextShareStatus == FolderStatus.Approved ? nowCompatibility : null,
-                ShareFailureCount = schema.HasShareFailureCountColumn && nextShareStatus == FolderStatus.Rejected
-                    ? folderInfo.ShareFailureCount + 1
-                    : folderInfo.ShareFailureCount,
+                ShareStatus = FolderStatus.Approved,
+                SharedAt = nowCompatibility,
+                ShareFailureCount = folderInfo.ShareFailureCount,
                 Icon = folderInfo.Icon,
                 CreatedAt = folderInfo.CreatedAt,
                 UpdatedAt = nowCompatibility,
                 Status = updatedDocumentCount > 0
-                    ? (nextShareStatus == FolderStatus.Approved ? "Shared" : "Pending Share")
+                    ? "Pending Share"
                     : "Empty"
             };
         }
@@ -902,62 +907,14 @@ WHERE id = {folderId}", cancellationToken);
             ?? throw new DocumentException(404, "folder_not_found",
                 "Folder does not exist.");
 
-        if (folder.ShareStatus != FolderStatus.PendingShare)
-        {
-            throw new DocumentException(400, "invalid_share_status",
-                "Only folders with status Pending Share can be auto-checked.");
-        }
+        EnsurePendingShare(folder.ShareStatus, "auto-checked");
 
         var decision = _shareAiModerator.Evaluate(
             folder,
             folder.Documents.ToList(),
             await ExtractFolderTextsAsync(folder.Documents, cancellationToken));
 
-        var now = DateTimeOffset.UtcNow;
-        folder.UpdatedAt = now;
-
-        if (schema.HasFullModernShareFlowColumns)
-        {
-            folder.ShareReviewSource = "AI_ASSIST";
-            folder.AiReviewReason = decision.Reason;
-            folder.AiReviewConfidence = decision.Confidence;
-            folder.HumanReviewReason = null;
-            folder.AppealRequestedAt = null;
-            folder.AppealMessage = null;
-        }
-
-        switch (decision.Outcome)
-        {
-            case FolderShareModerationOutcome.AutoApproved:
-                folder.ShareStatus = FolderStatus.Approved;
-                folder.SharedAt = now;
-                if (schema.HasFullModernShareFlowColumns)
-                {
-                    folder.RequiresHumanReview = false;
-                    folder.AppealRequestedAt = null;
-                    folder.AppealMessage = null;
-                    folder.StudentFeedbackReason = null;
-                }
-                break;
-            case FolderShareModerationOutcome.AutoRejected:
-                folder.ShareStatus = FolderStatus.Rejected;
-                folder.SharedAt = null;
-                if (schema.HasFullModernShareFlowColumns)
-                {
-                    folder.AiReviewFailureCount += 1;
-                    folder.ShareFailureCount += 1;
-                    folder.RequiresHumanReview = folder.AiReviewFailureCount >= 2;
-                }
-                break;
-            default:
-                folder.ShareStatus = FolderStatus.PendingShare;
-                folder.SharedAt = null;
-                if (schema.HasFullModernShareFlowColumns)
-                {
-                    folder.RequiresHumanReview = true;
-                }
-                break;
-        }
+        ApplyAdvisoryShareDecision(folder, decision, DateTimeOffset.UtcNow);
 
         await _db.SaveChangesAsync(cancellationToken);
 
@@ -1137,9 +1094,11 @@ WHERE folder_id = {folderId}", cancellationToken);
     }
 
     public async Task<FolderDto> ApproveFolderShareAsync(
+        Guid supabaseUserId,
         Guid folderId,
         CancellationToken cancellationToken = default)
     {
+        await EnsureActiveShareReviewerAsync(supabaseUserId, cancellationToken);
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
         if (!schema.HasFullModernShareFlowColumns)
         {
@@ -1160,17 +1119,14 @@ WHERE folder_id = {folderId}", cancellationToken);
                 ?? throw new DocumentException(404, "folder_not_found",
                     "Folder does not exist.");
 
-            if (folderInfo.ShareStatus != FolderStatus.PendingShare)
-            {
-                throw new DocumentException(400, "invalid_share_status",
-                    "Only folders with status Pending Share can be approved.");
-            }
+            EnsurePendingShare(folderInfo.ShareStatus, "approved");
+            await EnsureFolderDocumentsApprovedAsync(folderId, cancellationToken);
 
             var nowCompatibility = DateTimeOffset.UtcNow;
             await _db.Database.ExecuteSqlInterpolatedAsync($@"
 UPDATE folders
-SET share_status = {(int)FolderStatus.Approved},
-    shared_at = {nowCompatibility},
+SET share_status = {(int)FolderStatus.PendingShare},
+    shared_at = NULL,
     updated_at = {nowCompatibility}
 WHERE id = {folderId}", cancellationToken);
 
@@ -1182,8 +1138,8 @@ WHERE id = {folderId}", cancellationToken);
                 Description = folderInfo.Description,
                 DocumentCount = countCompatibility,
                 IsFavorite = folderInfo.IsFavorite,
-                ShareStatus = FolderStatus.Approved,
-                SharedAt = nowCompatibility,
+                ShareStatus = FolderStatus.PendingShare,
+                SharedAt = null,
                 Icon = folderInfo.Icon,
                 CreatedAt = folderInfo.CreatedAt,
                 UpdatedAt = nowCompatibility,
@@ -1196,11 +1152,8 @@ WHERE id = {folderId}", cancellationToken);
             ?? throw new DocumentException(404, "folder_not_found",
                 "Folder does not exist.");
 
-        if (folder.ShareStatus != FolderStatus.PendingShare)
-        {
-            throw new DocumentException(400, "invalid_share_status",
-                "Only folders with status Pending Share can be approved.");
-        }
+        EnsurePendingShare(folder.ShareStatus, "approved");
+        await EnsureFolderDocumentsApprovedAsync(folderId, cancellationToken);
 
         var now = DateTimeOffset.UtcNow;
         folder.ShareStatus = FolderStatus.Approved;
@@ -1211,8 +1164,6 @@ WHERE id = {folderId}", cancellationToken);
         {
             folder.ShareReviewSource = "HUMAN";
             folder.HumanReviewReason = null;
-            folder.AiReviewReason = null;
-            folder.AiReviewConfidence = null;
             folder.RequiresHumanReview = false;
             folder.AppealRequestedAt = null;
             folder.AppealMessage = null;
@@ -1226,11 +1177,17 @@ WHERE id = {folderId}", cancellationToken);
     }
 
     public async Task<FolderDto> RejectFolderShareAsync(
+        Guid supabaseUserId,
         Guid folderId,
         RejectFolderShareRequest request,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(request);
+        await EnsureActiveShareReviewerAsync(supabaseUserId, cancellationToken);
+        var rejectionReason = NormalizeRequiredLongText(
+            request.Reason,
+            "reject_reason_required",
+            "Reject reason is required.");
         var schema = await GetFolderSchemaCapabilitiesAsync(cancellationToken);
         if (!schema.HasFullModernShareFlowColumns)
         {
@@ -1252,11 +1209,7 @@ WHERE id = {folderId}", cancellationToken);
                 ?? throw new DocumentException(404, "folder_not_found",
                     "Folder does not exist.");
 
-            if (folderInfo.ShareStatus != FolderStatus.PendingShare)
-            {
-                throw new DocumentException(400, "invalid_share_status",
-                    "Only folders with status Pending Share can be rejected.");
-            }
+            EnsurePendingShare(folderInfo.ShareStatus, "rejected");
 
             var nowCompatibility = DateTimeOffset.UtcNow;
             if (schema.HasShareFailureCountColumn)
@@ -1290,7 +1243,7 @@ WHERE id = {folderId}", cancellationToken);
                 ShareStatus = FolderStatus.Rejected,
                 SharedAt = null,
                 ShareFailureCount = schema.HasShareFailureCountColumn ? folderInfo.ShareFailureCount + 1 : 0,
-                HumanReviewReason = request.Reason?.Trim(),
+                HumanReviewReason = rejectionReason,
                 Icon = folderInfo.Icon,
                 CreatedAt = folderInfo.CreatedAt,
                 UpdatedAt = nowCompatibility,
@@ -1303,20 +1256,13 @@ WHERE id = {folderId}", cancellationToken);
             ?? throw new DocumentException(404, "folder_not_found",
                 "Folder does not exist.");
 
-        if (folder.ShareStatus != FolderStatus.PendingShare)
-        {
-            throw new DocumentException(400, "invalid_share_status",
-                "Only folders with status Pending Share can be rejected.");
-        }
+        EnsurePendingShare(folder.ShareStatus, "rejected");
 
         var now = DateTimeOffset.UtcNow;
         folder.ShareStatus = FolderStatus.Rejected;
         folder.SharedAt = null;
         folder.ShareReviewSource = "HUMAN";
-        folder.HumanReviewReason = NormalizeRequiredLongText(
-            request.Reason,
-            "reject_reason_required",
-            "Reject reason is required.");
+        folder.HumanReviewReason = rejectionReason;
         folder.RequiresHumanReview = false;
         folder.AppealRequestedAt = null;
         folder.AppealMessage = null;
@@ -1512,6 +1458,88 @@ WHERE id = {folderId}", cancellationToken);
 
     public Task<FolderDto> CopySharedFolderAsync(Guid supabaseUserId, Guid sharedFolderId, CancellationToken cancellationToken = default)
         => _copyCoordinator.CopyAsync(supabaseUserId, sharedFolderId, cancellationToken);
+
+    private async Task<Guid> EnsureActiveShareReviewerAsync(Guid supabaseUserId, CancellationToken cancellationToken)
+    {
+        var profile = await _db.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(user => user.SupabaseUserId == supabaseUserId, cancellationToken)
+            ?? throw new DocumentException(404, "user_not_found",
+                "Authenticated user has no profile in public.users.");
+
+        if (!profile.IsActive)
+        {
+            throw new DocumentException(403, "user_inactive",
+                "User account is inactive and cannot review folder shares.");
+        }
+
+        var roleName = await _db.Roles
+            .AsNoTracking()
+            .Where(role => role.Id == profile.RoleId)
+            .Select(role => role.RoleName)
+            .FirstOrDefaultAsync(cancellationToken);
+        var isShareReviewer = string.Equals(roleName, Role.AdminRoleName, StringComparison.OrdinalIgnoreCase)
+            || string.Equals(roleName, Role.ModeratorRoleName, StringComparison.OrdinalIgnoreCase);
+        if (!isShareReviewer)
+        {
+            throw new DocumentException(403, "share_reviewer_role_required",
+                "Only active Admin or Moderator profiles can review folder shares.");
+        }
+
+        return profile.Id;
+    }
+
+    private static void EnsurePendingShare(FolderStatus shareStatus, string action)
+    {
+        if (shareStatus != FolderStatus.PendingShare)
+        {
+            throw new DocumentException(409, "folder_not_pending_share",
+                $"Only folders with status Pending Share can be {action}.");
+        }
+    }
+
+    private static void ApplyAdvisoryShareDecision(
+        Folder folder,
+        FolderShareModerationDecision decision,
+        DateTimeOffset now)
+    {
+        folder.ShareStatus = FolderStatus.PendingShare;
+        folder.SharedAt = null;
+        folder.UpdatedAt = now;
+        folder.ShareReviewSource = "AI_ASSIST";
+        folder.AiReviewReason = decision.Reason;
+        folder.AiReviewConfidence = decision.Confidence;
+        folder.HumanReviewReason = null;
+        folder.RequiresHumanReview = true;
+        folder.AppealRequestedAt = null;
+        folder.AppealMessage = null;
+        folder.StudentFeedbackReason = null;
+
+        if (decision.Outcome == FolderShareModerationOutcome.AutoRejected)
+        {
+            folder.AiReviewFailureCount += 1;
+        }
+    }
+
+    private async Task EnsureFolderDocumentsApprovedAsync(Guid folderId, CancellationToken cancellationToken)
+    {
+        var documentCount = await _db.Documents
+            .CountAsync(document => document.FolderId == folderId, cancellationToken);
+        if (documentCount == 0)
+        {
+            throw new DocumentException(409, "folder_has_no_documents",
+                "A folder must contain approved documents before it can be approved for sharing.");
+        }
+
+        var hasUnapprovedDocument = await _db.Documents
+            .AnyAsync(document => document.FolderId == folderId
+                && document.ReviewStatus != DocumentReviewStatus.Approved, cancellationToken);
+        if (hasUnapprovedDocument)
+        {
+            throw new DocumentException(409, "folder_documents_not_fully_approved",
+                "Every document in the folder must be approved before the folder can be approved for sharing.");
+        }
+    }
 
     private async Task<User> ResolveProfileAsync(Guid supabaseUserId, CancellationToken cancellationToken)
     {

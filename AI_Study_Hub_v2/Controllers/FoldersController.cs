@@ -150,7 +150,8 @@ public sealed class FoldersController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<FolderDto>> ApproveShare(Guid id, CancellationToken cancellationToken)
-        => await ExecuteAsync(() => _service.ApproveFolderShareAsync(id, cancellationToken));
+        => await ExecuteAsync(() => _service.ApproveFolderShareAsync(
+            GetSupabaseUserIdFromClaims(), id, cancellationToken));
 
     [HttpPatch("{id:guid}/share/reject")]
     [Authorize(Roles = "Admin,Moderator")]
@@ -164,8 +165,9 @@ public sealed class FoldersController : ControllerBase
         [FromBody] RejectFolderShareRequest? request,
         CancellationToken cancellationToken)
         => await ExecuteAsync(() => _service.RejectFolderShareAsync(
+            GetSupabaseUserIdFromClaims(),
             id,
-            request ?? new RejectFolderShareRequest { Reason = "Rejected after moderator review." },
+            request ?? new RejectFolderShareRequest(),
             cancellationToken));
 
     [HttpPatch("{id:guid}/share/auto-check")]
@@ -176,7 +178,8 @@ public sealed class FoldersController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     public async Task<ActionResult<FolderDto>> AutoCheckShare(Guid id, CancellationToken cancellationToken)
-        => await ExecuteAsync(() => _service.AutoCheckFolderShareAsync(id, cancellationToken));
+        => await ExecuteAsync(() => _service.AutoCheckFolderShareAsync(
+            GetSupabaseUserIdFromClaims(), id, cancellationToken));
 
     [HttpDelete("{id:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
@@ -266,6 +269,27 @@ public sealed class FoldersController : ControllerBase
 
     // ── Share Review Endpoints ──
 
+    [HttpGet("share-review/pending")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(IReadOnlyList<PendingShareFolderDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    public async Task<ActionResult<IReadOnlyList<PendingShareFolderDto>>> GetPendingShareReviewQueue(CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _shareReview.GetPendingReviewerQueueAsync(GetSupabaseUserIdFromClaims(), ct));
+        }
+        catch (AdminException ex)
+        {
+            return StatusCode(ex.StatusCode, new ApiErrorResponse { Code = ex.Code, Message = ex.Message });
+        }
+        catch (DocumentException ex)
+        {
+            return ToErrorResult(ex);
+        }
+    }
+
     [HttpGet("{folderId:guid}/share-review")]
     [ProducesResponseType(typeof(ShareReviewSummaryDto), StatusCodes.Status200OK)]
     public async Task<ActionResult<ShareReviewSummaryDto>> GetShareReview(Guid folderId, CancellationToken ct)
@@ -273,6 +297,26 @@ public sealed class FoldersController : ControllerBase
         var userId = GetSupabaseUserIdFromClaims();
         var result = await _shareReview.GetReviewAsync(folderId, userId, ct);
         return Ok(result);
+    }
+
+    [HttpGet("{folderId:guid}/share-review/reviewer")]
+    [Authorize(Roles = "Admin,Moderator")]
+    [ProducesResponseType(typeof(ShareReviewSummaryDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<ActionResult<ShareReviewSummaryDto>> GetReviewerShareReview(Guid folderId, CancellationToken ct)
+    {
+        try
+        {
+            return Ok(await _shareReview.GetReviewerReviewAsync(
+                folderId,
+                GetSupabaseUserIdFromClaims(),
+                ct));
+        }
+        catch (AdminException ex)
+        {
+            return StatusCode(ex.StatusCode, new ApiErrorResponse { Code = ex.Code, Message = ex.Message });
+        }
     }
 
     [HttpPost("{folderId:guid}/share-review/apply")]

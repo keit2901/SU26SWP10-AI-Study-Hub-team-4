@@ -316,6 +316,38 @@ public sealed class FolderApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
+    public async Task<IReadOnlyList<PendingShareFolderDto>> GetPendingShareReviewQueueAsync(
+        string accessToken,
+        CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+
+        using var req = new HttpRequestMessage(HttpMethod.Get, "api/folders/share-review/pending");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+        {
+            var rows = await resp.Content.ReadFromJsonAsync<List<PendingShareFolderDto>>(cancellationToken: ct);
+            return rows ?? new List<PendingShareFolderDto>();
+        }
+
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
+    public async Task<ShareReviewSummaryDto> GetReviewerShareReviewAsync(string accessToken, Guid folderId, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/folders/{folderId}/share-review/reviewer");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<ShareReviewSummaryDto>(cancellationToken: ct)
+                ?? throw new DocumentApiException(500, "empty_response", "Empty response.");
+        await ThrowFromResponseAsync(resp, ct);
+        throw new InvalidOperationException("Unreachable");
+    }
+
     public async Task<ApplyDecisionsResponse> ApplyShareReviewAsync(string accessToken, Guid folderId, ApplyDecisionsRequest request, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);

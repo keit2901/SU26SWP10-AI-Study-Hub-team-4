@@ -8,6 +8,8 @@ namespace AI_Study_Hub_v2.Services;
 public interface IShareReviewService
 {
     Task<ShareReviewSummaryDto> GetReviewAsync(Guid folderId, Guid userId, CancellationToken ct = default);
+    Task<ShareReviewSummaryDto> GetReviewerReviewAsync(Guid folderId, Guid reviewerSupabaseUserId, CancellationToken ct = default);
+    Task<IReadOnlyList<PendingShareFolderDto>> GetPendingReviewerQueueAsync(Guid reviewerSupabaseUserId, CancellationToken ct = default);
     Task<ApplyDecisionsResponse> ApplyDecisionsAsync(Guid folderId, Guid userId, ApplyDecisionsRequest request, CancellationToken ct = default);
     Task RetryShareAfterResolveAsync(Guid folderId, Guid userId, CancellationToken ct = default);
     Task<ShareRollbackResponse> TryRollbackShareAsync(Guid folderId, Guid userId, CancellationToken ct = default);
@@ -16,12 +18,10 @@ public interface IShareReviewService
 public sealed class ShareReviewService : IShareReviewService
 {
     private readonly AppDbContext _db;
-    private readonly IFolderShareAiModerator _aiModerator;
 
-    public ShareReviewService(AppDbContext db, IFolderShareAiModerator aiModerator)
+    public ShareReviewService(AppDbContext db)
     {
         _db = db;
-        _aiModerator = aiModerator;
     }
 
     public async Task<ShareReviewSummaryDto> GetReviewAsync(Guid folderId, Guid userId, CancellationToken ct = default)
@@ -33,24 +33,114 @@ public sealed class ShareReviewService : IShareReviewService
             .FirstOrDefaultAsync(f => f.Id == folderId && f.User.SupabaseUserId == userId, ct)
             ?? throw new AdminException(404, "folder_not_found", "Folder not found or not owned by you.");
 
-        var files = folder.Documents.Select(d => _aiModerator.EvaluateDocument(d, folder)).ToList();
+        return BuildSummary(folder);
+    }
 
-        var cleanFiles = files.Count(f => f.Severity == ShareReviewSeverity.Low && !f.IsBlocked);
-        var flaggedFiles = files.Count(f => f.Severity >= ShareReviewSeverity.Medium && !f.IsBlocked);
-        var blockedFiles = files.Count(f => f.IsBlocked);
+    public async Task<ShareReviewSummaryDto> GetReviewerReviewAsync(
+        Guid folderId,
+        Guid reviewerSupabaseUserId,
+        CancellationToken ct = default)
+    {
+        await GetActiveReviewerAsync(reviewerSupabaseUserId, ct);
+
+        var folder = await _db.Folders
+            .Include(f => f.Documents)
+            .Include(f => f.User)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.ShareStatus == FolderStatus.PendingShare, ct)
+            ?? throw new AdminException(404, "pending_share_not_found", "Pending folder share not found.");
+
+        return BuildSummary(folder);
+    }
+
+    public async Task<IReadOnlyList<PendingShareFolderDto>> GetPendingReviewerQueueAsync(
+        Guid reviewerSupabaseUserId,
+        CancellationToken ct = default)
+    {
+        var reviewer = await GetActiveReviewerAsync(reviewerSupabaseUserId, ct);
+
+        var folders = await _db.Folders
+            .Include(folder => folder.User)
+            .Include(folder => folder.Documents)
+            .AsNoTracking()
+            .Where(folder => folder.ShareStatus == FolderStatus.PendingShare && folder.UserId != reviewer.Id)
+            .OrderByDescending(folder => folder.UpdatedAt)
+            .ToListAsync(ct);
+
+        return folders.Select(folder =>
+        {
+            var documents = folder.Documents
+                .OrderBy(document => document.CreatedAt)
+                .Select(document => new PendingShareDocumentDto(
+                    document.Id,
+                    document.FileName,
+                    document.Status,
+                    document.ReviewStatus))
+                .ToList();
+            var firstDocument = folder.Documents.FirstOrDefault();
+
+            return new PendingShareFolderDto(
+                folder.Id,
+                folder.Name,
+                string.IsNullOrWhiteSpace(folder.User?.FullName) ? folder.User?.Username ?? "Unknown" : folder.User.FullName,
+                firstDocument?.SubjectCode ?? "N/A",
+                firstDocument?.Semester ?? "N/A",
+                documents.Count,
+                folder.UpdatedAt,
+                folder.ShareSubmissionCount,
+                folder.ShareFailureCount,
+                folder.AppealMessage,
+                folder.StudentFeedbackReason,
+                folder.HumanReviewReason,
+                documents);
+        }).ToList();
+    }
+
+    private async Task<User> GetActiveReviewerAsync(Guid reviewerSupabaseUserId, CancellationToken ct)
+    {
+        var reviewer = await _db.Users
+            .Include(user => user.Role)
+            .AsNoTracking()
+            .FirstOrDefaultAsync(user => user.SupabaseUserId == reviewerSupabaseUserId, ct)
+            ?? throw new AdminException(404, "user_not_found", "Authenticated user has no profile in public.users.");
+
+        var roleName = reviewer.Role?.RoleName ?? string.Empty;
+        if (!reviewer.IsActive
+            || (!string.Equals(roleName, Role.AdminRoleName, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(roleName, Role.ModeratorRoleName, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new AdminException(403, "share_reviewer_role_required",
+                "Only active Admin or Moderator profiles can review pending folder shares.");
+        }
+
+        return reviewer;
+    }
+
+    private static ShareReviewSummaryDto BuildSummary(Folder folder)
+    {
+        var files = folder.Documents.Select(document => new ShareReviewFileDto(
+            document.Id,
+            document.FileName,
+            document.SubjectCode,
+            document.FileSizeBytes,
+            document.PageCount ?? 0,
+            folder.User?.FullName ?? "Unknown",
+            ShareReviewSeverity.NoAiReview,
+            null,
+            null,
+            0,
+            false)).ToList();
         var totalFiles = files.Count;
-        var healthScore = totalFiles > 0 ? Math.Round((double)cleanFiles / totalFiles * 100, 0) : 0;
-        var estimatedMinutes = Math.Max(1, (int)Math.Ceiling(flaggedFiles * 1.0));
 
         return new ShareReviewSummaryDto(
-            folderId,
+            folder.Id,
             folder.Name,
             totalFiles,
-            cleanFiles,
-            flaggedFiles,
-            blockedFiles,
-            healthScore,
-            estimatedMinutes,
+            0,
+            0,
+            0,
+            0,
+            0,
             files);
     }
 
@@ -108,46 +198,28 @@ public sealed class ShareReviewService : IShareReviewService
     {
         var folder = await _db.Folders
             .Include(f => f.Documents)
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == userId, ct)
+            .FirstOrDefaultAsync(f => f.Id == folderId && f.User.SupabaseUserId == userId, ct)
             ?? throw new AdminException(404, "folder_not_found", "Folder not found.");
 
-        if (folder.RequiresHumanReview)
-        {
-            folder.ShareStatus = FolderStatus.PendingShare;
-            folder.ShareReviewSource = "HUMAN_REQUEST";
-        }
-        else
-        {
-            var allClean = !folder.Documents.Any(d =>
-                d.ReviewStatus == DocumentReviewStatus.Rejected);
-            folder.ShareStatus = allClean ? FolderStatus.Approved : FolderStatus.PendingShare;
-            folder.ShareReviewSource = allClean ? "AI" : "HUMAN_REQUEST";
-        }
-
-        folder.SharedAt = folder.ShareStatus == FolderStatus.Approved ? DateTimeOffset.UtcNow : null;
+        folder.ShareStatus = FolderStatus.PendingShare;
+        folder.SharedAt = null;
+        folder.ShareReviewSource = "HUMAN_REQUEST";
+        folder.RequiresHumanReview = true;
         await _db.SaveChangesAsync(ct);
     }
 
     public async Task<ShareRollbackResponse> TryRollbackShareAsync(Guid folderId, Guid userId, CancellationToken ct = default)
     {
         var folder = await _db.Folders
-            .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == userId, ct)
-            ?? throw new AdminException(404, "folder_not_found", "Folder not found.");
+            .Include(item => item.User)
+            .FirstOrDefaultAsync(item => item.Id == folderId && item.User.SupabaseUserId == userId, ct)
+            ?? throw new AdminException(404, "folder_not_found", "Folder not found or not owned by you.");
 
-        if (folder.ShareStatus != FolderStatus.Approved || folder.SharedAt is null)
-            return new ShareRollbackResponse(false, 0, false);
+        if (!folder.User.IsActive)
+        {
+            throw new AdminException(403, "user_inactive", "Your profile is inactive.");
+        }
 
-        var elapsed = DateTimeOffset.UtcNow - folder.SharedAt.Value;
-        const int undoWindowSeconds = 30;
-        var secondsRemaining = Math.Max(0, undoWindowSeconds - (int)elapsed.TotalSeconds);
-
-        if (secondsRemaining <= 0)
-            return new ShareRollbackResponse(false, 0, true);
-
-        folder.ShareStatus = FolderStatus.PendingShare;
-        folder.SharedAt = null;
-        await _db.SaveChangesAsync(ct);
-
-        return new ShareRollbackResponse(true, secondsRemaining, false);
+        return new ShareRollbackResponse(false, 0, folder.ShareStatus == FolderStatus.Approved);
     }
 }
