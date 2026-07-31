@@ -18,22 +18,15 @@
                 <MudRadio Value="@("Resubmit")" Color="Color.Primary">
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                         <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
-                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Resubmit</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Fix issues and submit for review again</MudText>
-                    </MudStack>
-                </MudRadio>
-                <MudRadio Value="@("Delete")" Color="Color.Error">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                        <MudIcon Icon="@Icons.Material.Filled.Delete" Size="Size.Small" />
-                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Delete Folder</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Remove permanently</MudText>
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Resubmit for review</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Submit again after correcting the folder</MudText>
                     </MudStack>
                 </MudRadio>
                 <MudRadio Value="@("KeepPrivate")" Color="Color.Primary">
                     <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
                         <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" />
-                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Keep Private</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Keep the folder in your private library</MudText>
+                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Keep folder private</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Accept the rejection and return to your private library</MudText>
                     </MudStack>
                 </MudRadio>
             </MudRadioGroup>
@@ -48,7 +41,6 @@
 @code {
     [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
 
-    [Parameter] public Guid FolderId { get; set; }
     [Parameter] public string FolderName { get; set; } = string.Empty;
 
     private string _selectedAction = "Resubmit";
