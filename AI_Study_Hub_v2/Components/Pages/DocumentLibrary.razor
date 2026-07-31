@@ -671,6 +671,12 @@ else
                                                    Size="Size.Small"
                                                    Href="@($"/documents/{context.Id}")"
                                                     title="View details" />
+                                    <MudIconButton Icon="@Icons.Material.Filled.DriveFileMove"
+                                                   Size="Size.Small"
+                                                   Disabled="@_movingDocumentIds.Contains(context.Id)"
+                                                   OnClick="@(() => ShowMoveDocumentDialogAsync(context))"
+                                                   title="Move document"
+                                                   aria-label="Move document" />
                                     <MudIconButton Icon="@Icons.Material.Filled.Delete"
                                                    Size="Size.Small"
                                                    Color="Color.Error"
@@ -814,6 +820,7 @@ else
     private const int SidebarFolderPageSize = 4;
     private CancellationTokenSource? _folderClickCts;
     private Guid? _openMenuFolderId;
+    private readonly HashSet<Guid> _movingDocumentIds = new();
 
     private List<string> _uniqueSubjects => _documents
         .Select(d => d.SubjectCode)
@@ -1351,6 +1358,106 @@ else
         finally
         {
             _foldersBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task ShowMoveDocumentDialogAsync(DocumentDto document)
+    {
+        if (document is null || string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+
+        var parameters = new DialogParameters
+        {
+            ["Document"] = document,
+            ["Folders"] = _folders.OrderBy(folder => folder.Name, StringComparer.OrdinalIgnoreCase).ToList(),
+            ["CurrentFolderId"] = document.FolderId
+        };
+        var options = new DialogOptions
+        {
+            CloseOnEscapeKey = true,
+            MaxWidth = MaxWidth.Small,
+            FullWidth = true
+        };
+
+        var dialogRef = await Dialogs.ShowAsync<MoveDocumentDialog>("Move document", parameters, options);
+        var result = await dialogRef.Result;
+        if (result is null || result.Canceled || result.Data is not MoveDocumentDialog.MoveDocumentDialogResult moveResult)
+        {
+            return;
+        }
+
+        if (moveResult.FolderId == document.FolderId)
+        {
+            return;
+        }
+
+        await MoveDocumentAsync(document, moveResult.FolderId);
+    }
+
+    private async Task MoveDocumentAsync(DocumentDto document, Guid? folderId)
+    {
+        if (document is null || string.IsNullOrWhiteSpace(Session.AccessToken) || !_movingDocumentIds.Add(document.Id))
+        {
+            return;
+        }
+
+        var previousFolderId = document.FolderId;
+        try
+        {
+            var updatedDocument = await DocumentsApi.MoveToFolderAsync(
+                Session.AccessToken!, document.Id, folderId);
+
+            var documentIndex = _documents.FindIndex(item => item.Id == document.Id);
+            if (documentIndex >= 0)
+            {
+                _documents[documentIndex] = updatedDocument;
+            }
+
+            if (previousFolderId != updatedDocument.FolderId)
+            {
+                var previousFolder = previousFolderId.HasValue
+                    ? _folders.FirstOrDefault(folder => folder.Id == previousFolderId.Value)
+                    : null;
+                if (previousFolder is not null && previousFolder.DocumentCount > 0)
+                {
+                    previousFolder.DocumentCount--;
+                }
+
+                var targetFolder = updatedDocument.FolderId.HasValue
+                    ? _folders.FirstOrDefault(folder => folder.Id == updatedDocument.FolderId.Value)
+                    : null;
+                if (targetFolder is not null)
+                {
+                    targetFolder.DocumentCount++;
+                }
+            }
+
+            if (_filteredDocuments.Count == 0 && _currentPage > 1)
+            {
+                _currentPage--;
+            }
+
+            var destination = updatedDocument.FolderId.HasValue
+                ? GetFolderName(updatedDocument.FolderId)
+                : "All Documents";
+            Snackbar.Add($"Moved \"{updatedDocument.FileName}\" to {destination}.", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapError(ex) ?? ex.Message, Severity.Error);
+            if (ex.StatusCode == 401)
+            {
+                Session.Clear();
+                Nav.NavigateTo("/login", replace: true);
+            }
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Could not move document: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _movingDocumentIds.Remove(document.Id);
             StateHasChanged();
         }
     }

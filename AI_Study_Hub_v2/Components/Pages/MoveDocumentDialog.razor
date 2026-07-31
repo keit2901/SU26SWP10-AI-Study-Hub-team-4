@@ -1,0 +1,90 @@
+@namespace AI_Study_Hub_v2.Components.Pages
+
+<MudDialog>
+    <DialogContent>
+        <MudStack Spacing="2">
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Choose where to keep <strong>@Document.FileName</strong>.
+            </MudText>
+
+            @if (Folders.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                    You don't have any folders yet. Create a folder from the library before moving this document.
+                </MudAlert>
+            }
+
+            @if (Folders.Count > 0 || CurrentFolderId.HasValue)
+            {
+                <MudSelect T="Guid?"
+                           @bind-Value="_selectedFolderId"
+                           Label="Destination"
+                           Variant="Variant.Outlined"
+                           Margin="Margin.Dense"
+                           AnchorOrigin="Origin.BottomCenter">
+                    <MudSelectItem T="Guid?"
+                                   Value="@((Guid?)null)"
+                                   Disabled="@(!CurrentFolderId.HasValue)">
+                        No folder (All Documents)
+                    </MudSelectItem>
+                    @foreach (var folder in Folders)
+                    {
+                        <MudSelectItem T="Guid?"
+                                       Value="@((Guid?)folder.Id)"
+                                       Disabled="@(CurrentFolderId == folder.Id)">
+                            @folder.Name
+                        </MudSelectItem>
+                    }
+                </MudSelect>
+            }
+
+            <MudText Typo="Typo.caption" Color="Color.Secondary">
+                Current folder: @(CurrentFolderId.HasValue ? CurrentFolderName : "No folder")
+            </MudText>
+        </MudStack>
+    </DialogContent>
+    <DialogActions>
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   Disabled="@(_selectedFolderId == CurrentFolderId)"
+                   OnClick="Confirm">
+            Move
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
+
+    [Parameter] public DocumentDto Document { get; set; } = new();
+    [Parameter] public IReadOnlyList<FolderDto> Folders { get; set; } = Array.Empty<FolderDto>();
+    [Parameter] public Guid? CurrentFolderId { get; set; }
+
+    private Guid? _selectedFolderId;
+
+    private string CurrentFolderName =>
+        Folders.FirstOrDefault(folder => folder.Id == CurrentFolderId)?.Name ?? "Unknown folder";
+
+    protected override void OnInitialized()
+    {
+        _selectedFolderId = CurrentFolderId;
+    }
+
+    private void Confirm()
+    {
+        if (_selectedFolderId == CurrentFolderId)
+        {
+            return;
+        }
+
+        MudDialog.Close(DialogResult.Ok(new MoveDocumentDialogResult { FolderId = _selectedFolderId }));
+    }
+
+    private void Cancel() => MudDialog.Cancel();
+
+    public sealed class MoveDocumentDialogResult
+    {
+        public Guid? FolderId { get; set; }
+    }
+}
