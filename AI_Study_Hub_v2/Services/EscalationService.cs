@@ -28,12 +28,42 @@ public sealed class EscalationService : IEscalationService
 
     public async Task<DocumentEscalationDto> CreateAsync(Guid escalatedByUserId, CreateEscalationRequest request, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        var actor = await ResolveActiveReviewerAsync(escalatedByUserId, ct);
+        var itemIds = ValidateCreateRequest(request);
+        var folder = await _db.Folders
+            .FirstOrDefaultAsync(f => f.Id == request.FolderId, ct)
+            ?? throw new AdminException(404, "folder_not_found", "Folder not found.");
+
+        if (folder.ShareStatus != FolderStatus.PendingShare)
+        {
+            throw new AdminException(409, "folder_not_pending_share",
+                "Only folders pending share review can be escalated.");
+        }
+
+        if (await _db.DocumentEscalations.AnyAsync(
+                e => e.FolderId == folder.Id && e.EscalationStatus == "Pending", ct))
+        {
+            throw new AdminException(409, "pending_escalation_exists",
+                "This folder already has a pending escalation.");
+        }
+
+        var documents = await _db.Documents
+            .Where(document => itemIds.Contains(document.Id))
+            .ToListAsync(ct);
+        if (documents.Count != itemIds.Count || documents.Any(document => document.FolderId != folder.Id))
+        {
+            throw new AdminException(400, "escalation_item_not_in_folder",
+                "Every escalated document must belong to the selected folder.");
+        }
+
+        var reason = NormalizeRequired(request.Reason, "reason_required", "Escalation reason is required.");
         var escalation = new DocumentEscalation
         {
             Id = Guid.NewGuid(),
-            FolderId = request.FolderId,
-            EscalatedByUserId = escalatedByUserId,
-            Reason = request.Reason,
+            FolderId = folder.Id,
+            EscalatedByUserId = actor.Id,
+            Reason = reason,
             EscalationStatus = "Pending",
             CreatedAt = DateTimeOffset.UtcNow
         };
@@ -46,19 +76,18 @@ public sealed class EscalationService : IEscalationService
                 Id = Guid.NewGuid(),
                 EscalationId = escalation.Id,
                 DocumentId = item.DocumentId,
-                RejectReason = item.RejectReason
+                RejectReason = NormalizeRequired(item.RejectReason, "item_reason_required", "Each escalation item needs a reason.")
             });
         }
 
-        foreach (var item in request.Items)
+        foreach (var document in documents)
         {
-            var document = await _db.Documents.FindAsync(item.DocumentId);
-            if (document is not null)
-                document.ReviewStatus = DocumentReviewStatus.Escalated;
+            document.ReviewStatus = DocumentReviewStatus.Escalated;
+            document.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
         _audit.Add(
-            escalatedByUserId,
+            actor.Id,
             "ESCALATION_CREATED",
             "DocumentEscalation",
             escalation.Id.ToString(),
@@ -66,8 +95,9 @@ public sealed class EscalationService : IEscalationService
             afterJson: JsonSerializer.Serialize(new
             {
                 escalation.FolderId,
-                escalation.Reason,
-                DocumentCount = request.Items.Count
+                DocumentCount = request.Items.Count,
+                ReasonLength = escalation.Reason.Length,
+                ItemReasonLengths = request.Items.Select(item => item.RejectReason?.Trim().Length ?? 0).ToArray()
             }));
 
         await _db.SaveChangesAsync(ct);
@@ -124,7 +154,13 @@ public sealed class EscalationService : IEscalationService
 
     public async Task<DocumentEscalationDto> ResolveAsync(Guid escalationId, ResolveEscalationRequest request, Guid resolvedByUserId, CancellationToken ct = default)
     {
+        ArgumentNullException.ThrowIfNull(request);
+        var resolver = await ResolveActiveAdminAsync(resolvedByUserId, ct);
+        var resolutionStatus = NormalizeResolutionStatus(request.Status);
+        var adminResponse = NormalizeOptional(request.AdminResponse);
         var escalation = await _db.DocumentEscalations
+            .Include(e => e.Items)
+            .Include(e => e.Folder)
             .FirstOrDefaultAsync(e => e.Id == escalationId, ct)
             ?? throw new AdminException(404, "escalation_not_found", "Escalation not found.");
 
@@ -132,16 +168,53 @@ public sealed class EscalationService : IEscalationService
             throw new AdminException(409, "already_resolved", $"Escalation has already been resolved as '{escalation.EscalationStatus}'.");
 
         var previousStatus = escalation.EscalationStatus;
-        escalation.EscalationStatus = request.Status;
-        escalation.AdminResponse = request.AdminResponse;
-        escalation.ResolvedByUserId = resolvedByUserId;
+        escalation.EscalationStatus = resolutionStatus;
+        escalation.AdminResponse = adminResponse;
+        escalation.ResolvedByUserId = resolver.Id;
         escalation.ResolvedAt = DateTimeOffset.UtcNow;
+
+        var itemIds = escalation.Items.Select(item => item.DocumentId).ToList();
+        var documents = await _db.Documents
+            .Where(document => itemIds.Contains(document.Id) && document.FolderId == escalation.FolderId)
+            .ToListAsync(ct);
+        if (documents.Count != itemIds.Count)
+        {
+            throw new AdminException(409, "escalation_items_changed",
+                "Escalation documents no longer match the folder; no resolution was applied.");
+        }
+
+        var now = escalation.ResolvedAt.Value;
+        foreach (var document in documents)
+        {
+            document.ReviewStatus = resolutionStatus == "Approved"
+                ? DocumentReviewStatus.Approved
+                : DocumentReviewStatus.Rejected;
+            document.UpdatedAt = now;
+        }
+
+        escalation.Folder.UpdatedAt = now;
+        if (resolutionStatus == "Approved")
+        {
+            escalation.Folder.ShareStatus = FolderStatus.Approved;
+            escalation.Folder.SharedAt = now;
+            escalation.Folder.ShareReviewSource = "ADMIN_ESCALATION_APPROVED";
+            escalation.Folder.RequiresHumanReview = false;
+        }
+        else
+        {
+            escalation.Folder.ShareStatus = FolderStatus.Rejected;
+            escalation.Folder.SharedAt = null;
+            escalation.Folder.ShareReviewSource = "ADMIN_ESCALATION_REJECTED";
+            escalation.Folder.HumanReviewReason = adminResponse;
+            escalation.Folder.RequiresHumanReview = false;
+            escalation.Folder.ShareFailureCount += 1;
+        }
 
         var beforeJson = JsonSerializer.Serialize(new { Status = previousStatus });
         var afterJson = JsonSerializer.Serialize(new { escalation.EscalationStatus, escalation.AdminResponse });
 
         _audit.Add(
-            resolvedByUserId,
+            resolver.Id,
             "ESCALATION_RESOLVED",
             "DocumentEscalation",
             escalation.Id.ToString(),
@@ -152,6 +225,73 @@ public sealed class EscalationService : IEscalationService
         await _db.SaveChangesAsync(ct);
 
         return await GetByIdAsync(escalationId, ct);
+    }
+
+    private async Task<User> ResolveActiveReviewerAsync(Guid localUserId, CancellationToken ct)
+    {
+        var user = await _db.Users.Include(candidate => candidate.Role)
+            .FirstOrDefaultAsync(candidate => candidate.Id == localUserId, ct)
+            ?? throw new AdminException(404, "user_not_found", "Authenticated user has no profile in public.users.");
+        if (!user.IsActive
+            || (!string.Equals(user.Role?.RoleName, Role.AdminRoleName, StringComparison.OrdinalIgnoreCase)
+                && !string.Equals(user.Role?.RoleName, Role.ModeratorRoleName, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new AdminException(403, "share_reviewer_role_required",
+                "Only active Admin or Moderator profiles can create escalations.");
+        }
+        return user;
+    }
+
+    private async Task<User> ResolveActiveAdminAsync(Guid localUserId, CancellationToken ct)
+    {
+        var user = await _db.Users.Include(candidate => candidate.Role)
+            .FirstOrDefaultAsync(candidate => candidate.Id == localUserId, ct)
+            ?? throw new AdminException(404, "user_not_found", "Authenticated user has no profile in public.users.");
+        if (!user.IsActive || !string.Equals(user.Role?.RoleName, Role.AdminRoleName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new AdminException(403, "admin_role_required", "Only active Admin profiles can resolve escalations.");
+        }
+        return user;
+    }
+
+    private static List<Guid> ValidateCreateRequest(CreateEscalationRequest request)
+    {
+        if (request.Items is null || request.Items.Count == 0)
+        {
+            throw new AdminException(400, "escalation_items_required", "At least one document must be escalated.");
+        }
+        if (request.FolderId == Guid.Empty || request.Items.Any(item => item.DocumentId == Guid.Empty))
+        {
+            throw new AdminException(400, "invalid_escalation_item", "Folder and document identifiers are required.");
+        }
+        var itemIds = request.Items.Select(item => item.DocumentId).ToList();
+        if (itemIds.Distinct().Count() != itemIds.Count)
+        {
+            throw new AdminException(400, "duplicate_escalation_document", "Each document may appear only once in an escalation.");
+        }
+        return itemIds;
+    }
+
+    private static string NormalizeResolutionStatus(string? status)
+    {
+        if (string.Equals(status?.Trim(), "Approved", StringComparison.OrdinalIgnoreCase)) return "Approved";
+        if (string.Equals(status?.Trim(), "Rejected", StringComparison.OrdinalIgnoreCase)) return "Rejected";
+        throw new AdminException(400, "invalid_escalation_status", "Status must be 'Approved' or 'Rejected'.");
+    }
+
+    private static string NormalizeRequired(string? value, string code, string message)
+    {
+        var normalized = NormalizeOptional(value);
+        return string.IsNullOrWhiteSpace(normalized)
+            ? throw new AdminException(400, code, message)
+            : normalized;
+    }
+
+    private static string? NormalizeOptional(string? value)
+    {
+        var normalized = value?.Trim();
+        if (string.IsNullOrWhiteSpace(normalized)) return null;
+        return normalized.Length <= 2000 ? normalized : normalized[..2000];
     }
 
     private async Task<DocumentEscalationDto> GetByIdAsync(Guid escalationId, CancellationToken ct)
