@@ -16,6 +16,8 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.Options;
 using MudBlazor.Services;
 using Npgsql;
@@ -429,7 +431,7 @@ using (var scope = app.Services.CreateScope())
 
     try
     {
-        await db.Database.MigrateAsync();
+        await MigrateDatabaseWithCompatibilityAsync(db, startupLogger);
         startupLogger.LogInformation("Database migrations applied.");
         await EnsurePhase3SchemaAsync(db, startupLogger);
         await CleanupDeprecatedSeedAccountsAsync(db, goTrue, startupLogger);
