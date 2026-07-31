@@ -2,13 +2,16 @@ namespace AI_Study_Hub_v2.Data.Entities;
 
 public enum UserNotificationKind
 {
-    FolderModerationFinal = 0
+    FolderModerationFinal = 0,
+    DocumentModerationFinal = 1,
+    EscalationResolved = 2
 }
 
 public enum UserNotificationOutcome
 {
     Approved = 0,
-    Rejected = 1
+    Rejected = 1,
+    Mixed = 2
 }
 
 public sealed class UserNotification
@@ -17,7 +20,11 @@ public sealed class UserNotification
 
     public Guid RecipientUserId { get; set; }
 
+    public string EventKey { get; set; } = string.Empty;
+
     public Guid FolderId { get; set; }
+
+    public Guid? DocumentId { get; set; }
 
     public int SubmissionNumber { get; set; }
 
@@ -38,4 +45,6 @@ public sealed class UserNotification
     public User RecipientUser { get; set; } = null!;
 
     public Folder Folder { get; set; } = null!;
+
+    public Document? Document { get; set; }
 }

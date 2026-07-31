@@ -114,19 +114,20 @@ public sealed class SharedFolderCopyCoordinatorTests
     }
 
     [Test]
-    public async Task CopyAsync_EmptyFolder_SucceedsWithoutStorageAndRemovesOperationWithZeroCharge()
+    public async Task CopyAsync_EmptyApprovedFolder_IsNotPubliclyCopyable()
     {
         await using var env = new CopyEnvironment();
         var destination = env.AddUser(storageUsed: 9);
         var source = env.AddFolder(env.AddUser().Id, FolderStatus.Approved);
 
-        var result = await env.Sut.CopyAsync(destination.SupabaseUserId, source.Id, default);
+        var error = await FluentActions.Awaiting(() => env.Sut.CopyAsync(destination.SupabaseUserId, source.Id, default))
+            .Should().ThrowAsync<DocumentException>();
 
-        result.DocumentCount.Should().Be(0);
+        error.Which.Code.Should().Be("folder_not_found");
         env.Storage.Calls.Should().BeEmpty();
         env.InFresh(db =>
         {
-            db.Folders.Should().ContainSingle(folder => folder.Id == result.Id && folder.UserId == destination.Id);
+            db.Folders.Should().NotContain(folder => folder.UserId == destination.Id);
             db.SharedFolderCopyOperations.Should().BeEmpty();
             db.Users.Single(user => user.Id == destination.Id).StorageUsedBytes.Should().Be(9);
         });
@@ -386,6 +387,7 @@ public sealed class SharedFolderCopyCoordinatorTests
     {
         await using var env = new CopyEnvironment();
         var destination = env.AddUser(storageUsed: 40); var source = env.AddFolder(env.AddUser().Id, FolderStatus.Approved);
+        env.AddDocument(source, source.UserId, "zero-byte.pdf", 0);
         env.AddOperation(destination.Id, Guid.NewGuid(), SharedFolderCopyOperation.CompensationRequired, 20, DateTimeOffset.UtcNow, paths: ["stale/a"]);
 
         await env.Sut.CopyAsync(destination.SupabaseUserId, source.Id, default);
@@ -459,7 +461,7 @@ public sealed class SharedFolderCopyCoordinatorTests
         }
 
         public Folder AddFolder(Guid userId, FolderStatus status) { var folder = new Folder { Id = Guid.NewGuid(), UserId = userId, Name = $"folder-{Guid.NewGuid():N}"[..20], Description = "source description", Icon = "book", ShareStatus = status, CreatedAt = DateTimeOffset.UtcNow.AddDays(-1), UpdatedAt = DateTimeOffset.UtcNow.AddHours(-1) }; InFresh(db => { db.Folders.Add(folder); db.SaveChanges(); }); return folder; }
-        public Document AddDocument(Folder folder, Guid ownerId, string name, long bytes, int? pageCount = 4, DocumentStatus status = DocumentStatus.Ready) { var document = new Document { Id = Guid.NewGuid(), UserId = ownerId, FolderId = folder.Id, FileName = name, StoragePath = $"source/{Guid.NewGuid():N}/{name}", FileSizeBytes = bytes, MimeType = "application/pdf", SubjectCode = "SWP391", Semester = "SU26", PageCount = pageCount, Status = status, ReviewStatus = DocumentReviewStatus.None, ErrorMessage = "original error", CreatedAt = DateTimeOffset.UtcNow.AddDays(-3), UpdatedAt = DateTimeOffset.UtcNow.AddDays(-2) }; InFresh(db => { db.Documents.Add(document); db.SaveChanges(); }); return document; }
+        public Document AddDocument(Folder folder, Guid ownerId, string name, long bytes, int? pageCount = 4, DocumentStatus status = DocumentStatus.Ready) { var document = new Document { Id = Guid.NewGuid(), UserId = ownerId, FolderId = folder.Id, FileName = name, StoragePath = $"source/{Guid.NewGuid():N}/{name}", FileSizeBytes = bytes, MimeType = "application/pdf", SubjectCode = "SWP391", Semester = "SU26", PageCount = pageCount, Status = status, ReviewStatus = DocumentReviewStatus.Approved, ErrorMessage = "original error", CreatedAt = DateTimeOffset.UtcNow.AddDays(-3), UpdatedAt = DateTimeOffset.UtcNow.AddDays(-2) }; InFresh(db => { db.Documents.Add(document); db.SaveChanges(); }); return document; }
         public DocumentChunk AddChunk(Document document, int index, int? page, string content, int? tokens, string? model, float[] vector, DateTimeOffset created) { var chunk = new DocumentChunk { Id = Guid.NewGuid(), DocumentId = document.Id, ChunkIndex = index, PageNumber = page, Content = content, TokenCount = tokens, Embedding = new Vector(vector), EmbeddingModel = model, CreatedAt = created }; InFresh(db => { db.DocumentChunks.Add(chunk); db.SaveChanges(); }); return chunk; }
         public Folder SeedSharedFolderWithDocuments(int count, params long[] sizes) => SeedSharedFolderWithDocuments(count, sizes, false);
         public Folder SeedSharedFolderWithDocumentsAndChunks(int count, params long[] sizes) => SeedSharedFolderWithDocuments(count, sizes, true);

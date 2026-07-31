@@ -228,7 +228,9 @@ public sealed class SharedFolderCopyCoordinator : ISharedFolderCopyCoordinator
         Id = folder.Id,
         Name = folder.Name,
         Description = folder.Description,
-        DocumentCount = await db.Documents.CountAsync(document => document.FolderId == folder.Id, ct),
+        DocumentCount = await db.Documents.CountAsync(document => document.FolderId == folder.Id
+            && document.Status == DocumentStatus.Ready
+            && document.ReviewStatus == DocumentReviewStatus.Approved, ct),
         IsFavorite = folder.IsFavorite,
         ShareStatus = folder.ShareStatus,
         Icon = folder.Icon,
@@ -489,7 +491,12 @@ public sealed class SharedFolderCopyCoordinator : ISharedFolderCopyCoordinator
     {
         var folder = await db.Folders.AsNoTracking().SingleOrDefaultAsync(item => item.Id == folderId && item.ShareStatus == FolderStatus.Approved, ct)
             ?? throw new DocumentException(404, "folder_not_found", "Shared folder not found.");
-        var documents = await db.Documents.AsNoTracking().Where(item => item.FolderId == folder.Id).OrderBy(item => item.Id).ToListAsync(ct);
+        var documents = await db.Documents.AsNoTracking().Where(item => item.FolderId == folder.Id
+                && item.Status == DocumentStatus.Ready
+                && item.ReviewStatus == DocumentReviewStatus.Approved)
+            .OrderBy(item => item.Id).ToListAsync(ct);
+        if (documents.Count == 0)
+            throw new DocumentException(404, "folder_not_found", "Shared folder not found.");
         if (documents.Any(item => item.UserId != folder.UserId || item.FolderId != folder.Id || string.IsNullOrWhiteSpace(item.StoragePath) || item.FileSizeBytes < 0)
             || documents.Select(item => item.StoragePath).Distinct(StringComparer.Ordinal).Count() != documents.Count)
             throw new DocumentException(409, "folder_copy_conflict", "Shared folder contents are inconsistent.");

@@ -17,8 +17,11 @@ public sealed class UserNotificationModelTests
 
         entity.GetTableName().Should().Be("user_notifications");
         entity.FindProperty(nameof(UserNotification.RecipientUserId))!.GetColumnName().Should().Be("recipient_user_id");
+        entity.FindProperty(nameof(UserNotification.EventKey))!.IsNullable.Should().BeFalse();
+        entity.FindProperty(nameof(UserNotification.DocumentId))!.IsNullable.Should().BeTrue();
         entity.GetForeignKeys().Should().Contain(foreignKey => foreignKey.Properties.Single().Name == nameof(UserNotification.RecipientUserId) && foreignKey.DeleteBehavior == DeleteBehavior.Cascade);
         entity.GetForeignKeys().Should().Contain(foreignKey => foreignKey.Properties.Single().Name == nameof(UserNotification.FolderId) && foreignKey.DeleteBehavior == DeleteBehavior.Cascade);
+        entity.GetForeignKeys().Should().Contain(foreignKey => foreignKey.Properties.Single().Name == nameof(UserNotification.DocumentId) && foreignKey.DeleteBehavior == DeleteBehavior.SetNull);
         entity.GetCheckConstraints().Select(constraint => constraint.Name).Should().Contain(new[]
         {
             "ck_user_notifications_kind",
@@ -27,8 +30,15 @@ public sealed class UserNotificationModelTests
         });
         entity.GetIndexes().Should().Contain(index => index.Properties.Select(property => property.Name).SequenceEqual(new[]
         {
-            nameof(UserNotification.RecipientUserId), nameof(UserNotification.FolderId), nameof(UserNotification.SubmissionNumber)
+            nameof(UserNotification.EventKey)
         }) && index.IsUnique);
-        entity.GetIndexes().Should().Contain(index => index.GetFilter() == "read_at IS NULL");
+        entity.GetIndexes().Should().Contain(index => index.Properties.Select(property => property.Name).SequenceEqual(new[]
+        {
+            nameof(UserNotification.RecipientUserId), nameof(UserNotification.CreatedAt)
+        }) && index.GetDatabaseName() == "ix_user_notifications_recipient_created_at");
+        entity.GetIndexes().Should().Contain(index => index.Properties.Select(property => property.Name).SequenceEqual(new[]
+        {
+            nameof(UserNotification.RecipientUserId)
+        }) && index.GetDatabaseName() == "ix_user_notifications_recipient_unread" && index.GetFilter() == "read_at IS NULL");
     }
 }

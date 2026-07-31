@@ -322,6 +322,26 @@ public sealed class CommunityServiceTests
             UpdatedAt = DateTimeOffset.UtcNow,
         };
         db.Folders.Add(folder);
+        if (isShared)
+        {
+            db.Documents.Add(new Document
+            {
+                Id = Guid.NewGuid(),
+                UserId = userId,
+                FolderId = folder.Id,
+                FileName = "approved.pdf",
+                StoragePath = $"documents/{userId}/{Guid.NewGuid():N}.pdf",
+                FileSizeBytes = 128,
+                MimeType = "application/pdf",
+                SubjectCode = "SWP391",
+                Semester = "SU26",
+                Status = DocumentStatus.Ready,
+                ReviewStatus = DocumentReviewStatus.Approved,
+                ModerationGeneration = 1,
+                CreatedAt = DateTimeOffset.UtcNow,
+                UpdatedAt = DateTimeOffset.UtcNow,
+            });
+        }
         db.SaveChanges();
         return folder;
     }

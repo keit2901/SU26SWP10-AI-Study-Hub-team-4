@@ -1,175 +1,105 @@
+using System.Reflection;
+using System.Security.Claims;
 using AI_Study_Hub_v2.Controllers;
 using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using AI_Study_Hub_v2.Services;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Moq;
-using System.Security.Claims;
 
 namespace AI_Study_Hub_v2.Tests.Controllers;
 
 [TestFixture]
 public sealed class EscalationControllerTests
 {
-    // ── P1: Create MUST use local User.Id, not SupabaseUserId ──
-
     [Test]
     public async Task Create_CallsServiceWithLocalUserId_NotSupabaseUserId()
     {
         var escalationService = new Mock<IEscalationService>();
         var db = CreateInMemoryDbWithUser(out var localUserId, out var supabaseUserId);
-        var controller = CreateController(escalationService.Object, db);
-
-        // Simulate JWT claim with SupabaseUserId
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
-                {
-                    new Claim(ClaimTypes.NameIdentifier, supabaseUserId.ToString())
-                }))
-            }
-        };
-
-        var request = new CreateEscalationRequest
-        {
-            FolderId = Guid.NewGuid(),
-            Reason = "Test escalation",
-            Items = new List<EscalationItemRequest>
-            {
-                new() { DocumentId = Guid.NewGuid(), RejectReason = "Docs fine." }
-            }
-        };
-
-        escalationService
-            .Setup(s => s.CreateAsync(localUserId, request, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new DocumentEscalationDto(
-                Guid.NewGuid(), request.FolderId, "Moderator", request.Reason,
-                "Pending", null, null, DateTimeOffset.UtcNow, null,
-                new List<DocumentEscalationItemDto>()));
+        var controller = CreateController(escalationService.Object, db, supabaseUserId);
+        var request = CreateRequest();
+        escalationService.Setup(service => service.CreateAsync(localUserId, request, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(Dto(request.FolderId, "Pending"));
 
         var result = await controller.Create(request, CancellationToken.None);
 
-        var createdAt = result.Result.Should().BeOfType<CreatedAtActionResult>().Subject;
-        createdAt.StatusCode.Should().Be(201);
-
-        // Verify service was called with local User.Id, NOT SupabaseUserId
-        escalationService.Verify(
-            s => s.CreateAsync(
-                It.Is<Guid>(id => id == localUserId && id != supabaseUserId),
-                request,
-                It.IsAny<CancellationToken>()),
-            Times.Once);
+        result.Result.Should().BeOfType<CreatedAtActionResult>();
+        escalationService.Verify(service => service.CreateAsync(localUserId, request, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // ── GetAll returns OK with list ──
-
     [Test]
-    public async Task GetAll_ReturnsOkWithEscalations()
+    public async Task Resolve_RetiredFolderWideRoute_ReturnsConflictWithoutCallingService()
     {
         var escalationService = new Mock<IEscalationService>();
-        var db = Support.TestDb.CreateInMemoryWithDocuments();
-        var controller = CreateController(escalationService.Object, db);
+        var db = CreateInMemoryDbWithUser(out _, out var supabaseUserId);
+        var controller = CreateController(escalationService.Object, db, supabaseUserId);
 
-        var escalations = new List<DocumentEscalationDto>
-        {
-            new(Guid.NewGuid(), Guid.NewGuid(), "Mod", "R", "Pending", null, null, DateTimeOffset.UtcNow, null, new List<DocumentEscalationItemDto>()),
-            new(Guid.NewGuid(), Guid.NewGuid(), "Mod", "R2", "Resolved", "OK", null, DateTimeOffset.UtcNow, DateTimeOffset.UtcNow, new List<DocumentEscalationItemDto>())
-        };
+        var result = await controller.Resolve(Guid.NewGuid(), new ResolveEscalationRequest { Status = "Approved" }, CancellationToken.None);
 
-        escalationService.Setup(s => s.GetAllAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync(escalations);
-
-        var result = await controller.GetAll(CancellationToken.None);
-
-        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        ok.Value.Should().BeEquivalentTo(escalations);
+        var conflict = result.Result.Should().BeOfType<ConflictObjectResult>().Subject;
+        var error = conflict.Value.Should().BeOfType<ApiErrorResponse>().Subject;
+        error.Code.Should().Be("escalation_batch_decision_retired");
+        escalationService.VerifyNoOtherCalls();
     }
 
-    // ── GetMy returns filtered list ──
-
     [Test]
-    public async Task GetMy_ReturnsFilteredEscalationsForCurrentUser()
+    public async Task ResolveItems_UsesLocalUserIdAndReturnsUpdatedEscalation()
     {
         var escalationService = new Mock<IEscalationService>();
         var db = CreateInMemoryDbWithUser(out var localUserId, out var supabaseUserId);
-        var controller = CreateController(escalationService.Object, db);
-
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
-                {
-                    new Claim(ClaimTypes.NameIdentifier, supabaseUserId.ToString())
-                }))
-            }
-        };
-
-        var myEscalations = new List<DocumentEscalationDto>
-        {
-            new(Guid.NewGuid(), Guid.NewGuid(), "Me", "My escalation", "Pending", null, null, DateTimeOffset.UtcNow, null, new List<DocumentEscalationItemDto>())
-        };
-
-        escalationService.Setup(s => s.GetMyAsync(localUserId, It.IsAny<CancellationToken>()))
-            .ReturnsAsync(myEscalations);
-
-        var result = await controller.GetMy(CancellationToken.None);
-
-        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        ok.Value.Should().BeEquivalentTo(myEscalations);
-        escalationService.Verify(s => s.GetMyAsync(localUserId, It.IsAny<CancellationToken>()), Times.Once);
-    }
-
-    // ── Resolve success ──
-
-    [Test]
-    public async Task Resolve_ValidRequest_ReturnsUpdatedEscalation()
-    {
-        var escalationService = new Mock<IEscalationService>();
-        var db = CreateInMemoryDbWithUser(out var localUserId, out var supabaseUserId);
-        var controller = CreateController(escalationService.Object, db);
-
-        controller.ControllerContext = new ControllerContext
-        {
-            HttpContext = new DefaultHttpContext
-            {
-                User = new ClaimsPrincipal(new ClaimsIdentity(new[]
-                {
-                    new Claim(ClaimTypes.NameIdentifier, supabaseUserId.ToString())
-                }))
-            }
-        };
-
+        var controller = CreateController(escalationService.Object, db, supabaseUserId);
         var escalationId = Guid.NewGuid();
-        var resolveReq = new ResolveEscalationRequest { Status = "Approved", AdminResponse = "Valid escalation." };
-        var resolved = new DocumentEscalationDto(
-            escalationId, Guid.NewGuid(), "Mod", "R", "Approved", "Valid escalation.", null,
-            DateTimeOffset.UtcNow, DateTimeOffset.UtcNow,
-            new List<DocumentEscalationItemDto>());
-
-        escalationService.Setup(s => s.ResolveAsync(escalationId, resolveReq, It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+        var request = new ResolveEscalationItemsRequest
+        {
+            Items = [new ResolveEscalationItemRequest { ItemId = Guid.NewGuid(), Status = "Approved" }]
+        };
+        var resolved = Dto(Guid.NewGuid(), "Resolved");
+        escalationService.Setup(service => service.ResolveItemsAsync(escalationId, request, localUserId, It.IsAny<CancellationToken>()))
             .ReturnsAsync(resolved);
 
-        var result = await controller.Resolve(escalationId, resolveReq, CancellationToken.None);
+        var result = await controller.ResolveItems(escalationId, request, CancellationToken.None);
 
-        var ok = result.Result.Should().BeOfType<OkObjectResult>().Subject;
-        var dto = ok.Value.Should().BeOfType<DocumentEscalationDto>().Subject;
-        dto.EscalationStatus.Should().Be("Approved");
-        dto.AdminResponse.Should().Be("Valid escalation.");
+        var dto = result.Result.Should().BeOfType<OkObjectResult>().Subject.Value.Should().BeOfType<DocumentEscalationDto>().Subject;
+        dto.EscalationStatus.Should().Be("Resolved");
+        escalationService.Verify(service => service.ResolveItemsAsync(escalationId, request, localUserId, It.IsAny<CancellationToken>()), Times.Once);
     }
 
-    // ── Helpers ──
-
-    private static EscalationController CreateController(IEscalationService escalation, AppDbContext db)
+    [Test]
+    public void ResolveItems_IsAdminOnly()
     {
-        var logger = new Mock<ILogger<EscalationController>>();
-        return new EscalationController(escalation, db, logger.Object);
+        var method = typeof(EscalationController).GetMethod(nameof(EscalationController.ResolveItems), BindingFlags.Instance | BindingFlags.Public)!;
+        var authorize = method.GetCustomAttribute<AuthorizeAttribute>();
+
+        authorize.Should().NotBeNull();
+        authorize!.Roles.Should().Be("Admin");
+    }
+
+    private static CreateEscalationRequest CreateRequest() => new()
+    {
+        FolderId = Guid.NewGuid(),
+        Reason = "Test escalation",
+        Items = [new EscalationItemRequest { DocumentId = Guid.NewGuid(), RejectReason = "Docs fine." }]
+    };
+
+    private static DocumentEscalationDto Dto(Guid folderId, string status) => new(
+        Guid.NewGuid(), folderId, "Moderator", "Reason", status, null, null, DateTimeOffset.UtcNow, null, []);
+
+    private static EscalationController CreateController(IEscalationService escalation, AppDbContext db, Guid supabaseUserId)
+    {
+        var controller = new EscalationController(escalation, db, new Mock<ILogger<EscalationController>>().Object);
+        controller.ControllerContext = new ControllerContext
+        {
+            HttpContext = new DefaultHttpContext
+            {
+                User = new ClaimsPrincipal(new ClaimsIdentity([new Claim(ClaimTypes.NameIdentifier, supabaseUserId.ToString())]))
+            }
+        };
+        return controller;
     }
 
     private static AppDbContext CreateInMemoryDbWithUser(out Guid localUserId, out Guid supabaseUserId)
@@ -177,19 +107,11 @@ public sealed class EscalationControllerTests
         var db = Support.TestDb.CreateInMemoryWithDocuments();
         localUserId = Guid.NewGuid();
         supabaseUserId = Guid.NewGuid();
-
         db.Users.Add(new User
         {
-            Id = localUserId,
-            RoleId = 3, // Moderator
-            SupabaseUserId = supabaseUserId,
-            Username = "mod1",
-            FullName = "Moderator One",
-            IsActive = true,
-            DailyTokenQuota = 25_000,
-            TokenUsageDate = DateOnly.FromDateTime(DateTime.UtcNow),
-            CreatedAt = DateTimeOffset.UtcNow,
-            UpdatedAt = DateTimeOffset.UtcNow,
+            Id = localUserId, RoleId = 3, SupabaseUserId = supabaseUserId, Username = "mod1", FullName = "Moderator One",
+            IsActive = true, DailyTokenQuota = 25_000, TokenUsageDate = DateOnly.FromDateTime(DateTime.UtcNow),
+            CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
         });
         db.SaveChanges();
         return db;

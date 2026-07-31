@@ -59,7 +59,7 @@
                                     @if (_activeTab == "personal")
                                     {
                                         <span class="sidebar-item-meta" style="display: flex; align-items: center; gap: 0.25rem; width: 100%;">
-                                            <span>@folder.DocumentCount sources</span>
+                                            <span>@GetApprovedPublicCount(folder) approved public</span>
                                             <span style="margin-left: auto; display: inline-flex; align-items: center; gap: 0.15rem;">
                                                 <MudIcon Icon="@Icons.Material.Filled.ThumbUp" Style="font-size: 0.75rem;" />
                                                 @folder.LikeCount
@@ -70,7 +70,7 @@
                                     }
                                     else
                                     {
-                                        <span class="sidebar-item-meta">@folder.DocumentCount sources</span>
+                                        <span class="sidebar-item-meta">@GetApprovedPublicCount(folder) approved public</span>
                                     }
                                 </div>
                                 <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" Class="sidebar-item-chevron" />
@@ -149,9 +149,9 @@
                                 <MudIcon Icon="@Icons.Material.Filled.Share" Size="Size.Small" />
                             </div>
                             <div class="personal-status-content">
-                                <div class="personal-status-label">Shared</div>
+                                <div class="personal-status-label">Public folders</div>
                                 <div class="personal-status-value">@_personalApprovedFolders.Count</div>
-                                <p class="personal-status-note">Folders shared successfully.</p>
+                                <p class="personal-status-note">Folders with at least one approved public file.</p>
                             </div>
                         </div>
 
@@ -160,9 +160,9 @@
                                 <MudIcon Icon="@Icons.Material.Filled.HourglassTop" Size="Size.Small" />
                             </div>
                             <div class="personal-status-content">
-                                <div class="personal-status-label">Waiting for Moderator Review</div>
+                                <div class="personal-status-label">Awaiting review</div>
                                 <div class="personal-status-value">@_pendingPersonalShareCount</div>
-                                <p class="personal-status-note">Folders waiting for moderator review.</p>
+                                <p class="personal-status-note">Folders with private files still in moderation.</p>
                             </div>
                         </div>
 
@@ -171,9 +171,9 @@
                                 <MudIcon Icon="@Icons.Material.Filled.Block" Size="Size.Small" />
                             </div>
                             <div class="personal-status-content">
-                                <div class="personal-status-label">Rejected</div>
+                                <div class="personal-status-label">No public files</div>
                                 <div class="personal-status-value">@_personalFailedFolders.Count</div>
-                                <p class="personal-status-note">Folders not approved for community sharing.</p>
+                                <p class="personal-status-note">Folders containing rejected items and no approved file.</p>
                             </div>
                         </div>
                     </div>
@@ -234,7 +234,7 @@
                                         <div class="card-author">
                                             <span class="card-avatar" style="background:@color">@GetInitials(folder.OwnerName)</span>
                                             <span class="card-owner">@(folder.OwnerName ?? "Unknown")</span>
-                                            <span class="card-sources">@folder.DocumentCount sources</span>
+                                            <span class="card-sources">@GetApprovedPublicCount(folder) approved public</span>
                                         </div>
                                     </div>
                                     <div class="card-actions" @onclick:stopPropagation>
@@ -279,9 +279,9 @@
                                             <div class="filter-wrapper">
                                                 <select class="filter-select" value="@_statusFilter" @onchange="HandleStatusFilterChange">
                                                     <option value="">All Status</option>
-                                                    <option value="Shared">Shared</option>
-                                                    <option value="Waiting for moderator review">Waiting for moderator review</option>
-                                                    <option value="Rejected">Rejected</option>
+                                                    <option value="Public">Public</option>
+                                                    <option value="Awaiting moderation">Awaiting moderation</option>
+                                                    <option value="No public files">No public files</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -334,7 +334,7 @@
                                                 <div class="moderator-queue-folder-cell">
                                                     <span class="doc-name" title="@GetFolderDisplayName(context)">@GetFolderDisplayName(context)</span>
                                                     <div class="moderator-queue-folder-meta">
-                                                        @context.DocumentCount source@(context.DocumentCount == 1 ? string.Empty : "s") • @context.ShareSubmissionCount submit@(context.ShareSubmissionCount == 1 ? string.Empty : "s")
+                                                        @GetApprovedPublicCount(context) approved public • @GetTotalDocumentCount(context) total • @context.ShareSubmissionCount submit@(context.ShareSubmissionCount == 1 ? string.Empty : "s")
                                                     </div>
                                                 </div>
                                             </MudTd>
@@ -357,7 +357,7 @@
                                             </MudTd>
                                             <MudTd Class="table-cell">
                                                 <div class="table-actions" style="display:flex; gap:0.35rem; flex-wrap:wrap;">
-                                                    @if (context.ShareStatus == Data.Entities.FolderStatus.Rejected)
+                                                    @if (GetApprovedPublicCount(context) == 0 && GetRejectedDocumentCount(context) > 0)
                                                     {
                                                         <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz"
                                                                        Size="Size.Small"
@@ -494,20 +494,20 @@
             : _personalApprovedFolders;
 
     private List<FolderDto> _personalApprovedFolders => _personalFolders
-        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Approved)
+        .Where(folder => GetApprovedPublicCount(folder) > 0)
         .OrderByDescending(folder => folder.SharedAt ?? folder.UpdatedAt)
         .ToList();
 
     private List<FolderDto> _personalFailedFolders => _personalFolders
-        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.Rejected)
+        .Where(folder => GetApprovedPublicCount(folder) == 0 && GetRejectedDocumentCount(folder) > 0)
         .OrderByDescending(folder => folder.UpdatedAt)
         .ToList();
 
     private List<FolderDto> _personalPendingModeratorFolders => _personalFolders
-        .Where(folder => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare)
+        .Where(folder => GetApprovedPublicCount(folder) == 0 && GetAwaitingReviewCount(folder) > 0)
         .ToList();
 
-    private int _pendingPersonalShareCount => _personalFolders.Count(folder => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare);
+    private int _pendingPersonalShareCount => _personalFolders.Count(folder => GetAwaitingReviewCount(folder) > 0);
 
     private List<FolderDto> _filteredFolders
     {
@@ -666,7 +666,9 @@
         {
             var accessToken = Session.IsAuthenticated ? Session.AccessToken : null;
             var shared = await FoldersApi.ListSharedAsync(accessToken);
-            _allCommunityFolders = shared.ToList();
+            _allCommunityFolders = shared
+                .Where(folder => GetApprovedPublicCount(folder) > 0)
+                .ToList();
 
             if (Session.IsAuthenticated && Session.AccessToken is not null)
             {
@@ -1102,7 +1104,7 @@
         try
         {
             var result = await FoldersApi.CopySharedFolderAsync(Session.AccessToken, folderId);
-            Snackbar.Add($"Folder \"{result.Name}\" copied to your library with {result.DocumentCount} documents", Severity.Success);
+            Snackbar.Add($"Folder \"{result.Name}\" copied to your library with {GetApprovedPublicCount(result)} approved public files.", Severity.Success);
         }
         catch (DocumentApiException ex)
         {
@@ -1226,13 +1228,16 @@
 
     private static string GetPersonalShareStatusText(FolderDto folder)
     {
-        return folder.ShareStatus switch
-        {
-            Data.Entities.FolderStatus.Approved => "Shared",
-            Data.Entities.FolderStatus.PendingShare => "Waiting for moderator review",
-            Data.Entities.FolderStatus.Rejected => "Rejected",
-            _ => "Private"
-        };
+        var approved = GetApprovedPublicCount(folder);
+        var awaiting = GetAwaitingReviewCount(folder);
+        var rejected = GetRejectedDocumentCount(folder);
+
+        if (approved > 0 && awaiting > 0) return $"{approved} approved, {awaiting} awaiting review";
+        if (approved > 0) return "Public";
+        if (awaiting > 0 && (folder.ShareStatus is Data.Entities.FolderStatus.PendingShare or Data.Entities.FolderStatus.Approved))
+            return "Awaiting moderation";
+        if (rejected > 0) return "No public files";
+        return "Private";
     }
 
     private static string GetFolderDisplayName(FolderDto folder) =>
@@ -1245,17 +1250,22 @@
             return ("#eff6ff", "#1d4ed8", "#3b82f6");
         }
 
-        return folder.ShareStatus switch
-        {
-            Data.Entities.FolderStatus.Approved => ("#eef2ff", "#4338ca", "#4f46e5"),
-            Data.Entities.FolderStatus.PendingShare => ("#fefce8", "#a16207", "#ca8a04"),
-            Data.Entities.FolderStatus.Rejected => ("#fef2f2", "#b91c1c", "#ef4444"),
-            _ => ("#f9fafb", "#6b7280", "#9ca3af")
-        };
+        var status = GetPersonalShareStatusText(folder);
+        if (status == "Public" || status.Contains(" approved, ", StringComparison.OrdinalIgnoreCase))
+            return ("#eef2ff", "#4338ca", "#4f46e5");
+        if (status == "Awaiting moderation")
+            return ("#fefce8", "#a16207", "#ca8a04");
+        if (status == "No public files")
+            return ("#fef2f2", "#b91c1c", "#ef4444");
+        return ("#f9fafb", "#6b7280", "#9ca3af");
     }
 
     private static bool HasReviewFeedback(FolderDto folder) =>
-        folder.ShareStatus == Data.Entities.FolderStatus.Approved;
+        GetApprovedPublicCount(folder) > 0
+        || GetAwaitingReviewCount(folder) > 0
+        || GetRejectedDocumentCount(folder) > 0
+        || !string.IsNullOrWhiteSpace(folder.HumanReviewReason)
+        || !string.IsNullOrWhiteSpace(folder.AppealMessage);
 
     private static bool IsHumanReviewPending(FolderDto folder) =>
         folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
@@ -1265,8 +1275,9 @@
     {
         return statusFilter switch
         {
-            "Waiting for moderator review" => folder.ShareStatus == Data.Entities.FolderStatus.PendingShare,
-            "Rejected" => folder.ShareStatus == Data.Entities.FolderStatus.Rejected,
+            "Awaiting moderation" => GetAwaitingReviewCount(folder) > 0,
+            "No public files" => GetApprovedPublicCount(folder) == 0 && GetRejectedDocumentCount(folder) > 0,
+            "Public" => GetApprovedPublicCount(folder) > 0,
             _ => GetPersonalShareStatusText(folder) == statusFilter
         };
     }
@@ -1292,14 +1303,15 @@
     private static string GetLatestActivityText(FolderDto folder)
     {
         var timestamp = GetPersonalActivityTimestamp(folder).LocalDateTime.ToString("dd/MM/yyyy HH:mm");
+        var approved = GetApprovedPublicCount(folder);
+        var awaiting = GetAwaitingReviewCount(folder);
+        var rejected = GetRejectedDocumentCount(folder);
 
-        return folder.ShareStatus switch
-        {
-            Data.Entities.FolderStatus.Approved => $"Shared on {timestamp}",
-            Data.Entities.FolderStatus.PendingShare => $"Waiting for moderator review since {timestamp}",
-            Data.Entities.FolderStatus.Rejected => $"Review rejected on {timestamp}",
-            _ => $"Updated on {timestamp}"
-        };
+        if (approved > 0 && awaiting > 0) return $"Public files remain live; new files await review since {timestamp}";
+        if (approved > 0) return $"Approved files public on {timestamp}";
+        if (awaiting > 0) return $"Waiting for moderation since {timestamp}";
+        if (rejected > 0) return $"Files rejected on {timestamp}";
+        return $"Updated on {timestamp}";
     }
 
     private static string GetLatestReasonPreview(FolderDto folder)
@@ -1311,14 +1323,19 @@
                     ? folder.AppealMessage
                     : null;
 
-        if (folder.ShareStatus == Data.Entities.FolderStatus.Approved)
+        if (GetApprovedPublicCount(folder) > 0 && GetAwaitingReviewCount(folder) == 0)
         {
-            return "Folder is now visible in community sharing.";
+            return $"{GetApprovedPublicCount(folder)} approved file(s) are visible in the community.";
+        }
+
+        if (GetApprovedPublicCount(folder) > 0 && GetAwaitingReviewCount(folder) > 0)
+        {
+            return "Approved files remain public. New files stay private until moderation finishes.";
         }
 
         if (string.IsNullOrWhiteSpace(reason))
         {
-            return folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
+            return GetAwaitingReviewCount(folder) > 0
                 ? "Waiting for moderator review."
                 : "No detailed reason yet.";
         }
@@ -1378,6 +1395,67 @@
             "Empty" => ("#f3f4f6", "#4b5563", "#9ca3af"),
             _ => ("#f9fafb", "#6b7280", "#9ca3af")
         };
+    }
+
+    private static int GetApprovedPublicCount(FolderDto folder)
+    {
+        var explicitCount = ReadIntProperty(folder,
+            "ApprovedPublicDocumentCount",
+            "ApprovedDocumentCount",
+            "PublicDocumentCount",
+            "ApprovedFileCount");
+        if (explicitCount.HasValue) return explicitCount.Value;
+
+        return folder.ShareStatus == Data.Entities.FolderStatus.Approved
+            ? folder.DocumentCount
+            : 0;
+    }
+
+    private static int GetAwaitingReviewCount(FolderDto folder)
+    {
+        var pending = ReadIntProperty(folder,
+            "AwaitingReviewDocumentCount",
+            "PendingDocumentCount",
+            "PendingReviewDocumentCount",
+            "AwaitingModerationCount") ?? 0;
+        var escalated = ReadIntProperty(folder,
+            "EscalatedDocumentCount",
+            "AwaitingAdminDocumentCount") ?? 0;
+
+        if (pending + escalated > 0) return pending + escalated;
+        return folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
+            ? folder.DocumentCount
+            : 0;
+    }
+
+    private static int GetRejectedDocumentCount(FolderDto folder)
+    {
+        var explicitCount = ReadIntProperty(folder,
+            "RejectedDocumentCount",
+            "RejectedFileCount");
+        if (explicitCount.HasValue) return explicitCount.Value;
+
+        return folder.ShareStatus == Data.Entities.FolderStatus.Rejected
+            ? folder.DocumentCount
+            : 0;
+    }
+
+    private static int GetTotalDocumentCount(FolderDto folder)
+    {
+        var explicitCount = ReadIntProperty(folder, "TotalDocumentCount", "TotalFileCount");
+        return explicitCount ?? folder.DocumentCount;
+    }
+
+    private static int? ReadIntProperty(FolderDto folder, params string[] propertyNames)
+    {
+        foreach (var propertyName in propertyNames)
+        {
+            var value = folder.GetType().GetProperty(propertyName)?.GetValue(folder);
+            if (value is int intValue) return intValue;
+            if (value is long longValue && longValue is >= int.MinValue and <= int.MaxValue) return (int)longValue;
+        }
+
+        return null;
     }
 
     public void Dispose()

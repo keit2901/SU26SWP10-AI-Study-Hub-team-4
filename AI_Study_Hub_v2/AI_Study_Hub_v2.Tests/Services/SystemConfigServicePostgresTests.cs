@@ -5,10 +5,9 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services;
+using AI_Study_Hub_v2.Tests.Support;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Npgsql;
 
 namespace AI_Study_Hub_v2.Tests.Services;
@@ -16,8 +15,6 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture, Category("Postgres"), NonParallelizable]
 public sealed class SystemConfigServicePostgresTests
 {
-    private const string PreReSyncMigration = "20260706184528_AddDocumentEscalation";
-    private const string ReSyncPlanMigration = "20260709165701_ReSyncPlanFkAndConstraints";
     private const string OverlapKey = "rag.semantic_overlap_tokens";
     private const string MinKey = "rag.semantic_min_tokens";
     private const string TargetKey = "rag.semantic_target_tokens";
@@ -52,7 +49,7 @@ public sealed class SystemConfigServicePostgresTests
 
         await BootstrapAuthPrerequisiteAsync();
         await using var db = CreateDb();
-        await MigrateWithReSyncCompatibilityAsync(db);
+        await PostgresTestDatabase.BootstrapAsync(db);
     }
 
     [SetUp]
@@ -278,23 +275,6 @@ public sealed class SystemConfigServicePostgresTests
         await using var connection = await (_dataSource ?? throw new InvalidOperationException("PostgreSQL data source is not initialized.")).OpenConnectionAsync();
         await using var command = new NpgsqlCommand("CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);", connection);
         await command.ExecuteNonQueryAsync();
-    }
-
-    private static async Task MigrateWithReSyncCompatibilityAsync(AppDbContext db)
-    {
-        var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
-        if (!appliedMigrations.Contains(ReSyncPlanMigration))
-        {
-            if (!appliedMigrations.Contains(PreReSyncMigration))
-            {
-                await db.Database.GetService<IMigrator>().MigrateAsync(PreReSyncMigration);
-            }
-
-            await db.Database.ExecuteSqlRawAsync(
-                "ALTER TABLE IF EXISTS public.payment_transactions DROP CONSTRAINT IF EXISTS \"FK_payment_transactions_users_user_id\"");
-        }
-
-        await db.Database.MigrateAsync();
     }
 
     private static IEnumerable<SystemConfig> Configs() =>

@@ -82,9 +82,19 @@ public sealed record DocumentEscalationDto(
     IReadOnlyList<DocumentEscalationItemDto> Items);
 
 public sealed record DocumentEscalationItemDto(
-    Guid DocumentId,
-    string FileName,
-    string RejectReason);
+    Guid Id,
+    Guid? DocumentId,
+    string FileNameSnapshot,
+    int ModerationGeneration,
+    string RejectReason,
+    string ItemStatus,
+    string? AdminResponse,
+    string? ResolvedByName,
+    DateTimeOffset? ResolvedAt)
+{
+    /// <summary>Compatibility alias for older clients; preserves the immutable file-name snapshot.</summary>
+    public string FileName => FileNameSnapshot;
+}
 
 public sealed class CreateEscalationRequest
 {
@@ -112,6 +122,27 @@ public sealed class ResolveEscalationRequest
     [Required]
     [RegularExpression("^(Approved|Rejected)$", ErrorMessage = "Status must be 'Approved' or 'Rejected'.")]
     public string Status { get; set; } = string.Empty;
+    [StringLength(2000)]
+    public string? AdminResponse { get; set; }
+}
+
+/// <summary>Resolves every still-pending item in an escalation as one atomic batch.</summary>
+public sealed class ResolveEscalationItemsRequest
+{
+    [Required]
+    [MinLength(1)]
+    public List<ResolveEscalationItemRequest> Items { get; set; } = new();
+}
+
+public sealed class ResolveEscalationItemRequest
+{
+    [Required]
+    public Guid ItemId { get; set; }
+
+    [Required]
+    [RegularExpression("^(Approved|Rejected)$", ErrorMessage = "Status must be 'Approved' or 'Rejected'.")]
+    public string Status { get; set; } = string.Empty;
+
     [StringLength(2000)]
     public string? AdminResponse { get; set; }
 }

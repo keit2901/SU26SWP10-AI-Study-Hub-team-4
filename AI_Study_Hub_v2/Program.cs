@@ -328,6 +328,8 @@ builder.Services.AddScoped<AiChatSessionState>();
 builder.Services.AddScoped<IChatPersistenceService, ChatPersistenceService>();
 builder.Services.AddScoped<IDashboardService, DashboardService>();
 builder.Services.AddScoped<IUserNotificationService, UserNotificationService>();
+builder.Services.AddScoped<IAdminModerationMetricsService, AdminModerationMetricsService>();
+builder.Services.AddScoped<IFolderPublicationStateService, FolderPublicationStateService>();
 
 // F2.1: background service to handle plan expiry
 builder.Services.AddHostedService<PlanExpiryHostedService>();
@@ -568,6 +570,67 @@ static async Task SeedDefaultAdminAsync(AppDbContext db, IGoTrueClient gotrue, S
     db.Users.Add(admin);
     await db.SaveChangesAsync();
     logger.LogInformation("Default admin profile inserted for identity {SupabaseUserId}", supabaseUserId);
+}
+
+static async Task MigrateDatabaseWithCompatibilityAsync(AppDbContext db, ILogger logger)
+{
+    const string preReSyncMigration = "20260706184528_AddDocumentEscalation";
+    const string reSyncPlanMigration = "20260709165701_ReSyncPlanFkAndConstraints";
+    const string paymentConstraintPrerequisiteMigration = "20260710162831_AddUniqueTxnRefPerUser";
+    const string vnPayExpiryMigration = "20260711085101_AddVnPayExpiryAndExpiredStatus";
+
+    var migrator = db.Database.GetService<IMigrator>();
+    var appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
+    var pendingMigrations = await db.Database.GetPendingMigrationsAsync();
+    if (pendingMigrations.Contains(vnPayExpiryMigration, StringComparer.Ordinal)
+        && !appliedMigrations.Contains(vnPayExpiryMigration, StringComparer.Ordinal))
+    {
+        if (!appliedMigrations.Contains(paymentConstraintPrerequisiteMigration, StringComparer.Ordinal))
+        {
+            if (!appliedMigrations.Contains(reSyncPlanMigration, StringComparer.Ordinal))
+            {
+                if (!appliedMigrations.Contains(preReSyncMigration, StringComparer.Ordinal))
+                {
+                    logger.LogInformation("Applying compatibility migration step {MigrationName} before full database migrate.", preReSyncMigration);
+                    await migrator.MigrateAsync(preReSyncMigration);
+                }
+
+                logger.LogInformation("Dropping legacy payment_transactions FK before re-sync migration compatibility pass.");
+                await db.Database.ExecuteSqlRawAsync("""
+                    ALTER TABLE IF EXISTS public.payment_transactions
+                    DROP CONSTRAINT IF EXISTS "FK_payment_transactions_users_user_id";
+                    """);
+            }
+
+            logger.LogInformation("Applying payment constraint prerequisite migration {MigrationName}.", paymentConstraintPrerequisiteMigration);
+            await migrator.MigrateAsync(paymentConstraintPrerequisiteMigration);
+        }
+
+        appliedMigrations = await db.Database.GetAppliedMigrationsAsync();
+        pendingMigrations = await db.Database.GetPendingMigrationsAsync();
+        if (pendingMigrations.Contains(vnPayExpiryMigration, StringComparer.Ordinal)
+            && !appliedMigrations.Contains(vnPayExpiryMigration, StringComparer.Ordinal))
+        {
+            logger.LogInformation("Ensuring the pre-expiry payment transaction status constraint exists before {MigrationName}.", vnPayExpiryMigration);
+            await db.Database.ExecuteSqlRawAsync("""
+                DO $$
+                BEGIN
+                    IF to_regclass('public.payment_transactions') IS NOT NULL
+                        AND NOT EXISTS (
+                            SELECT 1
+                            FROM pg_constraint
+                            WHERE conrelid = to_regclass('public.payment_transactions')
+                                AND conname = 'ck_payment_transactions_status') THEN
+                        ALTER TABLE public.payment_transactions
+                            ADD CONSTRAINT ck_payment_transactions_status
+                            CHECK (status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded'));
+                    END IF;
+                END $$;
+                """);
+        }
+    }
+
+    await migrator.MigrateAsync();
 }
 
 static async Task EnsurePhase3SchemaAsync(AppDbContext db, ILogger logger)

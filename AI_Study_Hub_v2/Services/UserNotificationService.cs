@@ -7,6 +7,8 @@ namespace AI_Study_Hub_v2.Services;
 
 public sealed class UserNotificationService(AppDbContext db) : IUserNotificationService
 {
+    private const int MaxReasonPreviewLength = 160;
+
     private readonly AppDbContext _db = db;
 
     public void StageFolderModerationFinal(Folder folder, FolderStatus previousStatus, string? rejectionReason, DateTimeOffset occurredAt)
@@ -17,27 +19,80 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
             return;
         }
 
-        if (_db.UserNotifications.Local.Any(notification =>
-                notification.RecipientUserId == folder.UserId &&
-                notification.FolderId == folder.Id &&
-                notification.SubmissionNumber == folder.ShareSubmissionCount))
-        {
-            return;
-        }
-
         var isApproved = folder.ShareStatus == FolderStatus.Approved;
-        _db.UserNotifications.Add(new UserNotification
+        Stage(new UserNotification
         {
             RecipientUserId = folder.UserId,
             FolderId = folder.Id,
             SubmissionNumber = folder.ShareSubmissionCount,
+            EventKey = $"folder-final:{folder.Id}:{folder.ShareSubmissionCount}",
             Kind = UserNotificationKind.FolderModerationFinal,
             Outcome = isApproved ? UserNotificationOutcome.Approved : UserNotificationOutcome.Rejected,
             FolderName = folder.Name,
             Title = isApproved ? "Folder approved for sharing" : "Folder sharing was not approved",
             Message = isApproved
                 ? "Your folder is now available in the community."
-                : CreateRejectedMessage(rejectionReason),
+                : CreateRejectedMessage("folder", rejectionReason),
+            CreatedAt = occurredAt
+        });
+    }
+
+    public void StageDocumentModerationFinal(Document document, Folder folder, string? reason, DateTimeOffset occurredAt)
+    {
+        if (document.FolderId != folder.Id || document.UserId != folder.UserId ||
+            document.ReviewStatus is not (DocumentReviewStatus.Approved or DocumentReviewStatus.Rejected))
+        {
+            return;
+        }
+
+        var isApproved = document.ReviewStatus == DocumentReviewStatus.Approved;
+        Stage(new UserNotification
+        {
+            RecipientUserId = folder.UserId,
+            FolderId = folder.Id,
+            DocumentId = document.Id,
+            SubmissionNumber = folder.ShareSubmissionCount,
+            EventKey = $"document-final:{document.Id}:{document.ModerationGeneration}",
+            Kind = UserNotificationKind.DocumentModerationFinal,
+            Outcome = isApproved ? UserNotificationOutcome.Approved : UserNotificationOutcome.Rejected,
+            FolderName = folder.Name,
+            Title = isApproved ? "Document approved for sharing" : "Document was not approved for sharing",
+            Message = isApproved
+                ? "A document in your folder was approved for community sharing."
+                : CreateRejectedMessage("document", reason),
+            CreatedAt = occurredAt
+        });
+    }
+
+    public void StageEscalationResolved(
+        DocumentEscalation escalation,
+        Folder folder,
+        int approvedCount,
+        int rejectedCount,
+        DateTimeOffset occurredAt)
+    {
+        if (escalation.FolderId != folder.Id || approvedCount < 0 || rejectedCount < 0)
+        {
+            return;
+        }
+
+        var outcome = approvedCount > 0 && rejectedCount == 0
+            ? UserNotificationOutcome.Approved
+            : approvedCount == 0 && rejectedCount > 0
+                ? UserNotificationOutcome.Rejected
+                : UserNotificationOutcome.Mixed;
+
+        Stage(new UserNotification
+        {
+            RecipientUserId = folder.UserId,
+            FolderId = folder.Id,
+            SubmissionNumber = folder.ShareSubmissionCount,
+            EventKey = $"escalation-resolved:{escalation.Id}",
+            Kind = UserNotificationKind.EscalationResolved,
+            Outcome = outcome,
+            FolderName = folder.Name,
+            Title = "Escalation review completed",
+            Message = CreateEscalationResolutionMessage(approvedCount, rejectedCount),
             CreatedAt = occurredAt
         });
     }
@@ -62,7 +117,8 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
                 notification.Title,
                 notification.Message,
                 notification.CreatedAt,
-                notification.ReadAt))
+                notification.ReadAt,
+                notification.DocumentId))
             .ToListAsync(ct);
         var unreadCount = await _db.UserNotifications.CountAsync(
             notification => notification.RecipientUserId == userId && notification.ReadAt == null,
@@ -93,10 +149,45 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
             .FirstOrDefaultAsync(ct)
         ?? throw UserNotificationException.NotFound();
 
-    private static string CreateRejectedMessage(string? rejectionReason) =>
+    // Local tracking avoids duplicate additions in this unit of work. The database EventKey index
+    // remains the authority for notifications staged by concurrent transactions.
+    private void Stage(UserNotification notification)
+    {
+        if (!_db.UserNotifications.Local.Any(candidate => candidate.EventKey == notification.EventKey))
+        {
+            _db.UserNotifications.Add(notification);
+        }
+    }
+
+    private static string CreateRejectedMessage(string subject, string? rejectionReason) =>
         string.IsNullOrWhiteSpace(rejectionReason)
-            ? "Your folder was not approved for community sharing. Review it and submit again when ready."
-            : "Your folder was not approved for community sharing. Review the moderation feedback and submit again when ready.";
+            ? $"Your {subject} was not approved for community sharing. Review it and submit again when ready."
+            : $"Your {subject} was not approved for community sharing. Feedback preview: {CreateReasonPreview(rejectionReason)}";
+
+    private static string CreateEscalationResolutionMessage(int approvedCount, int rejectedCount) =>
+        approvedCount > 0 && rejectedCount == 0
+            ? $"Your escalation was resolved: {approvedCount} document{Pluralize(approvedCount)} approved."
+            : approvedCount == 0 && rejectedCount > 0
+                ? $"Your escalation was resolved: {rejectedCount} document{Pluralize(rejectedCount)} not approved."
+                : $"Your escalation was resolved: {approvedCount} document{Pluralize(approvedCount)} approved and {rejectedCount} not approved.";
+
+    private static string CreateReasonPreview(string reason)
+    {
+        var normalized = string.Join(' ', reason
+            .Where(character => !char.IsControl(character))
+            .ToArray())
+            .Trim();
+        if (normalized.Length == 0)
+        {
+            return "Review the moderation feedback and submit again when ready.";
+        }
+
+        return normalized.Length <= MaxReasonPreviewLength
+            ? normalized
+            : $"{normalized[..MaxReasonPreviewLength]}…";
+    }
+
+    private static string Pluralize(int count) => count == 1 ? string.Empty : "s";
 }
 
 public sealed class UserNotificationException : Exception

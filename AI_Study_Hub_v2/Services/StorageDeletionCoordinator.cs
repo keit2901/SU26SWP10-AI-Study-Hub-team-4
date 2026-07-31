@@ -12,24 +12,29 @@ public sealed class StorageDeletionCoordinator : IStorageDeletionCoordinator
     private readonly AppDbContext _db;
     private readonly ISupabaseStorageClient _storage;
     private readonly ILogger<StorageDeletionCoordinator> _logger;
+    private readonly IFolderPublicationStateService _publicationState;
 
-    public StorageDeletionCoordinator(AppDbContext db, ISupabaseStorageClient storage, ILogger<StorageDeletionCoordinator> logger)
+    public StorageDeletionCoordinator(AppDbContext db, ISupabaseStorageClient storage, ILogger<StorageDeletionCoordinator> logger,
+        IFolderPublicationStateService publicationState)
     {
         _db = db;
         _storage = storage;
         _logger = logger;
+        _publicationState = publicationState;
     }
 
     public async Task<bool> DeleteOwnedDocumentAsync(Guid documentId, Guid ownerUserId, CancellationToken ct)
     {
         var candidate = await FindDocumentAsync(documentId, ownerUserId, ct);
+        ThrowIfUnderAdminReview(candidate);
         return candidate is not null && await DeleteDocumentsAsync([candidate], ct);
     }
 
     public async Task<bool> DeletePrivilegedDocumentAsync(Guid documentId, CancellationToken ct)
     {
         var candidate = await _db.Documents.AsNoTracking().Where(d => d.Id == documentId)
-            .Select(d => new DeletionCandidate(d.Id, d.UserId, d.StoragePath, d.FileSizeBytes)).SingleOrDefaultAsync(ct);
+            .Select(d => new DeletionCandidate(d.Id, d.UserId, d.StoragePath, d.FileSizeBytes, d.ReviewStatus, d.ModerationGeneration)).SingleOrDefaultAsync(ct);
+        ThrowIfUnderAdminReview(candidate);
         return candidate is not null && await DeleteDocumentsAsync([candidate], ct);
     }
 
@@ -38,7 +43,11 @@ public sealed class StorageDeletionCoordinator : IStorageDeletionCoordinator
         if (!await _db.Folders.AsNoTracking().AnyAsync(f => f.Id == folderId && f.UserId == ownerUserId, ct)) return false;
 
         var candidates = await _db.Documents.AsNoTracking().Where(d => d.FolderId == folderId && d.UserId == ownerUserId)
-            .Select(d => new DeletionCandidate(d.Id, d.UserId, d.StoragePath, d.FileSizeBytes)).ToListAsync(ct);
+            .Select(d => new DeletionCandidate(d.Id, d.UserId, d.StoragePath, d.FileSizeBytes, d.ReviewStatus, d.ModerationGeneration)).ToListAsync(ct);
+        foreach (var candidate in candidates)
+        {
+            ThrowIfUnderAdminReview(candidate);
+        }
         foreach (var candidate in candidates)
         {
             ct.ThrowIfCancellationRequested();
@@ -50,7 +59,7 @@ public sealed class StorageDeletionCoordinator : IStorageDeletionCoordinator
 
     private async Task<DeletionCandidate?> FindDocumentAsync(Guid documentId, Guid ownerUserId, CancellationToken ct) =>
         await _db.Documents.AsNoTracking().Where(d => d.Id == documentId && d.UserId == ownerUserId)
-            .Select(d => new DeletionCandidate(d.Id, d.UserId, d.StoragePath, d.FileSizeBytes)).SingleOrDefaultAsync(ct);
+            .Select(d => new DeletionCandidate(d.Id, d.UserId, d.StoragePath, d.FileSizeBytes, d.ReviewStatus, d.ModerationGeneration)).SingleOrDefaultAsync(ct);
 
     private async Task<bool> DeleteDocumentsAsync(IReadOnlyList<DeletionCandidate> candidates, CancellationToken ct)
     {
@@ -121,18 +130,41 @@ public sealed class StorageDeletionCoordinator : IStorageDeletionCoordinator
         return documents.Where(d => byId.TryGetValue(d.Id, out var candidate)
             && d.UserId == candidate.UserId
             && (!expectedOwnerUserId.HasValue || d.UserId == expectedOwnerUserId.Value)
-            && d.StoragePath == candidate.StoragePath && d.FileSizeBytes == candidate.FileSizeBytes).ToList();
+            && d.StoragePath == candidate.StoragePath && d.FileSizeBytes == candidate.FileSizeBytes
+            && d.ReviewStatus == candidate.ReviewStatus
+            && d.ModerationGeneration == candidate.ModerationGeneration).ToList();
     }
 
     private async Task RemoveAndChargeAsync(IReadOnlyList<Document> documents, CancellationToken ct, Folder? folder = null)
     {
         var documentIds = documents.Select(d => d.Id).ToList();
+        var affectedFolderIds = documents.Where(document => document.FolderId.HasValue)
+            .Select(document => document.FolderId!.Value).Distinct().ToList();
+        var affectedFolders = folder is null && affectedFolderIds.Count > 0
+            ? await _db.Folders.Include(candidate => candidate.Documents)
+                .Where(candidate => affectedFolderIds.Contains(candidate.Id)).ToListAsync(ct)
+            : [];
         if (documentIds.Count > 0)
         {
-            var escalationItems = await _db.DocumentEscalationItems.Where(item => documentIds.Contains(item.DocumentId)).ToListAsync(ct);
-            _db.DocumentEscalationItems.RemoveRange(escalationItems);
+            // Escalation history survives document deletion. Partition A makes document_id nullable.
+            if (_db.Database.IsRelational())
+            {
+                await _db.Database.ExecuteSqlInterpolatedAsync(
+                    $"UPDATE document_escalation_items SET document_id = NULL WHERE document_id = ANY({documentIds.ToArray()})", ct);
+            }
+            else
+            {
+                var escalationItems = await _db.DocumentEscalationItems
+                    .Where(item => item.DocumentId.HasValue && documentIds.Contains(item.DocumentId.Value))
+                    .ToListAsync(ct);
+                foreach (var item in escalationItems) item.DocumentId = null;
+            }
             _db.Documents.RemoveRange(documents);
         }
+        var now = DateTimeOffset.UtcNow;
+        foreach (var affectedFolder in affectedFolders)
+            _publicationState.Recompute(affectedFolder,
+                affectedFolder.Documents.Where(document => !documentIds.Contains(document.Id)), now);
         if (folder is not null) _db.Folders.Remove(folder);
         await _db.SaveChangesAsync(ct);
 
@@ -177,5 +209,20 @@ public sealed class StorageDeletionCoordinator : IStorageDeletionCoordinator
         }
     }
 
-    private sealed record DeletionCandidate(Guid DocumentId, Guid UserId, string StoragePath, long FileSizeBytes);
+    private static void ThrowIfUnderAdminReview(DeletionCandidate? candidate)
+    {
+        if (candidate?.ReviewStatus == DocumentReviewStatus.Escalated)
+        {
+            throw new DocumentException(409, "document_under_admin_review",
+                "Documents under administrator review cannot be deleted until resolved.");
+        }
+    }
+
+    private sealed record DeletionCandidate(
+        Guid DocumentId,
+        Guid UserId,
+        string StoragePath,
+        long FileSizeBytes,
+        DocumentReviewStatus ReviewStatus,
+        int ModerationGeneration);
 }

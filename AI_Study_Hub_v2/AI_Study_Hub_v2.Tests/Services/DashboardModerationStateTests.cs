@@ -71,6 +71,58 @@ public class DashboardModerationStateTests
     }
 
     [Test]
+    public async Task Direct_decision_changes_one_file_and_recomputes_folder_publication_state()
+    {
+        await using var db = CreateModerationDb();
+        var moderator = AddUser(db, Role.ModeratorRoleName, true);
+        var approved = AddDocument(db, moderator, FolderStatus.PendingShare);
+        var sibling = AddDocumentInFolder(db, approved.Folder!, moderator, DocumentReviewStatus.None);
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        await service.ApproveDocumentAsync(moderator.SupabaseUserId, approved.Id, CancellationToken.None);
+
+        db.ChangeTracker.Clear();
+        var afterApproval = await db.Documents.Include(item => item.Folder).Where(item => item.FolderId == approved.FolderId).ToListAsync();
+        afterApproval.Single(item => item.Id == approved.Id).ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
+        afterApproval.Single(item => item.Id == sibling.Id).ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        afterApproval[0].Folder!.ShareStatus.Should().Be(FolderStatus.PendingShare);
+
+        await service.RejectDocumentAsync(moderator.SupabaseUserId, sibling.Id, "duplicate", CancellationToken.None);
+
+        db.ChangeTracker.Clear();
+        var folder = await db.Folders.Include(item => item.Documents).SingleAsync(item => item.Id == approved.FolderId);
+        folder.ShareStatus.Should().Be(FolderStatus.Approved);
+        folder.Documents.Single(item => item.Id == approved.Id).ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
+        folder.Documents.Single(item => item.Id == sibling.Id).ReviewStatus.Should().Be(DocumentReviewStatus.Rejected);
+    }
+
+    [Test]
+    public async Task Publication_stays_pending_for_escalated_file_and_becomes_public_after_terminal_remainder()
+    {
+        await using var db = CreateModerationDb();
+        var owner = AddUser(db, Role.StudentRoleName, true);
+        var folder = new Folder
+        {
+            Id = Guid.NewGuid(), UserId = owner.Id, User = owner, Name = "Lifecycle folder",
+            ShareStatus = FolderStatus.PendingShare, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        };
+        var approved = AddDocumentInFolder(db, folder, owner, DocumentReviewStatus.Approved);
+        var escalated = AddDocumentInFolder(db, folder, owner, DocumentReviewStatus.Escalated);
+        var rejected = AddDocumentInFolder(db, folder, owner, DocumentReviewStatus.Rejected);
+        db.Folders.Add(folder);
+        await db.SaveChangesAsync();
+        var publicationState = new FolderPublicationStateService();
+
+        publicationState.Recompute(folder, [approved, escalated, rejected], DateTimeOffset.UtcNow);
+        folder.ShareStatus.Should().Be(FolderStatus.PendingShare);
+
+        escalated.ReviewStatus = DocumentReviewStatus.Rejected;
+        publicationState.Recompute(folder, [approved, escalated, rejected], DateTimeOffset.UtcNow);
+        folder.ShareStatus.Should().Be(FolderStatus.Approved);
+    }
+
+    [Test]
     public async Task Active_admin_can_reject_pending_document()
     {
         await using var db = CreateModerationDb();
@@ -108,11 +160,12 @@ public class DashboardModerationStateTests
     }
 
     [Test]
-    public async Task Non_pending_document_returns_conflict_without_mutation()
+    public async Task Terminal_document_returns_conflict_without_mutation()
     {
         await using var db = CreateModerationDb();
         var moderator = AddUser(db, Role.ModeratorRoleName, true);
         var document = AddDocument(db, moderator, FolderStatus.Approved);
+        document.ReviewStatus = DocumentReviewStatus.Approved;
         await db.SaveChangesAsync();
         var service = CreateService(db);
 
@@ -123,7 +176,7 @@ public class DashboardModerationStateTests
         exception.Which.StatusCode.Should().Be(StatusCodes.Status409Conflict);
         db.ChangeTracker.Clear();
         var stored = await db.Documents.SingleAsync(item => item.Id == document.Id);
-        stored.ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        stored.ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
         stored.ErrorMessage.Should().BeNull();
     }
 
@@ -254,6 +307,7 @@ public class DashboardModerationStateTests
         await using var db = CreateModerationDb();
         var moderator = AddUser(db, Role.ModeratorRoleName, true);
         var document = AddDocument(db, moderator, FolderStatus.Approved);
+        document.ReviewStatus = DocumentReviewStatus.Approved;
         await db.SaveChangesAsync();
         var service = CreateService(db);
 
@@ -261,7 +315,66 @@ public class DashboardModerationStateTests
 
         (await act.Should().ThrowAsync<DashboardModerationException>()).Which.StatusCode.Should().Be(StatusCodes.Status409Conflict);
         db.ChangeTracker.Clear();
+        (await db.Documents.SingleAsync(item => item.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
+    }
+
+    [Test]
+    public async Task Ai_review_allows_ready_unreviewed_new_file_in_approved_folder_and_remains_advisory()
+    {
+        await using var db = CreateModerationDb();
+        var moderator = AddUser(db, Role.ModeratorRoleName, true);
+        var document = AddDocument(db, moderator, FolderStatus.Approved);
+        await db.SaveChangesAsync();
+        var ai = new Mock<IFolderShareAiModerator>();
+        ai.Setup(service => service.Evaluate(It.IsAny<Folder>(), It.IsAny<IReadOnlyList<Document>>(), It.IsAny<IReadOnlyList<string>>()))
+            .Returns(new FolderShareModerationDecision(FolderShareModerationOutcome.NeedsHumanReview, "Review manually", 0.7));
+
+        var result = await CreateService(db, aiModerator: ai.Object)
+            .AiReviewDocumentAsync(moderator.SupabaseUserId, document.Id, CancellationToken.None);
+
+        result!.ReviewSource.Should().Be("AI_ADVISORY");
+        result.ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        db.ChangeTracker.Clear();
         (await db.Documents.SingleAsync(item => item.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        (await db.Folders.SingleAsync(item => item.Id == document.FolderId)).ShareStatus.Should().Be(FolderStatus.Approved);
+    }
+
+    [Test]
+    public async Task Escalated_preview_is_limited_to_admin_and_matching_pending_item_generation()
+    {
+        await using var db = CreateModerationDb();
+        var moderator = AddUser(db, Role.ModeratorRoleName, true);
+        var admin = AddUser(db, Role.AdminRoleName, true);
+        var document = AddDocument(db, moderator, FolderStatus.Approved);
+        document.ReviewStatus = DocumentReviewStatus.Escalated;
+        document.ModerationGeneration = 3;
+        var escalation = new DocumentEscalation
+        {
+            Id = Guid.NewGuid(), FolderId = document.FolderId!.Value, EscalatedByUserId = moderator.Id,
+            Reason = "Needs review", EscalationStatus = "Pending", CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.DocumentEscalations.Add(escalation);
+        db.DocumentEscalationItems.Add(new DocumentEscalationItem
+        {
+            Id = Guid.NewGuid(), EscalationId = escalation.Id, DocumentId = document.Id,
+            DocumentFileName = document.FileName, DocumentModerationGeneration = document.ModerationGeneration,
+            RejectReason = "Needs review", ResolutionStatus = "Pending"
+        });
+        await db.SaveChangesAsync();
+        var storage = new Mock<ISupabaseStorageClient>();
+        storage.Setup(client => client.CreateSignedUrlAsync(It.IsAny<string>(), document.StoragePath, It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("https://example.test/escalated");
+        var service = CreateService(db, storage.Object);
+
+        (await service.GetModerationDocumentSignedUrlAsync(admin.SupabaseUserId, document.Id, CancellationToken.None))
+            .Should().Be("https://example.test/escalated");
+        Func<Task> moderatorAttempt = () => service.GetModerationDocumentSignedUrlAsync(moderator.SupabaseUserId, document.Id, CancellationToken.None);
+        (await moderatorAttempt.Should().ThrowAsync<DashboardModerationException>()).Which.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+
+        document.ModerationGeneration++;
+        await db.SaveChangesAsync();
+        Func<Task> staleAdminAttempt = () => service.GetModerationDocumentSignedUrlAsync(admin.SupabaseUserId, document.Id, CancellationToken.None);
+        (await staleAdminAttempt.Should().ThrowAsync<DashboardModerationException>()).Which.StatusCode.Should().Be(StatusCodes.Status409Conflict);
     }
 
     [Test]
@@ -362,7 +475,8 @@ public class DashboardModerationStateTests
             storage ?? Mock.Of<ISupabaseStorageClient>(),
             audit ?? Mock.Of<IAuditLogService>(),
             aiModerator ?? Mock.Of<IFolderShareAiModerator>(),
-            new UserNotificationService(db));
+            new UserNotificationService(db),
+            new FolderPublicationStateService());
 
     private static User AddUser(Data.AppDbContext db, string roleName, bool isActive)
     {
@@ -421,6 +535,19 @@ public class DashboardModerationStateTests
         };
         db.Folders.Add(folder);
         db.Documents.Add(document);
+        return document;
+    }
+
+    private static Document AddDocumentInFolder(Data.AppDbContext db, Folder folder, User owner, DocumentReviewStatus reviewStatus)
+    {
+        var document = new Document
+        {
+            Id = Guid.NewGuid(), UserId = owner.Id, User = owner, FolderId = folder.Id, Folder = folder,
+            FileName = $"moderation-{Guid.NewGuid():N}.pdf", StoragePath = $"tests/{Guid.NewGuid():N}.pdf",
+            MimeType = "application/pdf", SubjectCode = "SWP391", Semester = "SU26", Status = DocumentStatus.Ready,
+            ReviewStatus = reviewStatus, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow
+        };
+        folder.Documents.Add(document);
         return document;
     }
 }

@@ -17,7 +17,7 @@
     <div class="d-flex justify-space-between align-center mb-6 flex-wrap" style="gap: 1rem;">
         <div>
             <h2 class="text-[32px] font-extrabold text-on-background" style="font-size: 28px; font-weight: 800; color: #191c1e; font-family: 'Hanken Grotesk', sans-serif; line-height: 1.2;">Escalations</h2>
-            <p class="text-body-md text-on-surface-variant mt-1" style="font-size: 14px; color: #575e72; font-family: 'Hanken Grotesk', sans-serif;">Review and resolve moderator escalations for folders with rejected documents.</p>
+            <p class="text-body-md text-on-surface-variant mt-1" style="font-size: 14px; color: #575e72; font-family: 'Hanken Grotesk', sans-serif;">Resolve escalated files one by one. A folder can contain both pending and already-resolved decisions.</p>
         </div>
         <div class="d-flex align-center" style="gap: 0.75rem;">
             <MudButton Color="Color.Primary" Variant="Variant.Filled" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadAsync" Class="refresh-btn" Style="background-color: #4648d4; color: #ffffff; border-radius: 8px; font-weight: 700; text-transform: none; font-size: 13px;">
@@ -33,7 +33,7 @@
                 <div>
                     <span class="kpi-label">Pending</span>
                     <div class="kpi-value">@_pendingCount</div>
-                    <span class="kpi-subtext mt-2">Awaiting admin review</span>
+                    <span class="kpi-subtext mt-2">Files awaiting admin review</span>
                 </div>
                 <div class="kpi-icon-circle orange">
                     <MudIcon Icon="@Icons.Material.Outlined.Flag" />
@@ -45,7 +45,7 @@
                 <div>
                     <span class="kpi-label">Resolved</span>
                     <div class="kpi-value">@_resolvedCount</div>
-                    <span class="kpi-subtext mt-2">Total resolved</span>
+                    <span class="kpi-subtext mt-2">Terminal file decisions</span>
                 </div>
                 <div class="kpi-icon-circle green">
                     <MudIcon Icon="@Icons.Material.Outlined.CheckCircle" />
@@ -113,7 +113,7 @@
                         <th>MODERATOR</th>
                         <th>STATUS</th>
                         <th>REASON</th>
-                        <th>DOCUMENTS</th>
+                        <th>FILES</th>
                         <th>DATE</th>
                         <th style="width: 100px;">ACTIONS</th>
                     </tr>
@@ -128,8 +128,8 @@
                                 </div>
                             </td>
                             <td>
-                                <span class="status-badge @(escalation.EscalationStatus == "Pending" ? "pending" : "resolved")">
-                                    @escalation.EscalationStatus.ToUpper()
+                                <span class="status-badge @(PendingItemCount(escalation) > 0 ? "pending" : "resolved")">
+                                    @(PendingItemCount(escalation) > 0 ? $"{PendingItemCount(escalation)} PENDING" : "RESOLVED")
                                 </span>
                             </td>
                             <td>
@@ -138,13 +138,19 @@
                                 </div>
                             </td>
                             <td>
-                                <span class="subject-badge">@escalation.Items.Count doc(s)</span>
+                                <div class="file-summary">
+                                    <strong>@escalation.Items.Count file(s)</strong>
+                                    <span>@PendingItemCount(escalation) pending</span>
+                                    <div title="@string.Join(", ", escalation.Items.Select(item => item.FileNameSnapshot))">
+                                        @Truncate(string.Join(", ", escalation.Items.Select(item => item.FileNameSnapshot)), 76)
+                                    </div>
+                                </div>
                             </td>
                             <td>
                                 <span style="font-size: 12px; color: #575e72;">@escalation.CreatedAt.LocalDateTime.ToString("MMM dd, yyyy HH:mm")</span>
                             </td>
                             <td>
-                                @if (escalation.EscalationStatus == "Pending")
+                                @if (PendingItemCount(escalation) > 0)
                                 {
                                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
                                                OnClick="@(() => ResolveAsync(escalation))"
@@ -375,6 +381,21 @@
         color: #575e72;
     }
 
+    .file-summary {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        max-width: 260px;
+        font-size: 11px;
+        color: #767586;
+        line-height: 1.35;
+    }
+
+    .file-summary strong {
+        color: #191c1e;
+        font-size: 12px;
+    }
+
     .status-badge {
         font-size: 10px;
         font-weight: 700;
@@ -424,8 +445,8 @@
                 || (e.EscalatedByName?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true)
                 || (e.Reason?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true))
             .Where(e => string.IsNullOrWhiteSpace(_selectedStatus)
-                || e.EscalationStatus.Equals(_selectedStatus, StringComparison.OrdinalIgnoreCase))
-            .OrderByDescending(e => e.EscalationStatus == "Pending")
+                || e.Items.Any(item => item.ItemStatus.Equals(_selectedStatus, StringComparison.OrdinalIgnoreCase)))
+            .OrderByDescending(e => PendingItemCount(e) > 0)
             .ThenByDescending(e => e.CreatedAt);
 
     protected override async Task OnInitializedAsync()
@@ -449,10 +470,10 @@
 
             var all = await EscalationClient.GetAllAsync(token);
             _escalations = all.ToList();
-            _pendingCount = _escalations.Count(e => e.EscalationStatus == "Pending");
-            _resolvedCount = _escalations.Count(e => e.EscalationStatus != "Pending");
+            _pendingCount = _escalations.Sum(PendingItemCount);
+            _resolvedCount = _escalations.Sum(e => e.Items.Count - PendingItemCount(e));
         }
-        catch (Exception ex)
+        catch (Exception)
         {
             _errorMessage = "Unable to load escalations. Please try again.";
         }
@@ -464,21 +485,14 @@
 
     private async Task ResolveAsync(DocumentEscalationDto escalation)
     {
-        var parameters = new DialogParameters
-        {
-            ["EscalationId"] = escalation.Id,
-            ["FolderName"] = $"Folder #{escalation.FolderId.ToString()[..8]}",
-            ["EscalatedByName"] = escalation.EscalatedByName,
-            ["Reason"] = escalation.Reason,
-            ["DocumentCount"] = escalation.Items.Count
-        };
+        var parameters = new DialogParameters { ["Escalation"] = escalation };
 
         var dialog = await DialogService.ShowAsync<ResolveEscalationDialog>("Resolve Escalation", parameters);
         var result = await dialog.Result;
         if (result is not { Canceled: false })
             return;
 
-        var request = result.Data as ResolveEscalationRequest;
+        var request = result.Data as ResolveEscalationItemsRequest;
         if (request is null) return;
 
         try
@@ -486,11 +500,16 @@
             var token = Session.AccessToken;
             if (string.IsNullOrEmpty(token)) return;
 
-            await EscalationClient.ResolveAsync(token, escalation.Id, request);
-            Snackbar.Add("Escalation resolved successfully.", Severity.Success);
+            await EscalationClient.ResolveItemsAsync(token, escalation.Id, request);
+            Snackbar.Add("Escalated files resolved successfully.", Severity.Success);
             await LoadAsync();
         }
-        catch (Exception ex)
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapApiError(ex), Severity.Error);
+            if (ex.StatusCode == 409) await LoadAsync();
+        }
+        catch (Exception)
         {
             Snackbar.Add("Failed to resolve escalation. Please try again.", Severity.Error);
         }
@@ -498,15 +517,7 @@
 
     private async Task ShowDetailAsync(DocumentEscalationDto escalation)
     {
-        var parameters = new DialogParameters
-        {
-            ["EscalationId"] = escalation.Id,
-            ["FolderName"] = $"Folder #{escalation.FolderId.ToString()[..8]}",
-            ["EscalatedByName"] = escalation.EscalatedByName,
-            ["Reason"] = escalation.Reason,
-            ["DocumentCount"] = escalation.Items.Count,
-            ["ReadOnly"] = true
-        };
+        var parameters = new DialogParameters { ["Escalation"] = escalation, ["ReadOnly"] = true };
 
         await DialogService.ShowAsync<ResolveEscalationDialog>($"Escalation Detail — {escalation.EscalationStatus}", parameters);
     }
@@ -533,4 +544,16 @@
         if (string.IsNullOrEmpty(text)) return string.Empty;
         return text.Length <= maxLength ? text : text[..maxLength] + "…";
     }
+
+    private static int PendingItemCount(DocumentEscalationDto escalation) =>
+        escalation.Items.Count(item => string.Equals(item.ItemStatus, "Pending", StringComparison.OrdinalIgnoreCase));
+
+    private static string MapApiError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session has expired. Please log in again.",
+        403 => "You do not have permission to resolve escalations.",
+        404 => "This escalation no longer exists.",
+        409 => "This escalation changed while you were resolving it. The latest history has been reloaded.",
+        _ => string.IsNullOrWhiteSpace(ex.Message) ? "Unable to resolve escalation." : ex.Message
+    };
 }

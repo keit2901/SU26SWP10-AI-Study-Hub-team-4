@@ -149,9 +149,12 @@ public sealed class FoldersController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<FolderDto>> ApproveShare(Guid id, CancellationToken cancellationToken)
-        => await ExecuteAsync(() => _service.ApproveFolderShareAsync(
-            GetSupabaseUserIdFromClaims(), id, cancellationToken));
+    public ActionResult<FolderDto> ApproveShare(Guid id, CancellationToken cancellationToken)
+        => Conflict(new ApiErrorResponse
+        {
+            Code = "folder_batch_moderation_retired",
+            Message = "Folder-level moderation is retired; approve or reject individual documents instead."
+        });
 
     [HttpPatch("{id:guid}/share/reject")]
     [Authorize(Roles = "Admin,Moderator")]
@@ -160,15 +163,15 @@ public sealed class FoldersController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
-    public async Task<ActionResult<FolderDto>> RejectShare(
+    public ActionResult<FolderDto> RejectShare(
         Guid id,
         [FromBody] RejectFolderShareRequest? request,
         CancellationToken cancellationToken)
-        => await ExecuteAsync(() => _service.RejectFolderShareAsync(
-            GetSupabaseUserIdFromClaims(),
-            id,
-            request ?? new RejectFolderShareRequest(),
-            cancellationToken));
+        => Conflict(new ApiErrorResponse
+        {
+            Code = "folder_batch_moderation_retired",
+            Message = "Folder-level moderation is retired; approve or reject individual documents instead."
+        });
 
     [HttpPatch("{id:guid}/share/auto-check")]
     [Authorize(Roles = "Admin,Moderator")]

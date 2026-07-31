@@ -5,11 +5,9 @@
 @inject AI_Study_Hub_v2.Services.AdminDashboardApiClient DashboardApi
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject AI_Study_Hub_v2.Services.AuthPersistenceService AuthPersistence
-@inject AI_Study_Hub_v2.Services.FolderApiClient FolderApi
 @inject NavigationManager Nav
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
-@inject IDialogService DialogService
 @using AI_Study_Hub_v2.Data.Entities
 
 <PageTitle>Analytics - AI Study Hub</PageTitle>
@@ -34,59 +32,18 @@
             @if (FolderId.HasValue)
             {
                 <div style="display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap;">
-                    @if (_folderShareStatus == FolderStatus.PendingShare)
+                    <button @onclick="NavigateToPerFileReview"
+                            style="display: inline-flex; align-items: center; gap: 0.5rem; background: #059669; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 700; cursor: pointer; box-shadow: 0 4px 12px rgba(5,150,105,0.2);">
+                        <MudIcon Icon="@Icons.Material.Filled.FactCheck" Style="font-size: 1.15rem; color: white;" />
+                        Review files
+                    </button>
+                    @if (IsAdmin)
                     {
-                        @if (!_allDocumentsReviewed)
-                        {
-                            <span style="display: inline-flex; align-items: center; gap: 0.5rem; background: #e3e2e7; color: #6b7280; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.8125rem; font-weight: 600;">
-                                <MudIcon Icon="@Icons.Material.Filled.Lock" Style="font-size: 1rem;" />
-                                Review all documents before approving folder
-                            </span>
-                        }
-                        else if (_hasRejectedDocument)
-                        {
-                            <button @onclick="AutoCheckFolderShare"
-                                    disabled="@_isShareActionBusy"
-                                    style="@GetSecondaryShareActionStyle(_isShareActionBusy)">
-                                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size: 1.25rem;" />
-                                Auto Check
-                            </button>
-                            <button @onclick="ApproveFolderShare" disabled
-                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #d1d5db; color: #9ca3af; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: not-allowed; box-shadow: none;">
-                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 1.25rem;" />
-                                Approve
-                            </button>
-                            <button @onclick="RejectFolderShare"
-                                    disabled="@_isShareActionBusy"
-                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(220,38,38,0.2);"
-                                    onmouseover="this.style.background='#b91c1c'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#dc2626'; this.style.transform='none';">
-                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Style="font-size: 1.25rem; color: white;" />
-                                Reject
-                            </button>
-                        }
-                        else
-                        {
-                            <button @onclick="AutoCheckFolderShare"
-                                    disabled="@_isShareActionBusy"
-                                    style="@GetSecondaryShareActionStyle(_isShareActionBusy)">
-                                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Style="font-size: 1.25rem;" />
-                                Auto Check
-                            </button>
-                            <button @onclick="ApproveFolderShare"
-                                    disabled="@_isShareActionBusy"
-                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #059669; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(5,150,105,0.25);"
-                                    onmouseover="this.style.background='#047857'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#059669'; this.style.transform='none';">
-                                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="font-size: 1.25rem; color: white;" />
-                                Approve
-                            </button>
-                            <button @onclick="RejectFolderShare"
-                                    disabled="@_isShareActionBusy"
-                                    style="display: inline-flex; align-items: center; gap: 0.5rem; background: #dc2626; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(220,38,38,0.2);"
-                                    onmouseover="this.style.background='#b91c1c'; this.style.transform='translateY(-1px)';" onmouseout="this.style.background='#dc2626'; this.style.transform='none';">
-                                <MudIcon Icon="@Icons.Material.Filled.Cancel" Style="font-size: 1.25rem; color: white;" />
-                                Reject
-                            </button>
-                        }
+                        <button @onclick="NavigateToAdminEscalations"
+                                style="display: inline-flex; align-items: center; gap: 0.5rem; background: #fff7ed; color: #b45309; border: 1px solid #fed7aa; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 700; cursor: pointer;">
+                            <MudIcon Icon="@Icons.Material.Filled.Flag" Style="font-size: 1.15rem;" />
+                            Admin escalations
+                        </button>
                     }
                     <button @onclick="NavigateToFolderDocuments"
                             style="display: inline-flex; align-items: center; gap: 0.5rem; background: #5e5ce6; color: white; border: none; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: pointer; transition: all 0.2s ease-in-out; box-shadow: 0 4px 12px rgba(94, 92, 230, 0.25);"
@@ -586,9 +543,6 @@
     private string AnalyticsSortBy = "date-desc";
     private Guid? _previousFolderId;
     private FolderStatus _folderShareStatus = FolderStatus.None;
-    private bool _allDocumentsReviewed;
-    private bool _hasRejectedDocument;
-    private bool _isShareActionBusy;
     private string? _pendingAnalyticsFocusColumn;
     private int _highlightedAnalyticsNameSuggestionIndex = -1;
     private int _highlightedAnalyticsFolderSuggestionIndex = -1;
@@ -625,9 +579,6 @@
         FolderStatus.Rejected => "#c23c21",
         _ => "#5e5ce6"
     };
-
-    private static string GetSecondaryShareActionStyle(bool isBusy) =>
-        $"display: inline-flex; align-items: center; gap: 0.5rem; background: {(isBusy ? "#e5e7eb" : "#eef2ff")}; color: {(isBusy ? "#9ca3af" : "#4441CC")}; border: 1px solid {(isBusy ? "#d1d5db" : "rgba(94,92,230,0.18)")}; border-radius: 0.5rem; padding: 0.625rem 1.25rem; font-size: 0.875rem; font-weight: 600; cursor: {(isBusy ? "not-allowed" : "pointer")}; transition: all 0.2s ease-in-out; box-shadow: none;";
 
     private string IssueSummaryBackground => HasIssues ? "rgba(239,68,68,0.1)" : "rgba(52,199,89,0.1)";
 
@@ -720,18 +671,6 @@
             _totalDocumentCount = analytics.TotalDocumentCount > 0 ? analytics.TotalDocumentCount : (documentsList?.Count ?? 0);
             if (analytics.PageSize > 0) _pageSize = Math.Min(DefaultPageSize, analytics.PageSize);
 
-            // These are whole-scope aggregates, not the current pagination slice.
-            if (FolderId.HasValue)
-            {
-                _allDocumentsReviewed = analytics.AllDocumentsApproved ||
-                    (analytics.PendingUnreviewedCount == 0 && analytics.RejectedDocumentCount > 0);
-                _hasRejectedDocument = analytics.RejectedDocumentCount > 0;
-            }
-            else
-            {
-                _allDocumentsReviewed = false;
-                _hasRejectedDocument = false;
-            }
         }
         catch (DocumentApiException ex)
         {
@@ -1427,100 +1366,15 @@
         return pages;
     }
 
-    private async Task ApproveFolderShare()
+    private bool IsAdmin => AdminAccessPolicy.IsAdmin(Session.CurrentUser?.Role);
+
+    private void NavigateToPerFileReview()
     {
-        if (!FolderId.HasValue || string.IsNullOrWhiteSpace(Session.AccessToken) || _isShareActionBusy) return;
-        try
-        {
-            _isShareActionBusy = true;
-            var folder = await FolderApi.ApproveShareAsync(Session.AccessToken!, FolderId.Value);
-            _folderShareStatus = folder.ShareStatus;
-            Snackbar.Add("Folder approved and shared to community.", Severity.Success);
-            await LoadAnalyticsAsync();
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            _isShareActionBusy = false;
-        }
+        if (FolderId.HasValue)
+            Nav.NavigateTo($"/share-review/{FolderId.Value}?mode=moderator");
     }
 
-    private async Task RejectFolderShare()
-    {
-        if (!FolderId.HasValue || string.IsNullOrWhiteSpace(Session.AccessToken) || _isShareActionBusy) return;
-
-        var dialog = await DialogService.ShowAsync<AI_Study_Hub_v2.Components.Shared.ModeratorRejectReasonDialog>(
-            "Reject Folder Share",
-            new DialogParameters
-            {
-                ["ItemName"] = string.IsNullOrWhiteSpace(FolderName) ? "Selected folder" : FolderName
-            },
-            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
-        var result = await dialog.Result;
-        if (result is null || result.Canceled || result.Data is not string reason)
-        {
-            return;
-        }
-
-        try
-        {
-            _isShareActionBusy = true;
-            var folder = await FolderApi.RejectShareAsync(
-                Session.AccessToken!,
-                FolderId.Value,
-                new RejectFolderShareRequest { Reason = reason });
-            _folderShareStatus = folder.ShareStatus;
-            Snackbar.Add("Folder share request rejected.", Severity.Warning);
-            await LoadAnalyticsAsync();
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            _isShareActionBusy = false;
-        }
-    }
-
-    private async Task AutoCheckFolderShare()
-    {
-        if (!FolderId.HasValue || string.IsNullOrWhiteSpace(Session.AccessToken) || _isShareActionBusy) return;
-        try
-        {
-            _isShareActionBusy = true;
-            var folder = await FolderApi.AutoCheckShareAsync(Session.AccessToken!, FolderId.Value);
-            _folderShareStatus = folder.ShareStatus;
-
-            if (folder.ShareStatus == FolderStatus.Approved)
-            {
-                Snackbar.Add("Auto Check approved this folder for community sharing.", Severity.Success);
-            }
-            else if (folder.ShareStatus == FolderStatus.Rejected)
-            {
-                Snackbar.Add(string.IsNullOrWhiteSpace(folder.AiReviewReason)
-                    ? "Auto Check did not approve this folder."
-                    : $"Auto Check did not approve this folder. {folder.AiReviewReason}", Severity.Warning);
-            }
-            else
-            {
-                Snackbar.Add("Auto Check finished. The folder still needs moderator review.", Severity.Info);
-            }
-
-            await LoadAnalyticsAsync();
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(ex.Message, Severity.Error);
-        }
-        finally
-        {
-            _isShareActionBusy = false;
-        }
-    }
+    private void NavigateToAdminEscalations() => Nav.NavigateTo("/admin/escalations");
 }
 
 <style>

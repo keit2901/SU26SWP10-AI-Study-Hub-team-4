@@ -1,6 +1,8 @@
 @namespace AI_Study_Hub_v2.Components.Shared
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
+@inject AI_Study_Hub_v2.Services.AuthSessionState Session
+@inject AI_Study_Hub_v2.Services.DocumentApiClient DocumentsApi
 
 <MudDialog>
     <DialogContent>
@@ -36,11 +38,70 @@
                 </MudItem>
             </MudGrid>
 
-            @if (!string.IsNullOrWhiteSpace(GetReviewReason(Folder)))
+            @if (!string.IsNullOrWhiteSpace(GetReviewReason(Folder)) && _documents.All(document => document.ReviewStatus != DocumentReviewStatus.Approved))
             {
                 <MudAlert Severity="@GetReasonSeverity(Folder)" Variant="Variant.Outlined">
                     @GetReviewReason(Folder)
                 </MudAlert>
+            }
+
+            <MudDivider />
+
+            <div class="review-file-heading">
+                <div>
+                    <MudText Typo="Typo.subtitle1">File outcomes</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Approved files are public. Pending, escalated, and rejected files remain private.
+                    </MudText>
+                </div>
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Primary"
+                           Size="Size.Small"
+                           StartIcon="@Icons.Material.Filled.CloudUpload"
+                           Href="/documents/upload">
+                    Upload corrected file
+                </MudButton>
+            </div>
+
+            @if (_documentsLoading)
+            {
+                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1" Class="pa-3">
+                    <MudProgressCircular Indeterminate="true" Size="Size.Small" />
+                    <MudText Typo="Typo.body2">Loading file outcomes…</MudText>
+                </MudStack>
+            }
+            else if (!string.IsNullOrWhiteSpace(_documentsError))
+            {
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">@_documentsError</MudAlert>
+            }
+            else if (_documents.Count == 0)
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">No files are currently available in this folder.</MudAlert>
+            }
+            else
+            {
+                <div class="review-file-list">
+                    @foreach (var document in _documents.OrderByDescending(item => item.UpdatedAt))
+                    {
+                        <div class="review-file-row">
+                            <div class="review-file-icon @GetReviewCssClass(document.ReviewStatus)">
+                                <MudIcon Icon="@GetReviewIcon(document.ReviewStatus)" Size="Size.Small" />
+                            </div>
+                            <div class="review-file-copy">
+                                <strong title="@document.FileName">@document.FileName</strong>
+                                <span>@GetReviewStatusText(document.ReviewStatus)</span>
+                                @if (document.ReviewStatus == DocumentReviewStatus.Rejected && !string.IsNullOrWhiteSpace(GetDocumentReason(document)))
+                                {
+                                    <small><strong>Reason:</strong> @GetDocumentReason(document)</small>
+                                }
+                                @if (document.ReviewStatus == DocumentReviewStatus.Rejected)
+                                {
+                                    <small>Upload the corrected file as a new document, then optionally delete this rejected copy from Document Library.</small>
+                                }
+                            </div>
+                        </div>
+                    }
+                </div>
             }
 
             @if (!string.IsNullOrWhiteSpace(Folder.StudentFeedbackReason) || !string.IsNullOrWhiteSpace(Folder.AppealMessage))
@@ -68,21 +129,112 @@
     </DialogActions>
 </MudDialog>
 
+<style>
+    .review-file-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .review-file-list { display: flex; flex-direction: column; gap: 9px; max-height: 21rem; overflow-y: auto; padding-right: 3px; }
+    .review-file-row { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 11px; padding: 12px; border: 1px solid rgba(199,196,215,0.42); border-radius: 12px; background: rgba(250,250,253,0.9); }
+    .review-file-icon { width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; border-radius: 10px; background: #f1f5f9; color: #64748b; }
+    .review-file-icon.approved { background: #ecfdf5; color: #047857; }
+    .review-file-icon.pending { background: #fffbeb; color: #a16207; }
+    .review-file-icon.escalated { background: #eff6ff; color: #1d4ed8; }
+    .review-file-icon.rejected { background: #fef2f2; color: #b91c1c; }
+    .review-file-copy { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
+    .review-file-copy strong { overflow: hidden; color: #1e293b; font-size: 0.86rem; text-overflow: ellipsis; white-space: nowrap; }
+    .review-file-copy span { color: #475569; font-size: 0.78rem; font-weight: 700; }
+    .review-file-copy small { color: #64748b; font-size: 0.72rem; line-height: 1.4; }
+</style>
+
 @code {
     [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
 
     [Parameter] public FolderDto Folder { get; set; } = new();
 
+    private List<DocumentDto> _documents = new();
+    private bool _documentsLoading;
+    private string? _documentsError;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _documents.Clear();
+        _documentsError = null;
+
+        if (string.IsNullOrWhiteSpace(Session.AccessToken) || Folder.Id == Guid.Empty)
+        {
+            _documentsError = "Sign in again to view per-file moderation outcomes.";
+            return;
+        }
+
+        _documentsLoading = true;
+        try
+        {
+            var documents = await DocumentsApi.ListAsync(
+                Session.AccessToken,
+                new DocumentListQuery { FolderId = Folder.Id });
+            _documents = documents.ToList();
+        }
+        catch
+        {
+            _documentsError = "Per-file outcomes could not be loaded. Open Document Library to review this folder.";
+        }
+        finally
+        {
+            _documentsLoading = false;
+        }
+    }
+
     private void Close() => MudDialog.Close();
 
-    private static string GetCurrentStatusText(FolderDto folder) => folder.ShareStatus switch
+    private string GetCurrentStatusText(FolderDto folder)
     {
-        FolderStatus.Approved => "Shared",
-        FolderStatus.PendingShare => "Pending Review",
-        FolderStatus.Rejected when string.Equals(folder.ShareReviewSource, "AI_ASSIST", StringComparison.OrdinalIgnoreCase) => "AI Failed",
-        FolderStatus.Rejected => "Moderator Rejected",
+        var approved = _documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Approved);
+        var awaiting = _documents.Count(document => document.ReviewStatus is DocumentReviewStatus.None or DocumentReviewStatus.Escalated);
+        var rejected = _documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Rejected);
+
+        if (approved > 0 && awaiting > 0) return $"{approved} approved, {awaiting} awaiting review";
+        if (approved > 0) return $"Public — {approved} approved file{(approved == 1 ? string.Empty : "s")}";
+        if (awaiting > 0 || folder.ShareStatus == FolderStatus.PendingShare) return "Awaiting moderation";
+        if (rejected > 0 || folder.ShareStatus == FolderStatus.Rejected) return "No public files — rejected items";
+        return "Private";
+    }
+
+    private static string GetReviewStatusText(DocumentReviewStatus status) => status switch
+    {
+        DocumentReviewStatus.Approved => "Approved / Public",
+        DocumentReviewStatus.None => "Awaiting moderator review / Private",
+        DocumentReviewStatus.Escalated => "Awaiting Admin / Private",
+        DocumentReviewStatus.Rejected => "Rejected / Private",
         _ => "Private"
     };
+
+    private static string GetReviewIcon(DocumentReviewStatus status) => status switch
+    {
+        DocumentReviewStatus.Approved => Icons.Material.Filled.Public,
+        DocumentReviewStatus.None => Icons.Material.Filled.Schedule,
+        DocumentReviewStatus.Escalated => Icons.Material.Filled.AdminPanelSettings,
+        DocumentReviewStatus.Rejected => Icons.Material.Filled.Block,
+        _ => Icons.Material.Filled.Lock
+    };
+
+    private static string GetReviewCssClass(DocumentReviewStatus status) => status switch
+    {
+        DocumentReviewStatus.Approved => "approved",
+        DocumentReviewStatus.None => "pending",
+        DocumentReviewStatus.Escalated => "escalated",
+        DocumentReviewStatus.Rejected => "rejected",
+        _ => string.Empty
+    };
+
+    private static string? GetDocumentReason(DocumentDto document)
+    {
+        if (!string.IsNullOrWhiteSpace(document.ModerationReason)) return document.ModerationReason;
+        foreach (var propertyName in new[] { "AdminReviewReason", "RejectionReason", "ReviewReason", "HumanReviewReason" })
+        {
+            var value = document.GetType().GetProperty(propertyName)?.GetValue(document)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value)) return value;
+        }
+
+        return document.ReviewStatus == DocumentReviewStatus.Rejected ? document.ErrorMessage : null;
+    }
 
     private static string GetReviewSourceText(FolderDto folder)
     {

@@ -6,11 +6,10 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Services;
 using AI_Study_Hub_v2.Services.Supabase;
+using AI_Study_Hub_v2.Tests.Support;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
-using Microsoft.EntityFrameworkCore.Infrastructure;
-using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
@@ -22,8 +21,6 @@ namespace AI_Study_Hub_v2.Tests.Services;
 [TestFixture, Category("Postgres"), NonParallelizable]
 public sealed class SharedFolderCopyPostgresTests
 {
-    private const string PreReSyncMigration = "20260706184528_AddDocumentEscalation";
-    private const string ReSyncPlanMigration = "20260709165701_ReSyncPlanFkAndConstraints";
     private NpgsqlDataSource? _dataSource;
     private readonly ConcurrentBag<Guid> _users = [];
     private readonly ConcurrentBag<Guid> _authUsers = [];
@@ -42,8 +39,7 @@ public sealed class SharedFolderCopyPostgresTests
         _dataSource = builder.Build();
         await BootstrapAuthAsync();
         await using var db = CreateDb();
-        await MigrateCompatibilityAsync(db);
-        await ApplyFolderDriftColumnsAsync(db);
+        await PostgresTestDatabase.BootstrapAsync(db);
     }
 
     [TearDown]
@@ -55,7 +51,8 @@ public sealed class SharedFolderCopyPostgresTests
             await using var db = CreateDb();
             var users = _users.ToArray();
             var documents = await db.Documents.Where(item => users.Contains(item.UserId)).Select(item => item.Id).ToListAsync();
-            db.DocumentEscalationItems.RemoveRange(await db.DocumentEscalationItems.Where(item => documents.Contains(item.DocumentId)).ToListAsync());
+            db.DocumentEscalationItems.RemoveRange(await db.DocumentEscalationItems
+                .Where(item => item.DocumentId.HasValue && documents.Contains(item.DocumentId.Value)).ToListAsync());
             db.DocumentChunks.RemoveRange(await db.DocumentChunks.Where(item => documents.Contains(item.DocumentId)).ToListAsync());
             db.SharedFolderCopyOperations.RemoveRange(await db.SharedFolderCopyOperations.Where(item => users.Contains(item.DestinationUserId)).ToListAsync());
             db.Documents.RemoveRange(await db.Documents.Where(item => users.Contains(item.UserId)).ToListAsync());
@@ -128,6 +125,7 @@ public sealed class SharedFolderCopyPostgresTests
         var result = await host.Coordinator.CopyAsync(destination.SupabaseUserId, source.Id, default);
         await using var fresh = CreateDb();
         var copied = await fresh.Documents.SingleAsync(item => item.FolderId == result.Id);
+        copied.ReviewStatus.Should().Be(DocumentReviewStatus.None);
         var chunk = await fresh.DocumentChunks.SingleAsync(item => item.DocumentId == copied.Id);
         var expectedEmbedding = TestEmbedding();
         chunk.EmbeddingModel.Should().Be("pg-test");
@@ -482,16 +480,13 @@ public sealed class SharedFolderCopyPostgresTests
     private static IPlanCapacityGuard Guard() => new PlanCapacityGuard(Plans(FreePlan()).Object);
     private static Plan FreePlan(long? quota = null, int? maxDocuments = null) => new() { Id = Guid.NewGuid(), PlanKey = Guid.NewGuid().ToString("N"), DisplayName = "test", StorageQuotaBytes = quota, MaxDocumentCount = maxDocuments, MaxFolderCount = 100, MaxDocsPerFolder = 100, IsActive = true };
     private static float[] TestEmbedding(float firstValue = 1f) { var values = new float[DocumentChunk.EmbeddingDimension]; values[0] = firstValue; values[1] = 2f; values[^1] = 3f; return values; }
-    private static Document NewDocument(Guid userId, long bytes, Guid? folderId = null) => new() { Id = Guid.NewGuid(), UserId = userId, FolderId = folderId, FileName = "copy.pdf", StoragePath = $"copy-source/{Guid.NewGuid():N}", FileSizeBytes = bytes, MimeType = "application/pdf", SubjectCode = "SWP391", Semester = "SU26", Status = DocumentStatus.Ready, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
+    private static Document NewDocument(Guid userId, long bytes, Guid? folderId = null) => new() { Id = Guid.NewGuid(), UserId = userId, FolderId = folderId, FileName = "copy.pdf", StoragePath = $"copy-source/{Guid.NewGuid():N}", FileSizeBytes = bytes, MimeType = "application/pdf", SubjectCode = "SWP391", Semester = "SU26", Status = DocumentStatus.Ready, ReviewStatus = DocumentReviewStatus.Approved, CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
     private static SharedFolderCopyOperation NewOperation(Guid userId, long bytes) => new() { Id = Guid.NewGuid(), DestinationUserId = userId, SourceFolderId = Guid.NewGuid(), DestinationFolderId = Guid.NewGuid(), DestinationName = "pending", ReservedStorageBytes = bytes, ManifestJson = JsonSerializer.Serialize(new { Version = 1, Items = Array.Empty<object>() }), CreatedAt = DateTimeOffset.UtcNow, UpdatedAt = DateTimeOffset.UtcNow };
     private async Task AssertFreshAsync(Guid userId, long expectedBytes, int operations, string? status = null) { await using var fresh = CreateDb(); (await fresh.Users.SingleAsync(item => item.Id == userId)).StorageUsedBytes.Should().Be(expectedBytes); var query = fresh.SharedFolderCopyOperations.Where(item => item.DestinationUserId == userId); if (status is not null) query = query.Where(item => item.Status == status); (await query.CountAsync()).Should().Be(operations); }
     private async Task BootstrapAuthAsync() { await using var connection = await _dataSource!.OpenConnectionAsync(); await using var command = new NpgsqlCommand("CREATE SCHEMA IF NOT EXISTS auth; CREATE TABLE IF NOT EXISTS auth.users (id uuid PRIMARY KEY);", connection); await command.ExecuteNonQueryAsync(); }
     private async Task InsertAuthAsync(Guid id) { await using var connection = await _dataSource!.OpenConnectionAsync(); await using var command = new NpgsqlCommand("INSERT INTO auth.users (id) VALUES (@id)", connection); command.Parameters.AddWithValue("id", id); await command.ExecuteNonQueryAsync(); }
     private async Task DeleteAuthAsync(Guid id) { await using var connection = await _dataSource!.OpenConnectionAsync(); await using var command = new NpgsqlCommand("DELETE FROM auth.users WHERE id=@id", connection); command.Parameters.AddWithValue("id", id); await command.ExecuteNonQueryAsync(); }
     private async Task<string> ScalarAsync(string sql) { await using var connection = await _dataSource!.OpenConnectionAsync(); await using var command = new NpgsqlCommand(sql, connection); return (await command.ExecuteScalarAsync())?.ToString() ?? string.Empty; }
-    private static async Task MigrateCompatibilityAsync(AppDbContext db) { var applied = await db.Database.GetAppliedMigrationsAsync(); if (!applied.Contains(ReSyncPlanMigration)) { if (!applied.Contains(PreReSyncMigration)) await db.Database.GetService<IMigrator>().MigrateAsync(PreReSyncMigration); await db.Database.ExecuteSqlRawAsync("ALTER TABLE IF EXISTS public.payment_transactions DROP CONSTRAINT IF EXISTS \"FK_payment_transactions_users_user_id\""); } await db.Database.MigrateAsync(); }
-    private static Task ApplyFolderDriftColumnsAsync(AppDbContext db) => db.Database.ExecuteSqlRawAsync("ALTER TABLE public.folders ADD COLUMN IF NOT EXISTS share_review_source varchar(32), ADD COLUMN IF NOT EXISTS ai_review_reason varchar(2000), ADD COLUMN IF NOT EXISTS ai_review_confidence double precision, ADD COLUMN IF NOT EXISTS ai_review_failure_count integer NOT NULL DEFAULT 0, ADD COLUMN IF NOT EXISTS human_review_reason varchar(2000), ADD COLUMN IF NOT EXISTS requires_human_review boolean NOT NULL DEFAULT false, ADD COLUMN IF NOT EXISTS appeal_requested_at timestamp with time zone, ADD COLUMN IF NOT EXISTS appeal_message varchar(2000)");
-
     private sealed class Host(ServiceProvider provider, IServiceScope scope, SharedFolderCopyCoordinator coordinator, IStorageReconciliationService reconciliation) : IAsyncDisposable { public SharedFolderCopyCoordinator Coordinator { get; } = coordinator; public IStorageReconciliationService Reconciliation { get; } = reconciliation; public async ValueTask DisposeAsync() { scope.Dispose(); await provider.DisposeAsync(); } }
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(15);
     private static readonly TimeSpan DiagnosticTimeout = TimeSpan.FromMilliseconds(250);

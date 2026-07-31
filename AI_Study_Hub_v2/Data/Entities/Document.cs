@@ -36,6 +36,9 @@ public sealed class Document
     /// <summary>Moderator review outcome. <c>None</c> until the moderator explicitly acts.</summary>
     public DocumentReviewStatus ReviewStatus { get; set; }
 
+    /// <summary>Monotonically incremented for each new moderation cycle.</summary>
+    public int ModerationGeneration { get; set; }
+
     /// <summary>Populated when <see cref="Status"/> = <c>Failed</c>.</summary>
     public string? ErrorMessage { get; set; }
 

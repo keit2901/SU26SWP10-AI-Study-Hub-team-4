@@ -5,10 +5,15 @@
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 @using AI_Study_Hub_v2.Components.Admin.Shared
+@using AI_Study_Hub_v2.Services
+@using System.IdentityModel.Tokens.Jwt
+@using System.Security.Claims
+@implements IAsyncDisposable
 @inject NavigationManager Navigation
 @inject AuthSessionState Session
 @inject AdminDashboardApiClient DashboardApi
 @inject AdminApiClient AdminApi
+@inject IAdminModerationMetricsService ModerationMetrics
 
 <div class="dashboard-page page-enter">
     <!-- Page Header -->
@@ -128,13 +133,13 @@
             <MudItem xs="12">
                 <MudPaper Elevation="0" Class="dashboard-card overflow-hidden" Style="padding: 0;">
                     @{
-                        var hasAttentionItems = _metrics.PendingDocuments > 0 || _metrics.FailedJobs > 0 || _metrics.ProcessingDocuments > 0;
+                        var hasAttentionItems = _metrics.PendingEscalatedDocuments > 0 || _metrics.FailedJobs > 0 || _metrics.ProcessingDocuments > 0;
 
                         string ctaText; Variant ctaVariant; string ctaRoute;
                         if (_metrics.FailedJobs > 0)
                         { ctaText = $"View {_metrics.FailedJobs} failed"; ctaVariant = Variant.Outlined; ctaRoute = "/admin/documents"; }
-                        else if (_metrics.PendingDocuments > 0)
-                        { ctaText = $"Review {_metrics.PendingDocuments} pending"; ctaVariant = Variant.Filled; ctaRoute = "/admin/escalations"; }
+                        else if (_metrics.PendingEscalatedDocuments > 0)
+                        { ctaText = $"Review {_metrics.PendingEscalatedDocuments} escalated files"; ctaVariant = Variant.Filled; ctaRoute = "/admin/escalations"; }
                         else if (_metrics.ProcessingDocuments > 0)
                         { ctaText = $"View {_metrics.ProcessingDocuments} processing"; ctaVariant = Variant.Outlined; ctaRoute = "/admin/documents"; }
                         else
@@ -157,9 +162,9 @@
                             <div class="d-flex" style="gap: 2rem; flex-wrap: wrap;">
                                 <div style="min-width: 120px;">
                                     <div class="text-headline-md font-headline-md text-on-surface" style="font-size: 28px; line-height: 1.2;">
-                                        @_metrics.PendingDocuments
+                                        @_metrics.PendingEscalatedDocuments
                                     </div>
-                                    <div class="text-label-md text-on-surface-variant" style="font-size: 12px; font-weight: 600; text-transform: uppercase;">Pending</div>
+                                    <div class="text-label-md text-on-surface-variant" style="font-size: 12px; font-weight: 600; text-transform: uppercase;">Escalated files</div>
                                 </div>
                                 <div style="min-width: 120px;">
                                     <div class="text-headline-md font-headline-md text-on-surface" style="font-size: 28px; line-height: 1.2; color: #ba1a1a;">
@@ -266,7 +271,7 @@
                     <h3 class="text-headline-sm font-headline-sm text-on-surface mb-3">Recommended Actions</h3>
 
                     @{
-                        var pendingCount = _metrics.PendingDocuments;
+                        var pendingCount = _metrics.PendingEscalatedDocuments;
                         var failedCount = _metrics.FailedJobs;
                         var auditCount = _recentActivities.Count;
                         var allClear = pendingCount == 0 && failedCount == 0 && _metrics.TokenUsagePercent < 85 && auditCount == 0;
@@ -284,7 +289,7 @@
                         <div class="d-flex align-center justify-space-between" style="padding:6px 0;border-bottom:1px solid #f1f5f9;">
                             <div class="d-flex align-center" style="gap:8px;">
                                 <MudIcon Icon="@Icons.Material.Filled.Gavel" Style="@GetActionIconStyle(pendingCount > 0)" />
-                                <span style="font-size:13px;font-weight:500;">@pendingCount pending documents</span>
+                                <span style="font-size:13px;font-weight:500;">@pendingCount escalated files pending</span>
                             </div>
                             <div class="d-flex align-center" style="gap:6px;">
                                 <span class="moderation-badge @(pendingCount > 0 ? "pending" : "approved")" style="font-size:10px;background-color:@(pendingCount > 0 ? "#fef3c7" : "#dcfce7");color:@(pendingCount > 0 ? "#d97706" : "#16a34a");padding:2px 8px;border-radius:4px;font-weight:600;">
@@ -413,10 +418,45 @@
     private readonly string[] _statusLabels = { "Indexed", "Processing", "Pending", "Failed" };
 
     private readonly List<ChartSeries<double>> _statusSeries = new();
+    private readonly CancellationTokenSource _refreshCts = new();
+    private PeriodicTimer? _refreshTimer;
+    private Task? _refreshLoop;
+    private bool _disposed;
 
     protected override async Task OnInitializedAsync()
     {
         await LoadDashboardAsync();
+        _refreshTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        _refreshLoop = RefreshModerationMetricLoopAsync(_refreshCts.Token);
+    }
+
+    private async Task RefreshModerationMetricLoopAsync(CancellationToken cancellationToken)
+    {
+        if (_refreshTimer is null) return;
+        try
+        {
+            while (await _refreshTimer.WaitForNextTickAsync(cancellationToken))
+                await RefreshModerationMetricAsync(cancellationToken);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+
+    private async Task RefreshModerationMetricAsync(CancellationToken cancellationToken)
+    {
+        if (!TryGetSupabaseUserId(out var supabaseUserId)) return;
+        try
+        {
+            var count = await ModerationMetrics.GetPendingEscalatedDocumentCountAsync(supabaseUserId, cancellationToken);
+            if (_disposed) return;
+            _metrics.PendingEscalatedDocuments = count;
+            _lastDashboardLoadedAt = DateTime.Now;
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+        catch
+        {
+            // Keep the server-authoritative DTO value and retry on the next bounded tick.
+        }
     }
 
     private async Task LoadDashboardAsync()
@@ -435,6 +475,7 @@
             var stats = await DashboardApi.GetAdminStatsAsync(Session.AccessToken);
             ApplyStats(stats);
             _lastDashboardLoadedAt = DateTime.Now;
+            await RefreshModerationMetricAsync(_refreshCts.Token);
 
             var auditLogs = await AdminApi.ListAuditLogsAsync(Session.AccessToken, 5);
             ApplyAuditLogs(auditLogs);
@@ -468,7 +509,8 @@
             DailyTokenQuota = stats.DailyTokenQuota > 0 ? stats.DailyTokenQuota : 500_000,
             NewUsersThisWeek = 0,
             ProcessingDocuments = stats.ProcessingCount,
-            PendingDocuments = stats.PendingCount
+            PendingDocuments = stats.PendingCount,
+            PendingEscalatedDocuments = stats.PendingEscalatedDocumentCount
         };
         _documentStatuses.Clear();
         _documentStatuses.Add(new DocumentStatusMetric("Indexed", stats.IndexedCount, "indexed"));
@@ -558,6 +600,35 @@
         return hasAction ? "color:#d97706;font-size:18px;" : "color:#767586;font-size:18px;";
     }
 
+    private bool TryGetSupabaseUserId(out Guid userId)
+    {
+        userId = Guid.Empty;
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken)) return false;
+        try
+        {
+            var token = new JwtSecurityTokenHandler().ReadJwtToken(Session.AccessToken);
+            var subject = token.Claims.FirstOrDefault(claim => claim.Type is "sub" or ClaimTypes.NameIdentifier)?.Value;
+            return Guid.TryParse(subject, out userId);
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        await _refreshCts.CancelAsync();
+        if (_refreshLoop is not null)
+        {
+            try { await _refreshLoop; }
+            catch (OperationCanceledException) { }
+        }
+        _refreshTimer?.Dispose();
+        _refreshCts.Dispose();
+    }
+
     private sealed class DashboardMetrics
     {
         public int TotalUsers { get; set; }
@@ -565,6 +636,7 @@
         public int TotalDocuments { get; set; }
         public int ProcessingDocuments { get; set; }
         public int PendingDocuments { get; set; }
+        public int PendingEscalatedDocuments { get; set; }
         public int ActiveSessions { get; set; }
         public int FailedJobs { get; set; }
         public long DailyTokensUsed { get; set; }

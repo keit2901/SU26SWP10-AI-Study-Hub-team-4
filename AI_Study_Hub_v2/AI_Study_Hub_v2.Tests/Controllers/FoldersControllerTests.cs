@@ -199,28 +199,26 @@ public class FoldersControllerTests
     }
 
     [Test]
-    public async Task ShareReviewActions_ForwardAuthenticatedSubjectAndCancellationToken()
+    public async Task ShareReviewActions_ReturnRetiredBatchModerationConflict_AndAutoCheckForwardsRequest()
     {
         var callerId = Guid.NewGuid();
         var folderId = Guid.NewGuid();
         var cancellationToken = new CancellationTokenSource().Token;
         var dto = SampleFolder(folderId);
         var svc = new Mock<IFolderService>();
-        svc.Setup(service => service.ApproveFolderShareAsync(callerId, folderId, cancellationToken))
-            .ReturnsAsync(dto);
-        svc.Setup(service => service.RejectFolderShareAsync(
-                callerId,
-                folderId,
-                It.IsAny<RejectFolderShareRequest>(),
-                cancellationToken))
-            .ReturnsAsync(dto);
         svc.Setup(service => service.AutoCheckFolderShareAsync(callerId, folderId, cancellationToken))
             .ReturnsAsync(dto);
         var sut = BuildSut(svc.Object, Principal(callerId, useSubInsteadOfNameId: true));
 
-        (await sut.ApproveShare(folderId, cancellationToken)).Result.Should().BeOfType<OkObjectResult>();
-        (await sut.RejectShare(folderId, new RejectFolderShareRequest { Reason = "reason" }, cancellationToken))
-            .Result.Should().BeOfType<OkObjectResult>();
+        var approve = sut.ApproveShare(folderId, cancellationToken).Result.Should().BeOfType<ConflictObjectResult>().Subject;
+        approve.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+        approve.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("folder_batch_moderation_retired");
+
+        var reject = sut.RejectShare(folderId, new RejectFolderShareRequest { Reason = "reason" }, cancellationToken)
+            .Result.Should().BeOfType<ConflictObjectResult>().Subject;
+        reject.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+        reject.Value.Should().BeOfType<ApiErrorResponse>().Which.Code.Should().Be("folder_batch_moderation_retired");
+
         (await sut.AutoCheckShare(folderId, cancellationToken)).Result.Should().BeOfType<OkObjectResult>();
 
         svc.VerifyAll();

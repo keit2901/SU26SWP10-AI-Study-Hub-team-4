@@ -8,7 +8,10 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
 {
     public void Configure(EntityTypeBuilder<Document> builder)
     {
-        builder.ToTable("documents");
+        builder.ToTable("documents", table =>
+        {
+            table.HasCheckConstraint("ck_documents_moderation_generation_non_negative", "moderation_generation >= 0");
+        });
 
         builder.HasKey(d => d.Id);
 
@@ -67,6 +70,11 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
         builder.Property(d => d.ReviewStatus)
             .HasColumnName("review_status")
             .HasDefaultValue(DocumentReviewStatus.None)
+            .IsRequired();
+
+        builder.Property(d => d.ModerationGeneration)
+            .HasColumnName("moderation_generation")
+            .HasDefaultValue(0)
             .IsRequired();
 
         builder.Property(d => d.ErrorMessage)

@@ -52,7 +52,12 @@ public sealed class DocumentDto
 
     public AI_Study_Hub_v2.Data.Entities.DocumentReviewStatus ReviewStatus { get; set; }
 
+    public int ModerationGeneration { get; set; }
+
     public string? ErrorMessage { get; set; }
+
+    /// <summary>Human moderation/rejection reason, backed by the existing document error/reason field.</summary>
+    public string? ModerationReason { get; set; }
 
     public DateTimeOffset CreatedAt { get; set; }
 
