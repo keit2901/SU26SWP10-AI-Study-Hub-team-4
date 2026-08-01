@@ -46,7 +46,8 @@ public sealed class AssignPlanRequest
 public sealed record PurchasePlanRequest(
     [Required] [StringLength(50)] string PlanKey,
     [Required] [RegularExpression(@"^(monthly|yearly)$")] string BillingCycle = "monthly",
-    [StringLength(64)] string? IdempotencyKey = null);
+    [StringLength(64)] string? IdempotencyKey = null,
+    [StringLength(500)] string? ReturnUrl = null);
 
 public sealed record UserPlanDto(
     Guid Id,
@@ -70,4 +71,5 @@ public sealed record PaymentTransactionDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? CompletedAt,
     DateTimeOffset? ExpiresAt,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    long? ProviderOrderCode);

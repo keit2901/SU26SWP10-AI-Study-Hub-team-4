@@ -23,7 +23,7 @@ public sealed class PaymentService : IPaymentService
 
     public PaymentService(IPaymentProvider provider, AppDbContext db, IPlanService planService,
         IAuditLogService audit, IOptions<PayOsSettings> options, IConfiguration configuration,
-        IHostEnvironment environment, ILogger<PaymentService> logger)
+        IHostEnvironment environment, IHttpContextAccessor httpContext, ILogger<PaymentService> logger)
     {
         _provider = provider;
         _db = db;
@@ -31,14 +31,30 @@ public sealed class PaymentService : IPaymentService
         _audit = audit;
         _settings = options.Value;
         _callbackBaseUrl = ResolveCallbackBaseUrl(_settings.CallbackBaseUrl,
-            configuration["DemoUi:BackendBaseUrl"], environment.IsDevelopment());
+            configuration["DemoUi:BackendBaseUrl"], environment.IsDevelopment(), BuildRequestOrigin(httpContext));
         _logger = logger;
     }
 
+    /// <summary>
+    /// Derives the origin of the current HTTP request (scheme://host) when available.
+    /// Used in Development to build the PayOS return URL from the same origin the user
+    /// is actually browsing, so the persisted session survives the redirect even when
+    /// the app is opened through an alias such as 127.0.0.1 instead of localhost.
+    /// </summary>
+    private static string? BuildRequestOrigin(IHttpContextAccessor? httpContext)
+        => httpContext?.HttpContext?.Request is { } request
+           && Uri.TryCreate($"{request.Scheme}://{request.Host}", UriKind.Absolute, out var origin)
+               ? origin.GetLeftPart(UriPartial.Authority)
+               : null;
+
     public static string ResolveCallbackBaseUrl(string? configured, string? demoBackendBaseUrl, bool isDevelopment)
+        => ResolveCallbackBaseUrl(configured, demoBackendBaseUrl, isDevelopment, requestOrigin: null);
+
+    public static string ResolveCallbackBaseUrl(string? configured, string? demoBackendBaseUrl, bool isDevelopment, string? requestOrigin)
     {
         if (TryValidateCallbackBaseUrl(configured, !isDevelopment, out var callback)) return callback;
         if (isDevelopment && TryValidateCallbackBaseUrl(demoBackendBaseUrl, false, out callback)) return callback;
+        if (isDevelopment && TryValidateCallbackBaseUrl(requestOrigin, false, out callback)) return callback;
         if (isDevelopment) return "http://localhost:5240";
         throw new InvalidOperationException("PayOs:CallbackBaseUrl must be an absolute HTTPS public URL.");
     }
@@ -56,7 +72,7 @@ public sealed class PaymentService : IPaymentService
         return true;
     }
 
-    public async Task<PaymentUrlResponse> CreatePaymentAsync(Guid userId, string planKey, string billingCycle, CancellationToken ct)
+    public async Task<PaymentUrlResponse> CreatePaymentAsync(Guid userId, string planKey, string billingCycle, CancellationToken ct, string? returnUrl = null)
     {
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId && u.IsActive, ct)
             ?? throw new KeyNotFoundException("User not found.");
@@ -77,8 +93,12 @@ public sealed class PaymentService : IPaymentService
         await _db.SaveChangesAsync(ct);
 
         var callbackUrl = _callbackBaseUrl + "/payment/result";
+        var normalizedReturnUrl = NormalizeReturnUrl(returnUrl);
+        var returnUrlWithHint = normalizedReturnUrl is null
+            ? callbackUrl
+            : callbackUrl + "?returnUrl=" + Uri.EscapeDataString(normalizedReturnUrl);
         var providerResult = await _provider.CreatePaymentLinkAsync(new PaymentRequest(user.Id, txnRef, amount,
-            $"AI Study Hub - {plan.DisplayName} {billingCycle}", callbackUrl, callbackUrl), ct);
+            $"AI Study Hub - {plan.DisplayName} {billingCycle}", returnUrlWithHint, callbackUrl), ct);
         if (!providerResult.Success || providerResult.OrderCode != orderCode)
         {
             transaction.Status = "failed";
@@ -91,6 +111,21 @@ public sealed class PaymentService : IPaymentService
         transaction.ProviderStatus = "PENDING";
         await _db.SaveChangesAsync(ct);
         return new PaymentUrlResponse(providerResult.PaymentUrl, txnRef, planKey, billingCycle, amount, transaction.ExpiresAt!.Value);
+    }
+
+    /// <summary>
+    /// Accepts only app-relative paths ("/pricing") and rejects anything that could
+    /// escape the SPA (absolute URLs, protocol-relative URLs, backslashes, schemes).
+    /// </summary>
+    private static string? NormalizeReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl) || returnUrl.Length > 500) return null;
+        if (returnUrl[0] != '/') return null;
+        if (returnUrl.StartsWith("//", StringComparison.Ordinal)
+            || returnUrl.StartsWith("/\\", StringComparison.Ordinal)
+            || returnUrl.Contains('\\') || returnUrl.Contains(':'))
+            return null;
+        return returnUrl;
     }
 
     public async Task<ReturnUrlResult?> ReconcileAsync(Guid userId, long orderCode, CancellationToken ct)
@@ -154,12 +189,24 @@ public sealed class PaymentService : IPaymentService
         if (normalized == "UNKNOWN") { await SaveAndCommitAsync(transaction, ct); return new ApplyOutcome(WebhookResult.Ignored, ToResult(payment)); }
         if (normalized == "PAID")
         {
-            if (payment.ErrorMessage == "integrity_failed" || payment.Status is not ("pending" or "cancelled" or "expired"))
+            // Recovery rule: a locally non-immutable transaction (pending, cancelled, expired, or even
+            // failed after a checkout that was created on the provider side) may be promoted when the
+            // provider now authoritatively reports PAID with a matching amount and matching order code.
+            // Only a prior integrity_failed verdict stays permanent, since the money does not match.
+            if (payment.ErrorMessage == "integrity_failed")
             {
                 await SaveAndCommitAsync(transaction, ct);
                 return new ApplyOutcome(WebhookResult.Ignored, ToResult(payment));
             }
-            if (provider.AmountPaidVnd != payment.AmountVnd || provider.ExpectedAmountVnd != payment.AmountVnd || provider.AmountRemainingVnd != 0)
+            // Webhooks carry no ExpectedAmount/AmountRemaining fields, so only the actually
+            // received amount can be verified there. Full three-way integrity is enforced on
+            // the GET status path, which returns the complete invoice data.
+            var amountMatches = webhook is not null
+                ? provider.AmountPaidVnd == payment.AmountVnd
+                : provider.AmountPaidVnd == payment.AmountVnd
+                  && provider.ExpectedAmountVnd == payment.AmountVnd
+                  && provider.AmountRemainingVnd == 0;
+            if (!amountMatches)
             {
                 payment.Status = "failed"; payment.ErrorMessage = "integrity_failed"; payment.CompletedAt = DateTimeOffset.UtcNow;
                 await SaveAndCommitAsync(transaction, ct); return new ApplyOutcome(WebhookResult.Ignored, ToResult(payment));

@@ -8,7 +8,7 @@ namespace AI_Study_Hub_v2.Services.Payment.Abstractions;
 public interface IPaymentService
 {
     Task<PaymentUrlResponse> CreatePaymentAsync(
-        Guid userId, string planKey, string billingCycle, CancellationToken ct);
+        Guid userId, string planKey, string billingCycle, CancellationToken ct, string? returnUrl = null);
 
     Task<WebhookResult> ProcessWebhookAsync(string rawBody, CancellationToken ct);
 

@@ -214,7 +214,7 @@ public sealed class PayOsConcurrencyPostgresTests
         environment.SetupGet(item => item.EnvironmentName).Returns(Environments.Development);
         return new PaymentService(provider, db, plans.Object, Mock.Of<IAuditLogService>(),
             Microsoft.Extensions.Options.Options.Create(new PayOsSettings { ExpireMinutes = 5 }), new ConfigurationBuilder().Build(), environment.Object,
-            NullLogger<PaymentService>.Instance);
+            null, NullLogger<PaymentService>.Instance);
     }
 
     private async Task<Scenario> SeedAsync(int paymentCount, bool includePriorActivePlan = false)

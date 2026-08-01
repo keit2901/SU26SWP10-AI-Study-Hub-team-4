@@ -58,7 +58,8 @@ public sealed class AuthPersistenceService
         }
         catch (AuthApiException)
         {
-            await ClearAsync();
+            // Keep the stored session on a failed refresh so a temporary gateway
+            // outage does not destroy the ability to restore it moments later.
         }
         catch
         {

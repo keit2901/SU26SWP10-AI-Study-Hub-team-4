@@ -182,6 +182,7 @@ builder.Services.AddScoped<IPlanCapacityGuard, PlanCapacityGuard>();
 builder.Services.AddScoped<IStorageDeletionCoordinator, StorageDeletionCoordinator>();
 builder.Services.AddScoped<IStorageReconciliationService, StorageReconciliationService>();
 // PayOS provider + Payment service
+builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<IPaymentProvider, PayOsProvider>();
 builder.Services.AddScoped<IPaymentService, PaymentService>();
 // Archived: VNPay service kept for reference

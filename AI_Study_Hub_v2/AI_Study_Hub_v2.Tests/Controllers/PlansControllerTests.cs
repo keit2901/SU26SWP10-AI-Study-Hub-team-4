@@ -286,7 +286,7 @@ public class PlansControllerTests
 
         _paymentServiceMock
             .Setup(s => s.CreatePaymentAsync(
-                It.IsAny<Guid>(), "pro", "monthly", It.IsAny<CancellationToken>()))
+                It.IsAny<Guid>(), "pro", "monthly", It.IsAny<CancellationToken>(), It.IsAny<string?>()))
             .ReturnsAsync(expectedResponse);
 
         var sut = BuildSut(Principal(supabaseUserId));
@@ -303,7 +303,7 @@ public class PlansControllerTests
 
         // Verify PaymentService was called
         _paymentServiceMock.Verify(
-            s => s.CreatePaymentAsync(It.IsAny<Guid>(), "pro", "monthly", It.IsAny<CancellationToken>()),
+            s => s.CreatePaymentAsync(It.IsAny<Guid>(), "pro", "monthly", It.IsAny<CancellationToken>(), It.IsAny<string?>()),
             Times.Once);
 
         // Verify audit was logged for payment initiation
@@ -367,7 +367,7 @@ public class PlansControllerTests
 
         // Verify PaymentService was NOT called for free plan
         _paymentServiceMock.Verify(
-            s => s.CreatePaymentAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            s => s.CreatePaymentAsync(It.IsAny<Guid>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>(), It.IsAny<string?>()),
             Times.Never);
     }
 

@@ -75,8 +75,19 @@ window.idleSessionMonitor = (() => {
     const handleActivity = () => resetTimer();
 
     const handleVisibilityChange = () => {
-        if (document.visibilityState === "visible") {
-            void checkIdle();
+        if (document.visibilityState === "hidden") {
+            // Do not count time spent away from the tab (e.g. completing a bank
+            // transfer on PayOS) toward the idle timeout. Pause the timer while
+            // the tab is hidden instead of logging the user out on return.
+            if (timeoutId) {
+                clearTimeout(timeoutId);
+                timeoutId = null;
+            }
+            lastActivityAt = Date.now();
+        } else if (document.visibilityState === "visible") {
+            if (started) {
+                resetTimer();
+            }
         }
     };
 

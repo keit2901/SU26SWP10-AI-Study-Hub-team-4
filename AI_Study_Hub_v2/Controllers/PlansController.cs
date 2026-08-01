@@ -150,7 +150,8 @@ public sealed class PlansController : ControllerBase
                     pt.CreatedAt,
                     pt.CompletedAt,
                     pt.ExpiresAt,
-                    pt.ErrorMessage))
+                    pt.ErrorMessage,
+                    pt.ProviderOrderCode))
                  .ToListAsync(ct);
 
             return Ok(payments);
@@ -420,7 +421,7 @@ public sealed class PlansController : ControllerBase
             try
             {
                 var paymentResult = await _paymentService.CreatePaymentAsync(
-                    user.Id, request.PlanKey, request.BillingCycle, ct);
+                    user.Id, request.PlanKey, request.BillingCycle, ct, request.ReturnUrl);
 
                 // Audit log for payment initiation
                 try

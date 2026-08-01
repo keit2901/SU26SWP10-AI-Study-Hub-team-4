@@ -49,6 +49,17 @@ public sealed class PaymentPhase1Tests
     }
 
     [Test]
+    public void CallbackBaseUrl_DevelopmentPrefersRequestOriginOverHardcodedLocalhost()
+    {
+        PaymentService.ResolveCallbackBaseUrl(null, null, true, "http://127.0.0.1:5240").Should().Be("http://127.0.0.1:5240");
+        PaymentService.ResolveCallbackBaseUrl(null, null, true, "https://127.0.0.1:7070").Should().Be("https://127.0.0.1:7070");
+        PaymentService.ResolveCallbackBaseUrl("https://app.example.test/base", null, true, "http://127.0.0.1:5240").Should().Be("https://app.example.test/base");
+        // Production must never fall back to the request origin; only the configured public HTTPS URL is allowed.
+        Action productionWithoutConfig = () => PaymentService.ResolveCallbackBaseUrl(null, null, false, "http://127.0.0.1:5240");
+        productionWithoutConfig.Should().Throw<InvalidOperationException>();
+    }
+
+    [Test]
     public void ProviderOrderCode_ParsesOnlyExactLegacyReference()
     {
         PayOsProvider.TryParseOrderCode("PO_123", out var code).Should().BeTrue();
@@ -214,6 +225,67 @@ public sealed class PaymentPhase1Tests
     }
 
     [Test]
+    public async Task Reconcile_FailedWithCreatedLink_CanBePromotedByPaidProviderResult()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = AddUser(db);
+        db.Plans.Add(new Plan { Id = Guid.NewGuid(), PlanKey = "pro", DisplayName = "Pro" });
+        var payment = Payment(user.Id, 111, "failed");
+        payment.ProviderPaymentLinkId = "link-111";
+        payment.ErrorMessage = "Key cannot be null or empty (Parameter 'key')";
+        db.PaymentTransactions.Add(payment);
+        await db.SaveChangesAsync();
+        var provider = new Mock<IPaymentProvider>();
+        provider.Setup(p => p.GetTransactionStatusAsync(111, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionStatusResult(true, 111, "link-111", "PAID", "PAID", 100, 100, 0));
+
+        (await CreateService(db, provider).ReconcileAsync(user.Id, 111, CancellationToken.None))!.Status.Should().Be("completed");
+        var recovered = await db.PaymentTransactions.SingleAsync();
+        recovered.Status.Should().Be("completed");
+        recovered.ErrorMessage.Should().BeNull();
+        (await db.UserPlans.CountAsync()).Should().Be(1);
+    }
+
+    [Test]
+    public async Task Reconcile_FailedWithoutLocalLink_StillPromotedWhenProviderConfirmsPaid()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = AddUser(db);
+        db.Plans.Add(new Plan { Id = Guid.NewGuid(), PlanKey = "pro", DisplayName = "Pro" });
+        db.PaymentTransactions.Add(Payment(user.Id, 112, "failed"));
+        await db.SaveChangesAsync();
+        var provider = new Mock<IPaymentProvider>();
+        // The provider is authoritative: a PAID verdict for the exact order code with a matching
+        // amount means real money arrived, so the local lifecycle must be recovered.
+        provider.Setup(p => p.GetTransactionStatusAsync(112, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionStatusResult(true, 112, "link-112", "PAID", "PAID", 100, 100, 0));
+
+        (await CreateService(db, provider).ReconcileAsync(user.Id, 112, CancellationToken.None))!.Status.Should().Be("completed");
+        var recovered = await db.PaymentTransactions.SingleAsync();
+        recovered.Status.Should().Be("completed");
+        recovered.ProviderPaymentLinkId.Should().Be("link-112");
+        (await db.UserPlans.CountAsync()).Should().Be(1);
+    }
+
+    [Test]
+    public async Task Webhook_PaidWithMatchingAmount_ActivatesWithoutInvoiceIntegrityData()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = AddUser(db);
+        db.Plans.Add(new Plan { Id = Guid.NewGuid(), PlanKey = "pro", DisplayName = "Pro" });
+        db.PaymentTransactions.Add(Payment(user.Id, 113, "pending"));
+        await db.SaveChangesAsync();
+        var provider = new Mock<IPaymentProvider>();
+        // Webhook payloads expose only the received amount; Expected/Remaining are not available.
+        provider.Setup(p => p.VerifyWebhookAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WebhookVerificationResult(true, 113, "link", "PAID", "PAID", 100, 100, 0, null));
+
+        (await CreateService(db, provider).ProcessWebhookAsync("{\"signature\":\"x\"}", CancellationToken.None)).Disposition.Should().Be(WebhookDisposition.Accepted);
+        (await db.PaymentTransactions.SingleAsync()).Status.Should().Be("completed");
+        (await db.UserPlans.CountAsync()).Should().Be(1);
+    }
+
+    [Test]
     public async Task Webhook_UnknownStatus_IsNonDestructive()
     {
         using var db = TestDb.CreateInMemory();
@@ -282,6 +354,35 @@ public sealed class PaymentPhase1Tests
         (await db.PaymentTransactions.SingleAsync()).Status.Should().Be("failed");
     }
 
+    [Test]
+    public async Task CreatePayment_AppendsSafeReturnUrlToCallbackOnly()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = AddUser(db);
+        await db.SaveChangesAsync();
+        PaymentRequest? captured = null;
+        var provider = new Mock<IPaymentProvider>();
+        provider.Setup(p => p.CreatePaymentLinkAsync(It.IsAny<PaymentRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((PaymentRequest request, CancellationToken _) =>
+            {
+                captured = request;
+                long.TryParse(request.TxnRef.AsSpan(3), out var orderCode);
+                return new PaymentLinkResult(true, "https://checkout.example.test", orderCode, "link", null);
+            });
+        var service = CreateService(db, provider, "https://app.example.test");
+
+        await service.CreatePaymentAsync(user.Id, "pro", "monthly", CancellationToken.None, returnUrl: "/pricing");
+        captured!.ReturnUrl.Should().Be("https://app.example.test/payment/result?returnUrl=%2Fpricing");
+        // Cancel URL must stay clean — cancellation should not auto-redirect to the origin page.
+        captured.CancelUrl.Should().Be("https://app.example.test/payment/result");
+
+        // Unsafe return URLs are dropped entirely.
+        await service.CreatePaymentAsync(user.Id, "pro", "monthly", CancellationToken.None, returnUrl: "https://evil.example.com/phish");
+        captured.ReturnUrl.Should().Be("https://app.example.test/payment/result");
+        await service.CreatePaymentAsync(user.Id, "pro", "monthly", CancellationToken.None, returnUrl: "//evil.example.com");
+        captured.ReturnUrl.Should().Be("https://app.example.test/payment/result");
+    }
+
     private static PaymentService CreateService(AppDbContext db, Mock<IPaymentProvider> provider, string? callbackBaseUrl = null)
     {
         provider.SetupGet(p => p.ProviderName).Returns("PayOS");
@@ -291,7 +392,7 @@ public sealed class PaymentPhase1Tests
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(e => e.EnvironmentName).Returns(Environments.Development);
         return new PaymentService(provider.Object, db, plans.Object, new Mock<IAuditLogService>().Object,
-            Microsoft.Extensions.Options.Options.Create(new AI_Study_Hub_v2.Options.PayOsSettings { ExpireMinutes = 2, CallbackBaseUrl = callbackBaseUrl ?? string.Empty }), config, environment.Object, NullLogger<PaymentService>.Instance);
+            Microsoft.Extensions.Options.Options.Create(new AI_Study_Hub_v2.Options.PayOsSettings { ExpireMinutes = 2, CallbackBaseUrl = callbackBaseUrl ?? string.Empty }), config, environment.Object, null, NullLogger<PaymentService>.Instance);
     }
 
     private static User AddUser(AppDbContext db)

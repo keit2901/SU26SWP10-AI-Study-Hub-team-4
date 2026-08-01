@@ -44,6 +44,11 @@
                 <div class="payment-section-divider"></div>
                 <div class="payment-section-title">Payment history</div>
 
+                @if (!string.IsNullOrWhiteSpace(_actionMessage))
+                {
+                    <MudAlert Severity="@_actionSeverity" Variant="Variant.Text" Class="payment-action-alert">@_actionMessage</MudAlert>
+                }
+
                 @if (_payments.Count == 0)
                 {
                     <div class="payment-empty-state">
@@ -71,7 +76,15 @@
                                 <span>
                                     <span class="payment-status-chip @GetStatusClass(payment.Status)">@FormatStatus(payment.Status)</span>
                                 </span>
-                                <span class="payment-status-reason">@BuildNotesText(payment)</span>
+                                <span class="payment-status-reason">
+                                    <span class="payment-reason-text">@BuildNotesText(payment)</span>
+                                    @if (CanCheckOrder(payment))
+                                    {
+                                        <button type="button" class="payment-check-button" @onclick="() => CheckOrderAsync(payment)" disabled="@_checkingOrder">
+                                            @(_checkingOrder ? "Checking…" : "Check")
+                                        </button>
+                                    }
+                                </span>
                             </div>
                         }
                     </div>
@@ -113,6 +126,9 @@
     private string? _error;
     private int _currentPage = 1;
     private DateTimeOffset? _planExpiresAt;
+    private bool _checkingOrder;
+    private string? _actionMessage;
+    private Severity _actionSeverity = Severity.Info;
     private readonly List<PaymentTransactionDto> _payments = new();
 
     private IEnumerable<PaymentTransactionDto> PagedPayments =>
@@ -215,6 +231,12 @@
         }
         if (!string.IsNullOrWhiteSpace(payment.ErrorMessage))
         {
+            // Legacy technical gateway exceptions (e.g. SDK "Key cannot be null or empty (Parameter 'key')")
+            // were persisted verbatim by older builds; show a human-readable reason instead.
+            if (payment.ErrorMessage.Contains("(Parameter ", StringComparison.Ordinal))
+            {
+                return "Payment could not be completed due to a gateway configuration issue.";
+            }
             return payment.ErrorMessage;
         }
         return payment.Status.ToLowerInvariant() switch
@@ -288,6 +310,61 @@
     private void GoToPage(int page)
     {
         _currentPage = Math.Min(Math.Max(1, page), TotalPages);
+    }
+
+    private static bool CanCheckOrder(PaymentTransactionDto payment)
+        => payment.ProviderOrderCode is > 0
+           && !payment.Status.Equals("completed", StringComparison.OrdinalIgnoreCase)
+           && !payment.Status.Equals("refunded", StringComparison.OrdinalIgnoreCase)
+           && !payment.Status.Equals("demo_completed", StringComparison.OrdinalIgnoreCase);
+
+    private async Task CheckOrderAsync(PaymentTransactionDto payment)
+    {
+        if (_checkingOrder || payment.ProviderOrderCode is not > 0)
+        {
+            return;
+        }
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+        {
+            _actionMessage = "Please sign in again to check a payment.";
+            _actionSeverity = Severity.Warning;
+            return;
+        }
+
+        _checkingOrder = true;
+        _actionMessage = null;
+        try
+        {
+            var result = await PlanApi.ReconcilePaymentAsync(Session.AccessToken, payment.ProviderOrderCode.Value);
+            _actionMessage = result.Status?.ToLowerInvariant() switch
+            {
+                "completed" => "Payment confirmed and your plan is now active.",
+                "failed" => "The gateway confirms this payment failed.",
+                "expired" => "The payment window expired.",
+                "cancelled" => "The payment was cancelled.",
+                _ => "Payment checked. No change yet."
+            };
+            _actionSeverity = result.Status?.Equals("completed", StringComparison.OrdinalIgnoreCase) == true
+                ? Severity.Success
+                : Severity.Info;
+            await LoadAsync();
+        }
+        catch (PlanApiException ex)
+        {
+            _actionMessage = ex.StatusCode == 401
+                ? "Please sign in again to check a payment."
+                : "Could not check the payment right now.";
+            _actionSeverity = Severity.Warning;
+        }
+        catch
+        {
+            _actionMessage = "Could not check the payment right now.";
+            _actionSeverity = Severity.Warning;
+        }
+        finally
+        {
+            _checkingOrder = false;
+        }
     }
 
     private void PreviousPage()
@@ -462,6 +539,36 @@
         color: #5b5476;
         font-size: 0.84rem;
         line-height: 1.45;
+    }
+
+    .payment-reason-text {
+        display: block;
+    }
+
+    .payment-check-button {
+        margin-top: 0.4rem;
+        border: 0;
+        border-radius: 999px;
+        padding: 0.3rem 0.85rem;
+        background: rgba(94, 92, 230, 0.12);
+        color: #4f46d9;
+        font-weight: 700;
+        font-size: 0.78rem;
+        cursor: pointer;
+        transition: background 0.16s ease, color 0.16s ease;
+    }
+
+    .payment-check-button:hover:not(:disabled) {
+        background: rgba(94, 92, 230, 0.22);
+    }
+
+    .payment-check-button:disabled {
+        opacity: 0.55;
+        cursor: not-allowed;
+    }
+
+    .payment-action-alert {
+        margin-bottom: 0.15rem;
     }
 
     .payment-page-button {
