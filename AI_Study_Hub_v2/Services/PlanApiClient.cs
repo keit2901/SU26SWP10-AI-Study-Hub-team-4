@@ -81,11 +81,13 @@ public sealed class PlanApiClient
     }
 
     /// <summary>Purchases (or upgrades to) a plan for the calling user.</summary>
+    /// <param name="returnUrl">App-relative path to return the browser to after the payment completes (e.g. "/pricing").</param>
     public async Task<PaymentUrlResponse> PurchasePlanAsync(
         string accessToken,
         string planKey,
         string billingCycle = "monthly",
         string? idempotencyKey = null,
+        string? returnUrl = null,
         CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
@@ -94,7 +96,7 @@ public sealed class PlanApiClient
 
         using var req = new HttpRequestMessage(HttpMethod.Post, "api/plans/purchase");
         req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
-        req.Content = JsonContent.Create(new { planKey, billingCycle, idempotencyKey });
+        req.Content = JsonContent.Create(new { planKey, billingCycle, idempotencyKey, returnUrl });
 
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)

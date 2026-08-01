@@ -2,6 +2,7 @@
 @inject PlanApiClient PlanApi
 @inject ISnackbar Snackbar
 @inject IJSRuntime JS
+@inject NavigationManager Navigation
 
 <MudDialog>
     <DialogContent>
@@ -238,7 +239,8 @@
             // Paid plan: get VNPay redirect URL
             var result = await PlanApi.PurchasePlanAsync(
                 accessToken, Plan.PlanKey, _billingCycle,
-                idempotencyKey: Guid.NewGuid().ToString("N"));
+                idempotencyKey: Guid.NewGuid().ToString("N"),
+                returnUrl: BuildReturnUrl());
 
             // Redirect to VNPay
             await JS.InvokeVoidAsync("eval", $"window.location.href = '{result.PaymentUrl}'");
@@ -278,6 +280,25 @@
     {
         if (priceVnd is null or 0) return "Free";
         return $"{priceVnd.Value:N0}₫";
+    }
+
+    /// <summary>
+    /// The app-relative path the user is currently on, so the payment result page can
+    /// send the browser back here after a successful payment. Payment and login pages
+    /// are excluded to avoid redirect loops.
+    /// </summary>
+    private string? BuildReturnUrl()
+    {
+        var pathAndQuery = new Uri(Navigation.Uri).PathAndQuery;
+        if (string.IsNullOrWhiteSpace(pathAndQuery)
+            || pathAndQuery == "/"
+            || pathAndQuery.StartsWith("/payment/", StringComparison.OrdinalIgnoreCase)
+            || pathAndQuery.StartsWith("/login", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        return pathAndQuery;
     }
 
     private void Close() => MudDialog.Close(DialogResult.Ok(true));

@@ -56,8 +56,8 @@
                 }
                 else if (_view == PaymentResultView.Completed)
                 {
-                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="GoToDashboard" Class="result-button">
-                        Go to dashboard
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="GoBackToOrigin" Class="result-button">
+                        @(_hasReturnUrl ? "Back to previous page" : "Go to dashboard")
                     </MudButton>
                     <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/profile" Class="result-button">
                         View profile
@@ -104,6 +104,9 @@
     private long? _orderCode;
     private string? _loginUrl;
     private string? _providerStatusHint;
+    private string? _returnUrl;
+    private bool _hasReturnUrl;
+    private bool _returnRedirectQueued;
     private bool _cancelHint;
     private bool _checking;
     private bool _interactiveLoadStarted;
@@ -119,12 +122,19 @@
 
         _orderCode = orderCode;
         _loginUrl = BuildLoginUrl(orderCode);
+        _returnUrl = ReadReturnUrl();
         ReadDisplayHints();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (!firstRender || _interactiveLoadStarted || _orderCode is null)
+        if (!firstRender)
+        {
+            await TryRedirectToOriginAfterCompletionAsync();
+            return;
+        }
+
+        if (_interactiveLoadStarted || _orderCode is null)
         {
             return;
         }
@@ -300,6 +310,63 @@
             .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?
             .Trim()
             .ToUpperInvariant();
+    }
+
+    /// <summary>
+    /// Reads the app-relative "returnUrl" hint carried through the PayOS callback, so a
+    /// successful payment can send the browser back to the page the user started from.
+    /// Only safe relative paths are accepted (see <see cref="IsSafeReturnUrl"/>).
+    /// </summary>
+    private string? ReadReturnUrl()
+    {
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(Navigation.Uri).Query);
+        var value = query.GetValues("returnUrl")?
+            .FirstOrDefault(raw => !string.IsNullOrWhiteSpace(raw))?
+            .Trim();
+        _hasReturnUrl = IsSafeReturnUrl(value);
+        return _hasReturnUrl ? value : null;
+    }
+
+    private static bool IsSafeReturnUrl(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl) || returnUrl.Length > 500) return false;
+        if (returnUrl[0] != '/') return false;
+        if (returnUrl.StartsWith("//", StringComparison.Ordinal)
+            || returnUrl.StartsWith("/\\", StringComparison.Ordinal)
+            || returnUrl.Contains('\\') || returnUrl.Contains(':'))
+            return false;
+        return true;
+    }
+
+    /// <summary>
+    /// After a confirmed payment, briefly show the confirmation then send the browser
+    /// back to the page the checkout started from. Runs at most once per page load.
+    /// </summary>
+    private async Task TryRedirectToOriginAfterCompletionAsync()
+    {
+        if (_view != PaymentResultView.Completed || _returnUrl is null || _returnRedirectQueued)
+        {
+            return;
+        }
+
+        _returnRedirectQueued = true;
+        await Task.Delay(1200);
+        if (!_disposed)
+        {
+            Navigation.NavigateTo(_returnUrl, forceLoad: true);
+        }
+    }
+
+    private void GoBackToOrigin()
+    {
+        if (_returnUrl is not null)
+        {
+            Navigation.NavigateTo(_returnUrl, forceLoad: true);
+        }
+        else
+        {
+            GoToDashboard();
+        }
     }
 
     private string GetCheckingMessage()
