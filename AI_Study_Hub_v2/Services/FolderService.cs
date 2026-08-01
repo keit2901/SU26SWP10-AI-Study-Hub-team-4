@@ -2,6 +2,8 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
+using Npgsql;
 using System.Data;
 using System.Text.Json;
 
@@ -771,6 +773,12 @@ WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
             };
         }
 
+        IDbContextTransaction? transaction = null;
+        try
+        {
+        transaction = _db.Database.IsRelational()
+            ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, cancellationToken)
+            : await _db.Database.BeginTransactionAsync(cancellationToken);
         var folder = await _db.Folders
             .Include(f => f.Documents)
             .FirstOrDefaultAsync(f => f.Id == folderId && f.UserId == profile.Id, cancellationToken)
@@ -807,6 +815,28 @@ WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
                 "Cannot share this folder because it contains documents that failed to process. Please remove or re-upload the failed documents before sharing.");
         }
 
+        if (folder.ShareStatus == FolderStatus.Rejected)
+        {
+            var pendingEscalations = await _db.DocumentEscalations
+                .Include(escalation => escalation.Items)
+                .Where(escalation => escalation.FolderId == folder.Id && escalation.EscalationStatus == "Pending")
+                .ToListAsync(cancellationToken);
+            foreach (var escalation in pendingEscalations)
+            {
+                escalation.EscalationStatus = "Resolved";
+                escalation.ResolvedAt = now;
+                escalation.ResolvedByUserId = null;
+                escalation.AdminResponse = "Superseded by owner resubmission.";
+                foreach (var item in escalation.Items.Where(item => item.ResolutionStatus == DocumentEscalationItem.PendingResolutionStatus))
+                {
+                    item.ResolutionStatus = DocumentEscalationItem.SupersededResolutionStatus;
+                    item.ResolvedAt = now;
+                    item.ResolvedByUserId = null;
+                    item.AdminResponse = "Superseded by owner resubmission.";
+                }
+            }
+        }
+
         folder.ShareReviewSource = manualSubmissionSource;
         folder.AiReviewReason = null;
         folder.AiReviewConfidence = null;
@@ -830,13 +860,73 @@ WHERE id = {folderId} AND user_id = {profile.Id}", cancellationToken);
 
         _publicationState.Recompute(folder, folder.Documents, now);
 
-        await _db.SaveChangesAsync(cancellationToken);
-
         _audit.Add(supabaseUserId, "FOLDER_SHARE_REQUESTED", "Folder", folder.Id.ToString(), "Low",
             afterJson: JsonSerializer.Serialize(new { folder.Name, folder.ShareStatus }));
 
+        await _db.SaveChangesAsync(cancellationToken);
+        await transaction.CommitAsync(cancellationToken);
+
         var count = await _db.Documents.CountAsync(d => d.FolderId == folder.Id, cancellationToken);
-        return ToDto(folder, count);
+        var result = ToDto(folder, count);
+        await transaction.DisposeAsync();
+        transaction = null;
+        return result;
+        }
+        catch (Exception exception) when (HasPostgresConcurrencyFailure(exception))
+        {
+            await CleanupTransactionAsync(transaction);
+            transaction = null;
+            throw new DocumentException(409, "folder_resubmit_conflict",
+                "The folder changed while it was being resubmitted. Refresh and try again.");
+        }
+        catch
+        {
+            await CleanupTransactionAsync(transaction);
+            transaction = null;
+            throw;
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
+        }
+    }
+
+    private static bool HasPostgresConcurrencyFailure(Exception exception)
+    {
+        var pending = new Queue<Exception>();
+        var visited = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
+        pending.Enqueue(exception);
+        while (pending.Count > 0 && visited.Count < 32)
+        {
+            var current = pending.Dequeue();
+            if (!visited.Add(current))
+                continue;
+
+            if (current is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected })
+            {
+                return true;
+            }
+
+            if (current.InnerException is not null)
+                pending.Enqueue(current.InnerException);
+            if (current is AggregateException aggregate)
+            {
+                foreach (var innerException in aggregate.InnerExceptions)
+                    pending.Enqueue(innerException);
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task CleanupTransactionAsync(IDbContextTransaction? transaction)
+    {
+        if (transaction is null)
+            return;
+
+        try { await transaction.RollbackAsync(CancellationToken.None); } catch { }
+        try { await transaction.DisposeAsync(); } catch { }
     }
 
     public async Task<FolderDto> AutoCheckFolderShareAsync(

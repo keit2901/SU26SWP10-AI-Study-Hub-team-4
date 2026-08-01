@@ -191,6 +191,59 @@ public class FolderServiceTests
     }
 
     [Test]
+    public async Task RequestShareAsync_RejectedFolderResubmission_SupersedesPendingEscalationAndResetsOnlyNonApprovedDocuments()
+    {
+        using var db = TestDb.CreateInMemoryWithDocuments();
+        var owner = SeedActiveStudent(db);
+        var folder = SeedFolder(db, owner.Id);
+        folder.ShareStatus = FolderStatus.Rejected;
+        SeedReviewDocument(db, owner.Id, folder.Id, DocumentReviewStatus.Approved);
+        SeedReviewDocument(db, owner.Id, folder.Id, DocumentReviewStatus.Escalated);
+        var documents = await db.Documents.Where(document => document.FolderId == folder.Id).ToListAsync();
+        var approved = documents.Single(document => document.ReviewStatus == DocumentReviewStatus.Approved);
+        var escalated = documents.Single(document => document.ReviewStatus == DocumentReviewStatus.Escalated);
+        approved.ModerationGeneration = 5;
+        escalated.ModerationGeneration = 3;
+        escalated.ErrorMessage = "Escalated review";
+        var escalation = new DocumentEscalation
+        {
+            Id = Guid.NewGuid(), FolderId = folder.Id, EscalatedByUserId = owner.Id,
+            Reason = "Needs admin review", EscalationStatus = "Pending", CreatedAt = DateTimeOffset.UtcNow
+        };
+        var item = new DocumentEscalationItem
+        {
+            Id = Guid.NewGuid(), EscalationId = escalation.Id, DocumentId = escalated.Id,
+            DocumentFileName = escalated.FileName, DocumentModerationGeneration = 3,
+            RejectReason = "Needs admin review", ResolutionStatus = DocumentEscalationItem.PendingResolutionStatus
+        };
+        db.AddRange(escalation, item);
+        await db.SaveChangesAsync();
+
+        await BuildSut(db).RequestShareAsync(owner.SupabaseUserId, folder.Id);
+
+        var persistedFolder = await db.Folders.AsNoTracking().SingleAsync(candidate => candidate.Id == folder.Id);
+        persistedFolder.ShareStatus.Should().Be(FolderStatus.PendingShare);
+        var persistedEscalation = await db.DocumentEscalations.AsNoTracking().SingleAsync(candidate => candidate.Id == escalation.Id);
+        persistedEscalation.EscalationStatus.Should().Be("Resolved");
+        persistedEscalation.AdminResponse.Should().Be("Superseded by owner resubmission.");
+        persistedEscalation.ResolvedByUserId.Should().BeNull();
+        persistedEscalation.ResolvedAt.Should().NotBeNull();
+        var persistedItem = await db.DocumentEscalationItems.AsNoTracking().SingleAsync(candidate => candidate.Id == item.Id);
+        persistedItem.ResolutionStatus.Should().Be(DocumentEscalationItem.SupersededResolutionStatus);
+        persistedItem.DocumentFileName.Should().Be(escalated.FileName);
+        persistedItem.DocumentModerationGeneration.Should().Be(3);
+        persistedItem.ResolvedByUserId.Should().BeNull();
+        persistedItem.ResolvedAt.Should().NotBeNull();
+        var persistedDocuments = await db.Documents.AsNoTracking().Where(document => document.FolderId == folder.Id).ToListAsync();
+        persistedDocuments.Single(document => document.Id == approved.Id).ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
+        persistedDocuments.Single(document => document.Id == approved.Id).ModerationGeneration.Should().Be(5);
+        persistedDocuments.Single(document => document.Id == escalated.Id).ReviewStatus.Should().Be(DocumentReviewStatus.None);
+        persistedDocuments.Single(document => document.Id == escalated.Id).ModerationGeneration.Should().Be(4);
+        persistedDocuments.Single(document => document.Id == escalated.Id).ErrorMessage.Should().BeNull();
+        (await db.UserNotifications.CountAsync()).Should().Be(0);
+    }
+
+    [Test]
     public async Task ListAsync_ReturnsOnlyOwnFolders_OrderedByName_WithDocumentCounts()
     {
         using var db = TestDb.CreateInMemoryWithDocuments();

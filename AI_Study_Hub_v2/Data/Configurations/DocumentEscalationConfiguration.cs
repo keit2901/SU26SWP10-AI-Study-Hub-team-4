@@ -39,7 +39,7 @@ public sealed class DocumentEscalationItemConfiguration : IEntityTypeConfigurati
         builder.ToTable("document_escalation_items", table =>
         {
             table.HasCheckConstraint("ck_document_escalation_items_generation_non_negative", "document_moderation_generation >= 0");
-            table.HasCheckConstraint("ck_document_escalation_items_resolution_status", "resolution_status IN ('Pending', 'Approved', 'Rejected')");
+            table.HasCheckConstraint("ck_document_escalation_items_resolution_status", "resolution_status IN ('Pending', 'Approved', 'Rejected', 'Superseded')");
         });
         builder.HasKey(e => e.Id);
         builder.Property(e => e.Id).HasColumnName("id").HasDefaultValueSql("gen_random_uuid()");

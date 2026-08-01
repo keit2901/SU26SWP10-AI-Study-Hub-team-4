@@ -97,6 +97,37 @@ public sealed class EscalationServiceTests
             .Should().ContainSingle().Which.Outcome.Should().Be(UserNotificationOutcome.Mixed);
     }
 
+    [TestCase("Approved", FolderStatus.Approved, UserNotificationOutcome.Approved)]
+    [TestCase("Rejected", FolderStatus.Rejected, UserNotificationOutcome.Rejected)]
+    public async Task ResolveItems_ReactivatesRejectedFolderBeforeRecomputingFinalPublicationState(
+        string decision,
+        FolderStatus expectedFolderStatus,
+        UserNotificationOutcome expectedNotificationOutcome)
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, 3, "Moderator");
+        var admin = SeedUser(db, 1, "Admin");
+        var folder = SeedFolder(db, moderator.Id);
+        var document = SeedDocument(db, moderator.Id, folder.Id, "race.pdf");
+        var sut = CreateSut(db);
+        var pending = await sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
+        folder.ShareStatus = FolderStatus.Rejected;
+        folder.SharedAt = DateTimeOffset.UtcNow.AddDays(-1);
+        await db.SaveChangesAsync();
+
+        await sut.ResolveItemsAsync(pending.Id, Resolve((pending.Items.Single().Id, decision,
+            decision == "Rejected" ? "Not suitable" : null)), admin.Id);
+
+        var persistedFolder = await db.Folders.SingleAsync(candidate => candidate.Id == folder.Id);
+        persistedFolder.ShareStatus.Should().Be(expectedFolderStatus);
+        if (decision == "Approved")
+            persistedFolder.SharedAt.Should().NotBeNull();
+        else
+            persistedFolder.SharedAt.Should().BeNull();
+        (await db.UserNotifications.SingleAsync(notification => notification.Kind == UserNotificationKind.EscalationResolved))
+            .Outcome.Should().Be(expectedNotificationOutcome);
+    }
+
     [Test]
     public async Task ResolveItems_OmittedOrForeignDecision_FailsWithoutPartialMutation()
     {

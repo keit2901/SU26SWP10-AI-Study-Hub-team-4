@@ -295,7 +295,7 @@ public class DashboardService : IDashboardService
         };
 
         _audit.Add(
-            caller.Id,
+            caller.User.Id,
             "DOCUMENT_AI_REVIEWED",
             "Document",
             documentId.ToString(),
@@ -314,13 +314,13 @@ public class DashboardService : IDashboardService
 
     public async Task ApproveDocumentAsync(Guid supabaseUserId, Guid documentId, CancellationToken ct)
     {
-        await EnsureModeratorAsync(supabaseUserId, ct);
-        await ApplyDirectDecisionAsync(documentId, DocumentReviewStatus.Approved, null, ct);
+        var reviewer = await EnsureModeratorAsync(supabaseUserId, ct);
+        await ApplyDirectDecisionAsync(documentId, DocumentReviewStatus.Approved, null, reviewer.RoleLabel, ct);
     }
 
     public async Task RejectDocumentAsync(Guid supabaseUserId, Guid documentId, string? reason, CancellationToken ct)
     {
-        await EnsureModeratorAsync(supabaseUserId, ct);
+        var reviewer = await EnsureModeratorAsync(supabaseUserId, ct);
         var normalizedReason = string.IsNullOrWhiteSpace(reason)
             ? "Rejected by moderator."
             : reason.Trim();
@@ -329,13 +329,14 @@ public class DashboardService : IDashboardService
             throw DashboardModerationException.ReasonTooLong(MaxModerationReasonLength);
         }
 
-        await ApplyDirectDecisionAsync(documentId, DocumentReviewStatus.Rejected, normalizedReason, ct);
+        await ApplyDirectDecisionAsync(documentId, DocumentReviewStatus.Rejected, normalizedReason, reviewer.RoleLabel, ct);
     }
 
     private async Task ApplyDirectDecisionAsync(
         Guid documentId,
         DocumentReviewStatus decision,
         string? reason,
+        string reviewerRoleLabel,
         CancellationToken ct)
     {
         // Resolve the document and folder separately so unknown documents remain 404 and
@@ -365,7 +366,7 @@ public class DashboardService : IDashboardService
         var folder = document.Folder ?? throw DashboardModerationException.NotActionable();
         var folderDocuments = await _context.Documents.Where(item => item.FolderId == folder.Id).ToListAsync(ct);
         _publicationState.Recompute(folder, folderDocuments, now);
-        _notifications.StageDocumentModerationFinal(document, folder, reason, now);
+        _notifications.StageDocumentModerationFinal(document, folder, reviewerRoleLabel, reason, now);
         await _context.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
     }
@@ -481,7 +482,7 @@ public class DashboardService : IDashboardService
         var isActionable = doc.Folder?.ShareStatus is (FolderStatus.PendingShare or FolderStatus.Approved)
             && doc.Status == DocumentStatus.Ready
             && doc.ReviewStatus == DocumentReviewStatus.None;
-        if (!isActionable && !await IsPendingEscalationPreviewAllowedAsync(caller, doc, ct))
+        if (!isActionable && !await IsPendingEscalationPreviewAllowedAsync(caller.User, doc, ct))
             throw DashboardModerationException.NotActionable();
 
         try
@@ -695,7 +696,7 @@ public class DashboardService : IDashboardService
         return cal.GetWeekOfYear(dt, System.Globalization.CalendarWeekRule.FirstFourDayWeek, DayOfWeek.Monday);
     }
 
-    private async Task<User> EnsureModeratorAsync(Guid supabaseUserId, CancellationToken ct)
+    private async Task<AuthorizedReviewer> EnsureModeratorAsync(Guid supabaseUserId, CancellationToken ct)
     {
         var caller = await _context.Users
             .AsNoTracking()
@@ -717,7 +718,7 @@ public class DashboardService : IDashboardService
             throw DashboardModerationException.Forbidden();
         }
 
-        return caller;
+        return new AuthorizedReviewer(caller, roleName!);
     }
 
     private async Task<Document> GetActionableModerationDocumentAsync(Guid documentId, CancellationToken ct)
@@ -735,6 +736,8 @@ public class DashboardService : IDashboardService
 
         return document;
     }
+
+    private sealed record AuthorizedReviewer(User User, string RoleLabel);
 }
 
 public sealed class DashboardModerationException : Exception

@@ -750,7 +750,7 @@ namespace AI_Study_Hub_v2.Migrations
                         {
                             t.HasCheckConstraint("ck_document_escalation_items_generation_non_negative", "document_moderation_generation >= 0");
 
-                            t.HasCheckConstraint("ck_document_escalation_items_resolution_status", "resolution_status IN ('Pending', 'Approved', 'Rejected')");
+                            t.HasCheckConstraint("ck_document_escalation_items_resolution_status", "resolution_status IN ('Pending', 'Approved', 'Rejected', 'Superseded')");
                         });
                 });
 

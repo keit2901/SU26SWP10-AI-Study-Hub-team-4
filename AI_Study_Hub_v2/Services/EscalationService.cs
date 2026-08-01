@@ -4,6 +4,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using AI_Study_Hub_v2.Dtos;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace AI_Study_Hub_v2.Services;
@@ -162,11 +163,12 @@ public sealed class EscalationService : IEscalationService
         var resolver = await ResolveActiveAdminAsync(resolvedByUserId, ct);
         ValidateResolutionRequest(request);
 
-        await using var transaction = _db.Database.IsRelational()
-            ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct)
-            : await _db.Database.BeginTransactionAsync(ct);
+        IDbContextTransaction? transaction = null;
         try
         {
+            transaction = _db.Database.IsRelational()
+                ? await _db.Database.BeginTransactionAsync(IsolationLevel.Serializable, ct)
+                : await _db.Database.BeginTransactionAsync(ct);
             var exists = await _db.DocumentEscalations.AsNoTracking().AnyAsync(escalation => escalation.Id == escalationId, ct);
             if (!exists)
                 throw new AdminException(404, "escalation_not_found", "Escalation not found.");
@@ -242,28 +244,50 @@ public sealed class EscalationService : IEscalationService
             escalation.ResolvedAt = now;
             escalation.AdminResponse = null;
             var folderDocuments = await _db.Documents.Where(document => document.FolderId == escalation.FolderId).ToListAsync(ct);
+            if (escalation.Folder.ShareStatus == FolderStatus.Rejected)
+            {
+                escalation.Folder.ShareStatus = FolderStatus.PendingShare;
+                escalation.Folder.SharedAt = null;
+            }
             _publicationState.Recompute(escalation.Folder, folderDocuments, now);
             _notifications.StageEscalationResolved(escalation, escalation.Folder, approvedCount, rejectedCount, now);
             _audit.Add(resolver.Id, "ESCALATION_ITEMS_RESOLVED", "DocumentEscalation", escalation.Id.ToString(), "Medium",
                 afterJson: JsonSerializer.Serialize(new { ApprovedCount = approvedCount, RejectedCount = rejectedCount }));
             await _db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
-            return await GetByIdAsync(escalationId, ct);
+            var result = await GetByIdAsync(escalationId, ct);
+            await transaction.DisposeAsync();
+            transaction = null;
+            return result;
         }
         catch (AdminException)
         {
-            await transaction.RollbackAsync(ct);
+            await CleanupTransactionAsync(transaction);
+            transaction = null;
             throw;
         }
-        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.SerializationFailure })
+        catch (DbUpdateException exception) when (exception.InnerException is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation })
         {
-            await transaction.RollbackAsync(ct);
+            await CleanupTransactionAsync(transaction);
+            transaction = null;
             throw new AdminException(409, "escalation_already_resolved", "The escalation changed while it was being resolved.");
         }
-        catch (PostgresException exception) when (exception.SqlState is PostgresErrorCodes.UniqueViolation or PostgresErrorCodes.SerializationFailure)
+        catch (PostgresException exception) when (exception.SqlState == PostgresErrorCodes.UniqueViolation)
         {
-            await transaction.RollbackAsync(ct);
+            await CleanupTransactionAsync(transaction);
+            transaction = null;
             throw new AdminException(409, "escalation_already_resolved", "The escalation changed while it was being resolved.");
+        }
+        catch (Exception exception) when (HasPostgresConcurrencyFailure(exception))
+        {
+            await CleanupTransactionAsync(transaction);
+            transaction = null;
+            throw new AdminException(409, "escalation_already_resolved", "The escalation changed while it was being resolved.");
+        }
+        finally
+        {
+            if (transaction is not null)
+                await transaction.DisposeAsync();
         }
     }
 
@@ -337,6 +361,43 @@ public sealed class EscalationService : IEscalationService
     {
         var normalized = value?.Trim();
         return string.IsNullOrWhiteSpace(normalized) ? null : normalized.Length <= 2000 ? normalized : normalized[..2000];
+    }
+
+    private static bool HasPostgresConcurrencyFailure(Exception exception)
+    {
+        var pending = new Queue<Exception>();
+        var visited = new HashSet<Exception>(ReferenceEqualityComparer.Instance);
+        pending.Enqueue(exception);
+        while (pending.Count > 0 && visited.Count < 32)
+        {
+            var current = pending.Dequeue();
+            if (!visited.Add(current))
+                continue;
+
+            if (current is PostgresException { SqlState: PostgresErrorCodes.SerializationFailure or PostgresErrorCodes.DeadlockDetected })
+            {
+                return true;
+            }
+
+            if (current.InnerException is not null)
+                pending.Enqueue(current.InnerException);
+            if (current is AggregateException aggregate)
+            {
+                foreach (var innerException in aggregate.InnerExceptions)
+                    pending.Enqueue(innerException);
+            }
+        }
+
+        return false;
+    }
+
+    private static async Task CleanupTransactionAsync(IDbContextTransaction? transaction)
+    {
+        if (transaction is null)
+            return;
+
+        try { await transaction.RollbackAsync(CancellationToken.None); } catch { }
+        try { await transaction.DisposeAsync(); } catch { }
     }
 
     private async Task<DocumentEscalationDto> GetByIdAsync(Guid escalationId, CancellationToken ct)
