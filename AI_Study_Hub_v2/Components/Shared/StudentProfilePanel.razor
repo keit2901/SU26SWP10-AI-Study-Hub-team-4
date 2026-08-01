@@ -104,7 +104,7 @@ else
                            Size="Size.Small"
                            Class="profile-plan-warning-action"
                            OnClick="GoToPricing">
-                    Gia hạn gói
+                    Renew plan
                 </MudButton>
             </div>
         }
@@ -152,7 +152,7 @@ else
                     @if (_editingPassword)
                     {
                         <MudTextField T="string"
-                                      Label="Old password"
+                                      Label="Current password"
                                       Value="_oldPasswordInput"
                                       ValueChanged="@(value => _oldPasswordInput = value)"
                                       InputType="@(_showPassword ? InputType.Text : InputType.Password)"
@@ -170,7 +170,7 @@ else
                                       Immediate="true"
                                       Class="profile-inline-input mb-2" />
                         <MudTextField T="string"
-                                      Label="Confirm password"
+                                      Label="Confirm new password"
                                       Value="_confirmPasswordInput"
                                       ValueChanged="@(value => _confirmPasswordInput = value)"
                                       InputType="@(_showPassword ? InputType.Text : InputType.Password)"
@@ -408,19 +408,19 @@ else
         var snapshot = Session.CurrentPlanSnapshot;
         if (snapshot?.QuotaBytes is not long quota || quota <= 0)
         {
-            return "vượt quá dung lượng của gói hiện tại.";
+            return "more storage than your current plan allows";
         }
 
-        return $"{FormatBytes(snapshot.UsedBytes)} / {FormatBytes(quota)} của gói {snapshot.PlanDisplayName}";
+        return $"{FormatBytes(snapshot.UsedBytes)} of {FormatBytes(quota)} on the {snapshot.PlanDisplayName} plan";
     }
 
     private string BuildStorageWarningTitle()
         => !string.IsNullOrWhiteSpace(Session.CurrentPlanSnapshot?.ExpiredPaidPlanDisplayName)
-            ? $"Gói {Session.CurrentPlanSnapshot!.ExpiredPaidPlanDisplayName} của bạn đã hết hạn"
-            : "Bạn đã vượt giới hạn dung lượng của gói hiện tại";
+            ? $"Your {Session.CurrentPlanSnapshot!.ExpiredPaidPlanDisplayName} plan has expired"
+            : "You have exceeded your current plan's storage limit";
 
     private string BuildStorageWarningMessage()
-        => $"Bạn đang dùng {BuildStorageUsageText()}. Bạn không thể upload thêm cho đến khi xóa bớt tài liệu hoặc gia hạn gói. Các file cũ vẫn có thể xem, tải xuống và xóa bình thường.";
+        => $"You are using {BuildStorageUsageText()}. You cannot upload more documents until you delete some files or renew your plan. Existing files remain available to view, download, and delete.";
 
     private static string FormatBytes(long bytes)
     {
@@ -511,27 +511,27 @@ else
     {
         if (string.IsNullOrWhiteSpace(_oldPasswordInput))
         {
-            Snackbar.Add("Vui lòng nhập mật khẩu cũ.", Severity.Warning);
+            Snackbar.Add("Please enter your current password.", Severity.Warning);
             return;
         }
         if (_oldPasswordInput != _passwordVal)
         {
-            Snackbar.Add("Mật khẩu cũ không chính xác.", Severity.Error);
+            Snackbar.Add("Your current password is incorrect.", Severity.Error);
             return;
         }
         if (string.IsNullOrWhiteSpace(_newPasswordInput))
         {
-            Snackbar.Add("Vui lòng nhập mật khẩu mới.", Severity.Warning);
+            Snackbar.Add("Please enter a new password.", Severity.Warning);
             return;
         }
         if (_newPasswordInput.Length < 6)
         {
-            Snackbar.Add("Mật khẩu mới phải có ít nhất 6 ký tự.", Severity.Warning);
+            Snackbar.Add("Your new password must be at least 6 characters long.", Severity.Warning);
             return;
         }
         if (_newPasswordInput != _confirmPasswordInput)
         {
-            Snackbar.Add("Xác nhận mật khẩu mới không khớp.", Severity.Error);
+            Snackbar.Add("The new passwords do not match.", Severity.Error);
             return;
         }
 
@@ -547,7 +547,7 @@ else
 
                 _passwordVal = _newPasswordInput;
             },
-            "Thay đổi mật khẩu thành công.",
+            "Password changed successfully.",
             () => _editingPassword = false);
     }
 
