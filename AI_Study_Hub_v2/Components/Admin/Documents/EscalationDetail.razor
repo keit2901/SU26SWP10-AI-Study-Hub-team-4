@@ -1,0 +1,460 @@
+@namespace AI_Study_Hub_v2.Components.Admin.Documents
+@page "/admin/escalations/{Id:guid}"
+@layout AdminLayout
+@using AI_Study_Hub_v2.Components.Admin.Shared
+@using AI_Study_Hub_v2.Components.Shared
+@using AI_Study_Hub_v2.Data.Entities
+@using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Services
+@using MudBlazor
+@inject NavigationManager Navigation
+@inject AuthSessionState Session
+@inject EscalationApiClient EscalationClient
+@inject AdminDashboardApiClient DashboardApi
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Escalation detail — AI Study Hub</PageTitle>
+
+<main class="escalation-detail-page page-enter">
+    <header class="detail-topbar">
+        <div>
+            <button type="button" class="back-link" @onclick="GoBack">
+                <MudIcon Icon="@Icons.Material.Filled.ArrowBack" />
+                Back to escalations
+            </button>
+            <p class="eyebrow">Admin moderation</p>
+            <h1>Escalation detail</h1>
+            <p class="page-intro">Inspect the canonical file history before making any review decision.</p>
+        </div>
+        @if (_escalation is not null)
+        {
+            <div class="topbar-actions">
+                <MudButton Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.Refresh" Disabled="@_isLoading" OnClick="LoadAsync">
+                    Refresh
+                </MudButton>
+                @if (CanReviewEscalation)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Rule" OnClick="OpenReviewDialogAsync">
+                        Review decisions
+                    </MudButton>
+                }
+            </div>
+        }
+    </header>
+
+    @if (_isLoading)
+    {
+        <div class="detail-loading" aria-busy="true" aria-label="Loading escalation detail">
+            <MudSkeleton Height="150px" Animation="Animation.Wave" />
+            <MudSkeleton Height="240px" Animation="Animation.Wave" />
+        </div>
+    }
+    else if (!string.IsNullOrWhiteSpace(_errorMessage))
+    {
+        <section class="state-panel error-state" role="alert">
+            <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" />
+            <div>
+                <h2>Escalation unavailable</h2>
+                <p>@_errorMessage</p>
+            </div>
+            <MudButton Variant="Variant.Outlined" OnClick="LoadAsync">Try again</MudButton>
+        </section>
+    }
+    else if (_escalation is not null)
+    {
+        <section class="provenance-hero" aria-labelledby="folder-heading">
+            <div class="folder-mark"><MudIcon Icon="@Icons.Material.Filled.FolderOpen" /></div>
+            <div class="folder-heading">
+                <p class="eyebrow">Source folder</p>
+                <h2 id="folder-heading">@Fallback(_escalation.FolderName)</h2>
+                <div class="provenance-line">
+                    <span><strong>Folder ID</strong> @_escalation.FolderId</span>
+                    <span><strong>Review source</strong> @FormatSource(_escalation.ShareReviewSource)</span>
+                </div>
+            </div>
+            <span class="status-pill @GetEscalationStatusClass(_escalation)">@GetEscalationStatusLabel(_escalation)</span>
+        </section>
+
+        <div class="detail-grid">
+            <section class="glass-panel escalation-summary" aria-labelledby="summary-heading">
+                <div class="section-heading">
+                    <div>
+                        <p class="eyebrow">Escalation record</p>
+                        <h2 id="summary-heading">Review context</h2>
+                    </div>
+                    <MudIcon Icon="@Icons.Material.Filled.HistoryEdu" />
+                </div>
+                <dl class="summary-list">
+                    <div><dt>Escalated by</dt><dd>@Fallback(_escalation.EscalatedByName)</dd></div>
+                    <div><dt>Created</dt><dd>@FormatDate(_escalation.CreatedAt)</dd></div>
+                    <div><dt>Status</dt><dd>@_escalation.EscalationStatus</dd></div>
+                    <div><dt>Resolved</dt><dd>@(_escalation.ResolvedAt.HasValue ? FormatDate(_escalation.ResolvedAt.Value) : "Not yet resolved")</dd></div>
+                    <div><dt>Resolved by</dt><dd>@Fallback(_escalation.ResolvedByName)</dd></div>
+                </dl>
+                <div class="reason-block">
+                    <span>Moderator reason</span>
+                    <p>@Fallback(_escalation.Reason)</p>
+                </div>
+                @if (!string.IsNullOrWhiteSpace(_escalation.AdminResponse))
+                {
+                    <div class="response-block">
+                        <span>Final admin response</span>
+                        <p>@_escalation.AdminResponse</p>
+                    </div>
+                }
+            </section>
+
+            <aside class="glass-panel review-readiness" aria-labelledby="readiness-heading">
+                <p class="eyebrow">Decision readiness</p>
+                <h2 id="readiness-heading">@(CanReviewEscalation ? $"{_escalation.Items.Count} ready" : "Review blocked")</h2>
+                <p>@BuildReadinessMessage()</p>
+                <div class="readiness-stats">
+                    <div><strong>@_escalation.Items.Count</strong><span>Total files</span></div>
+                    <div><strong>@PendingCount</strong><span>Pending history</span></div>
+                    <div><strong>@StaleCount</strong><span>Stale</span></div>
+                    <div><strong>@DeletedCount</strong><span>Deleted</span></div>
+                </div>
+                @if (CanReviewEscalation)
+                {
+                    <MudButton FullWidth="true" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Rule" OnClick="OpenReviewDialogAsync">
+                        Review decisions
+                    </MudButton>
+                }
+            </aside>
+        </div>
+
+        <section class="files-section" aria-labelledby="files-heading">
+            <div class="files-heading">
+                <div>
+                    <p class="eyebrow">File-level history</p>
+                    <h2 id="files-heading">Escalated files</h2>
+                </div>
+                <span>@_escalation.Items.Count record(s)</span>
+            </div>
+
+            <div class="file-list">
+                @foreach (var item in _escalation.Items)
+                {
+                    var isDeleted = !item.DocumentId.HasValue;
+                    var isStale = IsStale(item);
+                    var isAvailable = IsAvailable(item);
+                    <article class="file-card @(isDeleted ? "is-deleted" : isStale ? "is-stale" : null)">
+                        <div class="file-card-head">
+                            <div class="file-identity">
+                                <div class="file-icon"><MudIcon Icon="@GetFileIcon(item)" /></div>
+                                <div>
+                                    <h3>@item.FileNameSnapshot</h3>
+                                    <p>@FormatMime(item.MimeType) · @FormatFileSize(item.FileSizeBytes)</p>
+                                </div>
+                            </div>
+                            <div class="file-statuses">
+                                <span class="item-status @item.ItemStatus.ToLowerInvariant()">@item.ItemStatus</span>
+                                @if (item.CurrentReviewStatus.HasValue)
+                                {
+                                    <span class="live-status">Live: @FormatEnum(item.CurrentReviewStatus.Value.ToString())</span>
+                                }
+                            </div>
+                        </div>
+
+                        @if (isDeleted)
+                        {
+                            <div class="history-notice deleted-notice" role="status">
+                                <MudIcon Icon="@Icons.Material.Filled.DeleteOutline" />
+                                <div><strong>File deleted</strong><span>The immutable escalation snapshot remains available for audit history. Preview and download are disabled.</span></div>
+                            </div>
+                        }
+                        else if (isStale)
+                        {
+                            <div class="history-notice stale-notice" role="alert">
+                                <MudIcon Icon="@Icons.Material.Filled.SyncProblem" />
+                                <div><strong>Stale escalation generation</strong><span>This record targets generation @item.ModerationGeneration, while the current file is generation @item.CurrentModerationGeneration. Decisions are disabled.</span></div>
+                            </div>
+                        }
+                        else if (!isAvailable)
+                        {
+                            <div class="history-notice unavailable-notice" role="status">
+                                <MudIcon Icon="@Icons.Material.Filled.HourglassDisabled" />
+                                <div><strong>File not currently available</strong><span>The live file is not ready for secure preview or a decision. Its escalation history remains visible.</span></div>
+                            </div>
+                        }
+
+                        <dl class="metadata-grid">
+                            <div><dt>Subject</dt><dd>@Fallback(item.SubjectCode)</dd></div>
+                            <div><dt>Semester</dt><dd>@Fallback(item.Semester)</dd></div>
+                            <div><dt>Uploaded</dt><dd>@(item.UploadedAt.HasValue ? FormatDate(item.UploadedAt.Value) : "Not recorded (legacy)")</dd></div>
+                            <div><dt>Processing</dt><dd>@(item.ProcessingStatus.HasValue ? FormatEnum(item.ProcessingStatus.Value.ToString()) : "Not available")</dd></div>
+                            <div><dt>Escalated generation</dt><dd>@item.ModerationGeneration</dd></div>
+                            <div><dt>Current generation</dt><dd>@(item.CurrentModerationGeneration?.ToString() ?? "File deleted")</dd></div>
+                        </dl>
+
+                        <div class="item-history">
+                            <div>
+                                <span>Moderator note</span>
+                                <p>@Fallback(item.RejectReason)</p>
+                            </div>
+                            @if (!IsPending(item))
+                            {
+                                <div>
+                                    <span>Admin decision history</span>
+                                    <p><strong>@item.ItemStatus</strong> by @Fallback(item.ResolvedByName)@(item.ResolvedAt.HasValue ? $" · {FormatDate(item.ResolvedAt.Value)}" : string.Empty)</p>
+                                    <p>@(string.IsNullOrWhiteSpace(item.AdminResponse) ? "No admin response recorded." : item.AdminResponse)</p>
+                                </div>
+                            }
+                        </div>
+
+                        <div class="file-actions">
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Visibility"
+                                       Disabled="@(!isAvailable || _openingItemId.HasValue)" OnClick="@(() => OpenFileAsync(item, false))"
+                                       aria-label="@($"Preview {item.FileNameSnapshot}")">
+                                @(_openingItemId == item.Id && _openingAction == "preview" ? "Opening…" : "Preview")
+                            </MudButton>
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" StartIcon="@Icons.Material.Filled.Download"
+                                       Disabled="@(!isAvailable || _openingItemId.HasValue)" OnClick="@(() => OpenFileAsync(item, true))"
+                                       aria-label="@($"Download {item.FileNameSnapshot}")">
+                                @(_openingItemId == item.Id && _openingAction == "download" ? "Preparing…" : "Download")
+                            </MudButton>
+                            @if (IsActionable(item))
+                            {
+                                <span class="decision-ready"><MudIcon Icon="@Icons.Material.Filled.CheckCircleOutline" /> Ready for decision</span>
+                            }
+                        </div>
+                    </article>
+                }
+            </div>
+        </section>
+    }
+</main>
+
+@code {
+    [Parameter] public Guid Id { get; set; }
+
+    private DocumentEscalationDto? _escalation;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private Guid? _openingItemId;
+    private string? _openingAction;
+
+    private bool CanReviewEscalation => EscalationDecisionGuard.CanReview(_escalation);
+
+    private int PendingCount => _escalation?.Items.Count(IsPending) ?? 0;
+    private int StaleCount => _escalation?.Items.Count(IsStale) ?? 0;
+    private int DeletedCount => _escalation?.Items.Count(item => !item.DocumentId.HasValue) ?? 0;
+
+    protected override async Task OnParametersSetAsync() => await LoadAsync();
+
+    private async Task LoadAsync()
+    {
+        _isLoading = true;
+        _errorMessage = null;
+        try
+        {
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                Navigation.NavigateTo("/login", replace: true);
+                return;
+            }
+
+            _escalation = await EscalationClient.GetByIdAsync(Session.AccessToken, Id);
+        }
+        catch (DocumentApiException ex)
+        {
+            _errorMessage = MapDetailError(ex);
+        }
+        catch
+        {
+            _errorMessage = "Unable to load this escalation. Check your connection and try again.";
+        }
+        finally
+        {
+            _isLoading = false;
+        }
+    }
+
+    private async Task OpenReviewDialogAsync()
+    {
+        if (_escalation is null || !CanReviewEscalation) return;
+
+        var dialog = await DialogService.ShowAsync<ResolveEscalationDialog>(
+            "Review escalation decisions",
+            new DialogParameters { ["Escalation"] = _escalation },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Large, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is not { Canceled: false, Data: ResolveEscalationItemsRequest request }) return;
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                Navigation.NavigateTo("/login", replace: true);
+                return;
+            }
+
+            await EscalationClient.ResolveItemsAsync(Session.AccessToken, Id, request);
+            Snackbar.Add("The selected file decisions were saved.", Severity.Success);
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapResolutionError(ex), ex.StatusCode == 409 ? Severity.Warning : Severity.Error);
+        }
+        catch
+        {
+            Snackbar.Add("Unable to save these decisions. Please try again.", Severity.Error);
+        }
+        finally
+        {
+            await LoadAsync();
+        }
+    }
+
+    private async Task OpenFileAsync(DocumentEscalationItemDto item, bool download)
+    {
+        if (!IsAvailable(item) || _openingItemId.HasValue || !item.DocumentId.HasValue) return;
+
+        _openingItemId = item.Id;
+        _openingAction = download ? "download" : "preview";
+        try
+        {
+            if (string.IsNullOrWhiteSpace(Session.AccessToken))
+                throw new DocumentApiException(401, "session_expired", "Your session expired.");
+
+            var signedUrl = await DashboardApi.GetModerationDocumentSignedUrlAsync(Session.AccessToken, item.DocumentId.Value);
+            if (string.IsNullOrWhiteSpace(signedUrl))
+                throw new DocumentApiException(404, "file_unavailable", "A temporary file link could not be created.");
+
+            if (!download && IsOfficeDocument(item))
+            {
+                await DialogService.ShowAsync<OfficeViewerDialog>(
+                    $"Preview {item.FileNameSnapshot}",
+                    new DialogParameters
+                    {
+                        ["FileName"] = item.FileNameSnapshot,
+                        ["ViewerUrl"] = BuildOfficeViewerUrl(signedUrl),
+                        ["DownloadUrl"] = signedUrl,
+                        ["IsModerationPreview"] = true
+                    },
+                    new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraLarge, FullWidth = true });
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("open", signedUrl, "_blank", "noopener,noreferrer");
+            }
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapFileError(ex), ex.StatusCode == 409 ? Severity.Warning : Severity.Error);
+            if (ex.StatusCode == 401)
+                Navigation.NavigateTo("/login", replace: true);
+            if (ex.StatusCode is 404 or 409)
+                await LoadAsync();
+        }
+        catch
+        {
+            Snackbar.Add($"Unable to {(download ? "download" : "preview")} this file. Check your connection and try again.", Severity.Error);
+        }
+        finally
+        {
+            _openingItemId = null;
+            _openingAction = null;
+        }
+    }
+
+    private static bool IsPending(DocumentEscalationItemDto item) =>
+        string.Equals(item.ItemStatus, "Pending", StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsStale(DocumentEscalationItemDto item) =>
+        item.DocumentId.HasValue
+        && item.CurrentModerationGeneration.HasValue
+        && item.CurrentModerationGeneration.Value != item.ModerationGeneration;
+
+    private static bool IsAvailable(DocumentEscalationItemDto item) =>
+        EscalationDecisionGuard.IsItemActionable(item);
+
+    private static bool IsActionable(DocumentEscalationItemDto item) =>
+        EscalationDecisionGuard.IsItemActionable(item);
+
+    private string BuildReadinessMessage()
+    {
+        if (CanReviewEscalation)
+            return "Every file is pending, current, and available. All decisions will be submitted together.";
+        if (_escalation?.Items.Count > 0)
+            return "Review is blocked because every file must still be pending, current, and available. Refresh or inspect the warnings below; partial resolution is not allowed.";
+        return "All file decisions in this escalation are part of the permanent review history.";
+    }
+
+    private static string GetEscalationStatusLabel(DocumentEscalationDto escalation)
+    {
+        var pending = escalation.Items.Count(IsPending);
+        return pending > 0 ? $"{pending} pending" : "Resolved";
+    }
+
+    private static string GetEscalationStatusClass(DocumentEscalationDto escalation) =>
+        escalation.Items.Any(IsPending) ? "pending" : "resolved";
+
+    private static string GetFileIcon(DocumentEscalationItemDto item) => IsOfficeDocument(item)
+        ? Icons.Material.Filled.Article
+        : item.MimeType?.Contains("pdf", StringComparison.OrdinalIgnoreCase) == true
+            ? Icons.Material.Filled.PictureAsPdf
+            : Icons.Material.Filled.Description;
+
+    private static bool IsOfficeDocument(DocumentEscalationItemDto item)
+    {
+        var extension = Path.GetExtension(item.FileNameSnapshot);
+        return item.MimeType is
+            "application/msword" or
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or
+            "application/vnd.ms-powerpoint" or
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            || extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".docx", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".ppt", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".pptx", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildOfficeViewerUrl(string signedUrl) =>
+        $"https://view.officeapps.live.com/op/embed.aspx?src={Uri.EscapeDataString(signedUrl)}";
+
+    private static string FormatDate(DateTimeOffset value) => value.ToLocalTime().ToString("MMM d, yyyy · h:mm tt");
+    private static string FormatEnum(string value) => string.Concat(value.Select((character, index) => index > 0 && char.IsUpper(character) ? $" {character}" : character.ToString()));
+    private static string FormatMime(string? mime) => string.IsNullOrWhiteSpace(mime) ? "Unknown file type" : mime;
+    private static string FormatFileSize(long? bytes) => bytes switch
+    {
+        null => "Size not recorded",
+        >= 1_048_576 => $"{bytes.Value / 1_048_576d:F1} MB",
+        >= 1_024 => $"{bytes.Value / 1_024d:F1} KB",
+        _ => $"{bytes.Value} B"
+    };
+
+    private static string Fallback(string? value) => string.IsNullOrWhiteSpace(value) ? "Not recorded (legacy)" : value;
+    private static string FormatSource(string? source) => string.IsNullOrWhiteSpace(source) ? "Not recorded (legacy)" : source.Replace('_', ' ');
+
+    private static string MapDetailError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session expired. Sign in again to continue.",
+        403 => "You do not have permission to view this escalation.",
+        404 => "This escalation could not be found.",
+        409 => "This escalation changed while it was loading. Refresh to see the latest history.",
+        _ => string.IsNullOrWhiteSpace(ex.Message) ? "Unable to load this escalation." : ex.Message
+    };
+
+    private static string MapFileError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session expired. Sign in again to open this file.",
+        403 => "You no longer have permission to open this moderation file.",
+        404 => "This file was deleted or is no longer available.",
+        409 => "This file changed after the page loaded. The latest escalation history has been loaded.",
+        _ => string.IsNullOrWhiteSpace(ex.Message) ? "A temporary file link could not be created." : ex.Message
+    };
+
+    private static string MapResolutionError(DocumentApiException ex) => ex.StatusCode switch
+    {
+        401 => "Your session expired. Sign in again before saving decisions.",
+        403 => "You do not have permission to resolve this escalation.",
+        404 => "This escalation or one of its files no longer exists.",
+        409 => "The escalation changed while the decision dialog was open. Nothing was saved; the latest history is now loaded.",
+        _ => string.IsNullOrWhiteSpace(ex.Message) ? "Unable to save these decisions." : ex.Message
+    };
+
+    private void GoBack() => Navigation.NavigateTo("/admin/escalations");
+}

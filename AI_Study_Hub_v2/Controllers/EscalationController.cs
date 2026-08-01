@@ -85,6 +85,26 @@ public sealed class EscalationController : ControllerBase
         }
     }
 
+    [HttpGet("{id:guid}")]
+    [Authorize(Roles = "Admin")]
+    [ProducesResponseType(typeof(DocumentEscalationDto), StatusCodes.Status200OK)]
+    public async Task<ActionResult<DocumentEscalationDto>> GetById(Guid id, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return Ok(await _escalation.GetByIdAsync(id, cancellationToken));
+        }
+        catch (AdminException ex)
+        {
+            return StatusCode(ex.StatusCode, new ApiErrorResponse { Code = ex.Code, Message = ex.Message });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to get escalation {EscalationId}", id);
+            return StatusCode(500, new ApiErrorResponse { Code = "unexpected_error", Message = "An unexpected error occurred." });
+        }
+    }
+
     [HttpGet("my")]
     [Authorize(Roles = "Admin,Moderator")]
     [ProducesResponseType(typeof(IReadOnlyList<DocumentEscalationDto>), StatusCodes.Status200OK)]

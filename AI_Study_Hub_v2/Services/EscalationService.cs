@@ -15,6 +15,7 @@ public interface IEscalationService
     Task<IReadOnlyList<DocumentEscalationDto>> GetPendingAsync(CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetAllAsync(CancellationToken ct = default);
     Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(Guid userId, CancellationToken ct = default);
+    Task<DocumentEscalationDto> GetByIdAsync(Guid escalationId, CancellationToken ct = default);
     Task<DocumentEscalationDto> ResolveItemsAsync(Guid escalationId, ResolveEscalationItemsRequest request, Guid resolvedByUserId, CancellationToken ct = default);
 }
 
@@ -205,7 +206,7 @@ public sealed class EscalationService : IEscalationService
             var documents = await _db.Documents.Where(document => documentIds.Contains(document.Id)).OrderBy(document => document.Id).ToListAsync(ct);
             if (items.Any(item => !item.DocumentId.HasValue)
                 || documents.Count != documentIds.Count
-                || documents.Any(document => document.FolderId != escalation.FolderId))
+                || documents.Any(document => document.FolderId != escalation.FolderId || document.UserId != escalation.Folder.UserId))
                 throw new AdminException(409, "escalation_items_changed", "Escalation documents no longer match the folder.");
 
             var documentsById = documents.ToDictionary(document => document.Id);
@@ -218,8 +219,6 @@ public sealed class EscalationService : IEscalationService
                     throw new AdminException(409, "escalation_item_stale", "An escalation item changed after it was submitted.");
             }
 
-            var approvedCount = 0;
-            var rejectedCount = 0;
             foreach (var item in items)
             {
                 var decision = requested[item.Id];
@@ -236,7 +235,6 @@ public sealed class EscalationService : IEscalationService
                 item.AdminResponse = response;
                 item.ResolvedByUserId = resolver.Id;
                 item.ResolvedAt = now;
-                if (status == "Approved") approvedCount++; else rejectedCount++;
             }
 
             escalation.EscalationStatus = "Resolved";
@@ -250,9 +248,14 @@ public sealed class EscalationService : IEscalationService
                 escalation.Folder.SharedAt = null;
             }
             _publicationState.Recompute(escalation.Folder, folderDocuments, now);
-            _notifications.StageEscalationResolved(escalation, escalation.Folder, approvedCount, rejectedCount, now);
+            foreach (var item in items)
+            {
+                var document = documentsById[item.DocumentId!.Value];
+                _notifications.StageDocumentModerationFinal(document, escalation.Folder, Role.AdminRoleName,
+                    item.ResolutionStatus == "Rejected" ? item.AdminResponse : null, now);
+            }
             _audit.Add(resolver.Id, "ESCALATION_ITEMS_RESOLVED", "DocumentEscalation", escalation.Id.ToString(), "Medium",
-                afterJson: JsonSerializer.Serialize(new { ApprovedCount = approvedCount, RejectedCount = rejectedCount }));
+                afterJson: JsonSerializer.Serialize(new { ApprovedCount = items.Count(item => item.ResolutionStatus == "Approved"), RejectedCount = items.Count(item => item.ResolutionStatus == "Rejected") }));
             await _db.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
             var result = await GetByIdAsync(escalationId, ct);
@@ -400,19 +403,36 @@ public sealed class EscalationService : IEscalationService
         try { await transaction.DisposeAsync(); } catch { }
     }
 
-    private async Task<DocumentEscalationDto> GetByIdAsync(Guid escalationId, CancellationToken ct)
+    public async Task<DocumentEscalationDto> GetByIdAsync(Guid escalationId, CancellationToken ct = default)
     {
         var escalation = await _db.DocumentEscalations
+            .Include(item => item.Folder)
             .Include(item => item.EscalatedByUser)
             .Include(item => item.ResolvedByUser)
             .Include(item => item.Items).ThenInclude(item => item.ResolvedByUser)
+            .Include(item => item.Items).ThenInclude(item => item.Document)
             .AsNoTracking()
-            .FirstAsync(item => item.Id == escalationId, ct);
+            .FirstOrDefaultAsync(item => item.Id == escalationId, ct)
+            ?? throw new AdminException(404, "escalation_not_found", "Escalation not found.");
         return new DocumentEscalationDto(escalation.Id, escalation.FolderId, escalation.EscalatedByUser.FullName,
             escalation.Reason, escalation.EscalationStatus, escalation.AdminResponse, escalation.ResolvedByUser?.FullName,
             escalation.CreatedAt, escalation.ResolvedAt,
             escalation.Items.OrderBy(item => item.Id).Select(item => new DocumentEscalationItemDto(item.Id, item.DocumentId,
                 item.DocumentFileName, item.DocumentModerationGeneration, item.RejectReason, item.ResolutionStatus,
-                item.AdminResponse, item.ResolvedByUser?.FullName, item.ResolvedAt)).ToList());
+                item.AdminResponse, item.ResolvedByUser?.FullName, item.ResolvedAt)
+            {
+                MimeType = item.Document?.MimeType,
+                FileSizeBytes = item.Document?.FileSizeBytes,
+                SubjectCode = item.Document?.SubjectCode,
+                Semester = item.Document?.Semester,
+                UploadedAt = item.Document?.CreatedAt,
+                ProcessingStatus = item.Document?.Status,
+                CurrentReviewStatus = item.Document?.ReviewStatus,
+                CurrentModerationGeneration = item.Document?.ModerationGeneration
+            }).ToList())
+        {
+            FolderName = escalation.Folder.Name,
+            ShareReviewSource = escalation.Folder.ShareReviewSource
+        };
     }
 }

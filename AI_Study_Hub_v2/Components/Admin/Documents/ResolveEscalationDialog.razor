@@ -1,131 +1,136 @@
 @namespace AI_Study_Hub_v2.Components.Admin.Documents
 @using AI_Study_Hub_v2.Dtos
-@using AI_Study_Hub_v2.Services
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
-@inject AdminDashboardApiClient DashboardApi
-@inject AuthSessionState Session
-@inject NavigationManager Navigation
-@inject IJSRuntime JS
-@inject ISnackbar Snackbar
 
 <MudDialog>
     <TitleContent>
-        <div class="d-flex align-center" style="gap: .75rem;">
-            <MudIcon Icon="@Icons.Material.Filled.Rule" Color="Color.Primary" Style="font-size: 24px;" />
+        <div class="resolve-title">
+            <div class="resolve-icon"><MudIcon Icon="@Icons.Material.Filled.Rule" /></div>
             <div>
-                <div style="font-size: 18px; font-weight: 800; color: #191c1e;">@(ReadOnly ? "Escalation history" : "Resolve escalated files")</div>
-                <div style="font-size: 12px; color: #767586; font-weight: 500;">@Escalation.EscalatedByName · @PendingItems.Count pending of @Escalation.Items.Count</div>
+                <span class="resolve-eyebrow">Decision step</span>
+                <h2>Review escalated files</h2>
+                <p>@Fallback(Escalation.FolderName) · @FormatSource(Escalation.ShareReviewSource)</p>
             </div>
         </div>
     </TitleContent>
     <DialogContent>
-        <MudStack Spacing="3">
-            <div style="background: #f8fafc; border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px;">
-                <div style="font-size: 11px; color: #767586; font-weight: 800; letter-spacing: .06em;">MODERATOR REASON</div>
-                <div style="font-size: 13px; color: #191c1e; margin-top: .35rem; white-space: pre-wrap;">@Escalation.Reason</div>
+        <div class="resolve-dialog-content">
+            <div class="folder-provenance">
+                <MudIcon Icon="@Icons.Material.Filled.FolderOpen" />
+                <div>
+                    <strong>@Fallback(Escalation.FolderName)</strong>
+                    <span>Folder @Escalation.FolderId</span>
+                </div>
+                <span class="source-badge">@FormatSource(Escalation.ShareReviewSource)</span>
             </div>
 
-            @if (!string.IsNullOrWhiteSpace(_previewError))
+            @if (!CanReviewEscalation)
             {
-                <MudAlert Severity="Severity.Error" Variant="Variant.Outlined" Dense="true">@_previewError</MudAlert>
+                <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
+                    Review is blocked because every file must still be pending, current, and available. Close this dialog and refresh the detail page; partial resolution is not allowed.
+                </MudAlert>
             }
+            else
+            {
+                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Dense="true">
+                    This second step contains decisions only. Preview or download files from the detail page before continuing.
+                </MudAlert>
 
-            <div class="d-flex flex-column" style="gap: .75rem; max-height: min(60vh, 560px); overflow-y: auto; padding-right: .2rem;">
-                @foreach (var item in Escalation.Items)
-                {
-                    var isPending = IsPending(item);
-                    var decision = GetDecision(item.Id);
-                    <section style="border: 1px solid #e0e3e5; border-radius: 10px; padding: 12px; background: #fff;" aria-label="Resolution for @item.FileNameSnapshot">
-                        <div class="d-flex justify-space-between align-start" style="gap: 1rem; flex-wrap: wrap;">
-                            <div style="min-width: 0; flex: 1;">
-                                <div style="font-size: 13px; font-weight: 800; color: #191c1e; overflow-wrap: anywhere;">@item.FileNameSnapshot</div>
-                                <div style="font-size: 11px; color: #767586; margin-top: .2rem;">Generation @item.ModerationGeneration · @item.RejectReason</div>
-                                @if (!item.DocumentId.HasValue)
-                                {
-                                    <div style="font-size: 11px; color: #b45309; margin-top: .2rem;">Original file no longer exists; this snapshot remains auditable.</div>
-                                }
+                <div class="decision-list">
+                    @foreach (var item in Escalation.Items)
+                    {
+                        var decision = GetDecision(item.Id);
+                        <section class="decision-card" aria-label="Decision for @item.FileNameSnapshot">
+                            <div class="decision-card-heading">
+                                <div>
+                                    <h3>@item.FileNameSnapshot</h3>
+                                    <p>@FormatMetadata(item)</p>
+                                </div>
+                                <span>Generation @item.ModerationGeneration</span>
                             </div>
-                            <div class="d-flex align-center" style="gap: .5rem; flex-wrap: wrap;">
-                                @if (isPending && !ReadOnly)
-                                {
-                                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
-                                               StartIcon="@Icons.Material.Filled.OpenInNew"
-                                               Disabled="@(!item.DocumentId.HasValue || _previewingItemId.HasValue)"
-                                               OnClick="@(() => PreviewAsync(item))"
-                                               aria-label="@($"Preview {item.FileNameSnapshot} before deciding")">
-                                        @(_previewingItemId == item.Id ? "Opening…" : "Preview")
-                                    </MudButton>
-                                }
-                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="@GetStatusColor(item.ItemStatus)">@item.ItemStatus</MudChip>
+                            <div class="moderator-note">
+                                <span>Moderator note</span>
+                                <p>@Fallback(item.RejectReason)</p>
                             </div>
-                        </div>
-
-                        @if (isPending && !ReadOnly)
-                        {
-                            <div style="display: grid; grid-template-columns: minmax(10rem, .65fr) minmax(14rem, 1.35fr); gap: .75rem; margin-top: .85rem;">
+                            <div class="decision-fields">
                                 <MudSelect T="string" Value="@decision.Status" ValueChanged="@(status => SetStatus(item.Id, status))"
                                            Label="Decision" Variant="Variant.Outlined" Dense="true" Required="true">
                                     <MudSelectItem Value="@("Approved")">Approve file</MudSelectItem>
                                     <MudSelectItem Value="@("Rejected")">Reject file</MudSelectItem>
                                 </MudSelect>
                                 <MudTextField T="string" Value="@decision.Response" ValueChanged="@(response => SetResponse(item.Id, response))"
-                                              Label="Admin response" Variant="Variant.Outlined" Dense="true" Lines="2"
+                                              Label="Admin response" Variant="Variant.Outlined" Lines="2"
+                                              HelperText="Required when rejecting; optional context when approving."
                                               Required="@(decision.Status == "Rejected")"
                                               Error="@(decision.Status == "Rejected" && string.IsNullOrWhiteSpace(decision.Response))"
-                                              ErrorText="A rejection response is required." />
+                                              ErrorText="Explain why this file is rejected." />
                             </div>
-                        }
-                        else if (!isPending)
-                        {
-                            <div style="margin-top: .75rem; padding-top: .75rem; border-top: 1px solid #eef0f2; font-size: 12px; color: #575e72;">
-                                <strong>@item.ResolvedByName</strong>
-                                @if (item.ResolvedAt.HasValue)
-                                {
-                                    <span> · @item.ResolvedAt.Value.LocalDateTime.ToString("MMM dd, yyyy HH:mm")</span>
-                                }
-                                <div style="margin-top: .25rem; white-space: pre-wrap;">@(string.IsNullOrWhiteSpace(item.AdminResponse) ? "No admin response recorded." : item.AdminResponse)</div>
-                            </div>
-                        }
-                    </section>
-                }
-            </div>
+                        </section>
+                    }
+                </div>
 
-            @if (!ReadOnly && PendingItems.Count > 0)
-            {
-                <MudAlert Severity="Severity.Info" Variant="Variant.Outlined">
-                    Every pending file needs an explicit decision. All decisions are submitted atomically.
-                </MudAlert>
+                <div class="atomic-note">
+                    <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" />
+                    <span>All @Escalation.Items.Count decision(s) are submitted together. If the live state changes, the request is rejected and the detail page reloads.</span>
+                </div>
             }
-        </MudStack>
+        </div>
     </DialogContent>
     <DialogActions>
-        <MudButton Variant="Variant.Text" OnClick="Cancel">@(ReadOnly ? "Close" : "Cancel")</MudButton>
-        @if (!ReadOnly && PendingItems.Count > 0)
+        <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
+        @if (CanReviewEscalation)
         {
-            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSubmit || _submitting)" OnClick="Submit">
-                <MudIcon Icon="@Icons.Material.Filled.DoneAll" Class="me-1" Style="font-size: 18px;" />
-                Resolve all @PendingItems.Count
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@(!CanSubmit)" OnClick="Submit"
+                       StartIcon="@Icons.Material.Filled.DoneAll">
+                Submit @Escalation.Items.Count decision(s)
             </MudButton>
         }
     </DialogActions>
 </MudDialog>
 
+<style>
+    .resolve-title { display: flex; align-items: center; gap: .75rem; font-family: 'Hanken Grotesk', sans-serif; }
+    .resolve-icon { width: 2.5rem; height: 2.5rem; display: grid; place-items: center; border-radius: 11px; color: #fff; background: linear-gradient(145deg, #5e5ce6, #7c70f6 65%, #17a8c3); box-shadow: 0 10px 24px rgba(94, 92, 230, .22); }
+    .resolve-eyebrow { color: #6258bd; font-size: .65rem; font-weight: 850; letter-spacing: .1em; text-transform: uppercase; }
+    .resolve-title h2 { margin: .05rem 0 0; color: #1d1934; font-size: 1.08rem; font-weight: 850; }
+    .resolve-title p { margin: .12rem 0 0; color: #756e88; font-size: .72rem; }
+    .resolve-dialog-content { display: grid; gap: .8rem; font-family: 'Hanken Grotesk', sans-serif; }
+    .folder-provenance { display: flex; align-items: center; gap: .65rem; padding: .75rem .8rem; border: 1px solid rgba(94, 92, 230, .13); border-radius: 11px; background: rgba(94, 92, 230, .045); }
+    .folder-provenance > .mud-icon-root { color: #5e5ce6; }
+    .folder-provenance div { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+    .folder-provenance strong { color: #241f3d; font-size: .82rem; overflow-wrap: anywhere; }
+    .folder-provenance div span { color: #756e88; font-size: .67rem; overflow-wrap: anywhere; }
+    .source-badge { padding: .28rem .48rem; border-radius: 999px; background: #ece9ff; color: #5148aa; font-size: .63rem; font-weight: 800; text-transform: uppercase; }
+    .decision-list { display: grid; gap: .7rem; max-height: min(54vh, 520px); padding-right: .15rem; overflow-y: auto; }
+    .decision-card { padding: .85rem; border: 1px solid #e1deeb; border-radius: 12px; background: #fff; }
+    .decision-card-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; }
+    .decision-card-heading h3 { margin: 0; color: #211c38; font-size: .85rem; overflow-wrap: anywhere; }
+    .decision-card-heading p { margin: .2rem 0 0; color: #756e88; font-size: .68rem; }
+    .decision-card-heading > span { flex: 0 0 auto; padding: .25rem .45rem; border-radius: 999px; color: #5148aa; background: #f0eeff; font-size: .62rem; font-weight: 800; }
+    .moderator-note { margin-top: .65rem; padding: .55rem .65rem; border-left: 2px solid #7568da; border-radius: 0 8px 8px 0; background: rgba(94, 92, 230, .05); }
+    .moderator-note span { color: #756e88; font-size: .61rem; font-weight: 800; letter-spacing: .05em; text-transform: uppercase; }
+    .moderator-note p { margin: .2rem 0 0; color: #4e485f; font-size: .72rem; white-space: pre-wrap; }
+    .decision-fields { display: grid; grid-template-columns: minmax(10rem, .7fr) minmax(14rem, 1.3fr); gap: .7rem; margin-top: .75rem; }
+    .atomic-note { display: flex; align-items: flex-start; gap: .5rem; color: #625b74; font-size: .69rem; line-height: 1.4; }
+    .atomic-note .mud-icon-root { flex: 0 0 auto; color: #168263; font-size: 1rem; }
+    @@media (max-width: 620px) {
+        .folder-provenance, .decision-card-heading { align-items: flex-start; flex-direction: column; }
+        .decision-fields { grid-template-columns: 1fr; }
+        .source-badge { align-self: flex-start; }
+    }
+</style>
+
 @code {
     [CascadingParameter] public IMudDialogInstance MudDialog { get; set; } = default!;
     [Parameter, EditorRequired] public DocumentEscalationDto Escalation { get; set; } = default!;
-    [Parameter] public bool ReadOnly { get; set; }
 
     private readonly Dictionary<Guid, ItemDecision> _decisions = new();
-    private bool _submitting;
-    private Guid? _previewingItemId;
-    private string? _previewError;
 
-    private IReadOnlyList<DocumentEscalationItemDto> PendingItems =>
-        Escalation.Items.Where(IsPending).ToList();
+    private bool CanReviewEscalation => EscalationDecisionGuard.CanReview(Escalation);
 
-    private bool CanSubmit => PendingItems.Count > 0
-        && PendingItems.All(item =>
+    private bool CanSubmit => CanReviewEscalation
+        && Escalation.Items.All(item =>
         {
             var decision = GetDecision(item.Id);
             return decision.Status is "Approved" or "Rejected"
@@ -134,12 +139,11 @@
 
     protected override void OnParametersSet()
     {
-        foreach (var item in PendingItems)
+        if (!CanReviewEscalation) return;
+
+        foreach (var item in Escalation.Items)
             _decisions.TryAdd(item.Id, new ItemDecision());
     }
-
-    private static bool IsPending(DocumentEscalationItemDto item) =>
-        string.Equals(item.ItemStatus, "Pending", StringComparison.OrdinalIgnoreCase);
 
     private ItemDecision GetDecision(Guid itemId) =>
         _decisions.TryGetValue(itemId, out var decision) ? decision : new ItemDecision();
@@ -156,62 +160,13 @@
         _decisions[itemId] = current with { Response = response };
     }
 
-    private void Cancel() => MudDialog.Cancel();
-
-    private async Task PreviewAsync(DocumentEscalationItemDto item)
-    {
-        if (!item.DocumentId.HasValue || _previewingItemId.HasValue) return;
-        _previewingItemId = item.Id;
-        _previewError = null;
-        try
-        {
-            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
-                throw new DocumentApiException(401, "session_expired", "Your session has expired.");
-
-            var url = await DashboardApi.GetModerationDocumentSignedUrlAsync(Session.AccessToken, item.DocumentId.Value);
-            if (string.IsNullOrWhiteSpace(url))
-                throw new DocumentApiException(404, "document_preview_unavailable", "A preview link could not be created.");
-
-            await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
-        }
-        catch (DocumentApiException ex)
-        {
-            _previewError = MapPreviewError(ex);
-            Snackbar.Add(_previewError, Severity.Error);
-            if (ex.StatusCode == 401)
-            {
-                MudDialog.Cancel();
-                Navigation.NavigateTo("/login", replace: true);
-            }
-            else if (ex.StatusCode == 403)
-            {
-                MudDialog.Cancel();
-                Navigation.NavigateTo("/admin/escalations", forceLoad: true);
-            }
-            else if (ex.StatusCode is 404 or 409)
-            {
-                MudDialog.Cancel();
-                Navigation.NavigateTo(Navigation.Uri, forceLoad: true);
-            }
-        }
-        catch
-        {
-            _previewError = "Unable to preview this file. Please try again.";
-            Snackbar.Add(_previewError, Severity.Error);
-        }
-        finally
-        {
-            _previewingItemId = null;
-        }
-    }
-
     private void Submit()
     {
         if (!CanSubmit) return;
 
-        var request = new ResolveEscalationItemsRequest
+        MudDialog.Close(DialogResult.Ok(new ResolveEscalationItemsRequest
         {
-            Items = PendingItems.Select(item =>
+            Items = Escalation.Items.Select(item =>
             {
                 var decision = GetDecision(item.Id);
                 return new ResolveEscalationItemRequest
@@ -221,26 +176,24 @@
                     AdminResponse = string.IsNullOrWhiteSpace(decision.Response) ? null : decision.Response.Trim()
                 };
             }).ToList()
-        };
-
-        MudDialog.Close(DialogResult.Ok(request));
+        }));
     }
 
-    private static Color GetStatusColor(string status) => status switch
+    private void Cancel() => MudDialog.Cancel();
+
+    private static string FormatMetadata(DocumentEscalationItemDto item) =>
+        $"{Fallback(item.SubjectCode)} · {Fallback(item.Semester)} · {FormatFileSize(item.FileSizeBytes)}";
+
+    private static string FormatFileSize(long? bytes) => bytes switch
     {
-        "Approved" => Color.Success,
-        "Rejected" => Color.Error,
-        _ => Color.Warning
+        null => "Size not recorded",
+        >= 1_048_576 => $"{bytes.Value / 1_048_576d:F1} MB",
+        >= 1_024 => $"{bytes.Value / 1_024d:F1} KB",
+        _ => $"{bytes.Value} B"
     };
 
-    private static string MapPreviewError(DocumentApiException ex) => ex.StatusCode switch
-    {
-        401 => "Your session expired. Sign in again to continue.",
-        403 => "You no longer have permission to preview this escalation file.",
-        404 => "This file was deleted or is no longer available. The escalation page will reload.",
-        409 => "This file changed after the escalation was loaded. The latest escalation state will reload.",
-        _ => string.IsNullOrWhiteSpace(ex.Message) ? "Unable to preview this file." : ex.Message
-    };
+    private static string Fallback(string? value) => string.IsNullOrWhiteSpace(value) ? "Not recorded (legacy)" : value;
+    private static string FormatSource(string? source) => string.IsNullOrWhiteSpace(source) ? "Not recorded (legacy)" : source.Replace('_', ' ');
 
     private sealed record ItemDecision(string Status = "", string? Response = null);
 }

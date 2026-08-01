@@ -344,17 +344,20 @@ public class DashboardService : IDashboardService
         // uses scalar document columns only; navigation predicates are not translatable by EF.
         var now = DateTimeOffset.UtcNow;
         await using var transaction = await _context.Database.BeginTransactionAsync(ct);
-        await GetActionableModerationDocumentAsync(documentId, ct);
+        var actionableDocument = await GetActionableModerationDocumentAsync(documentId, ct);
+        var authoritativeFolder = actionableDocument.Folder!;
         var affected = _context.Database.IsRelational()
             ? await _context.Documents
                 .Where(document => document.Id == documentId
+                    && document.FolderId == authoritativeFolder.Id
+                    && document.UserId == authoritativeFolder.UserId
                     && document.Status == DocumentStatus.Ready
                     && document.ReviewStatus == DocumentReviewStatus.None)
                 .ExecuteUpdateAsync(setters => setters
                     .SetProperty(document => document.ReviewStatus, decision)
                     .SetProperty(document => document.ErrorMessage, decision == DocumentReviewStatus.Rejected ? reason : null)
                     .SetProperty(document => document.UpdatedAt, now), ct)
-            : ApplyInMemoryDirectDecision(documentId, decision, reason, now);
+            : ApplyInMemoryDirectDecision(documentId, authoritativeFolder, decision, reason, now);
         if (affected != 1)
             throw DashboardModerationException.NotActionable();
 
@@ -373,12 +376,14 @@ public class DashboardService : IDashboardService
 
     private int ApplyInMemoryDirectDecision(
         Guid documentId,
+        Folder authoritativeFolder,
         DocumentReviewStatus decision,
         string? reason,
         DateTimeOffset now)
     {
         var document = _context.Documents.Local.FirstOrDefault(item => item.Id == documentId);
-        if (document is null || document.Status != DocumentStatus.Ready || document.ReviewStatus != DocumentReviewStatus.None)
+        if (document is null || document.FolderId != authoritativeFolder.Id || document.UserId != authoritativeFolder.UserId
+            || document.Status != DocumentStatus.Ready || document.ReviewStatus != DocumentReviewStatus.None)
             return 0;
 
         document.ReviewStatus = decision;
@@ -729,7 +734,8 @@ public class DashboardService : IDashboardService
 
         if (document is null)
             throw DashboardModerationException.NotFound();
-        if (document.Folder?.ShareStatus is not (FolderStatus.PendingShare or FolderStatus.Approved)
+        if (document.Folder is null || document.FolderId != document.Folder.Id || document.UserId != document.Folder.UserId
+            || document.Folder.ShareStatus is not (FolderStatus.PendingShare or FolderStatus.Approved)
             || document.Status != DocumentStatus.Ready
             || document.ReviewStatus != DocumentReviewStatus.None)
             throw DashboardModerationException.NotActionable();

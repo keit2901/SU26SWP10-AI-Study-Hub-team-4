@@ -7,8 +7,6 @@
 @using Microsoft.AspNetCore.Components
 @using MudBlazor
 @inject NavigationManager Navigation
-@inject IDialogService DialogService
-@inject ISnackbar Snackbar
 @inject AuthSessionState Session
 @inject EscalationApiClient EscalationClient
 
@@ -58,7 +56,7 @@
     <div class="filter-row-custom mb-6">
         <div class="search-input-wrapper">
             <MudIcon Icon="@Icons.Material.Filled.Search" Class="search-icon" />
-            <input type="text" placeholder="Search by reason or moderator name..." value="@_searchText" @oninput="OnSearchInputChanged" class="search-input" />
+            <input type="search" aria-label="Search escalations" placeholder="Search folder, provenance, reason or moderator..." value="@_searchText" @oninput="OnSearchInputChanged" class="search-input" />
         </div>
 
         <select class="filter-select" value="@_selectedStatus" @onchange="OnStatusSelectChanged">
@@ -110,6 +108,7 @@
             <table class="moderation-table">
                 <thead>
                     <tr>
+                        <th>FOLDER</th>
                         <th>MODERATOR</th>
                         <th>STATUS</th>
                         <th>REASON</th>
@@ -122,6 +121,12 @@
                     @foreach (var escalation in FilteredEscalations)
                     {
                         <tr>
+                            <td>
+                                <div class="folder-context">
+                                    <strong>@Fallback(escalation.FolderName)</strong>
+                                    <span>@FormatSource(escalation.ShareReviewSource)</span>
+                                </div>
+                            </td>
                             <td>
                                 <div>
                                     <div class="owner-name">@escalation.EscalatedByName</div>
@@ -153,14 +158,14 @@
                                 @if (PendingItemCount(escalation) > 0)
                                 {
                                     <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Small"
-                                               OnClick="@(() => ResolveAsync(escalation))"
+                                               OnClick="@(() => OpenDetail(escalation.Id))"
                                                Style="background-color: #4648d4; border-radius: 6px; font-weight: 700; text-transform: none; font-size: 11px;">
-                                        Resolve
+                                        Review
                                     </MudButton>
                                 }
                                 else
                                 {
-                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => ShowDetailAsync(escalation))"
+                                    <MudButton Variant="Variant.Outlined" Size="Size.Small" OnClick="@(() => OpenDetail(escalation.Id))"
                                                Style="border-radius: 6px; font-weight: 600; text-transform: none; font-size: 11px;">
                                         Detail
                                     </MudButton>
@@ -366,6 +371,30 @@
         color: #191c1e;
     }
 
+    .folder-context {
+        display: flex;
+        min-width: 150px;
+        max-width: 220px;
+        flex-direction: column;
+        gap: 3px;
+    }
+
+    .folder-context strong {
+        overflow: hidden;
+        color: #191c1e;
+        font-size: 13px;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+
+    .folder-context span {
+        color: #625b88;
+        font-size: 10px;
+        font-weight: 750;
+        letter-spacing: .035em;
+        text-transform: uppercase;
+    }
+
     .owner-email {
         font-size: 11px;
         color: #767586;
@@ -443,7 +472,9 @@
         _escalations
             .Where(e => string.IsNullOrWhiteSpace(_searchText)
                 || (e.EscalatedByName?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true)
-                || (e.Reason?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true))
+                || (e.Reason?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true)
+                || (e.FolderName?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true)
+                || (e.ShareReviewSource?.Contains(_searchText, StringComparison.OrdinalIgnoreCase) == true))
             .Where(e => string.IsNullOrWhiteSpace(_selectedStatus)
                 || e.Items.Any(item => item.ItemStatus.Equals(_selectedStatus, StringComparison.OrdinalIgnoreCase)))
             .OrderByDescending(e => PendingItemCount(e) > 0)
@@ -483,44 +514,7 @@
         }
     }
 
-    private async Task ResolveAsync(DocumentEscalationDto escalation)
-    {
-        var parameters = new DialogParameters { ["Escalation"] = escalation };
-
-        var dialog = await DialogService.ShowAsync<ResolveEscalationDialog>("Resolve Escalation", parameters);
-        var result = await dialog.Result;
-        if (result is not { Canceled: false })
-            return;
-
-        var request = result.Data as ResolveEscalationItemsRequest;
-        if (request is null) return;
-
-        try
-        {
-            var token = Session.AccessToken;
-            if (string.IsNullOrEmpty(token)) return;
-
-            await EscalationClient.ResolveItemsAsync(token, escalation.Id, request);
-            Snackbar.Add("Escalated files resolved successfully.", Severity.Success);
-            await LoadAsync();
-        }
-        catch (DocumentApiException ex)
-        {
-            Snackbar.Add(MapApiError(ex), Severity.Error);
-            if (ex.StatusCode == 409) await LoadAsync();
-        }
-        catch (Exception)
-        {
-            Snackbar.Add("Failed to resolve escalation. Please try again.", Severity.Error);
-        }
-    }
-
-    private async Task ShowDetailAsync(DocumentEscalationDto escalation)
-    {
-        var parameters = new DialogParameters { ["Escalation"] = escalation, ["ReadOnly"] = true };
-
-        await DialogService.ShowAsync<ResolveEscalationDialog>($"Escalation Detail — {escalation.EscalationStatus}", parameters);
-    }
+    private void OpenDetail(Guid escalationId) => Navigation.NavigateTo($"/admin/escalations/{escalationId}");
 
     private void OnSearchInputChanged(ChangeEventArgs e)
     {
@@ -548,12 +542,8 @@
     private static int PendingItemCount(DocumentEscalationDto escalation) =>
         escalation.Items.Count(item => string.Equals(item.ItemStatus, "Pending", StringComparison.OrdinalIgnoreCase));
 
-    private static string MapApiError(DocumentApiException ex) => ex.StatusCode switch
-    {
-        401 => "Your session has expired. Please log in again.",
-        403 => "You do not have permission to resolve escalations.",
-        404 => "This escalation no longer exists.",
-        409 => "This escalation changed while you were resolving it. The latest history has been reloaded.",
-        _ => string.IsNullOrWhiteSpace(ex.Message) ? "Unable to resolve escalation." : ex.Message
-    };
+    private static string Fallback(string? value) => string.IsNullOrWhiteSpace(value) ? "Not recorded (legacy)" : value;
+
+    private static string FormatSource(string? source) =>
+        string.IsNullOrWhiteSpace(source) ? "Not recorded (legacy)" : source.Replace('_', ' ');
 }

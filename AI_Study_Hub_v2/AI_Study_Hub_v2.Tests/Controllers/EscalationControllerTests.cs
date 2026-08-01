@@ -79,6 +79,28 @@ public sealed class EscalationControllerTests
         authorize!.Roles.Should().Be("Admin");
     }
 
+    [Test]
+    public async Task GetById_ReturnsAdminDetailContract()
+    {
+        var escalationService = new Mock<IEscalationService>();
+        var db = CreateInMemoryDbWithUser(out _, out var supabaseUserId);
+        var controller = CreateController(escalationService.Object, db, supabaseUserId);
+        var id = Guid.NewGuid();
+        escalationService.Setup(service => service.GetByIdAsync(id, It.IsAny<CancellationToken>())).ReturnsAsync(Dto(Guid.NewGuid(), "Pending"));
+
+        var result = await controller.GetById(id, CancellationToken.None);
+
+        result.Result.Should().BeOfType<OkObjectResult>();
+        escalationService.Verify(service => service.GetByIdAsync(id, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Test]
+    public void GetById_IsAdminOnly()
+    {
+        var method = typeof(EscalationController).GetMethod(nameof(EscalationController.GetById), BindingFlags.Instance | BindingFlags.Public)!;
+        method.GetCustomAttribute<AuthorizeAttribute>()!.Roles.Should().Be("Admin");
+    }
+
     private static CreateEscalationRequest CreateRequest() => new()
     {
         FolderId = Guid.NewGuid(),
@@ -87,7 +109,10 @@ public sealed class EscalationControllerTests
     };
 
     private static DocumentEscalationDto Dto(Guid folderId, string status) => new(
-        Guid.NewGuid(), folderId, "Moderator", "Reason", status, null, null, DateTimeOffset.UtcNow, null, []);
+        Guid.NewGuid(), folderId, "Moderator", "Reason", status, null, null, DateTimeOffset.UtcNow, null, [])
+    {
+        FolderName = "Folder"
+    };
 
     private static EscalationController CreateController(IEscalationService escalation, AppDbContext db, Guid supabaseUserId)
     {

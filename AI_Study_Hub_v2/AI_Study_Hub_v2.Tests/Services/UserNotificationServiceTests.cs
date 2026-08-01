@@ -79,33 +79,53 @@ public sealed class UserNotificationServiceTests
     }
 
     [Test]
-    public async Task Stage_escalation_resolution_keeps_one_aggregate_notification_with_file_or_counts()
+    public async Task Stage_document_final_folder_or_owner_mismatch_fails_closed()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var (owner, folder) = await AddOwnerAndFolderAsync(db);
+        var document = new Document
+        {
+            Id = Guid.NewGuid(), UserId = Guid.NewGuid(), FolderId = folder.Id, FileName = "mismatch.pdf",
+            ReviewStatus = DocumentReviewStatus.Approved
+        };
+
+        var act = () => Task.Run(() => new UserNotificationService(db)
+            .StageDocumentModerationFinal(document, folder, Role.AdminRoleName, null, DateTimeOffset.UtcNow));
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).Which.Message.Should().Contain("folder owner");
+        db.UserNotifications.Local.Should().BeEmpty();
+    }
+
+    [Test]
+    public async Task Get_mine_projects_persisted_legacy_escalation_aggregate_rows()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var (owner, folder) = await AddOwnerAndFolderAsync(db, "Distributed systems");
-        var service = new UserNotificationService(db);
-        var single = new DocumentEscalation { Id = Guid.NewGuid(), FolderId = folder.Id };
-        db.DocumentEscalationItems.Add(new DocumentEscalationItem
+        var createdAt = DateTimeOffset.UtcNow;
+        db.UserNotifications.Add(new UserNotification
         {
-            Id = Guid.NewGuid(), EscalationId = single.Id, DocumentFileName = "single.pdf", RejectReason = "Reason"
+            Id = Guid.NewGuid(),
+            RecipientUserId = owner.Id,
+            FolderId = folder.Id,
+            SubmissionNumber = folder.ShareSubmissionCount,
+            EventKey = "escalation-resolved:legacy-row",
+            Kind = UserNotificationKind.EscalationResolved,
+            Outcome = UserNotificationOutcome.Mixed,
+            FolderName = folder.Name,
+            Title = "Admin reviewed 2 files in “Distributed systems”",
+            Message = "Admin reviewed the escalation in “Distributed systems”: 1 approved and 1 rejected.",
+            CreatedAt = createdAt
         });
+        await db.SaveChangesAsync();
 
-        service.StageEscalationResolved(single, folder, 1, 0, DateTimeOffset.UtcNow);
+        var feed = await new UserNotificationService(db).GetMineAsync(owner.SupabaseUserId, 10, CancellationToken.None);
 
-        var singleNotification = db.UserNotifications.Local.Should().ContainSingle().Subject;
-        singleNotification.Title.Should().Be("Admin approved “single.pdf”");
-
-        db.ChangeTracker.Clear();
-        var multiple = new DocumentEscalation { Id = Guid.NewGuid(), FolderId = folder.Id };
-        db.DocumentEscalationItems.AddRange(
-            new DocumentEscalationItem { Id = Guid.NewGuid(), EscalationId = multiple.Id, DocumentFileName = "one.pdf", RejectReason = "Reason" },
-            new DocumentEscalationItem { Id = Guid.NewGuid(), EscalationId = multiple.Id, DocumentFileName = "two.pdf", RejectReason = "Reason" });
-
-        service.StageEscalationResolved(multiple, folder, 1, 1, DateTimeOffset.UtcNow);
-
-        var multipleNotification = db.UserNotifications.Local.Should().ContainSingle().Subject;
-        multipleNotification.Title.Should().Be("Admin reviewed 2 files in “Distributed systems”");
-        multipleNotification.Message.Should().Contain("1 approved and 1 rejected");
+        var legacy = feed.Items.Should().ContainSingle().Subject;
+        legacy.Kind.Should().Be(UserNotificationKind.EscalationResolved);
+        legacy.Outcome.Should().Be(UserNotificationOutcome.Mixed);
+        legacy.Title.Should().Be("Admin reviewed 2 files in “Distributed systems”");
+        legacy.Message.Should().Contain("1 approved and 1 rejected");
+        legacy.CreatedAt.Should().Be(createdAt);
     }
 
     [Test]

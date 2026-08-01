@@ -44,8 +44,11 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
         string? reason,
         DateTimeOffset occurredAt)
     {
-        if (document.FolderId != folder.Id || document.UserId != folder.UserId ||
-            document.ReviewStatus is not (DocumentReviewStatus.Approved or DocumentReviewStatus.Rejected))
+        if (document.FolderId != folder.Id || document.UserId != folder.UserId)
+        {
+            throw new InvalidOperationException("Document ownership does not match the authoritative folder owner.");
+        }
+        if (document.ReviewStatus is not (DocumentReviewStatus.Approved or DocumentReviewStatus.Rejected))
         {
             return;
         }
@@ -66,39 +69,6 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
             Message = isApproved
                 ? $"{normalizedRoleLabel} approved “{document.FileName}” in “{folder.Name}” for community sharing."
                 : CreateRejectedDocumentMessage(normalizedRoleLabel, document.FileName, folder.Name, reason),
-            CreatedAt = occurredAt
-        });
-    }
-
-    public void StageEscalationResolved(
-        DocumentEscalation escalation,
-        Folder folder,
-        int approvedCount,
-        int rejectedCount,
-        DateTimeOffset occurredAt)
-    {
-        if (escalation.FolderId != folder.Id || approvedCount < 0 || rejectedCount < 0)
-        {
-            return;
-        }
-
-        var outcome = approvedCount > 0 && rejectedCount == 0
-            ? UserNotificationOutcome.Approved
-            : approvedCount == 0 && rejectedCount > 0
-                ? UserNotificationOutcome.Rejected
-                : UserNotificationOutcome.Mixed;
-
-        Stage(new UserNotification
-        {
-            RecipientUserId = folder.UserId,
-            FolderId = folder.Id,
-            SubmissionNumber = folder.ShareSubmissionCount,
-            EventKey = $"escalation-resolved:{escalation.Id}",
-            Kind = UserNotificationKind.EscalationResolved,
-            Outcome = outcome,
-            FolderName = folder.Name,
-            Title = CreateEscalationResolutionTitle(escalation, folder, approvedCount, rejectedCount),
-            Message = CreateEscalationResolutionMessage(folder.Name, approvedCount, rejectedCount),
             CreatedAt = occurredAt
         });
     }
@@ -165,29 +135,6 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
         }
     }
 
-    private string CreateEscalationResolutionTitle(
-        DocumentEscalation escalation,
-        Folder folder,
-        int approvedCount,
-        int rejectedCount)
-    {
-        var count = approvedCount + rejectedCount;
-        if (count == 1)
-        {
-            var item = _db.DocumentEscalationItems.Local.FirstOrDefault(candidate => candidate.EscalationId == escalation.Id)
-                ?? escalation.Items.SingleOrDefault();
-            var verb = approvedCount == 1 ? "approved" : "rejected";
-            return item is null
-                ? $"Admin {verb} a file"
-                : $"Admin {verb} “{item.DocumentFileName}”";
-        }
-
-        return $"Admin reviewed {count} files in “{folder.Name}”";
-    }
-
-    private static string CreateEscalationResolutionMessage(string folderName, int approvedCount, int rejectedCount) =>
-        $"Admin reviewed the escalation in “{folderName}”: {approvedCount} approved and {rejectedCount} rejected.";
-
     private static string CreateRejectedDocumentMessage(string reviewerRoleLabel, string fileName, string folderName, string? reason) =>
         string.IsNullOrWhiteSpace(reason)
             ? $"{reviewerRoleLabel} rejected “{fileName}” in “{folderName}”. Review it and submit again when ready."
@@ -214,7 +161,6 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
             : $"{normalized[..MaxReasonPreviewLength]}…";
     }
 
-    private static string Pluralize(int count) => count == 1 ? string.Empty : "s";
 }
 
 public sealed class UserNotificationException : Exception

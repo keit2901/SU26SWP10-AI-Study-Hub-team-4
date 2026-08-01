@@ -683,7 +683,11 @@
         if (!_notificationPollingCts.IsCancellationRequested && IsCurrentSession(userId))
         {
             CloseNotifications();
-            Nav.NavigateTo($"/share-review/{item.FolderId}");
+            var documentId = GetNotificationDocumentId(item);
+            var target = item.Kind.ToString() == "DocumentModerationFinal" && documentId.HasValue
+                ? $"/share-review/{item.FolderId}?documentId={documentId.Value}"
+                : $"/share-review/{item.FolderId}";
+            Nav.NavigateTo(target);
         }
     }
 
