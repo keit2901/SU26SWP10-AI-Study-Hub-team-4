@@ -30,6 +30,17 @@ public sealed class EscalationApiClient
         throw new InvalidOperationException();
     }
 
+    public async Task<DocumentEscalationDto> GetByIdAsync(string accessToken, Guid id, CancellationToken ct = default)
+    {
+        using var req = CreateAuth(HttpMethod.Get, $"api/admin/escalations/{id}", accessToken);
+        using var resp = await _http.SendAsync(req, ct);
+        if (resp.IsSuccessStatusCode)
+            return await resp.Content.ReadFromJsonAsync<DocumentEscalationDto>(cancellationToken: ct)
+                ?? throw new DocumentApiException(500, "empty_response", "Empty response");
+        await ThrowError(resp, ct);
+        throw new InvalidOperationException();
+    }
+
     public async Task<IReadOnlyList<DocumentEscalationDto>> GetMyAsync(string accessToken, CancellationToken ct = default)
     {
         using var req = CreateAuth(HttpMethod.Get, "api/admin/escalations/my", accessToken);

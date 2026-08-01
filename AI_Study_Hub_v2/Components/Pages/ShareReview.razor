@@ -45,6 +45,10 @@
                     <MudText Typo="Typo.body2" Color="Color.Secondary">
                         Review each ready file independently. AI advice never replaces your decision.
                     </MudText>
+                    <div class="moderator-provenance" aria-label="Folder provenance">
+                        <span><strong>Folder</strong> @FolderId</span>
+                        <span><strong>Review source</strong> @GetModeratorReviewSource()</span>
+                    </div>
                 </div>
                 <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.ArrowBack" OnClick="GoToQueue">
                     Back to queue
@@ -107,6 +111,10 @@
                                     <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.OpenInNew"
                                                Disabled="@(_openingDocumentId.HasValue || IsBusy(document.Id))" OnClick="() => InspectDocumentAsync(document)">
                                         @(_openingDocumentId == document.Id ? "Opening…" : "Inspect file")
+                                    </MudButton>
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.Download"
+                                               Disabled="@(_openingDocumentId.HasValue || IsBusy(document.Id))" OnClick="() => DownloadDocumentAsync(document)">
+                                        @(_openingDocumentId == document.Id ? "Preparing…" : "Download")
                                     </MudButton>
                                 }
                                 <MudButton Variant="Variant.Outlined" Color="Color.Success" Size="Size.Small"
@@ -215,6 +223,13 @@
                     <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@_documents.Count file(s)</MudChip>
                 </div>
 
+                @if (!string.IsNullOrWhiteSpace(_focusedDocumentMessage))
+                {
+                    <MudAlert Severity="@(_focusedDocumentFound ? Severity.Info : Severity.Warning)" Variant="Variant.Outlined" Dense="true" Class="focus-result-message">
+                        @_focusedDocumentMessage
+                    </MudAlert>
+                }
+
                 @if (_documents.Count == 0)
                 {
                     <MudAlert Severity="Severity.Info" Variant="Variant.Outlined" Class="glass-card">
@@ -228,7 +243,12 @@
                         {
                             var reviewLabel = GetOwnerDocumentStatusLabel(document);
                             var reviewFeedback = GetOwnerDocumentFeedback(document);
-                            <article class="glass-card owner-file-card">
+                            var isFocused = DocumentId.HasValue && DocumentId.Value == document.Id;
+                            <article id="@($"review-file-{document.Id}")"
+                                     class="glass-card owner-file-card @(isFocused ? "is-focused" : null)"
+                                     tabindex="@(isFocused ? "-1" : null)"
+                                     autofocus="@isFocused"
+                                     aria-label="@(isFocused ? $"Highlighted notification outcome for {document.FileName}" : null)">
                                 <div class="owner-file-main">
                                     <div class="owner-file-icon"><MudIcon Icon="@Icons.Material.Filled.Description" /></div>
                                     <div class="owner-file-copy">
@@ -274,6 +294,7 @@
 @code {
     [Parameter] public Guid FolderId { get; set; }
     [SupplyParameterFromQuery(Name = "mode")] public string? Mode { get; set; }
+    [SupplyParameterFromQuery(Name = "documentId")] public Guid? DocumentId { get; set; }
 
     private FolderDto? _folder;
     private ShareReviewSummaryDto? _summary;
@@ -286,6 +307,8 @@
     private Guid? _openingDocumentId;
     private string? _error;
     private string? _moderationProgressMessage;
+    private string? _focusedDocumentMessage;
+    private bool _focusedDocumentFound;
 
     private bool _isModeratorMode => string.Equals(Mode, "moderator", StringComparison.OrdinalIgnoreCase);
 
@@ -299,6 +322,8 @@
     {
         _isLoading = true;
         _error = null;
+        _focusedDocumentMessage = null;
+        _focusedDocumentFound = false;
         try
         {
             var token = RequireToken();
@@ -321,6 +346,7 @@
                 _folder = await folderTask;
                 _documents.Clear();
                 _documents.AddRange(await documentsTask);
+                ApplyDocumentFocus();
             }
         }
         catch (DocumentApiException ex)
@@ -392,6 +418,40 @@
         catch
         {
             Snackbar.Add("Unable to preview this file. Check your connection and try again.", Severity.Error);
+        }
+        finally
+        {
+            _openingDocumentId = null;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DownloadDocumentAsync(DocumentDto document)
+    {
+        if (!IsActionable(document, GetDocumentDecision(document.Id)) || _openingDocumentId.HasValue) return;
+
+        _openingDocumentId = document.Id;
+        StateHasChanged();
+        try
+        {
+            var url = await DashboardApi.GetModerationDocumentSignedUrlAsync(RequireToken(), document.Id);
+            if (string.IsNullOrWhiteSpace(url))
+                throw new DocumentApiException(404, "document_download_unavailable", "A download link could not be created.");
+
+            await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapPreviewError(ex, document), Severity.Error);
+            if (ex.StatusCode == 409) await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch
+        {
+            Snackbar.Add("Unable to download this file. Check your connection and try again.", Severity.Error);
         }
         finally
         {
@@ -779,6 +839,25 @@
 
     private static string FormatAiConfidence(double confidence) =>
         $"{Math.Round(Math.Clamp(confidence, 0, 1) * 100):0}%";
+
+    private void ApplyDocumentFocus()
+    {
+        if (_isModeratorMode || !DocumentId.HasValue) return;
+
+        var document = _documents.FirstOrDefault(item => item.Id == DocumentId.Value);
+        _focusedDocumentFound = document is not null;
+        _focusedDocumentMessage = document is null
+            ? "The file linked from this notification is no longer in the folder. The remaining folder review history is still available below."
+            : $"Showing the moderation outcome for '{document.FileName}'.";
+    }
+
+    private string GetModeratorReviewSource()
+    {
+        var source = _documents
+            .Select(document => document.ShareReviewSource)
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
+        return string.IsNullOrWhiteSpace(source) ? "Not recorded (legacy)" : source.Replace('_', ' ');
+    }
 
     private static string FormatFileSize(long bytes) => bytes switch
     {

@@ -185,6 +185,23 @@ public class DashboardModerationStateTests
     }
 
     [Test]
+    public async Task Direct_decision_folder_owner_mismatch_conflicts_without_notification()
+    {
+        await using var db = CreateModerationDb();
+        var moderator = AddUser(db, Role.ModeratorRoleName, true);
+        var otherOwner = AddUser(db, Role.StudentRoleName, true);
+        var document = AddDocument(db, moderator, FolderStatus.PendingShare);
+        document.UserId = otherOwner.Id;
+        await db.SaveChangesAsync();
+        var service = CreateService(db);
+
+        var act = () => service.ApproveDocumentAsync(moderator.SupabaseUserId, document.Id, CancellationToken.None);
+
+        (await act.Should().ThrowAsync<DashboardModerationException>()).Which.StatusCode.Should().Be(StatusCodes.Status409Conflict);
+        (await db.UserNotifications.CountAsync()).Should().Be(0);
+    }
+
+    [Test]
     public async Task Unknown_document_returns_not_found()
     {
         await using var db = CreateModerationDb();

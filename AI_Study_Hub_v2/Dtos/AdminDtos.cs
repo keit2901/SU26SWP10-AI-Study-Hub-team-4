@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using AI_Study_Hub_v2.Data.Entities;
 
 namespace AI_Study_Hub_v2.Dtos;
 
@@ -79,7 +80,11 @@ public sealed record DocumentEscalationDto(
     string? ResolvedByName,
     DateTimeOffset CreatedAt,
     DateTimeOffset? ResolvedAt,
-    IReadOnlyList<DocumentEscalationItemDto> Items);
+    IReadOnlyList<DocumentEscalationItemDto> Items)
+{
+    public required string FolderName { get; init; }
+    public string? ShareReviewSource { get; init; }
+}
 
 public sealed record DocumentEscalationItemDto(
     Guid Id,
@@ -94,6 +99,14 @@ public sealed record DocumentEscalationItemDto(
 {
     /// <summary>Compatibility alias for older clients; preserves the immutable file-name snapshot.</summary>
     public string FileName => FileNameSnapshot;
+    public string? MimeType { get; init; }
+    public long? FileSizeBytes { get; init; }
+    public string? SubjectCode { get; init; }
+    public string? Semester { get; init; }
+    public DateTimeOffset? UploadedAt { get; init; }
+    public DocumentStatus? ProcessingStatus { get; init; }
+    public DocumentReviewStatus? CurrentReviewStatus { get; init; }
+    public int? CurrentModerationGeneration { get; init; }
 }
 
 public sealed class CreateEscalationRequest

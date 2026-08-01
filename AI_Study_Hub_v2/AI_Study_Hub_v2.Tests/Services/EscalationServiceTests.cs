@@ -31,6 +31,40 @@ public sealed class EscalationServiceTests
         (await db.Folders.SingleAsync(item => item.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.PendingShare);
     }
 
+    [Test]
+    public async Task GetByIdAsync_ProjectsLiveFolderAndDocumentMetadata_AndPreservesDeletedHistory()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, 3, "Moderator");
+        var folder = SeedFolder(db, moderator.Id);
+        folder.Name = "Live folder";
+        folder.ShareReviewSource = "HUMAN_REQUEST";
+        var document = SeedDocument(db, moderator.Id, folder.Id, "live.pdf", generation: 4);
+        document.FileSizeBytes = 1234;
+        document.MimeType = "application/pdf";
+        await db.SaveChangesAsync();
+        var sut = CreateSut(db);
+        var created = await sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
+
+        var live = await sut.GetByIdAsync(created.Id);
+
+        live.FolderId.Should().Be(folder.Id);
+        live.FolderName.Should().Be("Live folder");
+        live.ShareReviewSource.Should().Be("HUMAN_REQUEST");
+        live.Items.Single().MimeType.Should().Be("application/pdf");
+        live.Items.Single().FileSizeBytes.Should().Be(1234);
+        live.Items.Single().CurrentReviewStatus.Should().Be(DocumentReviewStatus.Escalated);
+        live.Items.Single().CurrentModerationGeneration.Should().Be(4);
+
+        var item = await db.DocumentEscalationItems.SingleAsync();
+        item.DocumentId = null;
+        await db.SaveChangesAsync();
+        var deleted = await sut.GetByIdAsync(created.Id);
+        deleted.Items.Single().FileNameSnapshot.Should().Be("live.pdf");
+        deleted.Items.Single().MimeType.Should().BeNull();
+        deleted.Items.Single().CurrentReviewStatus.Should().BeNull();
+    }
+
     [TestCase(DocumentReviewStatus.Approved)]
     [TestCase(DocumentReviewStatus.Rejected)]
     [TestCase(DocumentReviewStatus.Escalated)]
@@ -72,7 +106,7 @@ public sealed class EscalationServiceTests
     }
 
     [Test]
-    public async Task ResolveItems_MixedDecisions_PersistsItemOutcomesRecomputesFolderAndStagesOneSummary()
+    public async Task ResolveItems_MixedDecisions_PersistsItemOutcomesRecomputesFolderAndStagesOneFinalPerFile()
     {
         await using var db = TestDb.CreateInMemoryWithDocuments();
         var moderator = SeedUser(db, 3, "Moderator");
@@ -93,8 +127,11 @@ public sealed class EscalationServiceTests
         (await db.Documents.SingleAsync(document => document.Id == first.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Approved);
         (await db.Documents.SingleAsync(document => document.Id == second.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Rejected);
         (await db.Folders.SingleAsync(item => item.Id == folder.Id)).ShareStatus.Should().Be(FolderStatus.Approved);
-        (await db.UserNotifications.Where(notification => notification.Kind == UserNotificationKind.EscalationResolved).ToListAsync())
-            .Should().ContainSingle().Which.Outcome.Should().Be(UserNotificationOutcome.Mixed);
+        var notifications = await db.UserNotifications.OrderBy(notification => notification.DocumentId).ToListAsync();
+        notifications.Should().HaveCount(2);
+        notifications.Should().OnlyContain(notification => notification.Kind == UserNotificationKind.DocumentModerationFinal);
+        notifications.Should().Contain(notification => notification.DocumentId == first.Id && notification.Outcome == UserNotificationOutcome.Approved && notification.Title.StartsWith("Admin approved"));
+        notifications.Should().Contain(notification => notification.DocumentId == second.Id && notification.Outcome == UserNotificationOutcome.Rejected && notification.Message.Contains("Not suitable"));
     }
 
     [TestCase("Approved", FolderStatus.Approved, UserNotificationOutcome.Approved)]
@@ -124,7 +161,7 @@ public sealed class EscalationServiceTests
             persistedFolder.SharedAt.Should().NotBeNull();
         else
             persistedFolder.SharedAt.Should().BeNull();
-        (await db.UserNotifications.SingleAsync(notification => notification.Kind == UserNotificationKind.EscalationResolved))
+        (await db.UserNotifications.SingleAsync(notification => notification.Kind == UserNotificationKind.DocumentModerationFinal))
             .Outcome.Should().Be(expectedNotificationOutcome);
     }
 
@@ -174,6 +211,27 @@ public sealed class EscalationServiceTests
         await sut.ResolveItemsAsync(pending.Id, Resolve((pending.Items.Single().Id, "Approved", null)), admin.Id);
         Func<Task> second = () => sut.ResolveItemsAsync(pending.Id, Resolve((pending.Items.Single().Id, "Approved", null)), secondAdmin.Id);
         (await second.Should().ThrowAsync<AdminException>()).Which.Code.Should().Be("escalation_already_resolved");
+    }
+
+    [Test]
+    public async Task ResolveItems_FolderOwnerMismatch_ConflictsWithoutMutationOrNotifications()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var moderator = SeedUser(db, 3, "Moderator");
+        var otherOwner = SeedUser(db, 2, "Other owner");
+        var admin = SeedUser(db, 1, "Admin");
+        var folder = SeedFolder(db, moderator.Id);
+        var document = SeedDocument(db, moderator.Id, folder.Id, "mismatch.pdf");
+        var sut = CreateSut(db);
+        var pending = await sut.CreateAsync(moderator.Id, Request(folder.Id, document.Id));
+        document.UserId = otherOwner.Id;
+        await db.SaveChangesAsync();
+
+        Func<Task> act = () => sut.ResolveItemsAsync(pending.Id, Resolve((pending.Items.Single().Id, "Approved", null)), admin.Id);
+
+        (await act.Should().ThrowAsync<AdminException>()).Which.Code.Should().Be("escalation_items_changed");
+        (await db.Documents.SingleAsync(item => item.Id == document.Id)).ReviewStatus.Should().Be(DocumentReviewStatus.Escalated);
+        (await db.UserNotifications.CountAsync()).Should().Be(0);
     }
 
     [Test]
