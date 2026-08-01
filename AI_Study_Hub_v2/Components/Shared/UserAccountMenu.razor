@@ -130,7 +130,7 @@
 
                 <button class="uam-item" @onclick="OpenPaymentHistoryDialogAsync">
                     <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Small" />
-                    <span>Payment History</span>
+                    <span>Payment history</span>
                 </button>
 
                 <button class="uam-item" @onclick="GoToPricing">
@@ -839,13 +839,13 @@
     private async Task OpenPaymentHistoryDialogAsync()
     {
         CloseMenu();
-        await DialogService.ShowAsync<StudentPaymentHistoryDialog>("Lịch sử thanh toán", BuildDialogOptions());
+        await DialogService.ShowAsync<StudentPaymentHistoryDialog>("Payment history", BuildDialogOptions());
     }
 
     private async Task OpenTransactionDetailAsync()
     {
         CloseMenu();
-        await DialogService.ShowAsync<StudentPaymentHistoryDialog>("Chi tiết giao dịch", BuildDialogOptions());
+        await DialogService.ShowAsync<StudentPaymentHistoryDialog>("Transaction details", BuildDialogOptions());
     }
 
     private void GoToPricing()
