@@ -696,8 +696,19 @@
                         size,
                         _model);
 
-                    _successCount++;
-                    uploaded.Add($"\"{dto.FileName}\" ({FormatBytes(dto.FileSizeBytes)})");
+                    if (dto.Status == AI_Study_Hub_v2.Data.Entities.DocumentStatus.Failed)
+                    {
+                        // The file was stored, but text extraction/embedding failed (e.g. the
+                        // embedding service was temporarily unavailable). Count it as a failure
+                        // so the user is not misled into thinking ingestion succeeded.
+                        _errorCount++;
+                        _error = $"\"{name}\": Uploaded, but processing failed. Open the document and press Reprocess to retry.";
+                    }
+                    else
+                    {
+                        _successCount++;
+                        uploaded.Add($"\"{dto.FileName}\" ({FormatBytes(dto.FileSizeBytes)})");
+                    }
                 }
                 catch (DocumentApiException ex)
                 {
@@ -722,6 +733,12 @@
             if (_successCount > 0)
             {
                 Snackbar.Add($"Uploaded {_successCount} file(s).", Severity.Success);
+                if (_errorCount > 0)
+                {
+                    Snackbar.Add(
+                        $"{_errorCount} file(s) uploaded but processing failed — open them in Documents and press Reprocess to retry.",
+                        Severity.Warning);
+                }
                 await LoadPlanSnapshotAsync();
                 await LoadFoldersAsync();
                 _files.Clear();
