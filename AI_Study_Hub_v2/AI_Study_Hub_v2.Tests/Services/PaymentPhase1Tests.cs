@@ -214,6 +214,67 @@ public sealed class PaymentPhase1Tests
     }
 
     [Test]
+    public async Task Reconcile_FailedWithCreatedLink_CanBePromotedByPaidProviderResult()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = AddUser(db);
+        db.Plans.Add(new Plan { Id = Guid.NewGuid(), PlanKey = "pro", DisplayName = "Pro" });
+        var payment = Payment(user.Id, 111, "failed");
+        payment.ProviderPaymentLinkId = "link-111";
+        payment.ErrorMessage = "Key cannot be null or empty (Parameter 'key')";
+        db.PaymentTransactions.Add(payment);
+        await db.SaveChangesAsync();
+        var provider = new Mock<IPaymentProvider>();
+        provider.Setup(p => p.GetTransactionStatusAsync(111, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionStatusResult(true, 111, "link-111", "PAID", "PAID", 100, 100, 0));
+
+        (await CreateService(db, provider).ReconcileAsync(user.Id, 111, CancellationToken.None))!.Status.Should().Be("completed");
+        var recovered = await db.PaymentTransactions.SingleAsync();
+        recovered.Status.Should().Be("completed");
+        recovered.ErrorMessage.Should().BeNull();
+        (await db.UserPlans.CountAsync()).Should().Be(1);
+    }
+
+    [Test]
+    public async Task Reconcile_FailedWithoutLocalLink_StillPromotedWhenProviderConfirmsPaid()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = AddUser(db);
+        db.Plans.Add(new Plan { Id = Guid.NewGuid(), PlanKey = "pro", DisplayName = "Pro" });
+        db.PaymentTransactions.Add(Payment(user.Id, 112, "failed"));
+        await db.SaveChangesAsync();
+        var provider = new Mock<IPaymentProvider>();
+        // The provider is authoritative: a PAID verdict for the exact order code with a matching
+        // amount means real money arrived, so the local lifecycle must be recovered.
+        provider.Setup(p => p.GetTransactionStatusAsync(112, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new TransactionStatusResult(true, 112, "link-112", "PAID", "PAID", 100, 100, 0));
+
+        (await CreateService(db, provider).ReconcileAsync(user.Id, 112, CancellationToken.None))!.Status.Should().Be("completed");
+        var recovered = await db.PaymentTransactions.SingleAsync();
+        recovered.Status.Should().Be("completed");
+        recovered.ProviderPaymentLinkId.Should().Be("link-112");
+        (await db.UserPlans.CountAsync()).Should().Be(1);
+    }
+
+    [Test]
+    public async Task Webhook_PaidWithMatchingAmount_ActivatesWithoutInvoiceIntegrityData()
+    {
+        using var db = TestDb.CreateInMemory();
+        var user = AddUser(db);
+        db.Plans.Add(new Plan { Id = Guid.NewGuid(), PlanKey = "pro", DisplayName = "Pro" });
+        db.PaymentTransactions.Add(Payment(user.Id, 113, "pending"));
+        await db.SaveChangesAsync();
+        var provider = new Mock<IPaymentProvider>();
+        // Webhook payloads expose only the received amount; Expected/Remaining are not available.
+        provider.Setup(p => p.VerifyWebhookAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new WebhookVerificationResult(true, 113, "link", "PAID", "PAID", 100, 100, 0, null));
+
+        (await CreateService(db, provider).ProcessWebhookAsync("{\"signature\":\"x\"}", CancellationToken.None)).Disposition.Should().Be(WebhookDisposition.Accepted);
+        (await db.PaymentTransactions.SingleAsync()).Status.Should().Be("completed");
+        (await db.UserPlans.CountAsync()).Should().Be(1);
+    }
+
+    [Test]
     public async Task Webhook_UnknownStatus_IsNonDestructive()
     {
         using var db = TestDb.CreateInMemory();

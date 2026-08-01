@@ -150,7 +150,8 @@ public sealed class PlansController : ControllerBase
                     pt.CreatedAt,
                     pt.CompletedAt,
                     pt.ExpiresAt,
-                    pt.ErrorMessage))
+                    pt.ErrorMessage,
+                    pt.ProviderOrderCode))
                  .ToListAsync(ct);
 
             return Ok(payments);

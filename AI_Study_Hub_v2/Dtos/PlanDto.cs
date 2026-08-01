@@ -70,4 +70,5 @@ public sealed record PaymentTransactionDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? CompletedAt,
     DateTimeOffset? ExpiresAt,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    long? ProviderOrderCode);

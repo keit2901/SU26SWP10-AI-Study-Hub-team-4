@@ -154,12 +154,24 @@ public sealed class PaymentService : IPaymentService
         if (normalized == "UNKNOWN") { await SaveAndCommitAsync(transaction, ct); return new ApplyOutcome(WebhookResult.Ignored, ToResult(payment)); }
         if (normalized == "PAID")
         {
-            if (payment.ErrorMessage == "integrity_failed" || payment.Status is not ("pending" or "cancelled" or "expired"))
+            // Recovery rule: a locally non-immutable transaction (pending, cancelled, expired, or even
+            // failed after a checkout that was created on the provider side) may be promoted when the
+            // provider now authoritatively reports PAID with a matching amount and matching order code.
+            // Only a prior integrity_failed verdict stays permanent, since the money does not match.
+            if (payment.ErrorMessage == "integrity_failed")
             {
                 await SaveAndCommitAsync(transaction, ct);
                 return new ApplyOutcome(WebhookResult.Ignored, ToResult(payment));
             }
-            if (provider.AmountPaidVnd != payment.AmountVnd || provider.ExpectedAmountVnd != payment.AmountVnd || provider.AmountRemainingVnd != 0)
+            // Webhooks carry no ExpectedAmount/AmountRemaining fields, so only the actually
+            // received amount can be verified there. Full three-way integrity is enforced on
+            // the GET status path, which returns the complete invoice data.
+            var amountMatches = webhook is not null
+                ? provider.AmountPaidVnd == payment.AmountVnd
+                : provider.AmountPaidVnd == payment.AmountVnd
+                  && provider.ExpectedAmountVnd == payment.AmountVnd
+                  && provider.AmountRemainingVnd == 0;
+            if (!amountMatches)
             {
                 payment.Status = "failed"; payment.ErrorMessage = "integrity_failed"; payment.CompletedAt = DateTimeOffset.UtcNow;
                 await SaveAndCommitAsync(transaction, ct); return new ApplyOutcome(WebhookResult.Ignored, ToResult(payment));
