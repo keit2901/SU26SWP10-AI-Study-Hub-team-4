@@ -11,6 +11,13 @@ namespace AI_Study_Hub_v2.Services.Rag;
 
 public sealed class OllamaEmbeddingService : IEmbeddingService
 {
+    /// <summary>
+    /// Defensive cap for pathological inputs. The modern /api/embed endpoint truncates
+    /// internally to the model context, so normal chunks are never affected; this only
+    /// protects against absurdly large inputs being serialized at all.
+    /// </summary>
+    private const int MaxInputChars = 24_000;
+
     private readonly HttpClient _httpClient;
     private readonly OllamaOptions _options;
     private readonly ILogger<OllamaEmbeddingService> _logger;
@@ -55,6 +62,16 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
         }
 
         var prompt = text ?? string.Empty;
+        if (prompt.Length > MaxInputChars)
+        {
+            _logger.LogWarning(
+                "Truncating oversized embedding input: chars={Chars}, max={MaxChars}, model={Model}",
+                prompt.Length,
+                MaxInputChars,
+                _options.Model);
+            prompt = prompt[..MaxInputChars];
+        }
+
         var maxAttempts = Math.Max(1, _options.MaxRetries);
         Exception? lastException = null;
         Interlocked.Increment(ref _totalRequests);
@@ -68,7 +85,7 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
                 var request = new OllamaEmbeddingRequest(_options.Model, prompt);
 
                 using var response = await _httpClient.PostAsJsonAsync(
-                    "/api/embeddings",
+                    "/api/embed",
                     request,
                     cancellationToken);
 
@@ -77,12 +94,12 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
                 var result = await response.Content.ReadFromJsonAsync<OllamaEmbeddingResponse>(
                     cancellationToken: cancellationToken);
 
-                if (result?.Embedding is null)
+                if (result?.Embeddings is not { Length: > 0 } || result.Embeddings[0] is null)
                 {
                     throw new InvalidOperationException("Ollama response does not contain embedding.");
                 }
 
-                ValidateEmbedding(result.Embedding);
+                ValidateEmbedding(result.Embeddings[0]);
                 stopwatch.Stop();
 
                 _logger.LogInformation(
@@ -100,7 +117,7 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
                         stopwatch.ElapsedMilliseconds);
                 }
 
-                return result.Embedding;
+                return result.Embeddings[0];
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
@@ -159,8 +176,9 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
 
     private sealed record OllamaEmbeddingRequest(
         [property: JsonPropertyName("model")] string Model,
-        [property: JsonPropertyName("prompt")] string Prompt);
+        [property: JsonPropertyName("input")] string Input,
+        [property: JsonPropertyName("truncate")] bool Truncate = true);
 
     private sealed record OllamaEmbeddingResponse(
-        [property: JsonPropertyName("embedding")] float[] Embedding);
+        [property: JsonPropertyName("embeddings")] float[][] Embeddings);
 }

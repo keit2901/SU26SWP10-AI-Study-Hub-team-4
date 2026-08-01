@@ -28,11 +28,12 @@ public sealed class OllamaEmbeddingServiceTests
 
         var request = handler.Requests.Should().ContainSingle().Subject;
         request.Method.Should().Be(HttpMethod.Post);
-        request.Url.Should().Be("http://ollama.test/api/embeddings");
+        request.Url.Should().Be("http://ollama.test/api/embed");
 
         using var json = JsonDocument.Parse(request.Body!);
         json.RootElement.GetProperty("model").GetString().Should().Be("all-minilm:l6-v2");
-        json.RootElement.GetProperty("prompt").GetString().Should().Be("Xin chào thế giới");
+        json.RootElement.GetProperty("input").GetString().Should().Be("Xin chào thế giới");
+        json.RootElement.GetProperty("truncate").GetBoolean().Should().BeTrue();
     }
 
     [Test]
@@ -137,7 +138,7 @@ public sealed class OllamaEmbeddingServiceTests
     private static string EmbeddingJson(float value, int dimensions = DocumentChunk.EmbeddingDimension)
     {
         var embedding = Enumerable.Repeat(value, dimensions).ToArray();
-        return JsonSerializer.Serialize(new { embedding });
+        return JsonSerializer.Serialize(new { embeddings = new[] { embedding } });
     }
 
     private sealed class StubHttpMessageHandler : HttpMessageHandler
