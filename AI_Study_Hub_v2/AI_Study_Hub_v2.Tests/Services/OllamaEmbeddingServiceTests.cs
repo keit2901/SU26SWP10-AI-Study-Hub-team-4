@@ -62,6 +62,7 @@ public sealed class OllamaEmbeddingServiceTests
         var ex = await act.Should().ThrowAsync<AiChatException>();
         ex.Which.StatusCode.Should().Be(503);
         ex.Which.Code.Should().Be("embedding_service_unavailable");
+        ex.Which.Message.Should().Be("The embedding service is temporarily unavailable. Please try again later.");
     }
 
     [Test]
@@ -77,6 +78,7 @@ public sealed class OllamaEmbeddingServiceTests
         var ex = await act.Should().ThrowAsync<AiChatException>();
         ex.Which.StatusCode.Should().Be(503);
         ex.Which.Code.Should().Be("embedding_service_unavailable");
+        ex.Which.Message.Should().Be("The embedding service is temporarily unavailable. Please try again later.");
     }
 
     [Test]
@@ -108,6 +110,7 @@ public sealed class OllamaEmbeddingServiceTests
         var ex = await act.Should().ThrowAsync<AiChatException>();
         ex.Which.StatusCode.Should().Be(503);
         ex.Which.Code.Should().Be("embedding_service_unavailable");
+        ex.Which.Message.Should().Be("The embedding service is temporarily unavailable. Please try again later.");
     }
 
     private static OllamaEmbeddingService CreateSut(

@@ -468,7 +468,7 @@
         {
             if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
             {
-                _errorMessage = "Đang xác thực...";
+                _errorMessage = "Authenticating...";
                 return;
             }
 
@@ -484,7 +484,7 @@
         }
         catch (Npgsql.NpgsqlOperationInProgressException)
         {
-            _errorMessage = "Hệ thống đang bận, vui lòng thử lại.";
+            _errorMessage = "The system is busy. Please try again.";
         }
         catch (Exception ex)
         {

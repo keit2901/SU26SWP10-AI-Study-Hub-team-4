@@ -9,7 +9,7 @@
     <DialogContent>
         <div class="payment-dialog-shell">
             <div class="payment-dialog-head">
-                <h3>Thanh toán</h3>
+                <h3>Payments</h3>
                 <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="Close" />
             </div>
 
@@ -17,7 +17,7 @@
             {
                 <div class="payment-dialog-loading">
                     <MudProgressCircular Indeterminate="true" Size="Size.Medium" Color="Color.Primary" />
-                    <span>Đang tải lịch sử thanh toán...</span>
+                    <span>Loading payment history...</span>
                 </div>
             }
             else if (!string.IsNullOrWhiteSpace(_error))
@@ -42,24 +42,24 @@
                 </div>
 
                 <div class="payment-section-divider"></div>
-                <div class="payment-section-title">Lịch sử thanh toán</div>
+                <div class="payment-section-title">Payment history</div>
 
                 @if (_payments.Count == 0)
                 {
                     <div class="payment-empty-state">
                         <MudIcon Icon="@Icons.Material.Filled.ReceiptLong" Size="Size.Large" />
-                        <h4>Chưa có lịch sử thanh toán</h4>
+                        <h4>No payment history yet.</h4>
                     </div>
                 }
                 else
                 {
                     <div class="payment-history-table">
                         <div class="payment-history-grid payment-history-grid-head">
-                            <span>Thời gian</span>
-                            <span>Gói</span>
-                            <span>Số tiền</span>
-                            <span>Trạng thái</span>
-                            <span>Ghi chú</span>
+                            <span>Date</span>
+                            <span>Plan</span>
+                            <span>Amount</span>
+                            <span>Status</span>
+                            <span>Notes</span>
                         </div>
 
                         @foreach (var payment in PagedPayments)
@@ -80,7 +80,7 @@
                     {
                         <div class="payment-pager">
                             <button type="button" class="payment-page-button" @onclick="PreviousPage" disabled="@(_currentPage == 1)">
-                                Trước
+                                Previous
                             </button>
 
                             @foreach (var pageNumber in VisiblePages)
@@ -93,7 +93,7 @@
                             }
 
                             <button type="button" class="payment-page-button" @onclick="NextPage" disabled="@(_currentPage == TotalPages)">
-                                Sau
+                                Next
                             </button>
                         </div>
                     }
@@ -167,7 +167,7 @@
         {
             if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
             {
-                _error = "Vui lòng đăng nhập lại để xem lịch sử thanh toán.";
+                _error = "Please sign in again to view your payment history.";
                 return;
             }
 
@@ -181,12 +181,12 @@
         catch (PlanApiException ex)
         {
             _error = ex.StatusCode == 401
-                ? "Vui lòng đăng nhập lại để xem lịch sử thanh toán."
+                ? "Please sign in again to view your payment history."
                 : ex.Message;
         }
         catch (Exception ex)
         {
-            _error = $"Không thể tải lịch sử thanh toán: {ex.Message}";
+            _error = $"Unable to load payment history: {ex.Message}";
         }
         finally
         {
@@ -210,8 +210,8 @@
         if (payment.Status.Equals("completed", StringComparison.OrdinalIgnoreCase))
         {
             return payment.ExpiresAt is DateTimeOffset expiresAt
-                ? $"Hạn dùng đến: {expiresAt.ToLocalTime():dd/MM/yyyy HH:mm}"
-                : "Không giới hạn";
+                ? $"Valid until: {expiresAt.ToLocalTime():dd/MM/yyyy HH:mm}"
+                : "No expiration";
         }
         if (!string.IsNullOrWhiteSpace(payment.ErrorMessage))
         {
@@ -219,33 +219,33 @@
         }
         return payment.Status.ToLowerInvariant() switch
         {
-            "pending" => "Giao dịch đang chờ hoàn tất.",
-            "failed" => "Giao dịch thất bại.",
-            "expired" => "Giao dịch đã hết hạn.",
-            _ => "Không có thông tin bổ sung."
+            "pending" => "Payment is pending.",
+            "failed" => "Payment failed.",
+            "expired" => "Payment expired.",
+            _ => "No additional information."
         };
     }
 
     private string BuildExpiryText()
         => _planExpiresAt.HasValue
-            ? $"Hạn sử dụng đến {_planExpiresAt.Value.ToLocalTime():dd/MM/yyyy HH:mm}"
-            : "Không thời hạn";
+            ? $"Valid until: {_planExpiresAt.Value.ToLocalTime():dd/MM/yyyy HH:mm}"
+            : "No expiration";
 
     private string BuildPlanButtonLabel()
         => string.Equals(Session.CurrentPlan, "free", StringComparison.OrdinalIgnoreCase)
-            ? "Nâng cấp gói"
-            : $"Gia hạn gói {FormatPlanLabel()}";
+            ? "Upgrade plan"
+            : $"Renew {FormatPlanLabel()} plan";
 
     private static string FormatAmount(long amountVnd)
-        => amountVnd <= 0 ? "0 đ" : $"{amountVnd:N0} đ";
+        => amountVnd <= 0 ? "0 VND" : $"{amountVnd:N0} VND";
 
     private static string FormatStatus(string status)
         => status.ToLowerInvariant() switch
         {
-            "completed" => "Đã thanh toán",
-            "pending" => "Đang chờ",
-            "failed" => "Thất bại",
-            "expired" => "Hết hạn",
+            "completed" => "Paid",
+            "pending" => "Pending",
+            "failed" => "Failed",
+            "expired" => "Expired",
             _ => status
         };
 
@@ -277,11 +277,11 @@
 
         return payment.Status.ToLowerInvariant() switch
         {
-            "completed" => "Thanh toán thành công.",
-            "pending" => "Giao dịch đang chờ bạn hoàn tất thanh toán.",
-            "failed" => "Cổng thanh toán không thể hoàn tất giao dịch.",
-            "expired" => "Quá thời gian thanh toán cho phép.",
-            _ => "Không có thêm thông tin."
+            "completed" => "Payment completed successfully.",
+            "pending" => "Waiting for you to complete the payment.",
+            "failed" => "The payment provider could not complete the transaction.",
+            "expired" => "The payment window has expired.",
+            _ => "No additional information."
         };
     }
 

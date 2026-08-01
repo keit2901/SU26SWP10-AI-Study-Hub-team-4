@@ -140,7 +140,7 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
         throw new AiChatException(
             503,
             "embedding_service_unavailable",
-            "Dá»‹ch vá»¥ embedding Ä‘ang báº£o trÃ¬, vui lÃ²ng thá»­ láº¡i sau.");
+            "The embedding service is temporarily unavailable. Please try again later.");
     }
 
     private static void ValidateEmbedding(float[] embedding)
