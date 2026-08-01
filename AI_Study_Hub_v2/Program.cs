@@ -67,6 +67,14 @@ builder.Services
     .ValidateOnStart();
 builder.Services.Configure<GroqOptions>(builder.Configuration.GetSection(GroqOptions.SectionName));
 builder.Services.Configure<GeminiOptions>(builder.Configuration.GetSection(GeminiOptions.SectionName));
+builder.Services
+    .AddOptions<AiChatOptions>()
+    .Bind(builder.Configuration.GetSection(AiChatOptions.SectionName))
+    .Validate(options => AiChatOptions.IsSupportedProvider(options.DefaultProvider),
+        "AiChat:DefaultProvider must be either 'groq' or 'gemini'.")
+    .Validate<GeminiOptions>(AiChatOptions.HasValidDefaultProviderConfiguration,
+        "AiChat:DefaultProvider=gemini requires Gemini:ApiKey.")
+    .ValidateOnStart();
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
 builder.Services.Configure<PayOsSettings>(builder.Configuration.GetSection(PayOsSettings.SectionName));
 // Archived: VNPay settings kept for reference
