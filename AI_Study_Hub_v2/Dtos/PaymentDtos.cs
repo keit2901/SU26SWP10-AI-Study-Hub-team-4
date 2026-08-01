@@ -17,10 +17,7 @@ public sealed record ReturnUrlResult(
     string Status,
     string? PlanDisplayName,
     long AmountVnd,
-    string? ErrorMessage);
+    string? ErrorMessage,
+    string? ProviderStatus = null);
 
-public sealed record CancelPaymentResponse(
-    bool Cancelled);
-
-public sealed record PurchaseRetryRequest(
-    string TxnRef);
+public sealed record PurchaseRetryRequest(string TxnRef);

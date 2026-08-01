@@ -1,5 +1,6 @@
 @page "/payment/result"
 @rendermode InteractiveServer
+@implements IAsyncDisposable
 @inject NavigationManager Navigation
 @inject PlanApiClient PlanApi
 @inject AuthSessionState Session
@@ -9,350 +10,599 @@
 <PageTitle>Payment Result — AI Study Hub</PageTitle>
 
 <div class="payment-result-page">
-    @if (_loading)
-    {
-        <div class="result-card">
-            <div class="result-spinner">
+    <div class="result-orb result-orb-primary" aria-hidden="true"></div>
+    <div class="result-orb result-orb-secondary" aria-hidden="true"></div>
+
+    <main class="result-card" aria-live="polite" aria-busy="@_checking.ToString().ToLowerInvariant()">
+        <div class="result-eyebrow">
+            <MudIcon Icon="@Icons.Material.Filled.VerifiedUser" Size="Size.Small" />
+            <span>Secure payment confirmation</span>
+        </div>
+
+        @if (_view == PaymentResultView.Checking)
+        {
+            <div class="result-visual checking-visual" role="status">
                 <MudProgressCircular Size="Size.Large" Indeterminate="true" Color="Color.Primary" />
             </div>
-            <h2 class="result-title">Verifying Payment</h2>
-            <p class="result-subtitle">Please wait while we confirm your payment...</p>
-        </div>
-    }
-    else if (!_result.IsValid)
-    {
-        <div class="result-card">
-            <div class="result-icon error-bg">
-                <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Size="Size.Large" />
+            <h1 class="result-title">Checking your payment</h1>
+            <p class="result-subtitle">@GetCheckingMessage()</p>
+            <p class="result-note">This page uses your account and PayOS records to confirm the final result.</p>
+        }
+        else
+        {
+            <div class="result-visual @($"{GetTone()}-visual")" aria-hidden="true">
+                <MudIcon Icon="@GetIcon()" Size="Size.Large" />
             </div>
-            <h2 class="result-title error-text">Verification Failed</h2>
-            <p class="result-subtitle">The payment confirmation could not be verified. If you were charged, please contact support.</p>
-            <div class="result-actions">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="@(() => GoToPricing("failed"))" Style="text-transform:none; font-weight:600; border-radius:12px;">
-                    Back to Pricing
-                </MudButton>
-            </div>
-        </div>
-    }
-    else if (_result.Status == "expired")
-    {
-        <div class="result-card">
-            <div class="result-icon pending-bg">
-                <MudIcon Icon="@Icons.Material.Filled.Schedule" Size="Size.Large" Style="color:#F59E0B; font-size:3.5rem;" />
-            </div>
-            <h2 class="result-title pending-text">Payment Expired</h2>
-            <p class="result-subtitle">
-                @if (!string.IsNullOrWhiteSpace(_result.ErrorMessage))
-                {
-                    <span>@_result.ErrorMessage</span>
-                }
-                else
-                {
-                    <span>Your payment window has expired.</span>
-                }
-                <br />
-                <span>Redirecting you back to the pricing page...</span>
-            </p>
-            <div class="result-actions">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="@(() => GoToPricing("expired"))" Style="text-transform:none; font-weight:600; border-radius:12px;">
-                    Back to Pricing
-                </MudButton>
-            </div>
-        </div>
-    }
-    else if (_result.Status == "completed")
-    {
-        <div class="result-card">
-            <div class="result-icon success-bg">
-                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Large" Style="color:#10B981; font-size:4rem;" />
-            </div>
-            <h2 class="result-title success-text">Payment Successful!</h2>
-            <p class="result-subtitle">
-                @if (!string.IsNullOrEmpty(_result.PlanDisplayName))
-                {
-                    <span>The <strong>@_result.PlanDisplayName</strong> plan is now active on your account.</span>
-                }
-                else
-                {
-                    <span>Your plan has been activated.</span>
-                }
-            </p>
-            @if (_result.AmountVnd > 0)
+            <h1 class="result-title @($"{GetTone()}-text")">@GetTitle()</h1>
+            <p class="result-subtitle">@GetMessage()</p>
+
+            @if (_view == PaymentResultView.Completed && _result?.AmountVnd > 0)
             {
-                <div class="result-amount">@_result.AmountVnd.ToString("N0")₫</div>
+                <div class="result-amount" aria-label="Payment amount">
+                    <span>Confirmed amount</span>
+                    <strong>@_result.AmountVnd.ToString("N0")₫</strong>
+                </div>
             }
+
             <div class="result-actions">
-                <MudButton Variant="Variant.Filled" Color="Color.Success"
-                           OnClick="GoToDashboard" Style="text-transform:none; font-weight:600; border-radius:12px;">
-                    Go to Dashboard
-                </MudButton>
-            </div>
-        </div>
-    }
-    else if (_result.Status == "pending")
-    {
-        <div class="result-card">
-            <div class="result-icon pending-bg">
-                <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Size="Size.Large" Style="color:#F59E0B; font-size:3.5rem;" />
-            </div>
-            <h2 class="result-title pending-text">Payment Processing</h2>
-            <p class="result-subtitle">Your payment is being processed. This may take a few moments.</p>
-            <div class="result-actions">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="CheckAgain" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
-                    Check Again
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Primary"
-                           OnClick="@(() => GoToPricing())" Style="text-transform:none; font-weight:600; border-radius:12px;">
-                    Back to Pricing
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Default"
-                           OnClick="GoToDashboard" Style="text-transform:none; font-weight:600; border-radius:12px;">
-                    Dashboard
-                </MudButton>
-            </div>
-        </div>
-    }
-    else
-    {
-        <div class="result-card">
-            <div class="result-icon error-bg">
-                <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Large" />
-            </div>
-            <h2 class="result-title error-text">Payment Not Successful</h2>
-            <p class="result-subtitle">
-                @if (!string.IsNullOrEmpty(_result.ErrorMessage))
+                @if (_view == PaymentResultView.SignInRequired)
                 {
-                    <span>@_result.ErrorMessage</span>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="@_loginUrl" Class="result-button">
+                        Sign in securely
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default" Href="/pricing" Class="result-button">
+                        Back to pricing
+                    </MudButton>
+                }
+                else if (_view == PaymentResultView.Completed)
+                {
+                    <MudButton Variant="Variant.Filled" Color="Color.Success" OnClick="GoToDashboard" Class="result-button">
+                        Go to dashboard
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" Href="/profile" Class="result-button">
+                        View profile
+                    </MudButton>
                 }
                 else
                 {
-                    <span>The payment was not completed. No charges were made.</span>
+                    @if (CanCheckAgain())
+                    {
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary" Disabled="@_checking"
+                                   OnClick="CheckAgainAsync" Class="result-button">
+                            @if (_checking)
+                            {
+                                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="button-spinner" />
+                                <span>Checking…</span>
+                            }
+                            else
+                            {
+                                <span>Check again</span>
+                            }
+                        </MudButton>
+                    }
+
+                    <MudButton Variant="@(CanCheckAgain() ? Variant.Outlined : Variant.Filled)"
+                               Color="Color.Primary" Href="/pricing" Class="result-button">
+                        @(_view is PaymentResultView.InvalidLink or PaymentResultView.NotFound ? "View plans" : "Back to pricing")
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="GoToDashboard" Class="result-button">
+                        Dashboard
+                    </MudButton>
                 }
-                <br />
-                <span>Redirecting you back to the pricing page...</span>
-            </p>
-            <div class="result-actions">
-                <MudButton Variant="Variant.Filled" Color="Color.Primary"
-                           OnClick="@(() => GoToPricing(GetPricingNoticeForStatus()))" Style="text-transform:none; font-weight:600; border-radius:12px; margin-right:12px;">
-                    Try Again
-                </MudButton>
-                <MudButton Variant="Variant.Outlined" Color="Color.Default"
-                           OnClick="GoToDashboard" Style="text-transform:none; font-weight:600; border-radius:12px;">
-                    Dashboard
-                </MudButton>
             </div>
-        </div>
-    }
+        }
+    </main>
 </div>
 
-<style>
-    .payment-result-page {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        min-height: 80vh;
-        padding: 2rem;
-    }
-
-    .result-card {
-        max-width: 440px;
-        width: 100%;
-        text-align: center;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 20px;
-        padding: 2.5rem 2rem;
-        backdrop-filter: blur(12px);
-    }
-
-    .result-spinner {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        height: 80px;
-        margin-bottom: 1.25rem;
-    }
-
-    .result-icon {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 80px;
-        height: 80px;
-        border-radius: 50%;
-        margin: 0 auto 1.25rem;
-    }
-
-    .success-bg {
-        background: rgba(16, 185, 129, 0.12);
-    }
-
-    .error-bg {
-        background: rgba(220, 38, 38, 0.12);
-        color: #DC2626;
-    }
-
-    .pending-bg {
-        background: rgba(245, 158, 11, 0.12);
-    }
-
-    .result-title {
-        font-size: 1.5rem;
-        font-weight: 800;
-        margin: 0 0 0.5rem;
-        color: #E2E8F0;
-    }
-
-    .success-text { color: #10B981; }
-
-    .error-text { color: #DC2626; }
-
-    .pending-text { color: #F59E0B; }
-
-    .result-subtitle {
-        font-size: 0.95rem;
-        color: #94A3B8;
-        margin: 0 0 1.5rem;
-        line-height: 1.5;
-    }
-
-    .result-amount {
-        font-size: 2rem;
-        font-weight: 800;
-        color: #10B981;
-        margin-bottom: 1.5rem;
-    }
-
-    .result-actions {
-        display: flex;
-        justify-content: center;
-        gap: 0.75rem;
-        flex-wrap: wrap;
-    }
-</style>
-
 @code {
-    private bool _loading = true;
-    private bool _pricingRedirectScheduled;
-    private ReturnUrlResult _result = new(false, "pending", null, 0, null);
+    private const long MaxPayOsOrderCode = 9_007_199_254_740_991;
+    private static readonly TimeSpan ReconcileTimeout = TimeSpan.FromSeconds(20);
 
-    protected override async Task OnInitializedAsync()
+    private readonly CancellationTokenSource _lifetimeCts = new();
+    private PaymentResultView _view = PaymentResultView.Checking;
+    private ReturnUrlResult? _result;
+    private long? _orderCode;
+    private string? _loginUrl;
+    private string? _providerStatusHint;
+    private bool _cancelHint;
+    private bool _checking;
+    private bool _interactiveLoadStarted;
+    private bool _disposed;
+
+    protected override void OnInitialized()
     {
-        await RestoreSessionAsync();
-        await VerifyPayment();
+        if (!TryReadOrderCode(out var orderCode))
+        {
+            _view = PaymentResultView.InvalidLink;
+            return;
+        }
+
+        _orderCode = orderCode;
+        _loginUrl = BuildLoginUrl(orderCode);
+        ReadDisplayHints();
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
-        if (_loading
-            || _pricingRedirectScheduled
-            || !ShouldAutoReturnToPricing())
+        if (!firstRender || _interactiveLoadStarted || _orderCode is null)
         {
             return;
         }
 
-        _pricingRedirectScheduled = true;
-        await Task.Delay(2200);
-        GoToPricing(GetPricingNoticeForStatus());
+        _interactiveLoadStarted = true;
+        await RestoreAndReconcileAsync();
     }
 
-    private async Task VerifyPayment()
+    private async Task RestoreAndReconcileAsync()
     {
-        _loading = true;
-        StateHasChanged();
-
         try
         {
-            // Extract txnRef from query string (PayOS redirects to ReturnUrl with ?status=success&txnRef=...)
-            var uri = new Uri(Navigation.Uri);
-            var queryParams = System.Web.HttpUtility.ParseQueryString(uri.Query);
-            var txnRef = queryParams["txnRef"] ?? string.Empty;
-            var status = queryParams["status"] ?? string.Empty;
-
-            if (string.IsNullOrWhiteSpace(txnRef))
+            if (!Session.IsAuthenticated)
             {
-                _result = new ReturnUrlResult(false, "error", null, 0, "No transaction reference found.");
+                var restored = await AuthPersistence.TryRestoreAsync();
+                if (restored is not null && !string.IsNullOrWhiteSpace(restored.AccessToken))
+                {
+                    Session.Set(restored);
+                }
+            }
+
+            if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(Session.AccessToken))
+            {
+                _view = PaymentResultView.SignInRequired;
+                await SafeRefreshAsync();
                 return;
             }
 
-            // If user cancelled on PayOS checkout, expire the transaction immediately
-            if (string.Equals(status, "cancelled", StringComparison.OrdinalIgnoreCase))
-            {
-                await PlanApi.CancelPaymentAsync(txnRef);
-            }
+            await ReconcileAsync(showPageLoader: true);
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            // The circuit was disposed or the user navigated away.
+        }
+    }
 
-            _result = await PlanApi.GetPaymentStatusAsync(txnRef);
+    private async Task ReconcileAsync(bool showPageLoader)
+    {
+        if (_checking || _orderCode is null || _disposed)
+        {
+            return;
+        }
+
+        var accessToken = Session.AccessToken;
+        if (!Session.IsAuthenticated || string.IsNullOrWhiteSpace(accessToken))
+        {
+            _view = PaymentResultView.SignInRequired;
+            await SafeRefreshAsync();
+            return;
+        }
+
+        _checking = true;
+        if (showPageLoader)
+        {
+            _view = PaymentResultView.Checking;
+        }
+        await SafeRefreshAsync();
+
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(_lifetimeCts.Token);
+        timeoutCts.CancelAfter(ReconcileTimeout);
+
+        try
+        {
+            _result = await PlanApi.ReconcilePaymentAsync(
+                accessToken: accessToken,
+                orderCode: _orderCode.Value,
+                ct: timeoutCts.Token);
+            _view = ResolveAuthoritativeView(_result);
+        }
+        catch (PlanApiException ex) when (ex.StatusCode is 401)
+        {
+            _view = PaymentResultView.SignInRequired;
+        }
+        catch (PlanApiException ex) when (ex.StatusCode is 403 or 404)
+        {
+            _view = PaymentResultView.NotFound;
+        }
+        catch (OperationCanceledException) when (_lifetimeCts.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (OperationCanceledException)
+        {
+            _view = PaymentResultView.Unavailable;
         }
         catch
         {
-            _result = new ReturnUrlResult(false, "error", null, 0, "Verification failed due to a network error.");
+            _view = PaymentResultView.Unavailable;
         }
         finally
         {
-            _loading = false;
+            _checking = false;
+            await SafeRefreshAsync();
         }
     }
 
-    private async Task CheckAgain()
-    {
-        await VerifyPayment();
-    }
+    private Task CheckAgainAsync() => ReconcileAsync(showPageLoader: false);
 
-    private async Task RestoreSessionAsync()
+    private PaymentResultView ResolveAuthoritativeView(ReturnUrlResult result)
     {
-        if (Session.IsAuthenticated)
+        if (!result.IsValid)
         {
-            return;
+            return PaymentResultView.Unavailable;
         }
 
-        var restored = await AuthPersistence.TryRestoreAsync();
-        if (restored is null || string.IsNullOrWhiteSpace(restored.AccessToken))
+        return result.Status?.Trim().ToLowerInvariant() switch
         {
-            return;
-        }
-
-        Session.Set(restored);
-    }
-
-    private bool ShouldAutoReturnToPricing()
-    {
-        if (!_result.IsValid)
-        {
-            return true;
-        }
-
-        return !string.Equals(_result.Status, "completed", StringComparison.OrdinalIgnoreCase)
-            && !string.Equals(_result.Status, "pending", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private string GetPricingNoticeForStatus()
-    {
-        if (!_result.IsValid)
-        {
-            return "failed";
-        }
-
-        return _result.Status.ToLowerInvariant() switch
-        {
-            "expired" => "expired",
-            "failed" => "failed",
-            "unknown" => "failed",
-            _ => "failed"
+            "completed" or "demo_completed" => PaymentResultView.Completed,
+            "cancelled" => PaymentResultView.Cancelled,
+            "expired" => PaymentResultView.Expired,
+            "failed" => PaymentResultView.Failed,
+            "pending" => ResolvePendingView(result.ProviderStatus),
+            _ => PaymentResultView.Unavailable
         };
     }
 
-    private void GoToPricing(string? notice = null)
+    private static PaymentResultView ResolvePendingView(string? providerStatus) =>
+        providerStatus?.Trim().ToUpperInvariant() switch
+        {
+            "PROCESSING" => PaymentResultView.Processing,
+            "UNDERPAID" => PaymentResultView.Underpaid,
+            _ => PaymentResultView.Pending
+        };
+
+    private bool TryReadOrderCode(out long orderCode)
     {
-        var target = string.IsNullOrWhiteSpace(notice)
-            ? "/pricing"
-            : $"/pricing?paymentNotice={Uri.EscapeDataString(notice)}";
-        Navigation.NavigateTo(target, forceLoad: true);
+        orderCode = 0;
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(Navigation.Uri).Query);
+        var values = query.GetValues("orderCode");
+        if (values is null)
+        {
+            return false;
+        }
+
+        long? accepted = null;
+        foreach (var rawValue in values)
+        {
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                continue;
+            }
+
+            if (!long.TryParse(
+                    rawValue,
+                    System.Globalization.NumberStyles.None,
+                    System.Globalization.CultureInfo.InvariantCulture,
+                    out var parsed)
+                || parsed <= 0
+                || parsed > MaxPayOsOrderCode
+                || (accepted.HasValue && accepted.Value != parsed))
+            {
+                return false;
+            }
+
+            accepted = parsed;
+        }
+
+        if (!accepted.HasValue)
+        {
+            return false;
+        }
+
+        orderCode = accepted.Value;
+        return true;
+    }
+
+    private void ReadDisplayHints()
+    {
+        var query = System.Web.HttpUtility.ParseQueryString(new Uri(Navigation.Uri).Query);
+        _cancelHint = query.GetValues("cancel")?
+            .Any(value => bool.TryParse(value, out var parsed) && parsed) == true;
+        _providerStatusHint = query.GetValues("status")?
+            .FirstOrDefault(value => !string.IsNullOrWhiteSpace(value))?
+            .Trim()
+            .ToUpperInvariant();
+    }
+
+    private string GetCheckingMessage()
+    {
+        if (_cancelHint)
+        {
+            return "PayOS redirected you after cancellation; confirming the final status…";
+        }
+
+        return _providerStatusHint switch
+        {
+            "PAID" => "PayOS redirected you after payment; confirming activation with your account…",
+            "CANCELLED" => "PayOS redirected you after cancellation; confirming the final status…",
+            "PENDING" or "PROCESSING" => "PayOS is still processing the checkout; confirming the current status…",
+            _ => "Confirming the final payment status with your account…"
+        };
+    }
+
+    private string GetCompletedMessage()
+    {
+        if (!string.IsNullOrWhiteSpace(_result?.PlanDisplayName))
+        {
+            return $"Your payment was confirmed and the {_result.PlanDisplayName} plan is active on your account.";
+        }
+
+        return "Your payment was confirmed and the purchased plan is active on your account.";
+    }
+
+    private static string BuildLoginUrl(long orderCode)
+    {
+        var canonicalReturnUrl = $"/payment/result?orderCode={orderCode}";
+        return $"/login?returnUrl={Uri.EscapeDataString(canonicalReturnUrl)}";
+    }
+
+    private async Task SafeRefreshAsync()
+    {
+        if (!_disposed)
+        {
+            await InvokeAsync(StateHasChanged);
+        }
     }
 
     private void GoToDashboard() => Navigation.NavigateTo(
         AdminAccessPolicy.GetAuthenticatedLandingPage(Session.CurrentUser?.Role),
         forceLoad: true);
+
+    private bool CanCheckAgain() => _view is
+        PaymentResultView.Failed
+        or PaymentResultView.Pending
+        or PaymentResultView.Processing
+        or PaymentResultView.Underpaid
+        or PaymentResultView.Unavailable;
+
+    private string GetTone() => _view switch
+    {
+        PaymentResultView.Completed => "success",
+        PaymentResultView.Failed or PaymentResultView.InvalidLink => "danger",
+        PaymentResultView.Pending or PaymentResultView.Underpaid or PaymentResultView.Expired => "warning",
+        PaymentResultView.SignInRequired or PaymentResultView.Processing or PaymentResultView.Unavailable => "info",
+        _ => "neutral"
+    };
+
+    private string GetIcon() => _view switch
+    {
+        PaymentResultView.InvalidLink => Icons.Material.Filled.LinkOff,
+        PaymentResultView.SignInRequired => Icons.Material.Filled.LockPerson,
+        PaymentResultView.Completed => Icons.Material.Filled.CheckCircle,
+        PaymentResultView.Cancelled => Icons.Material.Filled.Cancel,
+        PaymentResultView.Expired => Icons.Material.Filled.TimerOff,
+        PaymentResultView.Failed => Icons.Material.Filled.GppBad,
+        PaymentResultView.Processing => Icons.Material.Filled.Sync,
+        PaymentResultView.Underpaid => Icons.Material.Filled.AccountBalanceWallet,
+        PaymentResultView.Pending => Icons.Material.Filled.HourglassTop,
+        PaymentResultView.NotFound => Icons.Material.Filled.ReceiptLong,
+        _ => Icons.Material.Filled.CloudOff
+    };
+
+    private string GetTitle() => _view switch
+    {
+        PaymentResultView.InvalidLink => "Invalid payment return link",
+        PaymentResultView.SignInRequired => "Sign in required",
+        PaymentResultView.Completed => "Payment confirmed",
+        PaymentResultView.Cancelled => "Payment cancelled",
+        PaymentResultView.Expired => "Payment link expired",
+        PaymentResultView.Failed => "Payment could not be completed",
+        PaymentResultView.Processing => "Payment is processing",
+        PaymentResultView.Underpaid => "Payment needs attention",
+        PaymentResultView.Pending => "Confirmation pending",
+        PaymentResultView.NotFound => "Payment result unavailable",
+        _ => "Confirmation temporarily unavailable"
+    };
+
+    private string GetMessage() => _view switch
+    {
+        PaymentResultView.InvalidLink => "This link is missing a valid payment reference. Return to pricing and open your payment from there.",
+        PaymentResultView.SignInRequired => "Sign in to view your payment result.",
+        PaymentResultView.Completed => GetCompletedMessage(),
+        PaymentResultView.Cancelled => "PayOS confirmed that this payment was cancelled. Your plan was not changed.",
+        PaymentResultView.Expired => "PayOS confirmed that the payment window expired before completion. You can start a new checkout from pricing.",
+        PaymentResultView.Failed => "We could not safely complete this payment or activate the plan. If money left your account, contact support before trying again.",
+        PaymentResultView.Processing => "PayOS is still processing this payment. Your plan will only change after the payment is confirmed.",
+        PaymentResultView.Underpaid => "PayOS reports that the received amount does not yet match the checkout amount. Please review the payment in your banking app and check again later.",
+        PaymentResultView.Pending => "The payment is not final yet. Your plan has not been changed while confirmation is pending.",
+        PaymentResultView.NotFound => "We could not find a payment for this account and return link. Check that you signed in with the account used at checkout.",
+        _ => "We could not reach the payment service or confirm the final status. Your plan has not been changed by this page."
+    };
+
+    public ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _lifetimeCts.Cancel();
+        _lifetimeCts.Dispose();
+        return ValueTask.CompletedTask;
+    }
+
+    private enum PaymentResultView
+    {
+        Checking,
+        InvalidLink,
+        SignInRequired,
+        Completed,
+        Cancelled,
+        Expired,
+        Failed,
+        Pending,
+        Processing,
+        Underpaid,
+        Unavailable,
+        NotFound
+    }
 }
+
+<style>
+    .payment-result-page {
+        position: relative;
+        isolation: isolate;
+        display: grid;
+        place-items: center;
+        min-height: min(82vh, 760px);
+        padding: clamp(1rem, 4vw, 3rem);
+        overflow: hidden;
+    }
+
+    .result-orb {
+        position: absolute;
+        z-index: -1;
+        width: 22rem;
+        height: 22rem;
+        border-radius: 50%;
+        filter: blur(72px);
+        opacity: .22;
+        pointer-events: none;
+    }
+
+    .result-orb-primary {
+        top: 2%;
+        left: 10%;
+        background: #7c3aed;
+    }
+
+    .result-orb-secondary {
+        right: 8%;
+        bottom: 4%;
+        background: #06b6d4;
+    }
+
+    .result-card {
+        width: min(100%, 34rem);
+        padding: clamp(1.5rem, 5vw, 3rem);
+        text-align: center;
+        color: #e8edf7;
+        background:
+            linear-gradient(145deg, rgba(21, 20, 40, .94), rgba(10, 15, 30, .88)) padding-box,
+            linear-gradient(135deg, rgba(167, 139, 250, .4), rgba(34, 211, 238, .18), rgba(255, 255, 255, .08)) border-box;
+        border: 1px solid transparent;
+        border-radius: 1.5rem;
+        box-shadow: 0 28px 80px rgba(2, 6, 23, .52);
+        backdrop-filter: blur(18px);
+    }
+
+    .result-eyebrow {
+        display: inline-flex;
+        align-items: center;
+        gap: .45rem;
+        margin-bottom: 1.75rem;
+        color: #a5b4fc;
+        font-size: .76rem;
+        font-weight: 700;
+        letter-spacing: .09em;
+        text-transform: uppercase;
+    }
+
+    .result-visual {
+        display: grid;
+        place-items: center;
+        width: 5.25rem;
+        height: 5.25rem;
+        margin: 0 auto 1.25rem;
+        border: 1px solid currentColor;
+        border-radius: 50%;
+    }
+
+    .result-visual .mud-icon-root { font-size: 3rem; }
+    .checking-visual { color: #a78bfa; background: rgba(124, 58, 237, .13); }
+    .success-visual { color: #34d399; background: rgba(16, 185, 129, .12); }
+    .danger-visual, .invalid-visual { color: #fb7185; background: rgba(244, 63, 94, .11); }
+    .warning-visual { color: #fbbf24; background: rgba(245, 158, 11, .11); }
+    .info-visual { color: #67e8f9; background: rgba(6, 182, 212, .11); }
+    .neutral-visual { color: #cbd5e1; background: rgba(148, 163, 184, .1); }
+
+    .result-title {
+        margin: 0 0 .75rem;
+        color: #f8fafc;
+        font-size: clamp(1.55rem, 5vw, 2rem);
+        font-weight: 800;
+        line-height: 1.15;
+        letter-spacing: -.025em;
+    }
+
+    .success-text { color: #6ee7b7; }
+    .danger-text, .invalid-text { color: #fda4af; }
+    .warning-text { color: #fde68a; }
+    .info-text { color: #a5f3fc; }
+
+    .result-subtitle,
+    .result-note {
+        max-width: 29rem;
+        margin: 0 auto;
+        color: #a9b5c9;
+        font-size: .98rem;
+        line-height: 1.65;
+    }
+
+    .result-note {
+        margin-top: .75rem;
+        color: #718096;
+        font-size: .82rem;
+    }
+
+    .result-amount {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        margin: 1.5rem auto 0;
+        padding: .9rem 1rem;
+        color: #9ba9bd;
+        background: rgba(15, 23, 42, .64);
+        border: 1px solid rgba(148, 163, 184, .14);
+        border-radius: .9rem;
+        font-size: .84rem;
+    }
+
+    .result-amount strong {
+        color: #6ee7b7;
+        font-size: 1.35rem;
+        letter-spacing: -.02em;
+    }
+
+    .result-actions {
+        display: flex;
+        justify-content: center;
+        gap: .75rem;
+        flex-wrap: wrap;
+        margin-top: 1.75rem;
+    }
+
+    .result-actions .result-button {
+        min-height: 2.75rem;
+        border-radius: .75rem;
+        font-weight: 700;
+        text-transform: none;
+    }
+
+    .result-actions .button-spinner {
+        margin-right: .5rem;
+    }
+
+    @@media (max-width: 520px) {
+        .payment-result-page {
+            min-height: calc(100vh - 5rem);
+            padding: 1rem;
+        }
+
+        .result-card {
+            padding: 1.5rem 1.1rem;
+            border-radius: 1.15rem;
+        }
+
+        .result-actions {
+            align-items: stretch;
+            flex-direction: column;
+        }
+
+        .result-actions .result-button { width: 100%; }
+    }
+
+    @@media (prefers-reduced-motion: no-preference) {
+        .result-card { animation: result-card-in .45s ease-out both; }
+
+        @@keyframes result-card-in {
+            from { opacity: 0; transform: translateY(12px) scale(.985); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+    }
+</style>

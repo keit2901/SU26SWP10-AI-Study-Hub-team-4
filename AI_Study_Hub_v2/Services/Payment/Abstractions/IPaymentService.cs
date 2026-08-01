@@ -12,9 +12,7 @@ public interface IPaymentService
 
     Task<WebhookResult> ProcessWebhookAsync(string rawBody, CancellationToken ct);
 
-    Task<ReturnUrlResult> VerifyReturnAsync(string txnRef, CancellationToken ct);
-
-    Task<bool> CancelTransactionAsync(string txnRef, CancellationToken ct);
+    Task<ReturnUrlResult?> ReconcileAsync(Guid userId, long orderCode, CancellationToken ct);
 
     Task<int> ExpireStalePaymentsAsync(CancellationToken ct);
 }

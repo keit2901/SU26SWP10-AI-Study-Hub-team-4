@@ -16,7 +16,9 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
 
             // W1.2: CHECK constraints on status and billing_cycle
             t.HasCheckConstraint("ck_payment_transactions_status",
-                "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded', 'expired')");
+                "status IN ('pending', 'completed', 'failed', 'demo_completed', 'refunded', 'expired', 'cancelled')");
+            t.HasCheckConstraint("ck_payment_transactions_provider_order_code_range",
+                "provider_order_code IS NULL OR provider_order_code BETWEEN 1 AND 9007199254740991");
             t.HasCheckConstraint("ck_payment_transactions_billing_cycle",
                 "billing_cycle IN ('monthly', 'yearly')");
         });
@@ -38,6 +40,17 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
             .HasColumnName("txn_ref")
             .HasMaxLength(100)
             .IsRequired();
+
+        builder.Property(pt => pt.ProviderOrderCode)
+            .HasColumnName("provider_order_code");
+
+        builder.Property(pt => pt.ProviderPaymentLinkId)
+            .HasColumnName("provider_payment_link_id")
+            .HasMaxLength(128);
+
+        builder.Property(pt => pt.ProviderStatus)
+            .HasColumnName("provider_status")
+            .HasMaxLength(64);
 
         builder.Property(pt => pt.PlanKey)
             .HasColumnName("plan_key")
@@ -76,6 +89,11 @@ public sealed class PaymentTransactionConfiguration : IEntityTypeConfiguration<P
             .HasColumnName("expires_at");
 
         builder.HasIndex(pt => new { pt.TxnRef, pt.UserId }).IsUnique();
+
+        builder.HasIndex(pt => pt.ProviderOrderCode)
+            .IsUnique()
+            .HasFilter("provider_order_code IS NOT NULL")
+            .HasDatabaseName("ux_payment_transactions_provider_order_code");
 
         builder.HasIndex(pt => new { pt.Status, pt.CreatedAt })
             .HasFilter("status = 'pending'")

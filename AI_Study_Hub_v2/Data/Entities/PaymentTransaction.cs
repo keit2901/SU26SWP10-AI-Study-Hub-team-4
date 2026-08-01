@@ -10,6 +10,12 @@ public sealed class PaymentTransaction
 
     public string TxnRef { get; set; } = string.Empty;
 
+    public long? ProviderOrderCode { get; set; }
+
+    public string? ProviderPaymentLinkId { get; set; }
+
+    public string? ProviderStatus { get; set; }
+
     public string PlanKey { get; set; } = string.Empty;
 
     public string BillingCycle { get; set; } = string.Empty;

@@ -4,6 +4,7 @@ using AI_Study_Hub_v2.Data;
 using AI_Study_Hub_v2.Data.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -13,9 +14,10 @@ using Pgvector;
 namespace AI_Study_Hub_v2.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260801150000_AddPayOsProviderReconciliation")]
+    partial class AddPayOsProviderReconciliation
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -492,10 +494,6 @@ namespace AI_Study_Hub_v2.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("page_count");
 
-                    b.Property<Guid?>("IngestionOperationId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("ingestion_operation_id");
-
                     b.Property<int>("ReviewStatus")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
@@ -553,7 +551,6 @@ namespace AI_Study_Hub_v2.Migrations
                     b.ToTable("documents", null, t =>
                         {
                             t.HasCheckConstraint("ck_documents_moderation_generation_non_negative", "moderation_generation >= 0");
-                            t.HasCheckConstraint("ck_documents_ingestion_operation_id", "ingestion_operation_id IS NULL OR ingestion_operation_id <> '00000000-0000-0000-0000-000000000000'::uuid");
                         });
                 });
 
@@ -750,7 +747,7 @@ namespace AI_Study_Hub_v2.Migrations
                         {
                             t.HasCheckConstraint("ck_document_escalation_items_generation_non_negative", "document_moderation_generation >= 0");
 
-                            t.HasCheckConstraint("ck_document_escalation_items_resolution_status", "resolution_status IN ('Pending', 'Approved', 'Rejected', 'Superseded')");
+                            t.HasCheckConstraint("ck_document_escalation_items_resolution_status", "resolution_status IN ('Pending', 'Approved', 'Rejected')");
                         });
                 });
 
@@ -1408,21 +1405,21 @@ namespace AI_Study_Hub_v2.Migrations
                         {
                             Id = 1,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 23, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            Description = "System administrator responsible for managing users, moderating documents, and configuring AI settings.",
+                            Description = "Quản trị viên hệ thống, có quyền điều phối nhân sự, kiểm duyệt tài liệu và thay đổi tham số cấu hình AI",
                             RoleName = "Admin"
                         },
                         new
                         {
                             Id = 2,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 5, 23, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            Description = "Student who uses personal learning resources, participates in RAG conversations, and completes review quizzes.",
+                            Description = "Sinh viên khai thác tài nguyên học tập cá nhân, thực hiện hội thoại RAG và tham gia kiểm tra ôn tập",
                             RoleName = "Student"
                         },
                         new
                         {
                             Id = 3,
                             CreatedAt = new DateTimeOffset(new DateTime(2026, 6, 27, 0, 0, 0, 0, DateTimeKind.Unspecified), new TimeSpan(0, 0, 0, 0, 0)),
-                            Description = "Community moderator who reviews and handles violation reports without access to system settings or user management.",
+                            Description = "Kiểm duyệt viên cộng đồng, có quyền xem và xử lý báo cáo vi phạm nhưng không thể thay đổi cấu hình hệ thống hoặc quản lý người dùng",
                             RoleName = "Moderator"
                         });
                 });

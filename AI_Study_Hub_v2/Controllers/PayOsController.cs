@@ -48,20 +48,14 @@ public sealed class PayOsController : ControllerBase
 
             var result = await _paymentService.ProcessWebhookAsync(rawBody, ct);
 
-            if (result.Success)
-            {
-                return Ok(new { status = "success" });
-            }
-
-            // Return 200 even on business errors — PayOS expects 2xx
-            // Log the failure for investigation
-            _logger.LogWarning("PayOS webhook processed with business error: {Message}", result.Message);
-            return Ok(new { status = "processed", note = result.Message });
+            return result.Disposition == WebhookDisposition.RetryableFailure
+                ? StatusCode(StatusCodes.Status503ServiceUnavailable, new { status = "retry" })
+                : Ok(new { status = "processed" });
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "PayOS webhook processing failed unexpectedly.");
-            return Ok(new { status = "error", message = "Internal error" });
+            return StatusCode(StatusCodes.Status500InternalServerError, new { status = "retry" });
         }
     }
 }

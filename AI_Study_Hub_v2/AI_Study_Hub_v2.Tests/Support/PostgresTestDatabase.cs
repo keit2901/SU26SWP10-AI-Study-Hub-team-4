@@ -23,6 +23,22 @@ internal static class PostgresTestDatabase
     private const long BootstrapAdvisoryLockKey = 7_306_748_913_024_681;
 
     public static async Task BootstrapAsync(AppDbContext db, CancellationToken cancellationToken = default)
+        => await BootstrapCoreAsync(db, null, cancellationToken);
+
+    /// <summary>Bootstraps through a supported historical migration without applying later model repairs.</summary>
+    public static async Task BootstrapToMigrationAsync(
+        AppDbContext db,
+        string targetMigration,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetMigration);
+        if (string.CompareOrdinal(targetMigration, PaymentConstraintPrerequisiteMigration) < 0)
+            throw new ArgumentOutOfRangeException(nameof(targetMigration), targetMigration,
+                $"Target migration must be at or after {PaymentConstraintPrerequisiteMigration}.");
+        await BootstrapCoreAsync(db, targetMigration, cancellationToken);
+    }
+
+    private static async Task BootstrapCoreAsync(AppDbContext db, string? targetMigration, CancellationToken cancellationToken)
     {
         EnsureNoActiveTransaction(db);
 
@@ -36,6 +52,9 @@ internal static class PostgresTestDatabase
             lockAcquired = true;
 
             var migrator = db.Database.GetService<IMigrator>();
+            if (targetMigration is not null
+                && !db.Database.GetService<IMigrationsAssembly>().Migrations.ContainsKey(targetMigration))
+                throw new ArgumentException("Requested migration is not present in the application migration assembly.", nameof(targetMigration));
             var appliedMigrations = await db.Database.GetAppliedMigrationsAsync(cancellationToken);
             await CloseBootstrapDatabaseConnectionIfOpenAsync(db, cancellationToken);
             if (!appliedMigrations.Contains(PaymentConstraintPrerequisiteMigration))
@@ -84,11 +103,13 @@ internal static class PostgresTestDatabase
             }
 
             await CloseBootstrapDatabaseConnectionIfOpenAsync(db, cancellationToken);
-            await migrator.MigrateAsync(cancellationToken: cancellationToken);
+            await migrator.MigrateAsync(targetMigration, cancellationToken);
 
-            // The current model contains these folder fields before a production migration adds
-            // them. This aligns only disposable test schemas with the EF model.
-            await db.Database.ExecuteSqlRawAsync("""
+            if (targetMigration is null)
+            {
+                // The current model contains these folder fields before a production migration adds
+                // them. This aligns only disposable test schemas with the EF model.
+                await db.Database.ExecuteSqlRawAsync("""
                 ALTER TABLE IF EXISTS public.folders
                     ADD COLUMN IF NOT EXISTS is_favorite boolean NOT NULL DEFAULT false,
                     ADD COLUMN IF NOT EXISTS share_review_source varchar(32) NULL,
@@ -103,6 +124,7 @@ internal static class PostgresTestDatabase
                     ADD COLUMN IF NOT EXISTS appeal_requested_at timestamp with time zone NULL,
                     ADD COLUMN IF NOT EXISTS appeal_message varchar(2000) NULL;
                 """, cancellationToken);
+            }
         }
         finally
         {

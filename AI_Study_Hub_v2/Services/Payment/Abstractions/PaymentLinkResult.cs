@@ -6,5 +6,6 @@ namespace AI_Study_Hub_v2.Services.Payment.Abstractions;
 public sealed record PaymentLinkResult(
     bool Success,
     string PaymentUrl,
-    string ProviderTxnId,
+    long OrderCode,
+    string? PaymentLinkId,
     string? ErrorMessage);

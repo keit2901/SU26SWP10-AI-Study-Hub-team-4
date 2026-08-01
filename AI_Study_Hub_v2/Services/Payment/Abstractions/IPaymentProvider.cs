@@ -14,6 +14,5 @@ public interface IPaymentProvider
     Task<WebhookVerificationResult> VerifyWebhookAsync(
         string rawBody, string signature, CancellationToken ct = default);
 
-    Task<TransactionStatusResult> GetTransactionStatusAsync(
-        string providerTransactionId, CancellationToken ct = default);
+    Task<TransactionStatusResult> GetTransactionStatusAsync(long orderCode, CancellationToken ct = default);
 }

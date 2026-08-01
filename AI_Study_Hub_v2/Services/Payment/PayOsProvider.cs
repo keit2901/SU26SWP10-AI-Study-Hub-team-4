@@ -3,6 +3,7 @@ using AI_Study_Hub_v2.Options;
 using AI_Study_Hub_v2.Services.Payment.Abstractions;
 using Microsoft.Extensions.Options;
 using PayOS;
+using PayOS.Exceptions;
 using PayOS.Models.V2.PaymentRequests;
 using PayOS.Models.Webhooks;
 
@@ -49,11 +50,11 @@ public sealed class PayOsProvider : IPaymentProvider
 
             var response = await _payOs.PaymentRequests.CreateAsync(createRequest);
 
-            // Store the paymentLinkId as the provider transaction ID
             return new PaymentLinkResult(
                 Success: true,
                 PaymentUrl: response.CheckoutUrl,
-                ProviderTxnId: response.PaymentLinkId,
+                OrderCode: response.OrderCode,
+                PaymentLinkId: response.PaymentLinkId,
                 ErrorMessage: null);
         }
         catch (Exception ex)
@@ -62,7 +63,8 @@ public sealed class PayOsProvider : IPaymentProvider
             return new PaymentLinkResult(
                 Success: false,
                 PaymentUrl: string.Empty,
-                ProviderTxnId: string.Empty,
+                OrderCode: 0,
+                PaymentLinkId: null,
                 ErrorMessage: ex.Message);
         }
     }
@@ -76,57 +78,66 @@ public sealed class PayOsProvider : IPaymentProvider
             var webhook = JsonSerializer.Deserialize<Webhook>(rawBody);
             if (webhook is null)
             {
-                return new WebhookVerificationResult(false, string.Empty, "INVALID", 0, "Invalid webhook body");
+                return new WebhookVerificationResult(false, 0, null, "UNKNOWN", "INVALID", 0, 0, 0, "Invalid webhook body");
             }
 
             // SDK verifies signature and returns WebhookData (the inner data)
             var verifiedData = await _payOs.Webhooks.VerifyAsync(webhook);
 
-            var status = verifiedData.Code == "00"
-                ? "PAID"
-                : "CANCELLED";
+            var providerStatus = verifiedData.Code == "00" ? "PAID" : "UNKNOWN";
 
             return new WebhookVerificationResult(
                 IsValid: true,
-                ProviderTxnId: verifiedData.PaymentLinkId,
-                Status: status,
-                AmountVnd: verifiedData.Amount,
+                OrderCode: verifiedData.OrderCode,
+                PaymentLinkId: verifiedData.PaymentLinkId,
+                Status: NormalizeStatus(providerStatus),
+                ProviderStatus: providerStatus,
+                AmountPaidVnd: verifiedData.Amount,
+                ExpectedAmountVnd: verifiedData.Amount,
+                AmountRemainingVnd: 0,
                 ErrorMessage: null);
         }
-        catch (Exception ex)
+        catch (JsonException ex)
         {
             _logger.LogWarning(ex, "PayOS webhook verification failed.");
             return new WebhookVerificationResult(
-                false, string.Empty, "INVALID", 0,
+                false, 0, null, "UNKNOWN", "INVALID", 0, 0, 0,
                 $"Signature verification failed: {ex.Message}");
+        }
+        catch (WebhookException ex)
+        {
+            _logger.LogWarning(ex, "PayOS webhook signature verification failed.");
+            return new WebhookVerificationResult(false, 0, null, "UNKNOWN", "INVALID", 0, 0, 0, "Invalid webhook verification.");
         }
     }
 
     public async Task<TransactionStatusResult> GetTransactionStatusAsync(
-        string providerTransactionId, CancellationToken ct = default)
+        long orderCode, CancellationToken ct = default)
     {
         try
         {
-            if (string.IsNullOrWhiteSpace(providerTransactionId))
+            if (orderCode <= 0)
             {
-                return new TransactionStatusResult(false, "INVALID", 0, false);
+                return new TransactionStatusResult(false, orderCode, null, "UNKNOWN", "INVALID", 0, 0, 0);
             }
 
-            // PayOS SDK uses PaymentLinkId to look up payment info
-            var info = await _payOs.PaymentRequests.GetAsync(providerTransactionId);
-
-            var isCompleted = info.Status == PaymentLinkStatus.Paid;
+            var info = await _payOs.PaymentRequests.GetAsync(orderCode);
+            var providerStatus = info.Status.ToString();
 
             return new TransactionStatusResult(
                 Success: true,
-                Status: info.Status.ToString(),
-                AmountVnd: info.Amount,
-                IsCompleted: isCompleted);
+                OrderCode: info.OrderCode,
+                PaymentLinkId: info.Id,
+                Status: NormalizeStatus(providerStatus),
+                ProviderStatus: providerStatus,
+                AmountPaidVnd: info.AmountPaid,
+                ExpectedAmountVnd: info.Amount,
+                AmountRemainingVnd: info.AmountRemaining);
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "PayOS get transaction status failed for ID {ProviderTxnId}", providerTransactionId);
-            return new TransactionStatusResult(false, "ERROR", 0, false);
+            _logger.LogError(ex, "PayOS get transaction status failed for order code {OrderCode}", orderCode);
+            return new TransactionStatusResult(false, orderCode, null, "UNKNOWN", "ERROR", 0, 0, 0);
         }
     }
 
@@ -139,14 +150,34 @@ public sealed class PayOsProvider : IPaymentProvider
     }
 
     /// <summary>Extracts the order code from a TxnRef.</summary>
+    public static string NormalizeStatus(string? rawStatus)
+    {
+        return rawStatus?.Trim().ToUpperInvariant() switch
+        {
+            "PAID" => "PAID",
+            "CANCELLED" => "CANCELLED",
+            "EXPIRED" => "EXPIRED",
+            "FAILED" => "FAILED",
+            "PENDING" => "PENDING",
+            "PROCESSING" => "PROCESSING",
+            "UNDERPAID" => "UNDERPAID",
+            _ => "UNKNOWN"
+        };
+    }
+
+    public static bool TryParseOrderCode(string? txnRef, out long orderCode)
+    {
+        orderCode = 0;
+        return !string.IsNullOrWhiteSpace(txnRef)
+            && txnRef.StartsWith("PO_", StringComparison.Ordinal)
+            && long.TryParse(txnRef.AsSpan(3), out orderCode)
+            && orderCode is > 0 and <= 9007199254740991;
+    }
+
     private static long ParseOrderCodeFromTxnRef(string txnRef)
     {
-        if (txnRef.StartsWith("PO_", StringComparison.Ordinal) && long.TryParse(txnRef.AsSpan(3), out var code))
-        {
-            return code;
-        }
-        // Fallback: use current timestamp
-        return DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        if (TryParseOrderCode(txnRef, out var orderCode)) return orderCode;
+        throw new InvalidOperationException("PayOS transaction reference must be PO_<positive digits>.");
     }
 
     private static string TruncateDescription(string description, int maxLength)

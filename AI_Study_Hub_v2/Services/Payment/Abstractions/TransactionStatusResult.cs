@@ -5,6 +5,10 @@ namespace AI_Study_Hub_v2.Services.Payment.Abstractions;
 /// </summary>
 public sealed record TransactionStatusResult(
     bool Success,
+    long OrderCode,
+    string? PaymentLinkId,
     string Status,
-    long AmountVnd,
-    bool IsCompleted);
+    string ProviderStatus,
+    long AmountPaidVnd,
+    long ExpectedAmountVnd,
+    long AmountRemainingVnd);
