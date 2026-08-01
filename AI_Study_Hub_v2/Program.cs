@@ -72,7 +72,7 @@ builder.Services
     .Bind(builder.Configuration.GetSection(AiChatOptions.SectionName))
     .Validate(options => AiChatOptions.IsSupportedProvider(options.DefaultProvider),
         "AiChat:DefaultProvider must be either 'groq' or 'gemini'.")
-    .Validate<GeminiOptions>(AiChatOptions.HasValidDefaultProviderConfiguration,
+    .Validate<IOptions<GeminiOptions>>(AiChatOptions.HasValidDefaultProviderConfiguration,
         "AiChat:DefaultProvider=gemini requires Gemini:ApiKey.")
     .ValidateOnStart();
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));

@@ -33,6 +33,7 @@ public sealed class QuizConfiguration : IEntityTypeConfiguration<Quiz>
             .HasColumnName("status")
             .HasMaxLength(20)
             .HasDefaultValue(QuizStatus.InProgress)
+            .HasSentinel(QuizStatus.InProgress)
             .IsRequired()
             .HasConversion<string>();
 

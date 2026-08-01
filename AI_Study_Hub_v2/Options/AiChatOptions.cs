@@ -1,3 +1,5 @@
+using Microsoft.Extensions.Options;
+
 namespace AI_Study_Hub_v2.Options;
 
 public sealed class AiChatOptions
@@ -10,8 +12,10 @@ public sealed class AiChatOptions
         => string.Equals(provider, "groq", StringComparison.OrdinalIgnoreCase)
            || string.Equals(provider, "gemini", StringComparison.OrdinalIgnoreCase);
 
-    public static bool HasValidDefaultProviderConfiguration(AiChatOptions options, GeminiOptions geminiOptions)
+    public static bool HasValidDefaultProviderConfiguration(
+        AiChatOptions options,
+        IOptions<GeminiOptions> geminiOptions)
         => IsSupportedProvider(options.DefaultProvider)
            && (!string.Equals(options.DefaultProvider, "gemini", StringComparison.OrdinalIgnoreCase)
-               || !string.IsNullOrWhiteSpace(geminiOptions.ApiKey));
+               || !string.IsNullOrWhiteSpace(geminiOptions.Value.ApiKey));
 }

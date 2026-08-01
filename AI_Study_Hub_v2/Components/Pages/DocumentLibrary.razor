@@ -387,7 +387,7 @@ else
                                         <MudText Class="folder-card-semester">@folder.Semester</MudText>
                                         <div class="folder-card-docs">
                                             <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Small" />
-                                            <span>@GetFolderReviewCounts(folder).Approved approved public</span>
+                                            <span>@GetFolderDocumentCount(folder) file@(GetFolderDocumentCount(folder) == 1 ? string.Empty : "s")</span>
                                         </div>
                                         <div class="folder-public-state @GetFolderPublicStateClass(folder)">
                                             @if (_resubmittingFolderId == folder.Id)
@@ -682,9 +682,9 @@ else
                                              Color="@GetReviewStatusColor(context.ReviewStatus)"
                                              Variant="Variant.Filled"
                                              Icon="@GetReviewStatusIcon(context.ReviewStatus)">
-                                        @GetReviewStatusLabel(context.ReviewStatus)
+                                        @GetReviewStatusLabel(context)
                                     </MudChip>
-                                    <span class="document-review-note">@GetReviewVisibilityText(context.ReviewStatus)</span>
+                                    <span class="document-review-note">@GetReviewVisibilityText(context)</span>
                                     @if (context.ReviewStatus == DocumentReviewStatus.Rejected && !string.IsNullOrWhiteSpace(GetDocumentReviewReason(context)))
                                     {
                                         <span class="document-review-reason" title="@GetDocumentReviewReason(context)">@GetDocumentReviewReason(context)</span>
@@ -894,7 +894,7 @@ else
         .ToList();
 
     private List<string> _statusOptions => _documents
-        .Select(d => GetReviewStatusLabel(d.ReviewStatus))
+        .Select(GetReviewStatusLabel)
         .Where(value => !string.IsNullOrWhiteSpace(value))
         .Distinct(StringComparer.OrdinalIgnoreCase)
         .OrderBy(value => value, StringComparer.OrdinalIgnoreCase)
@@ -933,7 +933,7 @@ else
 
             if (!string.IsNullOrWhiteSpace(_filterStatusQuery))
             {
-                query = query.Where(d => GetReviewStatusLabel(d.ReviewStatus).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
+                query = query.Where(d => GetReviewStatusLabel(d).Contains(_filterStatusQuery, StringComparison.OrdinalIgnoreCase));
             }
 
             var createdFrom = ParseDocumentLocalDateTimeFilter(_filterCreatedFrom);
@@ -1680,23 +1680,44 @@ else
         _ => Icons.Material.Filled.Lock,
     };
 
-    private static string GetReviewStatusLabel(DocumentReviewStatus status) => status switch
+    private string GetReviewStatusLabel(DocumentDto document)
     {
-        DocumentReviewStatus.Approved => "Approved / Public",
+        if (document.ReviewStatus == DocumentReviewStatus.None && !IsModerationRequired(document))
+            return "Private";
+
+        return document.ReviewStatus switch
+        {
+            DocumentReviewStatus.Approved => "Approved / Public",
         DocumentReviewStatus.None => "Awaiting moderator review",
         DocumentReviewStatus.Escalated => "Awaiting Admin",
         DocumentReviewStatus.Rejected => "Rejected",
         _ => "Private",
-    };
+        };
+    }
 
-    private static string GetReviewVisibilityText(DocumentReviewStatus status) => status switch
+    private string GetReviewVisibilityText(DocumentDto document)
     {
-        DocumentReviewStatus.Approved => "Visible in the public folder",
+        if (document.ReviewStatus == DocumentReviewStatus.None && !IsModerationRequired(document))
+            return "Private folder - not submitted for moderation";
+
+        return document.ReviewStatus switch
+        {
+            DocumentReviewStatus.Approved => "Visible in the public folder",
         DocumentReviewStatus.None => "Private until a moderator approves it",
         DocumentReviewStatus.Escalated => "Private while Admin reviews the escalation",
         DocumentReviewStatus.Rejected => "Private — upload a corrected file, then optionally delete this copy",
         _ => "Private",
-    };
+        };
+    }
+
+    private bool IsModerationRequired(DocumentDto document)
+    {
+        if (!document.FolderId.HasValue)
+            return false;
+
+        var folder = _folders.FirstOrDefault(item => item.Id == document.FolderId.Value);
+        return folder?.ShareStatus is FolderStatus.PendingShare or FolderStatus.Approved;
+    }
 
     private static string? GetDocumentReviewReason(DocumentDto document)
     {
@@ -1722,6 +1743,8 @@ else
             documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Escalated),
             documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Rejected));
     }
+
+    private static int GetFolderDocumentCount(FolderDto folder) => folder.DocumentCount;
 
     private string GetFolderPublicStateText(FolderDto folder)
     {

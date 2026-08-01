@@ -1,4 +1,5 @@
 using AI_Study_Hub_v2.Options;
+using Microsoft.Extensions.Options;
 
 namespace AI_Study_Hub_v2.Tests.Options;
 
@@ -25,7 +26,7 @@ public sealed class AiChatOptionsTests
     {
         AiChatOptions.HasValidDefaultProviderConfiguration(
             new AiChatOptions { DefaultProvider = "gemini" },
-            new GeminiOptions { ApiKey = string.Empty })
+            Microsoft.Extensions.Options.Options.Create(new GeminiOptions { ApiKey = string.Empty }))
             .Should().BeFalse();
     }
 
@@ -34,7 +35,7 @@ public sealed class AiChatOptionsTests
     {
         AiChatOptions.HasValidDefaultProviderConfiguration(
             new AiChatOptions { DefaultProvider = "gemini" },
-            new GeminiOptions { ApiKey = "configured" })
+            Microsoft.Extensions.Options.Options.Create(new GeminiOptions { ApiKey = "configured" }))
             .Should().BeTrue();
     }
 }
