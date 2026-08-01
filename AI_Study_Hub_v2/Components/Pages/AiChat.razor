@@ -18,6 +18,7 @@
 @inject IDialogService DialogService
 @inject IOptions<GroqOptions> GroqOptions
 @inject IOptions<GeminiOptions> GeminiOptions
+@inject IOptions<AiChatOptions> AiChatOptions
 
 <PageTitle>AI Chat - AI Study Hub v2</PageTitle>
 
@@ -465,22 +466,10 @@
     {
         get
         {
-            var groqModel = GroqOptions.Value.Model?.Trim();
-            var geminiModel = GeminiOptions.Value.Model?.Trim();
-            var models = new List<string>();
-            if (!string.IsNullOrWhiteSpace(groqModel))
-            {
-                models.Add(groqModel);
-            }
-
-            if (!string.IsNullOrWhiteSpace(GeminiOptions.Value.ApiKey)
-                && !string.IsNullOrWhiteSpace(geminiModel)
-                && !models.Contains(geminiModel, StringComparer.OrdinalIgnoreCase))
-            {
-                models.Add(geminiModel);
-            }
-
-            return models;
+            return AiChatModelCatalog.GetAvailableModels(
+                AiChatOptions.Value,
+                GroqOptions.Value,
+                GeminiOptions.Value);
         }
     }
 
@@ -519,6 +508,11 @@
             {
                 var latest = _sessions[0];
                 _currentSessionId = latest.Id;
+                if (!string.IsNullOrWhiteSpace(latest.Model)
+                    && AvailableModels.Contains(latest.Model, StringComparer.OrdinalIgnoreCase))
+                {
+                    _selectedModel = latest.Model;
+                }
                 await LoadSessionMessagesAsync(latest.Id, workspaceVersion);
             }
             else
@@ -1014,6 +1008,7 @@
         _currentSessionId = null;
         _resumeQuiz = null;
         _sessions.Clear();
+        _selectedModel = DefaultModel;
         StateHasChanged();
     }
 
@@ -1217,6 +1212,7 @@
         _quizCache.Clear();
         _resumeQuiz = null;
         _question = null;
+        _selectedModel = DefaultModel;
         _error = null;
         _composerError = null;
         ChatSession.Clear();
@@ -1229,6 +1225,7 @@
     {
         _sessions.Clear();
         _currentSessionId = null;
+        _selectedModel = DefaultModel;
         _resumeQuiz = null;
         _quizCache.Clear();
         _copiedIndexes.Clear();

@@ -9,47 +9,65 @@ public sealed class AiChatCompletionClientFactory : IAiChatCompletionClientFacto
     private readonly GeminiChatCompletionClient _geminiClient;
     private readonly GroqOptions _groqOptions;
     private readonly GeminiOptions _geminiOptions;
+    private readonly AiChatOptions _aiChatOptions;
 
     public AiChatCompletionClientFactory(
         GroqChatCompletionClient groqClient,
         GeminiChatCompletionClient geminiClient,
         IOptions<GroqOptions> groqOptions,
-        IOptions<GeminiOptions> geminiOptions)
+        IOptions<GeminiOptions> geminiOptions,
+        IOptions<AiChatOptions> aiChatOptions)
     {
         _groqClient = groqClient;
         _geminiClient = geminiClient;
         _groqOptions = groqOptions.Value;
         _geminiOptions = geminiOptions.Value;
+        _aiChatOptions = aiChatOptions.Value;
     }
 
     public IAiChatCompletionClient GetClient(string? modelName)
     {
-        var resolvedModel = ResolveModelName(modelName);
-        if (string.Equals(resolvedModel, _groqOptions.Model, StringComparison.OrdinalIgnoreCase))
-        {
-            return _groqClient;
-        }
-
-        return _geminiClient;
+        return ResolveProvider(modelName) == "groq" ? _groqClient : _geminiClient;
     }
 
     public string GetProviderName(string? modelName)
     {
-        var resolvedModel = ResolveModelName(modelName);
-        return string.Equals(resolvedModel, _groqOptions.Model, StringComparison.OrdinalIgnoreCase)
-            ? "groq"
-            : "gemini";
+        return ResolveProvider(modelName);
     }
 
-    private string ResolveModelName(string? modelName)
+    private string ResolveProvider(string? modelName)
     {
-        var resolvedModel = string.IsNullOrWhiteSpace(modelName) ? _groqOptions.Model : modelName.Trim();
-        if (string.Equals(resolvedModel, _groqOptions.Model, StringComparison.OrdinalIgnoreCase)
-            || string.Equals(resolvedModel, _geminiOptions.Model, StringComparison.OrdinalIgnoreCase))
+        if (string.IsNullOrWhiteSpace(modelName))
         {
-            return resolvedModel;
+            return ResolveDefaultProvider();
+        }
+
+        var resolvedModel = modelName.Trim();
+        if (string.Equals(resolvedModel, _groqOptions.Model, StringComparison.OrdinalIgnoreCase))
+        {
+            return "groq";
+        }
+
+        if (string.Equals(resolvedModel, _geminiOptions.Model, StringComparison.OrdinalIgnoreCase))
+        {
+            return "gemini";
         }
 
         throw new AiChatModelException(resolvedModel);
+    }
+
+    private string ResolveDefaultProvider()
+    {
+        if (string.Equals(_aiChatOptions.DefaultProvider, "groq", StringComparison.OrdinalIgnoreCase))
+        {
+            return "groq";
+        }
+
+        if (string.Equals(_aiChatOptions.DefaultProvider, "gemini", StringComparison.OrdinalIgnoreCase))
+        {
+            return "gemini";
+        }
+
+        throw new InvalidOperationException("AiChat:DefaultProvider must be either 'groq' or 'gemini'.");
     }
 }
