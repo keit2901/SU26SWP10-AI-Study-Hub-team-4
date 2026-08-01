@@ -20,12 +20,30 @@ public sealed class AiChatCompletionClientFactoryTests
     }
 
     [Test]
-    public void GetClient_BlankModel_RoutesToConfiguredGroq()
+    public void GetClient_BlankModel_RoutesToConfiguredDefaultProvider()
     {
-        var (sut, groq, _) = CreateSut();
+        var (sut, groq, _) = CreateSut(defaultProvider: "groq");
 
         sut.GetClient("  ").Should().BeSameAs(groq);
         sut.GetProviderName(null).Should().Be("groq");
+    }
+
+    [Test]
+    public void GetClient_BlankModel_RoutesToGeminiWhenGeminiIsDefault()
+    {
+        var (sut, _, gemini) = CreateSut(defaultProvider: "gemini");
+
+        sut.GetClient("  ").Should().BeSameAs(gemini);
+        sut.GetProviderName(null).Should().Be("gemini");
+    }
+
+    [Test]
+    public void GetClient_ExplicitProvider_IsUnaffectedByOppositeDefault()
+    {
+        var (sut, groq, gemini) = CreateSut(defaultProvider: "gemini");
+
+        sut.GetClient("configured-groq").Should().BeSameAs(groq);
+        sut.GetClient("configured-gemini").Should().BeSameAs(gemini);
     }
 
     [Test]
@@ -48,7 +66,17 @@ public sealed class AiChatCompletionClientFactoryTests
         sut.GetClient("configured-gemini").Should().NotBeSameAs(groq);
     }
 
+    [Test]
+    public void GetClient_BlankGeminiDefaultWithoutKey_DoesNotRouteToGroq()
+    {
+        var (sut, groq, gemini) = CreateSut(defaultProvider: "gemini", geminiApiKey: string.Empty);
+
+        sut.GetClient(null).Should().BeSameAs(gemini);
+        sut.GetClient(null).Should().NotBeSameAs(groq);
+    }
+
     private static (AiChatCompletionClientFactory Sut, GroqChatCompletionClient Groq, GeminiChatCompletionClient Gemini) CreateSut(
+        string defaultProvider = "groq",
         string geminiApiKey = "gemini-key")
     {
         var groq = new GroqChatCompletionClient(
@@ -63,7 +91,8 @@ public sealed class AiChatCompletionClientFactoryTests
             groq,
             gemini,
             Microsoft.Extensions.Options.Options.Create(new GroqOptions { Model = "configured-groq" }),
-            Microsoft.Extensions.Options.Options.Create(new GeminiOptions { Model = "configured-gemini", ApiKey = geminiApiKey }));
+            Microsoft.Extensions.Options.Options.Create(new GeminiOptions { Model = "configured-gemini", ApiKey = geminiApiKey }),
+            Microsoft.Extensions.Options.Options.Create(new AiChatOptions { DefaultProvider = defaultProvider }));
         return (sut, groq, gemini);
     }
 }
