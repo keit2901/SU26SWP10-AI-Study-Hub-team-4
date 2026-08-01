@@ -6,35 +6,31 @@
 
 <MudDialog>
     <TitleContent>
-        <MudText Typo="Typo.h6">Folder Rejected — What would you like to do?</MudText>
+        <MudText Typo="Typo.h6">Resubmit non-approved files?</MudText>
     </TitleContent>
     <DialogContent>
         <MudStack Spacing="3">
             <MudAlert Severity="Severity.Warning" Variant="Variant.Outlined">
-                Your folder "@FolderName" was rejected. Choose an action below.
+                Review the rejected files in "@FolderName" and upload corrected copies before resubmitting when needed.
             </MudAlert>
-
-            <MudRadioGroup @bind-Value="_selectedAction" T="string">
-                <MudRadio Value="@("Resubmit")" Color="Color.Primary">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                        <MudIcon Icon="@Icons.Material.Filled.Refresh" Size="Size.Small" />
-                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Resubmit for review</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Submit again after correcting the folder</MudText>
-                    </MudStack>
-                </MudRadio>
-                <MudRadio Value="@("KeepPrivate")" Color="Color.Primary">
-                    <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="1">
-                        <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" />
-                        <MudText Typo="Typo.body2" Style="font-weight: 500;">Keep folder private</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">— Accept the rejection and return to your private library</MudText>
-                    </MudStack>
-                </MudRadio>
-            </MudRadioGroup>
+            <MudStack Spacing="2">
+                <MudText Typo="Typo.body2">
+                    Non-approved files return to the moderator queue in a new review cycle. Approved files remain public and unchanged.
+                </MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Any unfinished Admin escalations are closed as superseded. Their history remains available for audit.
+                </MudText>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Resubmitting does not replace file contents or delete rejected files.
+                </MudText>
+            </MudStack>
         </MudStack>
     </DialogContent>
     <DialogActions>
         <MudButton Variant="Variant.Text" OnClick="Cancel">Cancel</MudButton>
-        <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="Submit" Disabled="@string.IsNullOrWhiteSpace(_selectedAction)">Confirm</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="Submit">
+            Resubmit non-approved files
+        </MudButton>
     </DialogActions>
 </MudDialog>
 
@@ -43,8 +39,6 @@
 
     [Parameter] public string FolderName { get; set; } = string.Empty;
 
-    private string _selectedAction = "Resubmit";
-
     private void Cancel() => MudDialog.Cancel();
-    private void Submit() => MudDialog.Close(DialogResult.Ok(_selectedAction));
+    private void Submit() => MudDialog.Close(DialogResult.Ok("Resubmit"));
 }

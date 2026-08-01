@@ -53,6 +53,61 @@ public sealed class UserNotificationServiceTests
         db.ChangeTracker.Entries<UserNotification>().Should().ContainSingle(entry => entry.State == EntityState.Added);
     }
 
+    [TestCase(Role.ModeratorRoleName, "Moderator rejected “notes.pdf”")]
+    [TestCase(Role.AdminRoleName, "Admin rejected “notes.pdf”")]
+    public async Task Stage_document_final_identifies_the_reviewer_role_file_and_truncated_feedback(
+        string roleName,
+        string expectedTitle)
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var (owner, folder) = await AddOwnerAndFolderAsync(db, "Algorithms");
+        var document = new Document
+        {
+            Id = Guid.NewGuid(), UserId = owner.Id, FolderId = folder.Id, FileName = "notes.pdf",
+            ReviewStatus = DocumentReviewStatus.Rejected
+        };
+        var reason = $"  {new string('x', 161)}\n";
+        var service = new UserNotificationService(db);
+
+        service.StageDocumentModerationFinal(document, folder, roleName, reason, DateTimeOffset.UtcNow);
+        service.StageDocumentModerationFinal(document, folder, roleName, reason, DateTimeOffset.UtcNow);
+
+        var notification = db.UserNotifications.Local.Should().ContainSingle().Subject;
+        notification.Title.Should().Be(expectedTitle);
+        notification.Message.Should().Contain("Algorithms").And.Contain(new string('x', 160) + "…");
+        notification.Message.Should().NotContain(new string('x', 161));
+    }
+
+    [Test]
+    public async Task Stage_escalation_resolution_keeps_one_aggregate_notification_with_file_or_counts()
+    {
+        await using var db = TestDb.CreateInMemoryWithDocuments();
+        var (owner, folder) = await AddOwnerAndFolderAsync(db, "Distributed systems");
+        var service = new UserNotificationService(db);
+        var single = new DocumentEscalation { Id = Guid.NewGuid(), FolderId = folder.Id };
+        db.DocumentEscalationItems.Add(new DocumentEscalationItem
+        {
+            Id = Guid.NewGuid(), EscalationId = single.Id, DocumentFileName = "single.pdf", RejectReason = "Reason"
+        });
+
+        service.StageEscalationResolved(single, folder, 1, 0, DateTimeOffset.UtcNow);
+
+        var singleNotification = db.UserNotifications.Local.Should().ContainSingle().Subject;
+        singleNotification.Title.Should().Be("Admin approved “single.pdf”");
+
+        db.ChangeTracker.Clear();
+        var multiple = new DocumentEscalation { Id = Guid.NewGuid(), FolderId = folder.Id };
+        db.DocumentEscalationItems.AddRange(
+            new DocumentEscalationItem { Id = Guid.NewGuid(), EscalationId = multiple.Id, DocumentFileName = "one.pdf", RejectReason = "Reason" },
+            new DocumentEscalationItem { Id = Guid.NewGuid(), EscalationId = multiple.Id, DocumentFileName = "two.pdf", RejectReason = "Reason" });
+
+        service.StageEscalationResolved(multiple, folder, 1, 1, DateTimeOffset.UtcNow);
+
+        var multipleNotification = db.UserNotifications.Local.Should().ContainSingle().Subject;
+        multipleNotification.Title.Should().Be("Admin reviewed 2 files in “Distributed systems”");
+        multipleNotification.Message.Should().Contain("1 approved and 1 rejected");
+    }
+
     [Test]
     public async Task Get_mine_is_owner_scoped_ordered_limited_and_counts_all_unread()
     {

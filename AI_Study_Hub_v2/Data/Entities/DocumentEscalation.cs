@@ -21,13 +21,16 @@ public sealed class DocumentEscalation
 
 public sealed class DocumentEscalationItem
 {
+    public const string PendingResolutionStatus = "Pending";
+    public const string SupersededResolutionStatus = "Superseded";
+
     public Guid Id { get; set; }
     public Guid EscalationId { get; set; }
     public Guid? DocumentId { get; set; }
     public string DocumentFileName { get; set; } = string.Empty;
     public int DocumentModerationGeneration { get; set; }
     public string RejectReason { get; set; } = string.Empty;
-    public string ResolutionStatus { get; set; } = "Pending";
+    public string ResolutionStatus { get; set; } = PendingResolutionStatus;
     public string? AdminResponse { get; set; }
     public Guid? ResolvedByUserId { get; set; }
     public DateTimeOffset? ResolvedAt { get; set; }
