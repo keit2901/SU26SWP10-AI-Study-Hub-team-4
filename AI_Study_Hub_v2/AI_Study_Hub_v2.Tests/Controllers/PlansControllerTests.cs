@@ -72,6 +72,23 @@ public class PlansControllerTests
     }
 
     [Test]
+    public async Task ReconcilePayment_UnknownOrForeignOrder_ReturnsGenericTransactionNotFound()
+    {
+        var supabaseId = Guid.NewGuid();
+        _db.Users.Add(new User { Id = Guid.NewGuid(), SupabaseUserId = supabaseId, Username = "owner", FullName = "Owner", IsActive = true });
+        await _db.SaveChangesAsync();
+        _paymentServiceMock.Setup(x => x.ReconcileAsync(It.IsAny<Guid>(), 123L, It.IsAny<CancellationToken>()))
+            .ReturnsAsync((ReturnUrlResult?)null);
+
+        var result = await BuildSut(Principal(supabaseId)).ReconcilePayment(123L, CancellationToken.None);
+
+        var notFound = result.Should().BeOfType<NotFoundObjectResult>().Subject;
+        var error = notFound.Value.Should().BeOfType<ApiErrorResponse>().Subject;
+        error.Code.Should().Be("transaction_not_found");
+        error.Message.Should().Be("Transaction not found.");
+    }
+
+    [Test]
     public void GetPlans_ReturnsOk_WithActivePlansMappedToDtos()
     {
         var plans = new List<Plan>

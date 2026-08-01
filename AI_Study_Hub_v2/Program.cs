@@ -76,7 +76,15 @@ builder.Services
         "AiChat:DefaultProvider=gemini requires Gemini:ApiKey.")
     .ValidateOnStart();
 builder.Services.Configure<RecaptchaOptions>(builder.Configuration.GetSection(RecaptchaOptions.SectionName));
-builder.Services.Configure<PayOsSettings>(builder.Configuration.GetSection(PayOsSettings.SectionName));
+builder.Services.AddOptions<PayOsSettings>()
+    .Bind(builder.Configuration.GetSection(PayOsSettings.SectionName))
+    .Validate(o => !string.IsNullOrWhiteSpace(o.ClientId)
+        && !string.IsNullOrWhiteSpace(o.ApiKey)
+        && !string.IsNullOrWhiteSpace(o.ChecksumKey), "PayOs credentials must be configured.")
+    .Validate(o => builder.Environment.IsDevelopment()
+        || PaymentService.TryValidateCallbackBaseUrl(o.CallbackBaseUrl, true, out _),
+        "PayOs:CallbackBaseUrl must be an absolute public HTTPS URL outside Development.")
+    .ValidateOnStart();
 // Archived: VNPay settings kept for reference
 // builder.Services.Configure<VnPaySettings>(builder.Configuration.GetSection(VnPaySettings.SectionName));
 builder.Services.AddMemoryCache(options =>
@@ -350,6 +358,17 @@ builder.Services.AddRateLimiter(options =>
             Window = TimeSpan.FromMinutes(1),
             QueueLimit = 0
         }));
+    options.AddPolicy("payment-reconcile", context =>
+    {
+        var userId = context.User.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        return RateLimitPartition.GetFixedWindowLimiter(userId, _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 8,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0
+        });
+    });
     options.AddFixedWindowLimiter("ipn", config =>
     {
         config.PermitLimit = 30;

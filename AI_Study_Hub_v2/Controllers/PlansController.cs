@@ -24,8 +24,7 @@ namespace AI_Study_Hub_v2.Controllers;
 [Authorize(AuthenticationSchemes = JwtBearerDefaults.AuthenticationScheme)]
 public sealed class PlansController : ControllerBase
 {
-    private const int MaxPaymentHistoryItems = 50;
-
+    private const int MaxPaymentListItems = 50;
     private readonly IPlanService _planService;
     private readonly IStorageQuotaService _quotaService;
     private readonly IPaymentService _paymentService;
@@ -121,7 +120,7 @@ public sealed class PlansController : ControllerBase
         try
         {
             if (take < 1) take = 12;
-            if (take > MaxPaymentHistoryItems) take = MaxPaymentHistoryItems;
+            if (take > MaxPaymentListItems) take = MaxPaymentListItems;
 
             var supabaseUserId = GetSupabaseUserIdFromClaims();
             var user = await _db.Users
@@ -134,8 +133,6 @@ public sealed class PlansController : ControllerBase
                     Message = "User not found."
                 });
             }
-
-            await TrimPaymentHistoryAsync(user.Id, ct);
 
             var payments = await _db.PaymentTransactions
                 .Where(pt => pt.UserId == user.Id)
@@ -363,8 +360,6 @@ public sealed class PlansController : ControllerBase
                 _db.PaymentTransactions.Add(paymentTransaction);
 
                 await _db.SaveChangesAsync(ct);
-                await TrimPaymentHistoryAsync(user.Id, ct);
-
                 // F5.1: audit logging on self-service purchases
                 try
                 {
@@ -498,25 +493,18 @@ public sealed class PlansController : ControllerBase
         }
     }
 
-    /// <summary>Returns the status of a payment transaction (no plan activation).</summary>
-    [HttpGet("payment/status/{txnRef}")]
-    [AllowAnonymous]
+    /// <summary>Reconciles a PayOS order for its authenticated owner using provider-authoritative state.</summary>
+    [HttpPost("payments/{orderCode:long}/reconcile")]
+    [EnableRateLimiting("payment-reconcile")]
     [ProducesResponseType(typeof(ReturnUrlResult), StatusCodes.Status200OK)]
-    [ProducesResponseType(StatusCodes.Status404NotFound)]
-    public async Task<IActionResult> GetPaymentStatus(string txnRef, CancellationToken ct)
+    [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> ReconcilePayment(long orderCode, CancellationToken ct)
     {
-        var result = await _paymentService.VerifyReturnAsync(txnRef, ct);
-        return Ok(result);
-    }
-
-    /// <summary>Marks a pending transaction as expired when user cancels on PayOS checkout.</summary>
-    [HttpPost("payment/cancel/{txnRef}")]
-    [AllowAnonymous]
-    [ProducesResponseType(StatusCodes.Status200OK)]
-    public async Task<IActionResult> CancelPayment(string txnRef, CancellationToken ct)
-    {
-        var cancelled = await _paymentService.CancelTransactionAsync(txnRef, ct);
-        return Ok(new { cancelled });
+        var supabaseUserId = GetSupabaseUserIdFromClaims();
+        var user = await _db.Users.AsNoTracking().FirstOrDefaultAsync(u => u.SupabaseUserId == supabaseUserId && u.IsActive, ct);
+        if (user is null) return TransactionNotFound();
+        var result = await _paymentService.ReconcileAsync(user.Id, orderCode, ct);
+        return result is null ? TransactionNotFound() : Ok(result);
     }
 
     /// <summary>Retry a failed or expired payment transaction.</summary>
@@ -542,26 +530,6 @@ public sealed class PlansController : ControllerBase
         return Ok(result);
     }
 
-    private async Task TrimPaymentHistoryAsync(Guid userId, CancellationToken ct)
-    {
-        var stalePaymentIds = await _db.PaymentTransactions
-            .Where(pt => pt.UserId == userId)
-            .OrderByDescending(pt => pt.CreatedAt)
-            .ThenByDescending(pt => pt.Id)
-            .Skip(MaxPaymentHistoryItems)
-            .Select(pt => pt.Id)
-            .ToListAsync(ct);
-
-        if (stalePaymentIds.Count == 0)
-        {
-            return;
-        }
-
-        await _db.PaymentTransactions
-            .Where(pt => stalePaymentIds.Contains(pt.Id))
-            .ExecuteDeleteAsync(ct);
-    }
-
     private Guid GetSupabaseUserIdFromClaims()
     {
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)
@@ -574,4 +542,10 @@ public sealed class PlansController : ControllerBase
 
         throw new InvalidOperationException("Authenticated Supabase user id is missing or invalid.");
     }
+
+    private static NotFoundObjectResult TransactionNotFound() => new(new ApiErrorResponse
+    {
+        Code = "transaction_not_found",
+        Message = "Transaction not found."
+    });
 }

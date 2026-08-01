@@ -5,7 +5,11 @@ namespace AI_Study_Hub_v2.Services.Payment.Abstractions;
 /// </summary>
 public sealed record WebhookVerificationResult(
     bool IsValid,
-    string ProviderTxnId,
+    long OrderCode,
+    string? PaymentLinkId,
     string Status,       // "PAID" | "CANCELLED" | "EXPIRED"
-    long AmountVnd,
+    string ProviderStatus,
+    long AmountPaidVnd,
+    long ExpectedAmountVnd,
+    long AmountRemainingVnd,
     string? ErrorMessage);

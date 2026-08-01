@@ -150,35 +150,31 @@ public sealed class PlanApiClient
         throw new InvalidOperationException("Unreachable");
     }
 
-    /// <summary>Marks a pending transaction as cancelled (user returned via cancelUrl).</summary>
+    [Obsolete("Browser cancel hints must not mutate payment state. Use ReconcilePaymentAsync.")]
     public async Task<bool> CancelPaymentAsync(string txnRef, CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(txnRef);
-
-        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/plans/payment/cancel/{txnRef}");
-
-        using var resp = await _http.SendAsync(req, ct);
-        if (!resp.IsSuccessStatusCode) return false;
-
-        var result = await resp.Content.ReadFromJsonAsync<CancelPaymentResponse>(cancellationToken: ct);
-        return result?.Cancelled == true;
+        await Task.CompletedTask;
+        return false;
     }
 
-    /// <summary>Gets the status of a payment transaction by TxnRef (PayOS flow).</summary>
+    [Obsolete("Anonymous payment status is retired. Use ReconcilePaymentAsync.")]
     public async Task<ReturnUrlResult> GetPaymentStatusAsync(
         string txnRef,
         CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(txnRef);
+        await Task.CompletedTask;
+        throw new NotSupportedException("Anonymous payment status is retired. Reconcile an owned order with an access token.");
+    }
 
-        using var req = new HttpRequestMessage(HttpMethod.Get, $"api/plans/payment/status/{txnRef}");
-
+    public async Task<ReturnUrlResult> ReconcilePaymentAsync(string accessToken, long orderCode, CancellationToken ct = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(accessToken);
+        using var req = new HttpRequestMessage(HttpMethod.Post, $"api/plans/payments/{orderCode}/reconcile");
+        req.Headers.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
         using var resp = await _http.SendAsync(req, ct);
         if (resp.IsSuccessStatusCode)
-        {
             return await resp.Content.ReadFromJsonAsync<ReturnUrlResult>(cancellationToken: ct)
                 ?? throw new PlanApiException(500, "empty_response", "Server returned empty response.");
-        }
         await ThrowFromResponseAsync(resp, ct);
         throw new InvalidOperationException("Unreachable");
     }
