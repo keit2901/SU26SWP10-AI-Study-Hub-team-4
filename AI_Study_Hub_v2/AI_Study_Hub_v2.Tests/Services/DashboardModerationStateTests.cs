@@ -68,6 +68,8 @@ public class DashboardModerationStateTests
         var notification = await db.UserNotifications.SingleAsync();
         notification.RecipientUserId.Should().Be(moderator.Id);
         notification.Outcome.Should().Be(UserNotificationOutcome.Approved);
+        notification.Title.Should().Be("Moderator approved “moderation.pdf”");
+        notification.Message.Should().Contain("Folder");
     }
 
     [Test]
@@ -140,6 +142,8 @@ public class DashboardModerationStateTests
         var notification = await db.UserNotifications.SingleAsync();
         notification.RecipientUserId.Should().Be(admin.Id);
         notification.Outcome.Should().Be(UserNotificationOutcome.Rejected);
+        notification.Title.Should().Be("Admin rejected “moderation.pdf”");
+        notification.Message.Should().Contain("Invalid material");
     }
 
     [Test]

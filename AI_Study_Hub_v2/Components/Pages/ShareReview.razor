@@ -14,6 +14,7 @@
 @inject AdminDashboardApiClient DashboardApi
 @inject EscalationApiClient EscalationApi
 @inject IDialogService DialogService
+@inject IJSRuntime JS
 
 <PageTitle>Share Review — AI Study Hub</PageTitle>
 
@@ -49,6 +50,13 @@
                     Back to queue
                 </MudButton>
             </header>
+
+            @if (!string.IsNullOrWhiteSpace(_moderationProgressMessage))
+            {
+                <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Class="glass-card mb-4" Dense="true">
+                    @_moderationProgressMessage
+                </MudAlert>
+            }
 
             @if (_documents.Count == 0)
             {
@@ -94,10 +102,13 @@
                                         @GetDocumentStatusLabel(document, decision)
                                     </MudChip>
                                 }
-                                <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.OpenInNew"
-                                           Disabled="@IsBusy(document.Id)" OnClick="() => OpenDocumentAsync(document)">
-                                    Open
-                                </MudButton>
+                                @if (isActionable)
+                                {
+                                    <MudButton Variant="Variant.Text" Size="Size.Small" StartIcon="@Icons.Material.Filled.OpenInNew"
+                                               Disabled="@(_openingDocumentId.HasValue || IsBusy(document.Id))" OnClick="() => InspectDocumentAsync(document)">
+                                        @(_openingDocumentId == document.Id ? "Opening…" : "Inspect file")
+                                    </MudButton>
+                                }
                                 <MudButton Variant="Variant.Outlined" Color="Color.Success" Size="Size.Small"
                                            Disabled="@(IsBusy(document.Id) || !isActionable)" OnClick="() => ApproveDocumentAsync(document)">
                                     Approve
@@ -156,7 +167,17 @@
                         </MudAlert>
                         <div class="owner-actions">
                             <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh"
-                                       Disabled="@_ownerActionBusy" OnClick="ResubmitAsync">Resubmit for review</MudButton>
+                                       Disabled="@_ownerActionBusy" OnClick="ConfirmResubmitAsync">
+                                @if (_ownerActionBusy)
+                                {
+                                    <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-1" />
+                                    <span>Resubmitting…</span>
+                                }
+                                else
+                                {
+                                    <span>Review &amp; resubmit</span>
+                                }
+                            </MudButton>
                             <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.Lock"
                                        Disabled="@_ownerActionBusy" OnClick="KeepPrivate">Keep folder private</MudButton>
                         </div>
@@ -262,12 +283,15 @@
     private bool _isLoading = true;
     private bool _ownerActionBusy;
     private Guid? _busyDocumentId;
+    private Guid? _openingDocumentId;
     private string? _error;
+    private string? _moderationProgressMessage;
 
     private bool _isModeratorMode => string.Equals(Mode, "moderator", StringComparison.OrdinalIgnoreCase);
 
     protected override async Task OnParametersSetAsync()
     {
+        _moderationProgressMessage = null;
         await LoadAsync();
     }
 
@@ -324,15 +348,56 @@
         return Session.AccessToken;
     }
 
-    private async Task OpenDocumentAsync(DocumentDto document)
+    private async Task InspectDocumentAsync(DocumentDto document)
     {
-        await RunDocumentActionAsync(document.Id, async token =>
+        if (!IsActionable(document, GetDocumentDecision(document.Id)) || _openingDocumentId.HasValue) return;
+
+        _openingDocumentId = document.Id;
+        StateHasChanged();
+        try
         {
+            var token = RequireToken();
             var url = await DashboardApi.GetModerationDocumentSignedUrlAsync(token, document.Id);
             if (string.IsNullOrWhiteSpace(url))
-                throw new InvalidOperationException("A document link could not be created.");
-            Navigation.NavigateTo(url, forceLoad: true);
-        }, "Unable to open this document.");
+                throw new DocumentApiException(404, "document_preview_unavailable", "A preview link could not be created.");
+
+            if (IsOfficeDocument(document))
+            {
+                var parameters = new DialogParameters
+                {
+                    ["FileName"] = document.FileName,
+                    ["ViewerUrl"] = BuildOfficeViewerUrl(url),
+                    ["DownloadUrl"] = url,
+                    ["IsModerationPreview"] = true
+                };
+                await DialogService.ShowAsync<OfficeViewerDialog>(
+                    $"Inspect {document.FileName}",
+                    parameters,
+                    new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraLarge, FullWidth = true });
+            }
+            else
+            {
+                await JS.InvokeVoidAsync("open", url, "_blank", "noopener,noreferrer");
+            }
+        }
+        catch (DocumentApiException ex)
+        {
+            Snackbar.Add(MapPreviewError(ex, document), Severity.Error);
+            if (ex.StatusCode == 409) await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch
+        {
+            Snackbar.Add("Unable to preview this file. Check your connection and try again.", Severity.Error);
+        }
+        finally
+        {
+            _openingDocumentId = null;
+            StateHasChanged();
+        }
     }
 
     private async Task ApproveDocumentAsync(DocumentDto document)
@@ -342,6 +407,7 @@
             await DashboardApi.ApproveDocumentAsync(token, document.Id);
             _documentDecisions[document.Id] = new DocumentDecision(true, null);
             Snackbar.Add($"Document '{document.FileName}' approved.", Severity.Success);
+            await RefreshModeratorResultsAsync();
         }, "Unable to approve this document.");
     }
 
@@ -369,6 +435,7 @@
             await DashboardApi.RejectDocumentAsync(token, document.Id, reason);
             _documentDecisions[document.Id] = new DocumentDecision(false, reason);
             Snackbar.Add($"Document '{document.FileName}' rejected.", Severity.Warning);
+            await RefreshModeratorResultsAsync();
         }, "Unable to reject this document.");
     }
 
@@ -417,17 +484,34 @@
                 _documentDecisions[item.DocumentId] = DocumentDecision.EscalatedDecision;
             Snackbar.Add($"{data.Items.Count} file(s) escalated to an administrator.", Severity.Success);
             await LoadAsync();
+            _moderationProgressMessage = BuildModerationProgressMessage();
         }, "Unable to escalate the selected files.");
+    }
+
+    private async Task ConfirmResubmitAsync()
+    {
+        if (_ownerActionBusy || _folder is null) return;
+
+        var dialog = await DialogService.ShowAsync<RejectedFolderActions>(
+            "Resubmit non-approved files",
+            new DialogParameters { ["FolderName"] = _folder.Name },
+            new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.Small, FullWidth = true });
+        var result = await dialog.Result;
+        if (result is null || result.Canceled || result.Data as string != "Resubmit") return;
+
+        await ResubmitAsync();
     }
 
     private async Task ResubmitAsync()
     {
         _ownerActionBusy = true;
+        StateHasChanged();
         try
         {
             var token = RequireToken();
-            _folder = await FoldersApi.RequestShareAsync(token, FolderId);
-            Snackbar.Add("Folder resubmitted for moderator review.", Severity.Success);
+            await FoldersApi.RequestShareAsync(token, FolderId);
+            await LoadAsync();
+            Snackbar.Add("Non-approved files were resubmitted. Previous pending escalations were closed, and approved files remain unchanged.", Severity.Success);
         }
         catch (DocumentApiException ex)
         {
@@ -524,6 +608,61 @@
         {
             _busyDocumentId = null;
         }
+    }
+
+    private async Task RefreshModeratorResultsAsync()
+    {
+        await LoadAsync();
+        _moderationProgressMessage = BuildModerationProgressMessage();
+    }
+
+    private string BuildModerationProgressMessage()
+    {
+        if (_documents.Count == 0)
+            return "Review complete — no files remain awaiting a moderator decision. Publication state and owner outcomes were refreshed.";
+
+        var approved = _documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Approved);
+        var rejected = _documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Rejected);
+        var escalated = _documents.Count(document => document.ReviewStatus == DocumentReviewStatus.Escalated);
+        var awaiting = _documents.Count(document => IsActionable(document, null));
+
+        return awaiting == 0
+            ? $"Review complete — {approved} approved, {rejected} rejected, {escalated} awaiting Admin."
+            : $"Review progress — {approved} approved, {rejected} rejected, {escalated} awaiting Admin, {awaiting} awaiting moderator decision.";
+    }
+
+    private static bool IsOfficeDocument(DocumentDto document)
+    {
+        var extension = Path.GetExtension(document.FileName);
+        return document.MimeType is
+            "application/msword" or
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or
+            "application/vnd.ms-powerpoint" or
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            || extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".docx", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".ppt", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".pptx", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildOfficeViewerUrl(string signedUrl) =>
+        $"https://view.officeapps.live.com/op/embed.aspx?src={Uri.EscapeDataString(signedUrl)}";
+
+    private static string MapPreviewError(DocumentApiException ex, DocumentDto document)
+    {
+        if (document.Status is DocumentStatus.Uploading or DocumentStatus.Processing)
+            return "This file is still processing and cannot be previewed yet.";
+        if (document.Status == DocumentStatus.Failed)
+            return "This file failed processing and cannot be previewed.";
+
+        return ex.StatusCode switch
+        {
+            401 => "Your session expired. Sign in again to inspect moderation files.",
+            403 => "You no longer have permission to inspect this moderation file.",
+            404 => "This file is missing or was deleted after the review page loaded.",
+            409 => "This file changed while the review page was open. The latest moderation state has been reloaded.",
+            _ => "The preview link could not be created. Check your connection and try again."
+        };
     }
 
     private static string MapApiError(DocumentApiException ex, string fallback) => ex.StatusCode switch

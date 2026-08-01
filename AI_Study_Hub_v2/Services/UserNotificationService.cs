@@ -32,12 +32,17 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
             Title = isApproved ? "Folder approved for sharing" : "Folder sharing was not approved",
             Message = isApproved
                 ? "Your folder is now available in the community."
-                : CreateRejectedMessage("folder", rejectionReason),
+                : "Your folder was not approved for community sharing. Review it and submit again when ready.",
             CreatedAt = occurredAt
         });
     }
 
-    public void StageDocumentModerationFinal(Document document, Folder folder, string? reason, DateTimeOffset occurredAt)
+    public void StageDocumentModerationFinal(
+        Document document,
+        Folder folder,
+        string reviewerRoleLabel,
+        string? reason,
+        DateTimeOffset occurredAt)
     {
         if (document.FolderId != folder.Id || document.UserId != folder.UserId ||
             document.ReviewStatus is not (DocumentReviewStatus.Approved or DocumentReviewStatus.Rejected))
@@ -46,6 +51,7 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
         }
 
         var isApproved = document.ReviewStatus == DocumentReviewStatus.Approved;
+        var normalizedRoleLabel = NormalizeReviewerRoleLabel(reviewerRoleLabel);
         Stage(new UserNotification
         {
             RecipientUserId = folder.UserId,
@@ -56,10 +62,10 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
             Kind = UserNotificationKind.DocumentModerationFinal,
             Outcome = isApproved ? UserNotificationOutcome.Approved : UserNotificationOutcome.Rejected,
             FolderName = folder.Name,
-            Title = isApproved ? "Document approved for sharing" : "Document was not approved for sharing",
+            Title = $"{normalizedRoleLabel} {(isApproved ? "approved" : "rejected")} “{document.FileName}”",
             Message = isApproved
-                ? "A document in your folder was approved for community sharing."
-                : CreateRejectedMessage("document", reason),
+                ? $"{normalizedRoleLabel} approved “{document.FileName}” in “{folder.Name}” for community sharing."
+                : CreateRejectedDocumentMessage(normalizedRoleLabel, document.FileName, folder.Name, reason),
             CreatedAt = occurredAt
         });
     }
@@ -91,8 +97,8 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
             Kind = UserNotificationKind.EscalationResolved,
             Outcome = outcome,
             FolderName = folder.Name,
-            Title = "Escalation review completed",
-            Message = CreateEscalationResolutionMessage(approvedCount, rejectedCount),
+            Title = CreateEscalationResolutionTitle(escalation, folder, approvedCount, rejectedCount),
+            Message = CreateEscalationResolutionMessage(folder.Name, approvedCount, rejectedCount),
             CreatedAt = occurredAt
         });
     }
@@ -159,21 +165,42 @@ public sealed class UserNotificationService(AppDbContext db) : IUserNotification
         }
     }
 
-    private static string CreateRejectedMessage(string subject, string? rejectionReason) =>
-        string.IsNullOrWhiteSpace(rejectionReason)
-            ? $"Your {subject} was not approved for community sharing. Review it and submit again when ready."
-            : $"Your {subject} was not approved for community sharing. Feedback preview: {CreateReasonPreview(rejectionReason)}";
+    private string CreateEscalationResolutionTitle(
+        DocumentEscalation escalation,
+        Folder folder,
+        int approvedCount,
+        int rejectedCount)
+    {
+        var count = approvedCount + rejectedCount;
+        if (count == 1)
+        {
+            var item = _db.DocumentEscalationItems.Local.FirstOrDefault(candidate => candidate.EscalationId == escalation.Id)
+                ?? escalation.Items.SingleOrDefault();
+            var verb = approvedCount == 1 ? "approved" : "rejected";
+            return item is null
+                ? $"Admin {verb} a file"
+                : $"Admin {verb} “{item.DocumentFileName}”";
+        }
 
-    private static string CreateEscalationResolutionMessage(int approvedCount, int rejectedCount) =>
-        approvedCount > 0 && rejectedCount == 0
-            ? $"Your escalation was resolved: {approvedCount} document{Pluralize(approvedCount)} approved."
-            : approvedCount == 0 && rejectedCount > 0
-                ? $"Your escalation was resolved: {rejectedCount} document{Pluralize(rejectedCount)} not approved."
-                : $"Your escalation was resolved: {approvedCount} document{Pluralize(approvedCount)} approved and {rejectedCount} not approved.";
+        return $"Admin reviewed {count} files in “{folder.Name}”";
+    }
+
+    private static string CreateEscalationResolutionMessage(string folderName, int approvedCount, int rejectedCount) =>
+        $"Admin reviewed the escalation in “{folderName}”: {approvedCount} approved and {rejectedCount} rejected.";
+
+    private static string CreateRejectedDocumentMessage(string reviewerRoleLabel, string fileName, string folderName, string? reason) =>
+        string.IsNullOrWhiteSpace(reason)
+            ? $"{reviewerRoleLabel} rejected “{fileName}” in “{folderName}”. Review it and submit again when ready."
+            : $"{reviewerRoleLabel} rejected “{fileName}” in “{folderName}”. Feedback preview: {CreateReasonPreview(reason)}";
+
+    private static string NormalizeReviewerRoleLabel(string reviewerRoleLabel) =>
+        string.Equals(reviewerRoleLabel, Role.AdminRoleName, StringComparison.OrdinalIgnoreCase)
+            ? Role.AdminRoleName
+            : Role.ModeratorRoleName;
 
     private static string CreateReasonPreview(string reason)
     {
-        var normalized = string.Join(' ', reason
+        var normalized = new string(reason
             .Where(character => !char.IsControl(character))
             .ToArray())
             .Trim();

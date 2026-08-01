@@ -3,6 +3,7 @@
 @using AI_Study_Hub_v2.Components.Layout
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
+@using AI_Study_Hub_v2.Components.Shared
 @inject AI_Study_Hub_v2.Services.AdminDashboardApiClient DashboardApi
 @inject AI_Study_Hub_v2.Services.AuthSessionState Session
 @inject NavigationManager Nav
@@ -32,6 +33,13 @@
                 @(FolderId.HasValue ? $"Documents in the folder \"{FolderName}\"." : "Documents from all folders pending share review. Approve or reject individual documents.")
             </p>
         </div>
+
+        @if (!string.IsNullOrWhiteSpace(_moderationProgressMessage))
+        {
+            <MudAlert Severity="Severity.Success" Variant="Variant.Outlined" Dense="true" Class="mb-4">
+                @_moderationProgressMessage
+            </MudAlert>
+        }
 
         @if (isLoading)
         {
@@ -418,10 +426,11 @@
                                         var reviewStatusLabel = GetReviewStatusLabel(item);
                                         var reviewStatusBackground = GetReviewStatusBackground(item);
                                         var reviewStatusColor = GetReviewStatusColor(item);
+                                        var canInspect = GetReviewStatusKey(item) == "pending" && item.Status == DocumentStatus.Ready;
                                         <tr style="border-top: 1px solid rgba(199,196,215,0.2);">
                                             <td style="padding: 0.9rem 1rem 0.9rem 1.25rem; vertical-align: top;">
-                                                <div @onclick="() => InspectDocumentAsync(item.Id)" style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: pointer; transition: opacity 0.15s; min-width: 0;"
-                                                     onmouseover="this.style.opacity='0.7'" onmouseout="this.style.opacity='1'" role="button">
+                                                <button type="button" @onclick="() => InspectDocumentAsync(item)" disabled="@(!canInspect || _openingDocumentId.HasValue)"
+                                                        style="display: flex; align-items: flex-start; gap: 0.75rem; cursor: @(canInspect ? "pointer" : "default"); transition: opacity 0.15s; min-width: 0; width: 100%; padding: 0; border: 0; background: transparent; text-align: left; opacity: @(canInspect ? "1" : ".72");">
                                                     <div style="display: flex; height: 2rem; align-items: center; justify-content: center; border-radius: 0.25rem; background: rgba(94,92,230,0.1); padding: 0 0.5rem; flex-shrink: 0;">
                                                         <MudIcon Icon="@GetFileIcon(item.MimeType)" Style="font-size: 1rem; color: #4441CC;" />
                                                     </div>
@@ -435,8 +444,15 @@
                                                                 @item.ErrorMessage
                                                             </span>
                                                         }
+                                                        @if (canInspect)
+                                                        {
+                                                            <span style="display: inline-flex; align-items: center; gap: .2rem; color: #4f46e5; font-size: .7rem; font-weight: 700;">
+                                                                <MudIcon Icon="@Icons.Material.Filled.OpenInNew" Style="font-size: .8rem;" />
+                                                                @(_openingDocumentId == item.Id ? "Opening…" : "Inspect file")
+                                                            </span>
+                                                        }
                                                     </div>
-                                                </div>
+                                                </button>
                                             </td>
                                             @if (!FolderId.HasValue)
                                             {
@@ -596,6 +612,8 @@
     private List<DocumentDto>? pendingDocuments;
     private readonly Dictionary<Guid, string> _resolvedStatuses = new();
     private readonly Dictionary<Guid, AiAdvisoryDisplay> _aiAdvisories = new();
+    private Guid? _openingDocumentId;
+    private string? _moderationProgressMessage;
     private int CurrentPage = 1;
     private string _pageJumpInput = string.Empty;
     private string? OpenSortMenuColumn;
@@ -711,6 +729,7 @@
         if (_previousFolderId != FolderId)
         {
             _previousFolderId = FolderId;
+            _moderationProgressMessage = null;
             await LoadPendingDocumentsAsync();
         }
     }
@@ -753,8 +772,17 @@
         }
     }
 
-    private async Task InspectDocumentAsync(Guid docId)
+    private async Task InspectDocumentAsync(DocumentDto document)
     {
+        if (_openingDocumentId.HasValue
+            || GetReviewStatusKey(document) != "pending"
+            || document.Status != DocumentStatus.Ready)
+        {
+            return;
+        }
+
+        _openingDocumentId = document.Id;
+        StateHasChanged();
         try
         {
             if (string.IsNullOrWhiteSpace(Session.AccessToken))
@@ -763,19 +791,46 @@
                 return;
             }
 
-            var signedUrl = await DashboardApi.GetModerationDocumentSignedUrlAsync(Session.AccessToken, docId);
+            var signedUrl = await DashboardApi.GetModerationDocumentSignedUrlAsync(Session.AccessToken, document.Id);
             if (!string.IsNullOrWhiteSpace(signedUrl))
             {
-                await JS.InvokeVoidAsync("open", signedUrl, "_blank");
+                if (IsOfficeDocument(document))
+                {
+                    var parameters = new DialogParameters
+                    {
+                        ["FileName"] = document.FileName,
+                        ["ViewerUrl"] = BuildOfficeViewerUrl(signedUrl),
+                        ["DownloadUrl"] = signedUrl,
+                        ["IsModerationPreview"] = true
+                    };
+                    await DialogService.ShowAsync<OfficeViewerDialog>(
+                        $"Inspect {document.FileName}",
+                        parameters,
+                        new DialogOptions { CloseOnEscapeKey = true, MaxWidth = MaxWidth.ExtraLarge, FullWidth = true });
+                }
+                else
+                {
+                    await JS.InvokeVoidAsync("open", signedUrl, "_blank", "noopener,noreferrer");
+                }
             }
             else
             {
-                Snackbar.Add("Could not retrieve document signed download URL.", Severity.Error);
+                Snackbar.Add("A preview link could not be created for this file.", Severity.Error);
             }
         }
-        catch (Exception ex)
+        catch (DocumentApiException ex)
         {
-            Snackbar.Add($"Error: {ex.Message}", Severity.Error);
+            Snackbar.Add(MapPreviewError(ex, document), Severity.Error);
+            if (ex.StatusCode == 409) await LoadPendingDocumentsAsync();
+        }
+        catch
+        {
+            Snackbar.Add("Unable to preview this file. Check your connection and try again.", Severity.Error);
+        }
+        finally
+        {
+            _openingDocumentId = null;
+            StateHasChanged();
         }
     }
 
@@ -1603,6 +1658,8 @@
             await DashboardApi.ApproveDocumentAsync(Session.AccessToken, docId);
             Snackbar.Add($"Document '{fileName}' approved successfully.", Severity.Success);
             _resolvedStatuses[docId] = "Approved";
+            await LoadPendingDocumentsAsync();
+            _moderationProgressMessage = BuildModerationProgressMessage();
         }
         catch (DocumentApiException ex)
         {
@@ -1652,6 +1709,8 @@
             await DashboardApi.RejectDocumentAsync(Session.AccessToken, docId, reason);
             Snackbar.Add($"Document '{fileName}' rejected.", Severity.Warning);
             _resolvedStatuses[docId] = "Rejected";
+            await LoadPendingDocumentsAsync();
+            _moderationProgressMessage = BuildModerationProgressMessage();
         }
         catch (DocumentApiException ex)
         {
@@ -1735,6 +1794,7 @@
             _resolvedStatuses[document.Id] = "Escalated";
             Snackbar.Add($"Escalation created with {data.Items.Count} document(s).", Severity.Success);
             await LoadPendingDocumentsAsync();
+            _moderationProgressMessage = BuildModerationProgressMessage();
         }
         catch (DocumentApiException ex)
         {
@@ -1766,6 +1826,55 @@
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document" => Icons.Material.Filled.Article,
             "application/vnd.openxmlformats-officedocument.presentationml.presentation" => Icons.Material.Filled.Slideshow,
             _ => Icons.Material.Filled.Folder
+        };
+    }
+
+    private string BuildModerationProgressMessage()
+    {
+        var documents = pendingDocuments ?? [];
+        if (documents.Count == 0)
+            return "Review complete — no files remain awaiting a moderator decision. The moderation list was refreshed.";
+
+        var approved = documents.Count(item => GetReviewStatusKey(item) == "approved");
+        var rejected = documents.Count(item => GetReviewStatusKey(item) == "rejected");
+        var escalated = documents.Count(item => GetReviewStatusKey(item) == "escalated");
+        var awaiting = documents.Count(item => GetReviewStatusKey(item) == "pending" && item.Status == DocumentStatus.Ready);
+        return awaiting == 0
+            ? $"Review complete — {approved} approved, {rejected} rejected, {escalated} awaiting Admin."
+            : $"Review progress — {approved} approved, {rejected} rejected, {escalated} awaiting Admin, {awaiting} awaiting decision.";
+    }
+
+    private static bool IsOfficeDocument(DocumentDto document)
+    {
+        var extension = Path.GetExtension(document.FileName);
+        return document.MimeType is
+            "application/msword" or
+            "application/vnd.openxmlformats-officedocument.wordprocessingml.document" or
+            "application/vnd.ms-powerpoint" or
+            "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+            || extension.Equals(".doc", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".docx", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".ppt", StringComparison.OrdinalIgnoreCase)
+            || extension.Equals(".pptx", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string BuildOfficeViewerUrl(string signedUrl) =>
+        $"https://view.officeapps.live.com/op/embed.aspx?src={Uri.EscapeDataString(signedUrl)}";
+
+    private static string MapPreviewError(DocumentApiException ex, DocumentDto document)
+    {
+        if (document.Status is DocumentStatus.Uploading or DocumentStatus.Processing)
+            return "This file is still processing and cannot be previewed yet.";
+        if (document.Status == DocumentStatus.Failed)
+            return "This file failed processing and cannot be previewed.";
+
+        return ex.StatusCode switch
+        {
+            401 => "Your session expired. Sign in again to inspect moderation files.",
+            403 => "You no longer have permission to inspect this moderation file.",
+            404 => "This file is missing or was deleted after the moderation list loaded.",
+            409 => "This file changed while the moderation list was open. The latest state has been reloaded.",
+            _ => "The preview link could not be created. Check your connection and try again."
         };
     }
 

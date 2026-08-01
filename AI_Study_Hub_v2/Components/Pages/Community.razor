@@ -359,11 +359,22 @@
                                                 <div class="table-actions" style="display:flex; gap:0.35rem; flex-wrap:wrap;">
                                                     @if (GetApprovedPublicCount(context) == 0 && GetRejectedDocumentCount(context) > 0)
                                                     {
-                                                        <MudIconButton Icon="@Icons.Material.Filled.MoreHoriz"
-                                                                       Size="Size.Small"
-                                                                       Color="Color.Warning"
-                                                                       OnClick="@(() => ShowRejectionActionsAsync(context))"
-                                                                       title="Folder actions" />
+                                                        <MudButton Variant="Variant.Text"
+                                                                   Size="Size.Small"
+                                                                   Color="Color.Warning"
+                                                                   StartIcon="@Icons.Material.Filled.Refresh"
+                                                                   Disabled="@(_resubmittingFolderId.HasValue)"
+                                                                   OnClick="@(() => ShowRejectionActionsAsync(context))">
+                                                            @if (_resubmittingFolderId == context.Id)
+                                                            {
+                                                                <MudProgressCircular Indeterminate="true" Size="Size.Small" Class="me-1" />
+                                                                <span>Resubmitting…</span>
+                                                            }
+                                                            else
+                                                            {
+                                                                <span>Review &amp; resubmit</span>
+                                                            }
+                                                        </MudButton>
                                                     }
                                                     else if (HasReviewFeedback(context))
                                                     {
@@ -487,6 +498,7 @@
     private Dictionary<Guid, bool?> _votes = new();
     private Guid? _openMenuFolderId = null;
     private Guid? _selectedFolderId = null;
+    private Guid? _resubmittingFolderId;
 
     private List<FolderDto> _currentFolders =>
         _activeTab == "community"
@@ -730,22 +742,39 @@
         Nav.NavigateTo("/ai/chat?folderId=" + folderId);
     }
 
-    private async Task RequestShareAsync(FolderDto folder)
+    private async Task RequestShareAsync(FolderDto folder, bool isResubmission)
     {
         if (folder.ShareStatus == Data.Entities.FolderStatus.PendingShare
             || folder.ShareStatus == Data.Entities.FolderStatus.Approved) return;
 
-        if (string.IsNullOrWhiteSpace(Session.AccessToken)) return;
+        if (string.IsNullOrWhiteSpace(Session.AccessToken) || _resubmittingFolderId.HasValue) return;
+        if (isResubmission)
+        {
+            _resubmittingFolderId = folder.Id;
+            StateHasChanged();
+        }
 
         try
         {
-            var updated = await FoldersApi.RequestShareAsync(Session.AccessToken!, folder.Id);
-            ReplacePersonalFolder(updated);
-            Snackbar.Add(GetShareDecisionMessage(updated), GetShareDecisionSeverity(updated));
+            await FoldersApi.RequestShareAsync(Session.AccessToken!, folder.Id);
+            await LoadAsync();
+            if (isResubmission)
+            {
+                Snackbar.Add("Non-approved files were resubmitted. Previous pending escalations were closed, and approved files remain unchanged.", Severity.Success);
+            }
+            else
+            {
+                var updated = _personalFolders.FirstOrDefault(item => item.Id == folder.Id) ?? folder;
+                Snackbar.Add(GetShareDecisionMessage(updated), GetShareDecisionSeverity(updated));
+            }
         }
         catch (DocumentApiException ex)
         {
             Snackbar.Add(ex.Message, Severity.Error);
+        }
+        finally
+        {
+            if (isResubmission) _resubmittingFolderId = null;
         }
     }
 
@@ -763,7 +792,7 @@
         switch (result.Data as string)
         {
             case "Resubmit":
-                await RequestShareAsync(folder);
+                await RequestShareAsync(folder, isResubmission: true);
                 break;
             case "KeepPrivate":
                 break;

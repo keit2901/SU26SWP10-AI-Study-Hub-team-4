@@ -7,7 +7,12 @@ public interface IUserNotificationService
 {
     void StageFolderModerationFinal(Folder folder, FolderStatus previousStatus, string? rejectionReason, DateTimeOffset occurredAt);
 
-    void StageDocumentModerationFinal(Document document, Folder folder, string? reason, DateTimeOffset occurredAt);
+    void StageDocumentModerationFinal(
+        Document document,
+        Folder folder,
+        string reviewerRoleLabel,
+        string? reason,
+        DateTimeOffset occurredAt);
 
     void StageEscalationResolved(
         DocumentEscalation escalation,

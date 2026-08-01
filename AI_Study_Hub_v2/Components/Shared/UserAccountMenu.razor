@@ -4,12 +4,13 @@
 @inject AI_Study_Hub_v2.Services.IUserNotificationService Notifications
 @inject IDialogService DialogService
 @inject NavigationManager Nav
+@inject ISnackbar Snackbar
 @using AI_Study_Hub_v2.Components.Pages
 @using AI_Study_Hub_v2.Data.Entities
 @using AI_Study_Hub_v2.Dtos
 @using System.IdentityModel.Tokens.Jwt
 @using System.Security.Claims
-@implements IDisposable
+@implements IAsyncDisposable
 
 @if (Session.IsAuthenticated)
 {
@@ -99,10 +100,17 @@
                                 <span class="uam-notification-copy">
                                     <span class="uam-notification-title">@GetNotificationTitle(item)</span>
                                     <span class="uam-notification-message">@GetNotificationMessage(item)</span>
-                                    @if (GetNotificationDocumentId(item).HasValue)
-                                    {
-                                        <span class="uam-notification-context">File-specific moderation update</span>
-                                    }
+                                    <span class="uam-notification-meta">
+                                        <span class="uam-notification-context">@GetNotificationSource(item)</span>
+                                        <span class="uam-notification-outcome @GetNotificationOutcomeClass(item)">@GetNotificationOutcomeLabel(item)</span>
+                                    </span>
+                                    <span class="uam-notification-link">
+                                        @(_openingNotificationId == item.Id ? "Opening…" : "View file outcomes")
+                                        @if (_openingNotificationId != item.Id)
+                                        {
+                                            <MudIcon Icon="@Icons.Material.Filled.ChevronRight" Size="Size.Small" />
+                                        }
+                                    </span>
                                     <span class="uam-notification-time">@FormatNotificationTime(item.CreatedAt)</span>
                                 </span>
                             </button>
@@ -300,6 +308,16 @@
 
     .uam-notification-context { width: fit-content; padding: 0.12rem 0.4rem; border-radius: 999px; background: rgba(94, 92, 230, 0.09); color: #5e5ce6; font-size: 0.62rem; font-weight: 800; }
 
+    .uam-notification-meta { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; margin-top: 0.12rem; }
+
+    .uam-notification-outcome { width: fit-content; padding: 0.12rem 0.4rem; border-radius: 999px; font-size: 0.62rem; font-weight: 800; }
+    .uam-notification-outcome.is-approved { background: #ecfdf5; color: #047857; }
+    .uam-notification-outcome.is-rejected { background: #fef2f2; color: #b91c1c; }
+    .uam-notification-outcome.is-mixed { background: #f5f3ff; color: #6d28d9; }
+
+    .uam-notification-link { display: inline-flex; align-items: center; gap: 0.2rem; margin-top: 0.18rem; color: #4f46e5; font-size: 0.68rem; font-weight: 800; }
+    .uam-notification-link .mud-icon-root { font-size: 0.9rem !important; }
+
     .uam-notification-state { min-height: 8rem; padding: 1.5rem; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.55rem; color: #746c8f; font-size: 0.8rem; text-align: center; }
 
     .uam-notification-alert { padding: 0.65rem 1rem; border-bottom: 1px solid rgba(220, 38, 38, 0.12); background: rgba(220, 38, 38, 0.06); color: #b42318; font-size: 0.76rem; }
@@ -391,6 +409,10 @@
     private UserNotificationFeedDto? _notificationFeed;
     private Guid? _notificationUserId;
     private bool _notificationOperationBusy;
+    private Guid? _openingNotificationId;
+    private readonly CancellationTokenSource _notificationPollingCts = new();
+    private PeriodicTimer? _notificationTimer;
+    private Task? _notificationPollingTask;
     private bool _disposed;
 
     private IReadOnlyList<UserNotificationFeedItemDto> NotificationItems =>
@@ -405,6 +427,8 @@
     protected override void OnInitialized()
     {
         Session.OnChange += OnSessionChanged;
+        _notificationTimer = new PeriodicTimer(TimeSpan.FromSeconds(30));
+        _notificationPollingTask = PollNotificationsAsync(_notificationPollingCts.Token);
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -413,7 +437,9 @@
             && _notificationUserId != currentUserId
             && !_notificationOperationBusy)
         {
-            await LoadNotificationsAsync(forceRefresh: false);
+            await LoadNotificationsAsync(
+                forceRefresh: false,
+                cancellationToken: _notificationPollingCts.Token);
         }
 
         if (_planLoading
@@ -494,7 +520,12 @@
         CloseNotifications();
     }
 
-    private async void OnSessionChanged()
+    private void OnSessionChanged()
+    {
+        _ = HandleSessionChangedAsync();
+    }
+
+    private async Task HandleSessionChangedAsync()
     {
         try
         {
@@ -508,6 +539,17 @@
 
                 StateHasChanged();
             });
+
+            if (Session.IsAuthenticated && !_notificationOperationBusy)
+            {
+                await LoadNotificationsAsync(
+                    forceRefresh: true,
+                    backgroundRefresh: true,
+                    cancellationToken: _notificationPollingCts.Token);
+            }
+        }
+        catch (OperationCanceledException) when (_notificationPollingCts.IsCancellationRequested)
+        {
         }
         catch (ObjectDisposedException) when (_disposed)
         {
@@ -532,10 +574,16 @@
         CloseMenu();
         _notificationsOpen = true;
         StateHasChanged();
-        await LoadNotificationsAsync(forceRefresh: true);
+        await LoadNotificationsAsync(
+            forceRefresh: true,
+            backgroundRefresh: false,
+            cancellationToken: _notificationPollingCts.Token);
     }
 
-    private async Task LoadNotificationsAsync(bool forceRefresh)
+    private async Task LoadNotificationsAsync(
+        bool forceRefresh,
+        bool backgroundRefresh = false,
+        CancellationToken cancellationToken = default)
     {
         if (_disposed
             || _notificationOperationBusy
@@ -557,15 +605,18 @@
         _notificationUserId = requestedUserId;
         try
         {
-            var feed = await Notifications.GetMineAsync(requestedUserId, 10, CancellationToken.None);
+            var feed = await Notifications.GetMineAsync(requestedUserId, 10, cancellationToken);
             if (IsCurrentSession(requestedUserId))
             {
                 _notificationFeed = feed;
             }
         }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
         catch
         {
-            if (IsCurrentSession(requestedUserId))
+            if (IsCurrentSession(requestedUserId) && (!backgroundRefresh || _notificationsOpen))
             {
                 _notificationError = "Notifications are unavailable right now.";
             }
@@ -592,38 +643,47 @@
         }
 
         _notificationOperationBusy = true;
+        _openingNotificationId = item.Id;
+        MarkNotificationReadLocally(item.Id);
+        await InvokeAsync(StateHasChanged);
         try
         {
-            await Notifications.MarkReadAsync(userId, item.Id, CancellationToken.None);
-
-            if (!IsCurrentSession(userId)) return;
-
-            MarkNotificationReadLocally(item.Id);
-            CloseNotifications();
-            Nav.NavigateTo($"/share-review/{item.FolderId}");
+            await Notifications.MarkReadAsync(userId, item.Id, _notificationPollingCts.Token);
+        }
+        catch (OperationCanceledException) when (_notificationPollingCts.IsCancellationRequested)
+        {
         }
         catch (UserNotificationException ex) when (ex.Code == "notification_not_found")
         {
             if (IsCurrentSession(userId))
             {
                 RemoveNotificationLocally(item.Id);
-                _notificationError = "That notification is no longer available.";
+                _notificationError = "The notification could not be marked as read, but its folder outcomes are still available.";
+                Snackbar.Add("Opened the result, but the notification was no longer available to mark as read.", Severity.Info);
             }
         }
         catch
         {
             if (IsCurrentSession(userId))
             {
-                _notificationError = "We could not open that notification. Please try again.";
+                _notificationError = "Opened the result, but the read status could not be saved.";
+                Snackbar.Add("Opened the result, but the notification read status could not be saved.", Severity.Info);
             }
         }
         finally
         {
             _notificationOperationBusy = false;
+            _openingNotificationId = null;
             if (!_disposed)
             {
                 await InvokeAsync(StateHasChanged);
             }
+        }
+
+        if (!_notificationPollingCts.IsCancellationRequested && IsCurrentSession(userId))
+        {
+            CloseNotifications();
+            Nav.NavigateTo($"/share-review/{item.FolderId}");
         }
     }
 
@@ -680,6 +740,29 @@
         _notificationUserId = null;
     }
 
+    private async Task PollNotificationsAsync(CancellationToken cancellationToken)
+    {
+        if (_notificationTimer is null) return;
+
+        try
+        {
+            while (await _notificationTimer.WaitForNextTickAsync(cancellationToken))
+            {
+                if (_disposed || !Session.IsAuthenticated || _notificationOperationBusy) continue;
+                await InvokeAsync(() => LoadNotificationsAsync(
+                    forceRefresh: true,
+                    backgroundRefresh: true,
+                    cancellationToken: cancellationToken));
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+        }
+        catch (ObjectDisposedException) when (_disposed)
+        {
+        }
+    }
+
     private string FormatUnreadCount() => _unreadCount > 9 ? "9+" : _unreadCount.ToString();
 
     private static string GetNotificationOutcomeClass(UserNotificationFeedItemDto item) =>
@@ -702,11 +785,19 @@
     {
         if (!string.IsNullOrWhiteSpace(item.Title)) return item.Title;
 
+        var action = item.Outcome.ToString() switch
+        {
+            "Approved" => "approved",
+            "Rejected" => "rejected",
+            "Mixed" => "completed with mixed results",
+            _ => "completed"
+        };
+
         return item.Kind.ToString() switch
         {
-            "DocumentModerationFinal" => "Document moderation complete",
-            "EscalationResolved" => "Escalation resolved",
-            _ => "Folder moderation complete"
+            "DocumentModerationFinal" => $"File moderation {action}",
+            "EscalationResolved" => "Escalation review completed",
+            _ => $"Sharing review {action}"
         };
     }
 
@@ -724,6 +815,17 @@
     }
 
     private static Guid? GetNotificationDocumentId(UserNotificationFeedItemDto item) => item.DocumentId;
+
+    private static string GetNotificationSource(UserNotificationFeedItemDto item) =>
+        item.Kind.ToString() == "EscalationResolved" ? "Admin escalation" : "Moderation result";
+
+    private static string GetNotificationOutcomeLabel(UserNotificationFeedItemDto item) =>
+        item.Outcome.ToString() switch
+        {
+            "Approved" => "Approved",
+            "Mixed" => "Mixed results",
+            _ => "Rejected"
+        };
 
     private static string FormatNotificationTime(DateTimeOffset createdAt) =>
         createdAt.ToLocalTime().ToString("MMM d, h:mm tt");
@@ -765,14 +867,28 @@
     private async Task LogoutAsync()
     {
         CloseMenu();
+        _notificationPollingCts.Cancel();
         await AuthPersistence.ClearAsync();
         Session.Clear();
         Nav.NavigateTo("/login", replace: true);
     }
 
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _disposed = true;
         Session.OnChange -= OnSessionChanged;
+        _notificationPollingCts.Cancel();
+        _notificationTimer?.Dispose();
+        if (_notificationPollingTask is not null)
+        {
+            try
+            {
+                await _notificationPollingTask;
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }
+        _notificationPollingCts.Dispose();
     }
 }
