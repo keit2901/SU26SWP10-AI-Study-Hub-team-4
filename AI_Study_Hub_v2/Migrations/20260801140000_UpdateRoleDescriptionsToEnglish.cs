@@ -14,48 +14,66 @@ namespace AI_Study_Hub_v2.Migrations
         {
             migrationBuilder.UpdateData(
                 table: "roles",
-                keyColumn: "id",
-                keyValue: 1,
-                column: "description",
-                value: "System administrator responsible for managing users, moderating documents, and configuring AI settings.");
+                schema: "public",
+                keyColumns: new[] { "id" },
+                keyColumnTypes: new[] { "integer" },
+                keyValues: new object[] { 1 },
+                columns: new[] { "description" },
+                columnTypes: new[] { "text" },
+                values: new object[] { "System administrator responsible for managing users, moderating documents, and configuring AI settings." });
 
             migrationBuilder.UpdateData(
                 table: "roles",
-                keyColumn: "id",
-                keyValue: 2,
-                column: "description",
-                value: "Student who uses personal learning resources, participates in RAG conversations, and completes review quizzes.");
+                schema: "public",
+                keyColumns: new[] { "id" },
+                keyColumnTypes: new[] { "integer" },
+                keyValues: new object[] { 2 },
+                columns: new[] { "description" },
+                columnTypes: new[] { "text" },
+                values: new object[] { "Student who uses personal learning resources, participates in RAG conversations, and completes review quizzes." });
 
             migrationBuilder.UpdateData(
                 table: "roles",
-                keyColumn: "id",
-                keyValue: 3,
-                column: "description",
-                value: "Community moderator who reviews and handles violation reports without access to system settings or user management.");
+                schema: "public",
+                keyColumns: new[] { "id" },
+                keyColumnTypes: new[] { "integer" },
+                keyValues: new object[] { 3 },
+                columns: new[] { "description" },
+                columnTypes: new[] { "text" },
+                values: new object[] { "Community moderator who reviews and handles violation reports without access to system settings or user management." });
         }
 
         protected override void Down(MigrationBuilder migrationBuilder)
         {
             migrationBuilder.UpdateData(
                 table: "roles",
-                keyColumn: "id",
-                keyValue: 1,
-                column: "description",
-                value: "Quản trị viên hệ thống, có quyền điều phối nhân sự, kiểm duyệt tài liệu và thay đổi tham số cấu hình AI");
+                schema: "public",
+                keyColumns: new[] { "id" },
+                keyColumnTypes: new[] { "integer" },
+                keyValues: new object[] { 1 },
+                columns: new[] { "description" },
+                columnTypes: new[] { "text" },
+                values: new object[] { "Quản trị viên hệ thống, có quyền điều phối nhân sự, kiểm duyệt tài liệu và thay đổi tham số cấu hình AI" });
 
             migrationBuilder.UpdateData(
                 table: "roles",
-                keyColumn: "id",
-                keyValue: 2,
-                column: "description",
-                value: "Sinh viên khai thác tài nguyên học tập cá nhân, thực hiện hội thoại RAG và tham gia kiểm tra ôn tập");
+                schema: "public",
+                keyColumns: new[] { "id" },
+                keyColumnTypes: new[] { "integer" },
+                keyValues: new object[] { 2 },
+                columns: new[] { "description" },
+                columnTypes: new[] { "text" },
+                values: new object[] { "Sinh viên khai thác tài nguyên học tập cá nhân, thực hiện hội thoại RAG và tham gia kiểm tra ôn tập" });
 
             migrationBuilder.UpdateData(
                 table: "roles",
-                keyColumn: "id",
-                keyValue: 3,
-                column: "description",
-                value: "Kiểm duyệt viên cộng đồng, có quyền xem và xử lý báo cáo vi phạm nhưng không thể thay đổi cấu hình hệ thống hoặc quản lý người dùng");
+                schema: "public",
+                keyColumns: new[] { "id" },
+                keyColumnTypes: new[] { "integer" },
+                keyValues: new object[] { 3 },
+                columns: new[] { "description" },
+                columnTypes: new[] { "text" },
+                values: new object[] { "Kiểm duyệt viên cộng đồng, có quyền xem và xử lý báo cáo vi phạm nhưng không thể thay đổi cấu hình hệ thống hoặc quản lý người dùng" });
         }
     }
 }
