@@ -58,6 +58,7 @@ public sealed class SemanticKernelRagChatService : IAiChatService
         _logger = logger;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_7] Core RAG Orchestrator: Orchestrates Vector Search -> Re-Rank -> Prompt -> Quota -> LLM
     public async Task<AiChatAnswerResponse> AskAsync(
         Guid supabaseUserId,
         AiChatAskRequest request,

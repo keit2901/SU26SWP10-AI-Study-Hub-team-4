@@ -28,6 +28,7 @@ public sealed class GeminiChatCompletionClient : IAiChatCompletionClient
         _logger = logger;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_13] LLM Provider Fallback: Fallback sends Prompt to Gemini API (gemini-2.5-flash) if Groq fails
     public async Task<string> CompleteAsync(
         AiChatCompletionRequest request,
         CancellationToken cancellationToken = default)

@@ -25,6 +25,7 @@ public sealed class AiChatCompletionClientFactory : IAiChatCompletionClientFacto
         _aiChatOptions = aiChatOptions.Value;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_11] LLM Factory: Selects LLM Provider (Groq primary llama-3.3-70b or Gemini fallback)
     public IAiChatCompletionClient GetClient(string? modelName)
     {
         return ResolveProvider(modelName) == "groq" ? _groqClient : _geminiClient;

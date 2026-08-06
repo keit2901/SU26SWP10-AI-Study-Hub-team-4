@@ -31,6 +31,7 @@ public sealed class AiChatController : ControllerBase
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status403Forbidden)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status404NotFound)]
     [ProducesResponseType(typeof(ApiErrorResponse), StatusCodes.Status503ServiceUnavailable)]
+    // [AI_CHATBOT_FLOW_STEP_3] REST Controller: POST endpoint receiving chat request from Frontend
     public async Task<ActionResult<AiChatAnswerResponse>> Ask(
         [FromBody] AiChatAskRequest request,
         CancellationToken cancellationToken)
@@ -176,6 +177,7 @@ public sealed class AiChatController : ControllerBase
             Message = exception.Message,
         });
 
+    // [AI_CHATBOT_FLOW_STEP_4] Helper Controller: Extracts Supabase User UUID from JWT Claims
     private Guid GetSupabaseUserIdFromClaims()
     {
         var sub = User.FindFirstValue(ClaimTypes.NameIdentifier)

@@ -22,6 +22,7 @@ public sealed class ReRankService : IReRankService
         _logger = logger;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_10] Re-Ranker: Re-scores candidate chunks to select optimal TopK results
     public Task<IReadOnlyList<ReRankCandidate>> ReRankAsync(
         string query,
         IReadOnlyList<ReRankCandidate> candidates,

@@ -28,6 +28,7 @@ public sealed class GroqChatCompletionClient : IAiChatCompletionClient
         _logger = logger;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_13] LLM Provider Primary: Sends Prompt to Groq API (llama-3.3-70b-versatile) to generate response
     public async Task<string> CompleteAsync(
         AiChatCompletionRequest request,
         CancellationToken cancellationToken = default)

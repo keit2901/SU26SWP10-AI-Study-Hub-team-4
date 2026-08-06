@@ -60,6 +60,7 @@ public sealed class ChatPersistenceService : IChatPersistenceService
         return sessions;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_5] Chat Persistence: Initializes a new ChatSession if one does not exist
     public async Task<ChatSessionDto> CreateSessionAsync(Guid supabaseUserId, CreateChatSessionRequest request, CancellationToken ct = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, ct);
@@ -97,6 +98,7 @@ public sealed class ChatPersistenceService : IChatPersistenceService
         };
     }
 
+    // [AI_CHATBOT_FLOW_STEP_6] Chat Persistence: Loads recent chat messages as conversation context for AI
     public async Task<IReadOnlyList<ChatMessageDto>> GetMessagesScopedAsync(Guid supabaseUserId, Guid sessionId, Guid? expectedFolderId, CancellationToken ct = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, ct);
@@ -140,6 +142,7 @@ public sealed class ChatPersistenceService : IChatPersistenceService
         await _db.SaveChangesAsync(ct);
     }
 
+    // [AI_CHATBOT_FLOW_STEP_15] Chat Persistence: Saves exchange history and source citations [S1] as JSONB
     public async Task SaveExchangeAsync(Guid supabaseUserId, Guid sessionId, Guid? expectedFolderId, string question, string scopeLabel, AiChatAnswerResponse response, CancellationToken ct = default)
     {
         var profile = await ResolveProfileAsync(supabaseUserId, ct);

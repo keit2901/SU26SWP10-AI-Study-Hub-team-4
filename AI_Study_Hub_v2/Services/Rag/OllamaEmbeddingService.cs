@@ -48,6 +48,7 @@ public sealed class OllamaEmbeddingService : IEmbeddingService
         _httpClient.Timeout = TimeSpan.FromSeconds(_options.TimeoutSeconds);
     }
 
+    // [AI_CHATBOT_FLOW_STEP_9] Vector Embedding: Converts text query into 384-dimensional vector (all-minilm:l6-v2)
     public async Task<float[]> GenerateEmbeddingAsync(
         string text,
         CancellationToken cancellationToken = default)

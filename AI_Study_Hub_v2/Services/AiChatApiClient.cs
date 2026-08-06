@@ -20,6 +20,7 @@ public sealed class AiChatApiClient
         _http = http;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_2] Typed HTTP Client FE: Packages request with Bearer JWT token to Backend
     public Task<AiChatAnswerResponse> AskAsync(
         AiChatAskRequest request,
         CancellationToken cancellationToken = default)

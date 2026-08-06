@@ -52,6 +52,7 @@ public sealed class AiQuotaService : IAiQuotaService
         _audit = audit;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_12] Quota Guard: Reserves estimated tokens and blocks HTTP 429 if daily quota exceeded
     public async Task<AiQuotaReservation> ReserveAsync(
         Guid supabaseUserId,
         int estimatedTokens,
@@ -101,6 +102,7 @@ public sealed class AiQuotaService : IAiQuotaService
         return new AiQuotaReservation(user.Id, estimatedTokens, today);
     }
 
+    // [AI_CHATBOT_FLOW_STEP_14] Quota Commit: Deducts and commits actual tokens consumed to Database
     public async Task CompleteAsync(
         AiQuotaReservation reservation,
         int actualTokens,

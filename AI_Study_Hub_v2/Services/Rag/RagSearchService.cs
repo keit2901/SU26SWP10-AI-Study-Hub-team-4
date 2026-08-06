@@ -38,6 +38,7 @@ public sealed class RagSearchService : IRagSearchService
         _logger = logger;
     }
 
+    // [AI_CHATBOT_FLOW_STEP_8] Vector Search: Filters Ready chunks and computes Cosine Distance for Top Candidates
     public async Task<IReadOnlyList<RagSearchResultDto>> SearchAsync(
         Guid supabaseUserId,
         RagSearchRequest request,
